@@ -8,7 +8,6 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test' },
 }));
 
-// cm:guard `assertEmailVerified` makes the FIRST select of every authenticated test, so the FIFO queue on `selectLimit` must be primed with its row before the one the test is about — a queue that starts with the test's own row hands it to the email check and 403s.
 const selectLimit = vi.fn();
 const selectWhere = vi.fn((): unknown => ({ limit: selectLimit }));
 const selectOn = vi.fn(() => ({ where: selectWhere }));
@@ -16,7 +15,6 @@ const innerJoin = vi.fn(() => ({ on: selectOn, where: selectWhere }));
 const selectFrom = vi.fn(() => ({
   where: selectWhere,
   innerJoin,
-  // cm:why the `innerJoin` arm ends here with no `limit`/`where`, because the queries that take it (project_members for the /:id detail) chain neither
 }));
 
 // GET / visibility query:
@@ -41,7 +39,6 @@ const txInsertMembers = vi.fn(() => ({ values: txInsertMembersValues }));
 const txInsert = vi.fn();
 
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
-  // cm:why the PATCH now writes through the transaction, so the tx carries the same update/select doubles the bare db does (ISS-992)
   const tx = {
     insert: txInsert,
     execute: vi.fn(async () => []),
@@ -81,7 +78,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// cm:guard only the db-touching authz resolvers are stubbed — `assertProjectRole`, `assertOrgRoleOnProject` and `maxProjectRole` stay REAL, so these cases exercise the production role logic rather than a mock of the decision under test
 const projectAccess = vi.fn();
 const personalOrg = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
@@ -247,7 +243,6 @@ describe('POST /api/projects', () => {
     expect(transaction).not.toHaveBeenCalled();
   });
 
-  // cm:guard a 23505 is not automatically a slug collision. Three unique indexes can raise on this insert, and the route reported EVERY one of them as SLUG_TAKEN until both transports came through `createProject` — which sent a caller off to rename a slug that was never the problem, on an apiKey collision they could not see.
   it.each([
     ['projects_slug_unique', 409],
     ['projects_api_key_unique', 500],
@@ -573,7 +568,6 @@ describe('PATCH /api/projects/:id', () => {
     });
   });
 
-  // cm:guard assert on `updateSet`, not on the response — `updateReturning` is mocked, so a body assertion passes even when the handler never maps `kind` into the SET, which is the exact bug that kept the field create-only
   it('200 kind: reaches the UPDATE, so an existing project can be re-shaped as a storefront', async () => {
     const token = await signUserToken('uuid-owner');
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
@@ -751,8 +745,6 @@ describe('PATCH /api/projects/:id', () => {
     expect(res.status).toBe(400);
   });
 
-  // cm:guard ISS-1000 — each case below is a DOOR and not a repetition: the scoped field, the same key inside the wholesale `agentConfig` record this route still accepts, and the two stage keys that record could otherwise carry past `pipelineConfigPatchSchema`. Drop any one refusal and that door answers 200 and writes a phantom back.
-  // cm:guard each case asserts the MESSAGE as well as the status, and that is the whole value of it: with the refusal removed, a body naming only `stateContext` is stripped to `{}` and refused 400 by the schema's own `no fields to update` — so a case testing the status alone stays green against the defect it exists to catch.
   const RETIRED_BODIES: [string, Record<string, unknown>, string][] = [
     [
       'the scoped stateContext field',
@@ -811,7 +803,6 @@ describe('PATCH /api/projects/:id', () => {
     expect(text).toContain('pipelineConfig.states[*].budget');
   });
 
-  // cm:guard the positive control, and it is what stops the refusal above from growing into a validation of the whole blob: `agentConfig` is the escape hatch four other settings surfaces write through, and only the retired keys are refused in it.
   it('200: a wholesale agentConfig carrying some other key still goes through', async () => {
     const token = await signUserToken('uuid-owner');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));

@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why metric-series.ts imports db/client.js at module scope, which validates env at import time; stub it so this pure-function suite doesn't need real env/Postgres (integration coverage: tests/integration/admin-metric-series-routes.test.ts)
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 const { WINDOW_SPECS, bucketBoundaries, computeSeries, deltaPct, toGlance } = await import(
@@ -164,7 +163,6 @@ describe('deltaPct', () => {
     expect(deltaPct(0.25, 0.5)).toBe(-50);
   });
 
-  // cm:guard a zero baseline yields null, NEVER Infinity — the tile renders the number it is given, and "+∞%" beside a figure that merely started from nothing is the state-lies failure VISION №10 forbids.
   it('is null where either side is null or the baseline is zero', () => {
     expect(deltaPct(1, 0)).toBeNull();
     expect(deltaPct(null, 5)).toBeNull();

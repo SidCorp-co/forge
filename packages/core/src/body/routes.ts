@@ -48,7 +48,6 @@ bodyRoutes.post(
       format: prepared.format,
       warnings: prepared.warnings,
       text: prepared.text,
-      // cm:why the tree is parsed from the PREPARED bytes, not the typed ones: the pane must draw what the row would hold, and `serializeBody` wraps loose prose in `<p>` and drops what the sanitizer removed
       nodes: prepared.format === 'html' ? parseBody(prepared.body) : null,
     });
   },

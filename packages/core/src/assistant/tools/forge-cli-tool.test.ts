@@ -18,7 +18,6 @@ const handler = () =>
 beforeEach(() => runForgeCli.mockReset());
 
 describe('a refusal is handed back as data AND audits as an error', () => {
-  // cm:guard both halves are asserted on one result: the model must still read the exit code and stderr (the way out is in them), and the audit record must read the call as refused (the confab probe partitions on it). Dropping either half re-opens the blindness the second reader named on 2026-09-15 (ISS-1009).
   it('a non-zero exit carries the flag and the model still reads exitCode and stderr', async () => {
     runForgeCli.mockResolvedValue({ code: 1, stdout: '', stderr: 'Hold — one issue per problem' });
     const out = toToolCallContent(await handler()({ argv: ['new', '-'], body: '## Outcome' }));

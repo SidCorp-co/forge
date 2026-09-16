@@ -144,7 +144,6 @@ describe('resolveStageOverrides', () => {
 });
 
 describe('resolveDefaultModel (ISS-535)', () => {
-  // cm:guard the table must name the STAGE_NAMES four and nothing else. A rung for a status no job stamps is a tier no dispatch can reach, and it was the presence of those rungs — not their values — that made this table read as a ladder after ISS-897 left one session.
   it('covers the four dispatchable statuses and no rung of the deleted ladder', () => {
     expect(DEFAULT_STAGE_MODELS).toEqual({
       open: 'sonnet',
@@ -162,7 +161,6 @@ describe('resolveDefaultModel (ISS-535)', () => {
     expect(resolveDefaultModel('bogus')).toBeNull();
   });
 
-  // cm:why asserts the ABSENCE of a runtime tier bump — escalateModel (ISS-535) was deleted, and a re-add would silently reopen the ISS-766 cost loop that this fixed table exists to close
   it('exports no tier-escalation helper', async () => {
     const mod = await import('./stage-overrides.js');
     expect('escalateModel' in mod).toBe(false);

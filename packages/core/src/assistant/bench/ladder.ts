@@ -87,7 +87,6 @@ export function rankRuns(
   files: Array<{ name: string; result: BenchResult }>,
   shipped: string[] = loadTasks().map((t) => t.id),
 ): RunRow[] {
-  // cm:why one k for every file, the largest named, as compare.ts does: pass^k at k = 1 and at k = 3 are different figures, and a ladder that ranked one against the other would order builds by their k, not their passes (codex F1)
   const k = Math.max(1, ...files.map((f) => f.result.k));
   return files
     .map(({ name, result }) => {
@@ -273,7 +272,6 @@ export function ladderLines(runs: RunRow[], windows: WindowRow[]): string[] {
   return lines;
 }
 
-// cm:why a backslash is escaped before the pipe: escaping only the pipe leaves `\\|` readable as an escaped backslash followed by a live pipe, which splits the cell (CodeQL js/incomplete-sanitization)
 export const mdCell = (c: string): string => c.replace(/\\/g, '\\\\').replace(/\|/g, '\\|');
 const mdRow = (cells: string[]): string => `| ${cells.map(mdCell).join(' | ')} |`;
 const mdTable = (head: string[], rows: string[][]): string[] => [

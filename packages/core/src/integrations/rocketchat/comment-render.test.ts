@@ -44,7 +44,6 @@ describe('a comment carried into a room', () => {
   });
 });
 
-// cm:guard the residual the at-least-once root leaves, asserted rather than wished away: a reply on an orphan root DOES reach the conversation path, and a change that made this go red would be a change to ordinary conversation routing (ISS-981 criterion 34). ISS-1004 made the residual LARGER rather than smaller — the reply used to need the bot's name in a group room and now needs nothing — so the assertion is the same one with the mention arm gone.
 describe('a reply on a root the registry does not know', () => {
   it('reaches the conversation path in every room shape', () => {
     expect(decideSkip(msg({ tmid: 'orphan' }), 'bot')).toBeNull();

@@ -21,8 +21,6 @@ export interface OpenDeviceSocket {
 /**
  * Subscribe a stand-in for a connected runner to `device:<deviceId>`.
  */
-// cm:guard import the instance from `ws/room-manager.js`, NEVER the `ws/server.js` re-export — this file is pulled in by the helpers barrel, so a static import of `server.ts` drags `auth/cookie.ts` and its import-time env validation into every integration file, and those set DATABASE_URL in `beforeAll`, i.e. after the import. It fails as "Invalid environment", never as a bad import.
-// cm:edge contract -> packages/core/src/ws/rooms.ts — `publish` counts subscribers whose `readyState` is OPEN (1) and skips the rest, so this object must keep that field at 1; drop it and the socket is present but delivers nothing, which is the exact failure the helper exists to represent.
 export function openDeviceSocket(deviceId: string): OpenDeviceSocket {
   const frames: Array<{ event: string; data: unknown }> = [];
   const sub: Subscriber = {

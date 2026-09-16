@@ -15,7 +15,6 @@ describe("what a wait costs", () => {
     );
   });
 
-  // cm:guard absent is not zero: core sets `cost` on the awaiting bucket alone, so a row from any other bucket must render nothing rather than "0 claims" (ISS-964 criterion 53).
   it("says nothing at all for a row that carries no cost", () => {
     expect(costSummary({})).toBeNull();
     expect(costSummary({ cost: { claimsHeld: 0, workspacesPinned: 0, dependents: 0 } })).toBeNull();

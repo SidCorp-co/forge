@@ -27,7 +27,6 @@ const posts: Array<{ rid: string; tmid: string | undefined; text: string }> = []
 let nextMessageId: string | null = null;
 let postCount = 0;
 let postThrows: Error | null = null;
-// cm:guard read DURING the post, which is the only moment that can tell a comment marked delivered before it succeeded from one marked after: every state once the call returns is identical either way, and a process that dies here is what the at-least-once rule is about (ISS-981 criteria 30, 31).
 let atPostTime: (() => Promise<void>) | null = null;
 
 vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) => {
@@ -37,7 +36,6 @@ vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) 
     ...actual,
     sendFixedReply: vi.fn(
       async (transport: { rid: string; tmid?: string }, text: string, proof: unknown) => {
-        // cm:guard the mock re-asserts the proof contract the real door enforces, so a caller that stopped screening its text fails here instead of passing because the door was replaced.
         if (proof !== actual.FIXED_REPLY_CONSTANT && !(proof as { ok?: boolean })?.ok) {
           throw new Error('unscreened text reached the outbound door');
         }
@@ -185,7 +183,6 @@ describe('who may author, and what a refusal costs', () => {
   it('refuses a speaker no Forge user is linked to, naming the way out in the thread', async () => {
     await deliver(reply({ userId: STRANGER }));
 
-    // cm:guard the refusal must carry ISS-977's own way out — the two endpoints and that the person links themselves — because a local rewording of it drifts from the module that owns the contract (ISS-981 criterion 6).
     expect(posts).toHaveLength(1);
     expect(posts[0]?.tmid).toBe('root-1');
     expect(posts[0]?.text).toContain('is not linked to a Forge user');
@@ -195,7 +192,6 @@ describe('who may author, and what a refusal costs', () => {
   it('writes no comment for a speaker nobody is linked to', async () => {
     await deliver(reply({ userId: STRANGER }));
 
-    // cm:guard the refusal is not enough on its own: a comment written anyway would be attributed to somebody, and `answer-resume.ts` would carry a stranger's words into a parked session as though a mapped person had typed them (ISS-981 criterion 7).
     expect(await commentRows()).toHaveLength(0);
   });
 
@@ -213,7 +209,6 @@ describe('who may author, and what a refusal costs', () => {
     await linkSpeaker(LINKED);
     await deliver(reply());
 
-    // cm:guard a mirrored comment is an issue tool being carried and never a chat turn: a `conversations` row here is the mark of a delivery that became a provider conversation, which would put a model between two people talking (ISS-981 criterion 24; the table was `chat_sessions` until ISS-1001 replaced it).
     const rooms = await db.select().from(conversationSchema.conversations);
     expect(rooms).toHaveLength(0);
   });
@@ -255,7 +250,6 @@ describe('who may author, and what a refusal costs', () => {
 
     await deliver(reply({ text: 'left, I think' }));
 
-    // cm:guard prose can resume a parked session through the comment path and can NEVER stand in for choosing an option: an answer recorded here would grant a permission nobody selected, from a sentence that merely resembles a label (ISS-981 criterion 29).
     const [question] = await db
       .select({ status: rcQuestions.agentQuestions.status })
       .from(rcQuestions.agentQuestions)
@@ -267,7 +261,6 @@ describe('who may author, and what a refusal costs', () => {
     await linkSpeaker(LINKED);
     await deliver(reply(), true);
 
-    // cm:guard a retired thread points into a room the project is no longer bound to, so the reply is refused BY NAME rather than dropped: dropping it sends the person's sentence nowhere with nothing said, and writing it sends it to a room nobody is reading (ISS-981 criterion 35).
     expect(posts).toHaveLength(1);
     expect(posts[0]?.text).toBe(inbound.RETIRED_THREAD_REPLY);
     expect(await commentRows()).toHaveLength(0);
@@ -286,7 +279,6 @@ describe('a reply on a parked issue reaches the session that asked', () => {
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
       VALUES (${runId}, ${projectId}, ${issueId}, 'issue', 'running', now())
     `);
-    // cm:guard the session carries a DEVICE, because that is what `requestSessionSend` publishes through: a device-less session takes the send row but reports `published: false`, and answer-resume then runs the dispatching fallback — so a fixture without one proves the opposite of what this asserts (ISS-981 criterion 13).
     const device = await createTestDevice(harness.db, ownerId);
     const sessionId = randomUUID();
     await db.execute(sql`
@@ -349,12 +341,10 @@ describe('a reply on a parked issue reaches the session that asked', () => {
     const { jobId } = await parkOnNeedsInfo();
     await replyInRoom();
 
-    // cm:guard a second `drive` job would queue BEHIND the session holding the runner slot, so the answer would reach nobody and the run would be waiting on itself (ISS-981 criterion 13).
     const rows = await db.select({ id: schema.jobs.id }).from(schema.jobs);
     expect(rows).toHaveLength(1);
     expect(rows[0]?.id).toBe(jobId);
 
-    // cm:guard the issue STAYING at `needs_info` is what makes the job count above mean something: the dispatch happens by moving the status, so a bus with no orchestrator on it would leave the count at one however the reply was handled. Since ISS-996 cut the comment lane this holds for a wider reason than ISS-981 gave it — no comment resumes anything — and the assertion still reddens if that lane is ever restored.
     const [issue] = await db
       .select({ status: schema.issues.status })
       .from(schema.issues)

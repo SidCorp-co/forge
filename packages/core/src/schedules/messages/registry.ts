@@ -78,7 +78,6 @@ export interface ImprovementMessage {
   standing?: boolean;
 }
 
-// cm:guard STRATEGY_INPUTS are applied by the standing steward when it observes the matching signal — they are NOT schedules and must not be given a cron, or the same guidance arrives twice from two owners.
 export const RETIRED_STRATEGY_INPUTS = {
   MERGED_AT_ON_PASS: {
     key: 'merged-at-on-pass',

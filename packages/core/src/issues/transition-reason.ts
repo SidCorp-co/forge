@@ -15,13 +15,11 @@ import { type Db, db } from '../db/client.js';
 import type { IssueStatus, WaitingKind } from '../db/schema.js';
 import { comments } from '../db/schema.js';
 
-// cm:guard adding a status here makes the reason MANDATORY for every writer of it — core's own system writers included, so add the argument at those call sites in the same change or the transition throws at runtime with the tests green
 export const REASON_REQUIRED_STATUSES = new Set<IssueStatus>(['reopen', 'waiting', 'needs_info']);
 
 /**
  * Does this transition need an authored reason?
  */
-// cm:guard the `in_progress → reopen` carve-out is reopen-ONLY and must stay that way — that pair is the system's own mechanical revert (finalize-failure reverting a `fix` job to its entry status), whereas `in_progress → waiting` is the commonest genuine park there is, and exempting it would let the most frequent case skip the requirement entirely
 export function requiresAuthoredReason(from: IssueStatus, to: IssueStatus): boolean {
   if (!REASON_REQUIRED_STATUSES.has(to) || from === to) return false;
   if (to === 'reopen' && from === 'in_progress') return false;
@@ -51,7 +49,6 @@ export function buildTransitionReasonBody(
  * Post the reason. Throws on failure — the caller must let the transition fail
  * with it.
  */
-// cm:guard this MUST NOT swallow its error, unlike every other comment helper in this repo — the comment IS the reason the transition was allowed, so a park that commits without it is the unexplained park the requirement exists to prevent
 export async function postTransitionReasonComment(
   args: {
     issueId: string;
@@ -81,7 +78,6 @@ export async function postTransitionReasonComment(
 /**
  * What is missing from a park's own account of itself, or `null`.
  */
-// cm:guard both faults are raised BEFORE the transaction opens, and neither may move inside it: a park whose reason is missing must be refused rather than detected after the fact, which is what every guard deleted with the reopen cap tried to do and each detected it by stranding the issue.
 export function parkReasonFault(
   fromStatus: IssueStatus,
   requestedStatus: IssueStatus,

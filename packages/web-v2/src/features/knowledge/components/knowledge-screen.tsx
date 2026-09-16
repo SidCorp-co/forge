@@ -1,6 +1,5 @@
 "use client";
 
-// cm:why inner tab state is local `useState` and not a URL param — the outer Library tab already deep-links via `?tab=`, and a second one would need the two to agree on precedence for a link nobody sends.
 import { useState } from "react";
 import {
   EmptyState,

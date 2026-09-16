@@ -345,7 +345,6 @@ describe('CoolifyClient controls', () => {
     expect(coolifyAbilityForRoute('GET /api/v1/applications/app-1')).toBe('read');
   });
 
-  // cm:guard the deploy-ability rows must not be shadowed by the read rows above them: a cancel misread as `read` tells an operator to widen the wrong ability, which is the ISS-924 mislabel in a new place.
   it('still names read for the routes that only read', () => {
     expect(coolifyAbilityForRoute('GET /api/v1/deployments/dep-1')).toBe('read');
     expect(coolifyAbilityForRoute('GET /api/v1/applications/app-1/logs')).toBe('read');

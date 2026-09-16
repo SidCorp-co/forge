@@ -29,8 +29,6 @@ type ValueColumns = Pick<
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
-// cm:guard The value lands in the column the def names and in no other. One shared text column would accept every one of these, which is the unregistered-EAV failure this pair exists to refuse (ISS-1010).
-// cm:edge contract -> packages/core/src/db/schema.ts — the value_* columns and `attributeValueTypes` are one mapping; adding a type without its column silently drops the value.
 function columnsFor(def: AttributeDef, value: AttributeValue): ValueColumns {
   const empty: ValueColumns = {
     valueText: null,
@@ -92,7 +90,6 @@ function attributeKeyList(): string {
   return writableKeys().join(', ');
 }
 
-// cm:guard An obligation with no owner is the exact shape that lost steps 2-5 of ISS-1002: written, true, and owned by nobody. The pair is refused together or the rule is decorative.
 export function checkObligationPair(writes: readonly AttributeWrite[]): void {
   const hasObligation = writes.some((w) => w.key === 'obligation');
   const hasOwner = writes.some(
@@ -105,7 +102,6 @@ export function checkObligationPair(writes: readonly AttributeWrite[]): void {
     );
 }
 
-// cm:why The executor is passed in rather than imported: this module is the typing gate, and a gate that cannot be exercised without a live database is a gate nobody exercises.
 export interface AttributeExecutor {
   insert: (table: typeof issueAttributes) => {
     values: (rows: (typeof issueAttributes.$inferInsert)[]) => PromiseLike<unknown>;
@@ -136,7 +132,6 @@ export async function writeAttributes(
     };
   });
 
-  // cm:guard `one` replaces, `many` appends. A cardinality-one key that accumulated rows would make every read pick arbitrarily, and the pick would look like a fact.
   for (const { def, row } of rows) {
     if (def.cardinality === 'one')
       await tx

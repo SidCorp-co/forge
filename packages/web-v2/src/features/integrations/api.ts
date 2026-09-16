@@ -1,4 +1,3 @@
-// cm:edge contract -> packages/core/src/integrations/routes.ts — every path below is spelled out as a string here and mounted there; nothing type-checks the pair, so a route renamed on one side 404s from the other with no compile error
 import { apiClient } from "@/lib/api/client";
 import type {
   BindExistingConnectionRequest,

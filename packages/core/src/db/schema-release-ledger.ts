@@ -21,9 +21,6 @@ import { pipelineRuns } from './schema.js';
 export const RELEASE_ATTEMPT_STAGES = ['promote', 'deploy', 'verify', 'repair'] as const;
 export type ReleaseAttemptStage = (typeof RELEASE_ATTEMPT_STAGES)[number];
 
-// cm:guard `(run_id, idempotency_key)` and NEVER the key alone. The key an agent mints is scoped to the run it is working — two runs retrying "deploy-1" are two different acts on two different rosters, and a global unique would silently fold the second into the first's row, which is a release reading somebody else's readings.
-// cm:guard the machine columns and the agent's column are SEPARATE and neither is derived from the other. `account` is what the agent says happened; `health`, `identity`, `verdict` and `readings` are what core read. The whole defect this table answers is that those two were one sentence, so a schema that let an agent write into the machine half would put it back — the route refuses those keys, and this comment is why.
-// cm:guard `settled_at` NULL is a real state and not a missing row: it is an act that was declared and never reported back, which is what a killed release looks like from outside. A reader that treats it as absent hides exactly the attempts worth looking at.
 export const releaseAttempts = pgTable(
   'release_attempts',
   {
@@ -52,7 +49,6 @@ export const releaseAttempts = pgTable(
     account: text('account'),
     /** The tail of whatever the act printed. */
     logTail: text('log_tail'),
-    // cm:guard the pair is what separates "short output" from "output the machine cut". A truncation nobody is told about reads as the whole of it, and an operator debugging a failed deploy then believes they have seen the error.
     logTailTruncated: boolean('log_tail_truncated').notNull().default(false),
     /** NULL means nobody has read past the cut. */
     logTailReadAt: timestamp('log_tail_read_at', { withTimezone: true }),

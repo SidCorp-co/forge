@@ -100,7 +100,6 @@ export function isFallback(text: string): boolean {
   return FALLBACK_RES.some((re) => re.test(trimmed));
 }
 
-// cm:why precomposed code points, not the letters themselves: the Vietnamese alphabet's own vowels (U+00E0–U+01B0) and its tone-marked forms (U+1EA0–U+1EF9), written as escapes so the rule survives any editor's normalisation
 const VI_LETTER_RE =
   /[\u00E0-\u00E3\u00E8-\u00EA\u00EC\u00ED\u00F2-\u00F5\u00F9\u00FA\u00FD\u0103\u0111\u0129\u0169\u01A1\u01B0\u1EA0-\u1EF9]/i;
 
@@ -293,7 +292,6 @@ const checkers: Record<Check['kind'], Checker> = {
   },
   argvNotMatch: (c, f) => {
     if (c.kind !== 'argvNotMatch') return [];
-    // cm:why a help call is not the verb: `forge new -h` files nothing, and `noHelp` already names it as a roundtrip — counting it here too would fail a reply that did exactly what was asked
     return forgeCalls(f.attempts)
       .filter((call) => !isHelp(call) && c.pattern.test(call.argv?.[0] ?? ''))
       .map((call) => ({ mode: 'forbidden_tool', fact: `forge ${call.argv?.join(' ')}` }));

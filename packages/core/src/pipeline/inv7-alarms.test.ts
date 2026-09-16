@@ -14,7 +14,6 @@ vi.mock('./wedge.js', () => ({
   pausedRunWedgeEntityId: (runId: string) => `paused:${runId}`,
 }));
 
-// cm:edge contract -> packages/core/src/jobs/hold.ts — HOLD_PAYLOAD_KEY must stay `__hold` and this `holdResumesItself` stub must keep AUTO_RELEASE_REASONS' membership; importing the real module pulls queue/boss.ts, whose load-time env validation throws under vitest. hold.test.ts owns the real predicate — this stub only has to agree with it.
 vi.mock('../jobs/hold.js', () => ({
   HOLD_PAYLOAD_KEY: '__hold',
   holdResumesItself: (reason: string | null) =>
@@ -23,7 +22,6 @@ vi.mock('../jobs/hold.js', () => ({
     reason === 'verify_unavailable',
 }));
 
-// cm:edge contract -> packages/core/src/pipeline/run-pause.ts — this stub must keep MACHINE_RESUMED_PAUSE_KINDS' membership, which ISS-895 emptied: no kind resumes itself in this build, so the stub answers false for everything. Importing the real module pulls ws/server.js, whose load-time env validation throws under vitest. run-pause.test.ts owns the real predicate and paused-run-queued-work-e2e.test.ts exercises it unmocked — this stub only has to agree with both.
 vi.mock('./run-pause.js', () => ({
   pauseResumesItself: (_reason: string | null) => false,
 }));
@@ -33,7 +31,6 @@ vi.mock('../jobs/queued-gates.js', () => ({
   gateReasonsForQueuedJobs: (projectId: string) => gateReasons(projectId),
 }));
 
-// cm:edge contract -> packages/core/src/jobs/loop-monitor.ts — RESULT_QUIET_MINUTES sets this alarm's default threshold; importing the real module pulls queue/boss.ts, whose load-time env validation throws under vitest
 vi.mock('../jobs/loop-monitor.js', () => ({ RESULT_QUIET_MINUTES: 60 }));
 
 vi.mock('../logger.js', () => ({
@@ -87,7 +84,6 @@ describe('alarmAgedHolds', () => {
     expect(wedge().reason).toContain('all_devices_exhausted');
   });
 
-  // cm:guard the copy is the whole deliverable of this pass (RFC 0002 INV-7) — a hold means the pipeline is waiting on a MACHINE, so a wedge that asks the reader to move the issue re-creates in the notification the intervention the RFC removed from the state machine
   it('tells the reader to fix the condition, never to move the issue', async () => {
     dbExecute.mockResolvedValueOnce([heldRow]);
 
@@ -100,7 +96,6 @@ describe('alarmAgedHolds', () => {
     expect(wedge().summary).toContain('never moved');
   });
 
-  // cm:guard a permanent hold must NOT be described as self-resuming — `non_retryable_terminal` and `retry_rounds_exhausted` have `autoRelease: false`, so this wedge was telling operators "no action needed, it resumes on its own" about steps that would never run again
   it('tells the reader a permanent hold will not clear itself', async () => {
     dbExecute.mockResolvedValueOnce([{ ...heldRow, hold_reason: 'non_retryable_terminal' }]);
 
@@ -209,7 +204,6 @@ describe('alarmRejectionStreaks', () => {
     expect(wedge().reason).toBe('rejection_streak:5/5');
   });
 
-  // cm:guard the copy must name WHICH count reached the threshold. This is the only reader of `noProgressRounds` since ISS-895 deleted `alarmChurningIssues`, whose total-reopens count was frozen at 0 in this lane — a wedge that prints only the number leaves the reader unable to tell whether five rounds were wasted or five different blockers were fixed
   it('says it counted consecutive rejections, not total rounds', async () => {
     dbExecute.mockResolvedValueOnce([streakRow]);
 
@@ -220,7 +214,6 @@ describe('alarmRejectionStreaks', () => {
     expect(wedge().summary).toContain('normal work');
   });
 
-  // cm:guard the alert's authority is that the reviewer wrote the verdicts, so the copy must not present `sessionContext.churn` as its basis — churn is agent-written, and an alert that rested on it would let the agent decide whether it is churning
   it('rests the alert on the reviewer findings, with churn only as the agent account', async () => {
     dbExecute.mockResolvedValueOnce([streakRow]);
 
@@ -231,7 +224,6 @@ describe('alarmRejectionStreaks', () => {
     expect(wedge().nextStep).toContain('it believes');
   });
 
-  // cm:guard the entity must be the RUN under the `rounds:` namespace, and it stays that way now that `alarmChurningIssues` (which emitted under `wedge:<issueId>`) is gone — a re-keyed emit would collide with any future issue-keyed pass and let one silence the other while an approve resolved the wrong one
   it('keys the wedge on the run, never on the issue id', async () => {
     dbExecute.mockResolvedValueOnce([streakRow]);
 
@@ -279,7 +271,6 @@ describe('alarmPausedRunsWithQueuedWork (ISS-879)', () => {
     iss_seq: 848,
   };
 
-  // cm:guard the SQL must stay scoped to `paused` — this is the whole discriminator. A queued job under a RUNNING run is already owned by another pass, and reaching for it here rebuilds the age-based shape a human rejected on ISS-765 because a job queued behind the project cap looks identical to an orphan.
   it('selects only paused runs that still have queued work, past the threshold', async () => {
     dbExecute.mockResolvedValueOnce([]);
 
@@ -292,7 +283,6 @@ describe('alarmPausedRunsWithQueuedWork (ISS-879)', () => {
     expect(text).toMatch(/r\.status\s*=\s*'paused'/);
     expect(text).not.toMatch(/'running'/);
     expect(text).toMatch(/j\.status\s*=\s*'queued'/);
-    // cm:guard the join MUST stay LEFT — an inner join never returns a paused run whose queue has emptied, which silently deletes the resolve arm while every "stays silent" assertion keeps passing
     expect(text).toMatch(/LEFT JOIN jobs j/);
     expect(text).toMatch(/r\.updated_at\s*</);
     expect(emitWedgeMock).not.toHaveBeenCalled();
@@ -314,7 +304,6 @@ describe('alarmPausedRunsWithQueuedWork (ISS-879)', () => {
     expect(w.summary).toContain('plan, triage');
   });
 
-  // cm:guard the copy is taken from `pauseResumesItself`, never from the pass — `stage_stalled` has no resume path in this build, and a wedge that says it clears itself is the aged-hold failure repeated on the run axis
   it('does not promise a resume for a pause nothing in this build clears', async () => {
     dbExecute.mockResolvedValueOnce([{ ...pausedRow, pause_reason: 'stage_stalled:released' }]);
 
@@ -350,7 +339,6 @@ describe('alarmPausedRunsWithQueuedWork — clearing its own claim (ISS-879)', (
     iss_seq: 91,
   };
 
-  // cm:guard the run leaving `paused` is NOT the only way the condition ends — an operator can cancel the queued steps and leave the pause standing, and the resolve subscriber only watches the run. A notification asserting "3 steps frozen" with zero frozen steps is the stranded row this arm exists to stop.
   it('resolves the wedge for a paused run whose queue has emptied', async () => {
     dbExecute.mockResolvedValueOnce([{ ...base, queued_jobs: 0 }]);
 

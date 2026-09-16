@@ -17,7 +17,6 @@ import { bucketIso } from './time-buckets.js';
  * now() AT TIME ZONE 'UTC')` names one and is still wrong — it returns a naive
  * `timestamp`, and the coercion back is what reintroduces the session zone.
  */
-// cm:edge contract -> packages/core/src/lib/time-buckets.ts — this is the gate behind that file's `cm:guard`; the scan matches the `date_trunc(` spelling by text, so it keeps holding if the helper is renamed
 const SRC_ROOT = join(import.meta.dirname, '..');
 
 /** The one file allowed to spell `date_trunc(` at all. */

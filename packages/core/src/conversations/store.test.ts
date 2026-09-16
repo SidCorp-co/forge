@@ -11,7 +11,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why `store.ts` opens the pool at import and this reader needs no connection
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 const { asBlocks, asImages, toCanonicalEntry } = await import('./store.js');
@@ -78,8 +77,6 @@ describe('asBlocks', () => {
     for (const v of [null, undefined, {}, 'text', 3, true, []]) expect(asBlocks(v)).toBeNull();
   });
 
-  // cm:guard an illegible column degrades to the LEGACY reading, not to an empty turn: null is what
-  // `toCanonicalEntry` answers from `content`, and `[]` would render a real answer as nothing.
   it('drops entries it cannot read and answers null when none survive', () => {
     expect(asBlocks([{ type: 'nonsense' }, 7, null])).toBeNull();
     expect(asBlocks([{ type: 'nonsense' }, { type: 'text', text: 'kept' }])).toEqual([
@@ -101,9 +98,6 @@ describe('toCanonicalEntry', () => {
     expect(toCanonicalEntry(row({ role: 'system' })).type).toBe('system');
   });
 
-  // cm:guard this is the whole of the back-compatibility promise: every row written before
-  // ISS-1029 carries its answer in `content` and no blocks, and it has to read back as something
-  // the one formatter renders rather than as a turn nobody answered.
   it('reads a legacy row with no blocks as a single text block', () => {
     expect(toCanonicalEntry(row()).blocks).toEqual([{ type: 'text', text: 'You have two.' }]);
   });

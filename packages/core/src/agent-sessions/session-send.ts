@@ -43,7 +43,6 @@ const SEND_ACK_MS_DEFAULT = 10_000;
 const SEND_ACK_MS_FLOOR = 2_000;
 
 /** `SESSION_SEND_ACK_MS` — how long core waits before silence becomes an answer. */
-// cm:guard the runner's own write deadline must stay STRICTLY BELOW this, and it must refuse a write it cannot finish rather than starting one — a partial line cannot be un-written, and the CLI skips a malformed line and keeps running, so an overrun leaves the session alive with a `cancel` or `checkpoint` silently lost.
 export function sendGraceMs(): number {
   const raw = process.env.SESSION_SEND_ACK_MS;
   if (!raw) return SEND_ACK_MS_DEFAULT;
@@ -56,7 +55,6 @@ export function sendEpisodeWindowMs(): number {
   return sendGraceMs() * 2;
 }
 
-// cm:guard an aged-out request is NOT an answer — it opens a new episode, exactly as `loop-monitor.ts:233` requires of a kill. A row whose episode has lapsed carries no claim about the process running right now, so a caller that reads its `sendOutcome` anyway is reading an answer given for a message the runner may never have seen.
 export function isSendEpisodeLive(row: SessionInboxRow, now: number = Date.now()): boolean {
   return now - row.sendRequestedAt.getTime() <= sendEpisodeWindowMs();
 }
@@ -85,7 +83,6 @@ export interface SessionSendRequestResult {
   duplicate: boolean;
 }
 
-// cm:guard gaps in `seq` are LEGAL and must stay legal: a duplicate intent burns a number on the way to losing the insert race, and a runner that treats a gap as a lost message would resend one that was never sent. `seq` orders; only `(kind, intentId)` deduplicates.
 async function allocateSeq(agentSessionId: string): Promise<number> {
   const [row] = await db
     .update(agentSessions)
@@ -138,7 +135,6 @@ async function auditSend(req: SessionSendRequest, actor: SessionSendActor): Prom
  * lives there under its own. The frame carries both because neither one serves
  * the other's role — the report routes are addressed by session id either way.
  */
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/inbox.rs — `SendFrame.job_id`, and the runner prefers it. Dropping this field does not fail anywhere: the runner falls back to the session id, finds no entry for a pipeline session, and acks `gone` — so core falls back for a session that is alive and still holding its runner slot.
 async function jobKeyOf(agentSessionId: string): Promise<string | undefined> {
   const [job] = await db
     .select({ id: jobs.id })
@@ -155,8 +151,6 @@ async function jobKeyOf(agentSessionId: string): Promise<string | undefined> {
  * same seq, same body — so the runner can drop a key it has already applied.
  * An already-applied intent is returned untouched and is not re-published.
  */
-// cm:edge protocol -> packages/runner/crates/forge-runner-core/src/daemon/mod.rs — `session.send` is rendered onto the CLI's stdin by the runner; the envelope is Forge's protocol, NOT the CLI's stream-json, and the two must be free to change apart
-// cm:guard `inject` and `answer` write an audited `job_events` row in the SAME call WHEN an actor is given, because a person reaching into a running agent is what the interventions-per-issue metric counts. An unaudited human `inject` is a hole in that metric, not an omission the RFC stage may defer. The absence of an actor is the other half of the same rule and is not a shortcut: `pipeline/answer-resume.ts` omits it because a human answering a question the AGENT asked is the pipeline working, and charting it in `issue_intervention_events` would make VISION §1 metric ② climb on the path built to lower it.
 export async function requestSessionSend(
   req: SessionSendRequest,
 ): Promise<SessionSendRequestResult> {
@@ -259,7 +253,6 @@ export interface SendResolution {
  *     `dispatchLivenessMs()`, which is a fact about the box;
  *   - `unknown` — the episode has lapsed with the runner online and silent.
  */
-// cm:guard `unknown` must never be relabelled `gone` by a caller that wants a binary. `gone` is the branch that mutates issue status and enqueues, so acting on it while the message was in fact consumed puts a second agent on the same worktree — the race `kill-gate.ts` exists to prevent. An `unknown` is resolved by waiting for the apply report or by driving the job terminal through the kill gate first.
 export async function resolveSessionSend(
   row: SessionInboxRow,
   now: number = Date.now(),
@@ -275,7 +268,6 @@ export async function resolveSessionSend(
     .from(agentSessions)
     .where(eq(agentSessions.id, row.agentSessionId))
     .limit(1);
-  // cm:guard the ONLY path out of `unknown` for a runner that is online and silent forever — an old build with no `session.send` arm, or one that dropped the frame. Without it a lapsed episode stays `unknown` for as long as the box heartbeats, and the caller waiting on `gone` to fall back never falls back, so the human's answer is lost in silence. Safe precisely because it is terminal: no agent is running on that worktree, so the fallback cannot put a second one there.
   if (!session || isTerminalSession(session.status)) return { outcome: 'gone', applied };
   if (!session.deviceId) return { outcome: 'gone', applied };
 

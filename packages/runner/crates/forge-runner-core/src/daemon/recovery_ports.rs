@@ -15,18 +15,12 @@ use crate::runner::close_loop::{LeaseKeeper, Outcome, RunCloser, SessionReader};
 use crate::transport::{run_sessions, CoreClient};
 
 /// Whether a master's pane is still on this box.
-// cm:guard the registry is consulted for the NAME and tmux for the answer. An in-process map cannot be the liveness authority — a daemon restart empties it while every master is still running (the ISS-919 B1 hole), so a reconcile that trusted it would close the loop over every live run on the box after any restart. The sweep re-registers masters before it reaches the reconcile, which is what makes the name lookup a cache miss rather than a wrong answer.
 pub struct PaneMasters<'a> {
     pub masters: &'a Masters,
 }
 
 #[async_trait::async_trait]
 impl MasterLiveness for PaneMasters<'_> {
-    // cm:guard a registry MISS answers `Unknown` and never `Gone`, and the difference is what the
-    // caller spends it on. The map is in-process: a daemon restart empties it, and a project no
-    // longer in `/me/runners` is never re-adopted into it, so a miss is this box having no record
-    // rather than a pane having ended. Answering `Gone` there let an absence license telling core a
-    // live run had died and removing the checkout it was still writing into (ISS-1050).
     async fn state(&self, master_session_id: &str) -> MasterPresence {
         match self.masters.pane_for_session(master_session_id) {
             Some(name) => match terminal::pane_pid(&name).await {
@@ -37,7 +31,6 @@ impl MasterLiveness for PaneMasters<'_> {
         }
     }
 
-    // cm:guard the registry names the candidate and TMUX decides, exactly as `is_alive` above does and for the same reason: re-parenting a park onto a master that is registered but no longer running would move the run from a parent that is gone to another one that is, and the next sweep would have to move it again.
     async fn live_master_for_project(&self, project_id: &str) -> Option<String> {
         let (session_id, name) = self.masters.live_for_project(project_id)?;
         terminal::pane_pid(&name).await.map(|_| session_id)
@@ -45,7 +38,6 @@ impl MasterLiveness for PaneMasters<'_> {
 }
 
 /// Whether a recorded pid is gone, asked of the kernel with signal 0.
-// cm:guard ONLY `ESRCH` refutes a pid. Every other errno — `EPERM` above all, which says the process is there and owned by somebody else — answers false, because `reconcile` turns a true into a closed loop: worktree released, leases returned, a live agent's tree taken out from under it (ISS-964 criterion 35).
 pub struct SignalProbe;
 
 #[async_trait::async_trait]
@@ -62,7 +54,6 @@ impl ProcessLiveness for SignalProbe {
         matches!(kill(Pid::from_raw(raw), None), Err(Errno::ESRCH))
     }
 
-    // cm:guard a box that cannot ask refutes NOTHING, which leaves `reconcile` exactly as it was before this port existed: the master test alone. Answering true here would close the loop over every run on a Windows box on the first sweep.
     #[cfg(not(unix))]
     async fn is_gone(&self, _pid: u32) -> bool {
         false
@@ -70,7 +61,6 @@ impl ProcessLiveness for SignalProbe {
 }
 
 /// Core's own answers: is a session terminal, and is an issue still held.
-// cm:guard one struct serves BOTH traits because both answers come from the same place and neither takes a run id — the session id and the issue key are the identifiers the close loop already carries, so nothing here has to hold a second identity for a fact core owns.
 pub struct CoreRunState<'a> {
     pub client: &'a CoreClient,
 }
@@ -108,7 +98,6 @@ impl LeaseKeeper for CoreRunState<'_> {
         run_sessions::release_lease(self.client, issue_key).await
     }
 
-    // cm:guard asks core AGAIN rather than reading what `release` answered. A dropped response over a return that landed still ends with the mark set, and a cheerful 200 over one that did not does not — the only difference between this and a master's report (ISS-933 criterion 13).
     async fn is_returned(&self, issue_key: &str) -> Result<bool> {
         Ok(!run_sessions::lease_held(self.client, issue_key).await?)
     }
@@ -131,11 +120,6 @@ mod tests {
     use super::*;
     use crate::daemon::master::Masters as Registry;
 
-    // cm:guard the PRODUCTION port, not a double. Every other assertion about this distinction runs
-    // against a test impl that answers what the test asked it to, so none of them would notice this
-    // arm collapsing `Unknown` back into `Gone` — and this arm is the one that decides whether an
-    // absence can license removing a checkout. Measured: planting `None => Gone` here left all 224
-    // daemon tests green before this existed (ISS-1050).
     #[tokio::test]
     async fn a_session_this_registry_has_no_entry_for_is_unknown_and_never_gone() {
         let registry = Registry::new();
@@ -148,10 +132,6 @@ mod tests {
         );
     }
 
-    // cm:guard the other half of the same distinction: a registry entry naming a pane tmux does not
-    // have IS a positive observation, and must not be softened to `Unknown` along with the miss.
-    // The pane name used here cannot exist, so tmux answers for it the way it answers for a pane
-    // that has gone.
     #[tokio::test]
     async fn a_registered_pane_tmux_does_not_have_is_gone_rather_than_unknown() {
         let registry = Registry::new();

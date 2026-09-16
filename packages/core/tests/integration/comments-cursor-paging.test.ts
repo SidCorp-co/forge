@@ -103,7 +103,6 @@ async function seed() {
   return { owner, project, issueId, jwt };
 }
 
-// cm:guard every comment this helper writes gets a DISTINCT `created_at`, one millisecond apart and monotonic across the file. The column defaults to `now()`, and on a fast runner consecutive inserts land in the same microsecond — the walk then orders those by id, which is correct and is not insertion order, so every sequence assertion below flakes for a reason that is not the paging (seen on CI 2026-09-07). The same-instant case has its own test, `walks past roots that share a createdAt millisecond`, which writes its timestamps explicitly.
 let commentSeq = 0;
 
 async function addComment(
@@ -149,8 +148,6 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
     expect(page.hasMore).toBe(false);
   });
 
-  // cm:guard the field set on a comment NODE is what the issue-detail screen renders, and ISS-956 moved this route off its own private projection onto the service's. Pin the keys: an extra one (the cursor key that mints the token is selected on the same query) leaks the paging machinery into the screen's data, and a missing one blanks an author line with nothing failing.
-  // cm:why `stage` and `authorAgency` joined the list in ISS-969 as a deliberate widening, not a leak: both are stored columns of the comment rather than paging machinery, and together they are what makes a stage-produced record say which stage produced it and whether a person or an agent wrote it. This list breaking was the intended way to notice.
   it('renders a comment with the same fields as before the cursor (AC 14)', async () => {
     const { owner, issueId, jwt } = await seed();
     const rootId = await addComment(issueId, owner.id, 'root');
@@ -182,7 +179,6 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
     expect(node.replies as unknown[]).toHaveLength(1);
   });
 
-  // cm:guard assert page SIZES and the disjoint union across the walk, never which body lands on which page — `created_at` defaults to now() and two of five inserts share a microsecond often enough to flake; the walk then orders the tied pair by id (uuid), which is deterministic and correct but is not insertion order, so a per-page sequence assertion fails for a reason that is not the paging (ISS-956).
   it('offers a cursor when more roots remain, and resumes from it (AC 2, 3, 6)', async () => {
     const { owner, issueId, jwt } = await seed();
     for (let i = 0; i < 5; i += 1) await addComment(issueId, owner.id, `c${i}`);
@@ -245,7 +241,6 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
     expect(first.items.map((n) => n.body)).toEqual(['c0', 'c1']);
     expect(first.items[0]?.replies?.map((r) => r.body)).toEqual(['r-on-c0']);
     expect(first.items[1]?.replies ?? []).toEqual([]);
-    // cm:guard the off-page reply must be ABSENT, not promoted — `buildCommentTree` drops a reply whose parent it was not given, and that guard is the whole reason the cursor walks roots rather than comments. Assert absence, because a promoted reply reads as an extra root and the walk then returns it twice (ISS-956).
     expect(flatten(first.items).map((n) => n.body)).not.toContain('r-on-c3');
 
     const second = await readPage(

@@ -20,7 +20,6 @@ import { type BulkUpdate, useBulkUpdateIssues, useStatusExits } from "../hooks";
 import { ISSUE_PRIORITIES, type IssueRow } from "../types";
 import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dialog";
 
-// cm:edge naming -> packages/core/src/release-batch/gate.ts — must match RELEASE_GATE_STATUS, the one status resolveReleaseGate returns
 const BATCH_RELEASE_GATE = "awaiting_release" as const;
 
 function canBatchRelease(rows: IssueRow[]): { enabled: boolean; reason?: string } {
@@ -57,7 +56,6 @@ export function BulkActionBar({
 
   const ids = selectedRows.map((r) => r.id);
   const statusTargets = bulkAllowedStatuses(exits, selectedRows);
-  // cm:guard an unread registry and a genuinely empty intersection disable the SAME control and must not share a reason — one says come back in a moment, the other says re-pick the selection (ISS-982)
   const statusUnavailable = exitsPending
     ? "Loading the status moves…"
     : exitsFailed
@@ -85,7 +83,6 @@ export function BulkActionBar({
         <span className="fg-body-sm font-medium text-fg">{count} selected</span>
         <span className="ml-auto flex flex-wrap items-center gap-2">
           {statusUnavailable || noCommonStatus ? (
-            // cm:guard the reason is RENDERED, never only a `title` — a disabled button takes no focus, so a tooltip is unreachable by keyboard and absent on touch, and the three states this control refuses in are told apart by nothing else
             <span className="flex items-center gap-2">
               <Button
                 variant="secondary"

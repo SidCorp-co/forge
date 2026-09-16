@@ -17,8 +17,6 @@ import { type DirectoryStatus, deriveConnectionStatus } from "./derive";
 /** Which of the header's two tallies a directory state counts toward, if either. */
 export type GroupTally = "attention" | "off" | null;
 
-// cm:guard `unverified` counts toward NEITHER tally and `disabled` toward `off` alone — derive.ts calls unverified "no signal is not a live problem, just an unproven one", and a header counting it as attention sends the operator into a group where nothing is wrong
-// cm:edge contract -> packages/web-v2/src/features/integrations/derive.ts — EVERY member of DirectoryStatus is named here and the default branch is a `never` assignment, so adding a state there fails the build until somebody classifies it. A silent `default: null` was the alternative, and it would have let a new unhealthy state land uncounted: the header would keep saying nothing needs attention while a row under it went amber.
 export function tallyOf(status: DirectoryStatus): GroupTally {
   switch (status) {
     case "degraded":

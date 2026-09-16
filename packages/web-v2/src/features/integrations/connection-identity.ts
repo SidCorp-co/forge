@@ -32,7 +32,6 @@ export function connectionTitle(connection: {
   );
 }
 
-// cm:guard the target is read from CONFIG, which is the non-secret tier — never widen these keys to reach a credential, because everything this returns is rendered into the DOM
 /**
  * The endpoint or workspace this credential points at — the second thing that
  * distinguishes two connections of one provider. Null when the config carries

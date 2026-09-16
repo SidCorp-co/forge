@@ -48,7 +48,6 @@ export interface CliGap {
  * What a door may set for itself. Absent is the CLI door's own, so a caller
  * that names nothing reads bit-identically to every call made before ISS-1006.
  */
-// cm:guard a way out only, never a rule: both doors refuse the same filings for the same reasons, and the only thing a door may say differently is how the filer gets out. A gap, a threshold or a section reached through here would make two shapes wearing one reader.
 export interface CliWaysOut {
   /** How a parts claim is cleared at this door. */
   readonly partsClear?: (keys: readonly string[]) => string;
@@ -128,7 +127,6 @@ function firstSpan(text: string): string | null {
   return [...text.matchAll(CODE_SPAN)].map((one) => (one[1] ?? '').trim())[0] ?? null;
 }
 
-// cm:guard both sides must name a DIFFERENT token for this to fire. Two claims about one token are one change described twice, and without that second name a lexical read cannot tell two clauses of one outcome from two outcomes.
 export function twoChangesIn(body: string): { sentence: string; named: [string, string] } | null {
   for (const [sentence] of String(body).matchAll(SENTENCE)) {
     for (let at = sentence.indexOf(JOIN); at >= 0; at = sentence.indexOf(JOIN, at + 1)) {
@@ -144,10 +142,6 @@ export function twoChangesIn(body: string): { sentence: string; named: [string, 
   return null;
 }
 
-// cm:guard the project's OWN prefixes are threaded in rather than the pattern widened to any
-// `AAA-1` shape: a bare `[A-Z]+-\d+` catches `UTF-8`, `RFC-2119` and `COVID-19` in an ordinary
-// filing body, and this arm REFUSES a filing, so a false positive costs a real caller their write
-// (ISS-992). No prefixes given means the legacy one alone, which is what every project had.
 const issueKeyRe = (prefixes: readonly string[]): RegExp =>
   new RegExp(`\\b(?:${keyAlternates(prefixes)})-\\d+\\b`, 'giu');
 
@@ -160,7 +154,6 @@ function keyAlternates(prefixes: readonly string[]): string {
 const PARTS_PHRASE = /\b(?:parts?|children|sub-?issues?|split into|consists of|made up of)\b/giu;
 const BARE_PART = /^parts?$/iu;
 const LABEL = /\([^()]*\)/gu;
-// cm:guard forward only, a bare "part" through a connective or not at all, and a label only between a key and its separator: without those three the arm catches "ISS-a and ISS-b split into the halves", "a guide part ISS-a (the lesson) and ISS-b", and a citation inside a label read as a part
 const governedRe = (prefixes: readonly string[]): RegExp => {
   const key = `(?:${keyAlternates(prefixes)})-\\d+`;
   return new RegExp(
@@ -170,7 +163,6 @@ const governedRe = (prefixes: readonly string[]): RegExp => {
 };
 
 /** The CLI door's own way out of a parts claim: it may carry the edge in the same create. */
-// cm:why this sentence is the CLI door's alone: the chat door files through the `forge` tool and so reads this same refusal, and the `forge_issues` tool chat still holds refuses `data.relations` by name and offers no create (ISS-1006, ISS-1009).
 export const CLI_PARTS_CLEAR = (keys: readonly string[]): string =>
   `take the claim off the line and relate ${keys.join(', ')} in the same create`;
 
@@ -220,7 +212,6 @@ function readFor(part: CliSection, found: Held, among: string): string {
   return `no heading naming ${part.reads}, ${among}${spoken}`;
 }
 
-// cm:guard the heading quoted is the one that was READ: `sectionIn` takes the FIRST of a family, so a second heading added below it would leave the thin one still answering for the section
 function clearFor(part: CliSection, found: Held): string {
   if (found.under === null) return `add \`## ${part.title}\` ${RESEND}`;
   const floor = part.substantial ? `one line of ${SUBSTANTIAL} words or more` : 'one line';
@@ -276,7 +267,6 @@ function claimGaps(text: string, prefixes: readonly string[], ways: CliWaysOut):
   return out;
 }
 
-// cm:guard both arms REFUSE, and which one speaks is the only question: a payload carrying `category` as `""` or as spaces has named nothing, so it takes the refusal that says a category is needed rather than `No category named .`, which reads as a typo nobody made. Neither arm ever defaults — a category nobody decided the sections of is not made one by the body looking tidy.
 export function categoryGap(given: string | null | undefined): CliGap | null {
   const named = given?.trim();
   if (named === undefined || named === '') {

@@ -74,7 +74,6 @@ export async function loadProjectBySlug(slug: string) {
   return row ?? null;
 }
 
-// cm:guard NO auth middleware here on purpose: `routes.ts` applies `requireUserOrDevice() + assertEmailVerified()` once for the whole `/api/agent-sessions` surface before mounting this router. Adding a second gate here is not belt-and-braces — it would run BEFORE the aggregator's for any route mounted ahead of it, and a device principal that this router fenced differently from the aggregator is two answers to one question.
 export const agentSessionLifecycleRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionLifecycleRoutes.post(
@@ -101,7 +100,6 @@ agentSessionLifecycleRoutes.post(
     const access = await loadProjectAccess(project.id, userId);
     assertProjectRole(access, 'member');
 
-    // cm:guard a non-desktop session with no live client must 409, never be created — it would land `running` with no listener and hang forever, and the sweeper only reaps `pipeline`/`pm` runs. Desktop is the exemption because it runs Claude locally and has no device to resolve.
     const client = await resolveChatDevice(
       { projectId: project.id, deviceId: null, metadata: null },
       input.origin,
@@ -323,7 +321,6 @@ agentSessionLifecycleRoutes.post(
   },
 );
 
-// cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — clears claudeSessionId so the next turn cold-starts + rehydrates
 agentSessionLifecycleRoutes.post(
   '/:id/runner',
   zValidator('param', idParamSchema, (r) => {
@@ -339,7 +336,6 @@ agentSessionLifecycleRoutes.post(
 
     const { session } = await ensureSessionOwnerOrAdmin(id, userId);
 
-    // cm:why re-pinning mid-turn 403s the streaming device's write-back PATCH (assertDeviceOwnsSession) and loses the in-flight reply
     if (session.status === 'running' || session.status === 'queued') {
       throw new HTTPException(409, {
         message:
@@ -353,7 +349,6 @@ agentSessionLifecycleRoutes.post(
     };
     const pinned = prevMeta.deviceId ?? session.deviceId ?? null;
 
-    // cm:why re-picking the current device is a no-op — keeps claudeSessionId so it doesn't force a needless --resume loss
     if (input.deviceId === pinned) return c.json(session);
 
     const [project] = await db
@@ -370,13 +365,11 @@ agentSessionLifecycleRoutes.post(
     }
 
     const nextMeta = { ...prevMeta };
-    // cm:why undefined (not delete) — JSON.stringify drops the key on write, same effect without the noDelete lint cost
     nextMeta.deviceId = picked ?? undefined;
 
     const repoPath = picked
       ? await resolveSessionRepoPathForDevice(session.projectId, picked, project.repoPath)
       : null;
-    // cm:guard a picked device with no resolvable repoPath must be refused, not silently written — else the next turn spawns claude in the runner's default cwd, possibly the wrong repo
     if (picked && !repoPath) {
       throw new HTTPException(409, {
         message:
@@ -470,7 +463,6 @@ agentSessionLifecycleRoutes.post(
   },
 );
 
-// cm:why mounted before `:id` — a static segment declared after it is swallowed by the uuid validator and never matches
 agentSessionLifecycleRoutes.post(
   '/desktop/status',
   zValidator('json', desktopStatusSchema, (r) => {
@@ -506,7 +498,6 @@ agentSessionLifecycleRoutes.post(
       await closeRunIfOneShot(updated.pipelineRunId, status === 'failed' ? 'failed' : 'completed');
     }
 
-    // cm:edge ordering -> packages/core/src/schedules/service.ts — writeBackScheduleLastStatus is gated on schedules.lastSessionId, the same column runScheduleTickOnce/redispatchScheduleSessionOnFailover stamp at dispatch, so a late report from a superseded run is a no-op
     if (status === 'completed' || status === 'failed') {
       await writeBackScheduleLastStatus(updated.metadata, sessionId, status);
     }

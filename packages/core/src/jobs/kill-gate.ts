@@ -15,9 +15,6 @@
  * as genuinely dead, and therefore retryable.
  */
 
-// cm:guard a reap MUST NOT flip a job to failed before requestJobKill + a confirmed resolveKillConfirmation — an unconfirmed kill that still retries spawns a second agent on the same worktree (ISS-785)
-// cm:guard kill_requested_at/kill_confirmed_at/kill_outcome are EPISODE-scoped: never read them without isKillEpisodeLive — a job that outlives one episode (slow preflight acks after its ack-hop kill request) would otherwise hand a later, unrelated reap a confirmation no runner gave for it, and that reap retries without ever sending job.cancel — two agents on one worktree
-// cm:edge protocol -> packages/runner/crates/forge-runner-core/src/daemon/mod.rs — job.cancel is the ONLY frame that kills a pipeline job process (session key = jobId); agent:abort is chat-only
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -124,7 +121,6 @@ export async function resolveKillConfirmation(
   job: KillableJobRef,
   now: number = Date.now(),
 ): Promise<KillConfirmation> {
-  // cm:guard an answer only counts for the episode that asked — requestJobKill clears it when re-opening, and this second check keeps a caller that skipped that path from reading a dead answer as live
   if (
     job.killConfirmedAt &&
     job.killRequestedAt &&

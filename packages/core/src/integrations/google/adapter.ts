@@ -109,7 +109,6 @@ async function failHealth(
 
 export const googleAdapter: IntegrationAdapter<GoogleConfig, GoogleSecrets> = {
   provider: 'google',
-  // cm:guard `hasDeliveryLog` is FALSE and wiring one is not the fix: a Sheets read is a tool call made for one agent, not a delivery this project can replay, and an `integration_deliveries` row per read would put spreadsheet contents in an audit table nothing redacts.
   capabilities: {
     canDispatch: false,
     canReceiveWebhook: false,
@@ -144,7 +143,6 @@ export const googleAdapter: IntegrationAdapter<GoogleConfig, GoogleSecrets> = {
 
     const identity = identityFrom(serviceAccountJson);
     const spreadsheetId = ctx.config?.defaultSpreadsheetId;
-    // cm:guard a valid credential with nothing to read is `degraded`, never `ok` — "the account authenticates" is a weaker claim than this card makes anywhere else, and reporting it green is how a binding that can reach no sheet passes test-connection and fails at the first job (ISS-1036)
     if (typeof spreadsheetId !== 'string' || spreadsheetId.length === 0) {
       await updateConnection(ctx.connectionId, {
         config: await connectionConfigWithIdentity(ctx.connectionId, identity),

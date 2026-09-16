@@ -217,7 +217,6 @@ describe("how long a row has sat", () => {
     expect(sat(3 * STALE_AFTER_MS)?.label).toBe("3d");
   });
 
-  // cm:guard a settled row must render NO figure — a duration here gives every closed issue a number that grows forever, which reads as live state on work nobody is waiting for.
   it("gives a settled row no figure at all, for either terminal outcome", () => {
     expect(sat(9 * STALE_AFTER_MS, "closed")).toBeNull();
     expect(sat(9 * STALE_AFTER_MS, "dropped")).toBeNull();

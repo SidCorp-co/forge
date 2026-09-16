@@ -49,8 +49,6 @@ export interface MirroredComment {
  * Write the comment and the row that makes this message's delivery unique, or
  * resolve to the comment an earlier delivery already wrote.
  */
-// cm:guard the two writes share ONE transaction and that is the whole of the idempotency: Rocket.Chat re-emits a message after server-side enrichment, and a restart or a delivery-owner handoff replays it, so a comment committed without its mirror row is written again on the next delivery. Two comments from one message is two resume intents at `answer-resume.ts` — the agent runs twice, on the same worktree (ISS-981 criteria 10, 11).
-// cm:guard the mirror insert is `onConflictDoNothing().returning()` INSIDE the transaction rather than a read before it: a read-then-write leaves the window between them, and two deliveries arriving together both find nothing and both insert a comment.
 export async function writeMirroredComment(args: {
   issueId: string;
   authorId: string;
@@ -65,7 +63,6 @@ export async function writeMirroredComment(args: {
           issueId: args.issueId,
           authorId: args.authorId,
           authorDeviceId: null,
-          // cm:guard `human` and never a device agency: the person typed this in a chat room, and an agent agency here would both exempt it from the body mandate and drop it out of the number that decides the mandate (ISS-969).
           authorAgency: 'human',
           body: args.body,
           parentId: null,
@@ -102,7 +99,6 @@ export async function writeMirroredComment(args: {
       )
       .limit(1);
     if (!existing) throw err;
-    // cm:guard a redelivery still owes the announcement when the first delivery died before making it: treating `created: false` as proof the bus was told is how a committed comment never reaches the parked session it was written to wake (ISS-981 criterion 12).
     return {
       commentId: existing.commentId,
       created: false,
@@ -114,9 +110,6 @@ export async function writeMirroredComment(args: {
 /**
  * Handle one reply in an issue's comment thread. Always consumes the message.
  */
-// cm:guard EVERY return is a consumed message, refusals included — the caller must not fall through to the conversation handler on any of them, which is why this returns void rather than a handled/unhandled flag somebody could forget to read (ISS-978 criterion 20).
-// cm:guard authorship is the MAPPED user or nothing is written. `answer-resume.ts` returns early unless the comment's actor is a user, so the mapping is not attribution here, it is the mechanism that carries the reply into the parked session; and a comment attributed to the bot would clear the `unseenDrafts` bucket as if a person had read the draft (ISS-981 criteria 5, 7).
-// cm:guard nothing here answers a question. A prose reply can resume a parked session through the path a comment already travels, and it can never stand in for choosing an option on a structured question — that authority lives in `answerAs` and reaching it from prose would grant a permission nobody selected (ISS-981 criterion 29).
 export async function handleIssueThreadReply(args: {
   issueId: string;
   retired: boolean;
@@ -157,7 +150,6 @@ export async function handleIssueThreadReply(args: {
     label: m.username ?? null,
   };
   const resolution = await resolveSpeaker(ref);
-  // cm:guard an unmapped speaker is refused with ISS-977's own text and not a local rewording: the way out — the two endpoints, and that the person links themselves — is that module's contract, and a second copy of it drifts silently (ISS-978 criterion 12).
   if (!resolution.linked) {
     await say(
       transport,
@@ -199,8 +191,6 @@ const ANNOUNCE_LEASE_MS = 60_000;
 /**
  * Take the announcement of this comment, if nobody holds it and nobody made it.
  */
-// cm:guard the stamp is a LEASE taken before the emit, never a receipt written after it: two redeliveries racing both read `announced_at IS NULL`, and both emitting puts two answers into the session `answer-resume.ts` sends to. The conditional update makes exactly one of them the announcer for the length of the lease (ISS-981 criteria 10, 11).
-// cm:guard and it EXPIRES, which is the other half: an announcer that died before emitting would otherwise leave the comment marked as somebody's for ever, and the reply the parked session was waiting for is never heard. The duplicate a lapsed lease can cause is absorbed by the consumer — `session-send.ts` deduplicates on `(kind, intentId)`, which is this comment id (ISS-981 criterion 12).
 async function claimAnnouncement(commentId: string, now: Date): Promise<boolean> {
   const claimed = await db
     .update(rocketchatCommentMirrors)
@@ -225,7 +215,6 @@ interface AnnounceTarget {
   projectId: string;
 }
 
-// cm:guard `announced_at` is written only AFTER the emit returned, which is what makes an interrupted announcement owed rather than done: written first, a process dying in between loses the announcement permanently, and the redelivery reads the stamp and stays silent (ISS-981 criterion 12).
 async function announceComment(
   target: AnnounceTarget,
   speaker: { userId: string; body: string },
@@ -237,7 +226,6 @@ async function announceComment(
     issueId: target.issueId,
     projectId: target.projectId,
     actor: { type: 'user', id: speaker.userId, agency: 'human' },
-    // cm:guard `human` is DECIDED here and never inherited: this emit site exists because a person typed the words in a chat room, and `answer-resume.ts` reads this field alone — not `actor.type`, not `actor.agency` — to decide whether to wake the parked session the reply was written to reach (ISS-981 criterion 12).
     authored: 'human',
     commentId: target.commentId,
     body: speaker.body,
@@ -252,7 +240,6 @@ async function announceComment(
 /**
  * Announce every mirrored comment whose announcement nobody completed.
  */
-// cm:guard the obligation is DERIVED from the row the comment was written with, so nothing extra had to be inserted for it to be findable: an inbound mirror row with no `announced_at` is a comment the bus was never told about, whatever killed the announcer. Called from the mirror's own tick, so the retry costs no second timer (ISS-981 criterion 12).
 export async function drainOwedAnnouncements(
   hooks: HooksBus,
   now: Date = new Date(),
@@ -304,7 +291,6 @@ export async function drainOwedAnnouncements(
  * The connection manager's half: build the transport, hand the reply over, and
  * say nothing back — the message is consumed either way.
  */
-// cm:guard lives here rather than inside `connection-manager.route()` because that file is over its size budget and this is the whole of what `route` would otherwise hold: the caller returns immediately after calling it, and a `return` it forgets is a comment delivered as an LLM turn (ISS-978 criterion 20).
 export interface CommentReplySocket {
   serverUrl: string;
   authToken: string;

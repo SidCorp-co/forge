@@ -75,7 +75,6 @@ function emptyPulse(now: Date): PulseResponse {
 export const mePulseRoutes = new Hono<{ Variables: AuthVars }>();
 mePulseRoutes.use('/pulse', requireAuth(), assertEmailVerified());
 
-// cm:edge contract -> packages/core/src/auth/pat-permissions.ts — `/api/me` belongs to no PAT permission and must not gain one: this route fans out over every project the caller can see, so a token bound to one project would read another's jobs, runs and issue titles through it. The same reason `/api/me/ops-health` states.
 mePulseRoutes.get(
   '/pulse',
   zValidator('query', pulseQuerySchema, (r) => {

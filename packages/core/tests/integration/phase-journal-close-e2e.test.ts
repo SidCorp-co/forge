@@ -93,7 +93,6 @@ describe('phase-journal dangling close E2E', () => {
     expect(out.find((r) => r.phase === 'ship')?.ended_at).not.toBeNull();
   });
 
-  // cm:guard the agent's own close must survive — re-stamping a phase the agent already ended would overwrite a real outcome with an inferred one
   it('leaves a phase the agent already closed exactly as the agent left it', async () => {
     const { closeDanglingPhasesForJob } = await import('../../src/pipeline/phase-journal.js');
     const j = await job();
@@ -104,7 +103,6 @@ describe('phase-journal dangling close E2E', () => {
     expect((await rows())[0]).toMatchObject({ outcome: 'ok', source: 'agent' });
   });
 
-  // cm:guard scoped to the JOB — a staged run holds one phase per job, so closing by run would end a sibling's phase while that job is still working in it
   it('never touches a sibling job still working in its own phase', async () => {
     const { closeDanglingPhasesForJob } = await import('../../src/pipeline/phase-journal.js');
     const finished = await job();
@@ -118,7 +116,6 @@ describe('phase-journal dangling close E2E', () => {
     expect(out.find((r) => r.phase === 'code')?.ended_at).toBeNull();
   });
 
-  // cm:guard `forge_phase.jobId` is optional and `forge-drive` never sends it, so every autonomous row carries job_id NULL — this is the shape the closer exists for, and matching on job_id alone missed all of it
   it('closes the run phases the driver wrote with no job on them', async () => {
     const { closeDanglingPhasesForJob } = await import('../../src/pipeline/phase-journal.js');
     const j = await job();

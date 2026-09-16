@@ -57,7 +57,6 @@ describe('ISS-588 · the module axis through forge_issues', () => {
       ]);
     });
 
-    // cm:guard the assertion is that the junction is UNCHANGED, not merely that the call errored — the refusal happens outside the transaction in `resolveLabelIdsForWrite`, and a version that refused after opening one would leave the issue holding a set nobody asked for while still answering with an error.
     it('refuses a second primary in one set through MCP, and writes nothing', async () => {
       const first = await fx.defineModule('core');
       const second = await fx.defineModule('web');
@@ -77,7 +76,6 @@ describe('ISS-588 · the module axis through forge_issues', () => {
       const plain = await fx.defineLabel({ name: 'bug', color: '#ff0000' });
       const module = await fx.defineModule('core');
       const issueId = await fx.createIssue('a plain label cannot be primary');
-      // cm:guard the issue starts with a NON-EMPTY set, deliberately — from an empty junction `toEqual([])` reads identically whether the refusal wrote nothing or cleared the set and then errored, and only one of those is the contract, so the preimage is what gives this assertion a way to go red (ISS-587).
       await fx.setLabels(issueId, [{ labelId: module.name, isPrimary: true }, plain.name]);
       const preimage = await fx.junction(issueId);
       expect(preimage).toHaveLength(2);
@@ -85,14 +83,12 @@ describe('ISS-588 · the module axis through forge_issues', () => {
       const res = await fx.setLabels(issueId, [{ labelId: plain.name, isPrimary: true }]);
 
       expect(fx.refusalCode(res)).toBe('PRIMARY_NOT_MODULE');
-      // cm:guard the offending label is named in the message, not only in the code — `mcp/tools/forge-issues.ts` keeps the ELEMENT intact deliberately, because that is what an agent corrects from on its next call, and a code with a generic message leaves it guessing which of the set it sent was wrong.
       expect(fx.refusalText(res)).toContain(plain.name);
       expect(await fx.junction(issueId)).toEqual(preimage);
     });
   });
 
   describe('narrowing by module', () => {
-    // cm:guard assert the OTHER issue is ABSENT, not merely that the wanted one is present. `filters.module` is hand-copied into the search params in `mcp/tools/forge-issues.ts`; a mapping that drops it returns EVERY issue in the project, which an assertion that only looks for its own issue passes against just as happily.
     it('narrows the list to the module and leaves the others out', async () => {
       const wanted = await fx.defineModule('core');
       const other = await fx.defineModule('web');
@@ -151,7 +147,6 @@ describe('ISS-588 · the module axis through forge_issues', () => {
       expect(ids).not.toContain(untagged);
     });
 
-    // cm:guard a LOCAL issue must carry the FOREIGN label id, planted through SQL — `resolveModuleIdsTolerant` narrows on `eq(labels.projectId, projectId)`, and with no local issue holding the foreign label the filter answers `[]` whether that predicate is there or not, so the only fixture this assertion can fail against is the junction row the predicate exists to keep out of the answer (ISS-587).
     it('does not narrow to another project’s module of the same name', async () => {
       const db = fx.db().db;
       const otherOwner = await createTestUser(db);

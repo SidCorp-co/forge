@@ -36,8 +36,6 @@ export interface BlindScheduleRunInput {
  * `true` when this terminal report is a scheduled run that demonstrably read
  * no state, and so must persist as `failed` rather than `completed`.
  */
-// cm:guard an ABSENT toolCallCount is never blind — every runner released before ISS-859 omits the field, so treating undefined as 0 marks the whole fleet's scheduled runs failed the moment this deploys
-// cm:guard device principal only — patchSchema does not validate `messages`, and a project member who could assert toolCallCount:0 could park any schedule at lastStatus 'failed' from a plain PATCH
 export function isBlindScheduleRun(input: BlindScheduleRunInput): boolean {
   if (input.principal !== 'device') return false;
   if (input.resolvedStatus !== 'completed') return false;

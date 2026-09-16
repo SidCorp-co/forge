@@ -17,7 +17,6 @@ export const GOOGLE_SCOPES = [SHEETS_READONLY_SCOPE, SHEETS_READWRITE_SCOPE] as 
 
 export type SheetsAccess = 'read' | 'write';
 
-// cm:guard never add a `drive` scope here, and never widen a read to the read-write scope to save a second mint. `.../auth/drive` reaches every file the account can see, across every project the org shares it with, to read the one spreadsheet this project bound — which is the blast radius the per-operation split exists to refuse (ISS-1036). A caller needing more asks Google for a wider grant on the account, not Forge for a wider scope on the token.
 export function scopeFor(access: SheetsAccess): string {
   return access === 'write' ? SHEETS_READWRITE_SCOPE : SHEETS_READONLY_SCOPE;
 }

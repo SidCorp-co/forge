@@ -75,11 +75,8 @@ export interface IssueFailureInfo {
  * `status` and a queued-but-undispatched step is invisible (ISS-903).
  */
 /** A label's taxonomy role. Modules ARE labels; `kind` is the only thing that separates them. */
-// cm:edge contract -> packages/core/src/db/schema.ts#labelKinds — a third kind added there and not here renders as neither a module nor a label
 export type LabelKind = "label" | "module";
 
-// cm:edge contract -> packages/contracts/src/rows.ts — the rollup shapes are core's, re-exported
-// here so every issues-feature import of a module type comes from one place.
 export type {
   ModuleAttributionCounts,
   ModuleCounts,
@@ -88,7 +85,6 @@ export type {
 } from "@forge/contracts";
 
 /** One module attributed to an issue. Primary first in every array core sends. */
-// cm:edge contract -> packages/core/src/issues/label-service.ts#ModuleAttribution — re-typed rather than imported, as every other core payload on this screen is
 export interface ModuleAttribution {
   labelId: string;
   name: string;
@@ -197,7 +193,6 @@ export interface IssueDependencies {
  *  excludes drafts" rule). `draft` and `done` are explicit buckets (ISS-438) —
  *  unlike the removed ISS-236 "All + drafts" split, they narrow rather than
  *  change what "All" means. */
-// cm:guard the tabs ask WHO HOLDS THE WORK, never which rung it is on. The rungs move — `tested` left the ladder with ISS-897 and a tab naming it kept offering a bucket nothing could fill — but "a person must act" and "a machine is acting" do not. Each bucket is resolved through `statusesForLabels`, so a status added to the kernel lands in a tab without anyone editing a tuple here.
 export type IssueFilter = "all" | "draft" | "findings" | "you" | "agent" | "done";
 
 /** Client-side grouping for the list. */
@@ -236,7 +231,6 @@ export interface IssueSearchOpts {
 
 /** Full issue row from `GET /api/issues/:id` — includes `pipelineHealth`,
  *  joined `labels[]`, `mergedAt`, `reopenCount`, `metadata`, `plan`, AC. */
-// cm:edge contract -> packages/core/src/labels/routes.ts#labelColumns — `GET /projects/:id/labels` projects exactly these; the issue-detail join answers the same row plus `isPrimary` and without `projectId`
 export interface IssueLabel {
   id: string;
   projectId?: string;
@@ -258,7 +252,6 @@ export interface IssueDetail extends IssueRow {
   descriptionFormat?: string | null;
   /** ISS-898 — the root component name, null for prose and every markdown row. */
   descriptionTemplate?: string | null;
-  // cm:edge contract -> packages/core/src/issues/routes.ts#serializeIssue — the tree comes from `parseBody` WITHOUT `validateBody`, so a `forge-*` name this build never heard of arrives as an ordinary element. `<BodyView>` draws it; code here that assumes a known name draws nothing (ISS-967).
   descriptionNodes?: BodyNode[] | null;
   labels?: IssueLabel[];
   metadata: Record<string, unknown> | null;
@@ -274,7 +267,6 @@ export type WaitingReason =
   | "runner_stale"
   | "runner_too_old";
 
-// cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`, the AUTHORED kind an agent or human writes alongside `status='waiting'`; it is never derived, so an absent kind must render the generic copy rather than a guessed one
 export type WaitingCause = "needs_decision" | "needs_resource";
 
 /** ISS-903 — the queued candidate, as core projects it. */
@@ -298,7 +290,6 @@ export interface PipelineHealth {
    *  the issue has a queued job, gated or not; a queued job has no
    *  `agent_sessions` row, so this is the only signal the live-agent panel and
    *  the board card have for a step that exists but is not running. */
-  // cm:edge contract -> packages/core/src/issues/pipeline-health-types.ts — this interface is a hand-mirror of core `PipelineHealth`, not an import; a field added there is invisible here until it is added here too
   queuedStep?: PipelineHealthQueuedStep;
   /** Only set when `stage === "waiting"`. */
   waitingCause?: { kind: WaitingCause };
@@ -312,7 +303,6 @@ export interface PipelineHealth {
  *  this interface. `resumer` is who ENDS the pause and the only thing the
  *  banner's copy may branch on; core derives it in `run-pause.ts#describePause`
  *  from the kind lists that module owns. */
-// cm:edge lockstep -> packages/core/src/pipeline/run-pause.ts — `PauseResumer` is the authority on this union; a fourth resumer added there and not here arrives as an unrecognised string and `pausedRunView` in ./waiting falls through to the sweeper case, which is the one that tells the reader nobody needs to act
 export type PauseResumer = "operator" | "machine" | "sweeper";
 
 export interface PipelineHealthPausedRun {

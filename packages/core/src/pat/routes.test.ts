@@ -132,7 +132,6 @@ describe('POST /api/pat — boundProjectId', () => {
 });
 
 describe('POST /api/pat — a machine-looking name buys nothing', () => {
-  // cm:guard the name is INERT since ISS-932 wave 4, so this route no longer refuses one and MUST NOT start again. Agency comes from the owner's `users.kind` and the PAT cap excludes a token by its `device_id`, so a hand-made `job:` name reaches neither; refusing it here would only take a name away from a person who has every right to it.
   it.each(['job:', 'session:', 'device:'])(
     'mints a hand-made token wearing %s like any other name',
     async (prefix) => {

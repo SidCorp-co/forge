@@ -33,7 +33,6 @@ vi.mock('../db/client.js', () => {
     insert: dbInsert,
     update: dbUpdate,
     delete: vi.fn(() => ({ where: vi.fn() })),
-    // cm:why the SAME stub is handed back as the tx so the mocked `.insert`/`.update`/`.delete` chains keep answering inside the route's dual-write, and `execute` is on it because `withKernelMarker` stamps `forge.kernel_txn` through `tx.execute` before the write — a double missing either one fails every wrapped path on the double rather than on what the test is about.
     execute: vi.fn(async () => []),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
   };
@@ -97,7 +96,6 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadVisibleProjectIds: (...args: unknown[]) => loadVisibleProjectIdsMock(...(args as [])),
 }));
 
-// cm:why the app is built from the `./routes.ts` AGGREGATOR rather than from `./lifecycle-routes.ts` directly, even though the handlers under test are the latter's: the shared auth middleware is registered on the aggregator, so a direct mount would test the handlers with no auth at all — and going through it also fails if the sub-router's URLs move.
 const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');

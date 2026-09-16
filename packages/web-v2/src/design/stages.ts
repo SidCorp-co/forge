@@ -21,7 +21,6 @@ export const STAGES = [
 
 export type StageKey = (typeof STAGES)[number]["key"];
 
-// cm:guard takes a plain job-type string and NOT a StageKey, because the answer for a name outside the seven is the point: it is the neutral token, never a seven's colour by fallback. ISS-999 deleted STAGE_INDEX from this file for the same reason — an index is an order, and an order over these names is the ladder the kernel does not have.
 export function stageColor(key: string): string {
   return STAGES.find((s) => s.key === key)?.color ?? "var(--fg-subtle)";
 }

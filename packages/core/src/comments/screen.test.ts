@@ -61,7 +61,6 @@ describe('what an agent may claim to the person who decides', () => {
     await expect(screen('ISS-42 merged at 4366e63e.')).resolves.toBeUndefined();
   });
 
-  // cm:guard the measured reason this rule does NOT also refuse an unknown reference: 6 of 391 comments in the 18-issue sample cite a forge-plugin key, which CLAUDE.md's own carve-out REQUIRES an agent to do. An existence rule here would refuse the mandated behaviour once every 66 comments.
   it('says nothing about an issue this project does not hold, because that is another project’s key', async () => {
     tracker([]);
     await expect(
@@ -88,7 +87,6 @@ describe('what an agent may claim to the person who decides', () => {
     expect(await refusalOf('   ')).toContain('rule: comment-has-text');
   });
 
-  // cm:guard a role-holding reader CAN open the tracker, so the stakeholder rules are deliberately absent from this cell: refusing a file path or an issue key in an evidence record would refuse the record this project asks every run to write.
   it('writes the developer detail a report to somebody holding a role is made of', async () => {
     tracker([{ issSeq: 42, status: 'developed', mergedAt: new Date() }]);
     await expect(

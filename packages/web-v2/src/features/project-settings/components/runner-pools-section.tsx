@@ -85,7 +85,6 @@ export function RunnerPoolsSection({
 
   const dirty = snapshot(pools) !== snapshot(seeded);
 
-  // cm:why the server rejects a pool naming a device with no runner on this project (STAGE_POOL_UNKNOWN_RUNNER), so a retired box turns every later save into a 400 — name the stale ids instead of letting the operator guess which chip is poison
   const known = useMemo(() => new Set(runners.map((r) => r.deviceId)), [runners]);
   const staleIds = useMemo(() => {
     const out = new Set<string>();

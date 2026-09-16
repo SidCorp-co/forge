@@ -109,7 +109,6 @@ describe('GET /api/projects/:id/issues — the `key` filter (ISS-991)', () => {
     expect(body.items.map((i) => i.displayId)).toEqual(['ISS-376']);
   });
 
-  // cm:guard the ISS-991 caller read `items[0]` off an unfiltered page, so asserting the WANTED row is present proves nothing — issSeq 383 sorted first is exactly what it got. The absence is the assertion.
   it('leaves out the issue an unfiltered page would have put first', async () => {
     const { user, project } = await member();
     await seedIssue({ projectId: project.id, createdById: user.id, issSeq: 376, title: 'wanted' });
@@ -155,7 +154,6 @@ describe('GET /api/projects/:id/issues — the `key` filter (ISS-991)', () => {
     expect(body.items).toEqual([]);
   });
 
-  // cm:guard `total` is the count query's own WHERE, not the page's length — a count built from a different condition reports the project's whole issue count beside one narrowed row, which reads to a client as a page it can go on paging
   it('counts the narrowed set rather than the project', async () => {
     const { user, project } = await member();
     for (const issSeq of [1, 2, 3, 376]) {
@@ -167,7 +165,6 @@ describe('GET /api/projects/:id/issues — the `key` filter (ISS-991)', () => {
     expect(body.total).toBe(1);
   });
 
-  // cm:guard the bound this pins is int4's, not a digit count — a 9-digit cap reads as generous and silently refuses every sequence number from 1000000000 up, which the column holds perfectly well
   it('returns a ten-digit sequence number the column can hold', async () => {
     const { user, project } = await member();
     await seedIssue({

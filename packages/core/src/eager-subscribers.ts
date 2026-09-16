@@ -19,7 +19,6 @@ import { registerReleaseBatchClaimSubscriber } from './release-batch/claim-subsc
 import { registerWsBroadcastSubscribers } from './ws/broadcast-subscribers.js';
 import { registerMasterWakeSubscribers } from './ws/master-wake.js';
 
-// cm:guard registration order is the order below, unchanged from index.ts. HooksBus runs subscribers in registration order, so reordering these silently reorders side effects on a shared topic.
 export function registerEagerSubscribers(bus: HooksBus): void {
   registerActivitySubscribers(bus);
   registerPipelineSentryBreadcrumbs(bus);

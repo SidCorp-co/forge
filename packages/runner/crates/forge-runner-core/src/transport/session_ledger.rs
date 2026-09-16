@@ -17,7 +17,6 @@ use crate::error::Result;
 use crate::runner::ledger::Ledger;
 
 /// The message type core routes on.
-// cm:edge contract -> packages/core/src/ws/server.ts — that switch dispatches this exact string, and only for a device principal. It is an INBOUND type on a socket whose other traffic is core→box; renaming it here without renaming it there silently stops every box reporting, and nothing goes red.
 pub const FRAME_TYPE: &str = "runner:sessions";
 
 #[derive(Debug, Serialize, PartialEq, Eq)]
@@ -41,15 +40,12 @@ pub struct RunEntry {
     pub work: String,
     pub blocker_kind: Option<String>,
     pub waiting_on: Option<String>,
-    // cm:edge contract -> packages/core/src/devices/run-ledger-ws.ts — EPOCH SECONDS, and the unit is in the field name on both sides because this box has no date library and stamps `as_secs()`. A field named `sessionTerminalAt` carrying seconds is read as milliseconds and dated to 1970 — and a mark 56 years old still reads as a mark, so nothing looks wrong (ISS-964 criterion 52).
     pub session_terminal_at_epoch_s: Option<i64>,
     pub worktree_gone_at_epoch_s: Option<i64>,
     pub issues: Vec<IssueEntry>,
 }
 
 /// Every unclosed run on this box, as core will read it.
-// cm:guard `unclosed_runs` and not every row: a run whose loop closed is history, and republishing it would have the reader's list grow without bound while saying nothing new. The set shrinking to empty is itself the report that this box holds nothing.
-// cm:guard a run with no project is SKIPPED and named in the log, never published under a guessed one. The read surface authorises per project, so an entry with the wrong project id would show one tenant's worktree and pid to another — and a ledger row written before ISS-934 genuinely has no project to give.
 pub fn snapshot(ledger: &Ledger) -> Result<Vec<RunEntry>> {
     let mut out = Vec::new();
     for run in ledger.unclosed_runs()? {
@@ -80,7 +76,6 @@ pub fn snapshot(ledger: &Ledger) -> Result<Vec<RunEntry>> {
             work: run.work.wire().to_string(),
             blocker_kind: run.blocker_kind.map(|b| b.wire().to_string()),
             waiting_on: run.waiting_on,
-            // cm:guard the two marks travel SEPARATELY and neither is derived from the other. This snapshot covers unclosed runs only, which is exactly the window where they disagree: a session that reached terminal with its worktree still on disk is a diff somebody can still recover, and one flag for the pair hides that (ISS-964 criterion 52).
             session_terminal_at_epoch_s: run.session_terminal_at,
             worktree_gone_at_epoch_s: run.worktree_gone_at,
             issues,
@@ -89,9 +84,6 @@ pub fn snapshot(ledger: &Ledger) -> Result<Vec<RunEntry>> {
     Ok(out)
 }
 
-// cm:guard an empty master session id travels as `null`, not as `""`. Core's schema takes a uuid or
-// nothing, and a run opened by a runner one release behind has the empty string on its ledger row —
-// sending it would fail the whole snapshot's validation and take every other run down with it.
 fn non_empty(s: String) -> Option<String> {
     if s.is_empty() {
         None
@@ -210,7 +202,6 @@ mod tests {
         assert_eq!(v["data"]["bootId"], "boot-a");
         assert_eq!(v["data"]["runs"].as_array().unwrap().len(), 1);
     }
-    // cm:guard the three marks are asserted as THREE, which is the claim: a half-closed run — session terminal, worktree still on disk, one lease of two returned — must read as exactly that off the box. One flag for the group makes it indistinguishable from a clean finish, and the diff is then nobody's (ISS-964 criterion 52).
     #[test]
     fn a_half_closed_run_reports_each_mark_on_its_own() {
         let led = seeded();
@@ -242,7 +233,6 @@ mod tests {
         );
     }
 
-    // cm:guard the field NAMES on the wire, because the unit lives in them: core parses `sessionTerminalAtEpochS` and a rename on this side silently drops the mark — `nullish()` on the other end accepts its absence, so no snapshot would fail and every mark would simply stop arriving.
     #[test]
     fn the_marks_name_their_unit_on_the_wire() {
         let led = seeded();

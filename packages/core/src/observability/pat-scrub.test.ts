@@ -267,7 +267,6 @@ describe('a PEM private key (ISS-1036)', () => {
     expect(out).not.toContain('MIIEvQIBADANBgkqhkiG9w0');
   });
 
-  // cm:guard the case the `{16,}` bound in PEM_PRIVATE_KEY_HEAD_PATTERN exists for. With the loose `[A-Za-z0-9+/=\\s]*` continuation this goes red: the unterminated marker swallows every word after it, and a build log with one truncated key comes back with its error message redacted.
   it('a truncated key does not swallow the build output after it', () => {
     const truncated = PEM.split('\n').slice(0, 2).join('\n');
     const out = scrubLogText(`${truncated}\nerror: Cannot find module '@codemirror/state'`);
@@ -275,15 +274,6 @@ describe('a PEM private key (ISS-1036)', () => {
     expect(out).toContain("Cannot find module '@codemirror/state'");
   });
 
-  // cm:guard the label is bounded — `(?:[A-Z]{1,12} ){0,3}` and not `[A-Z ]*` —
-  // because the loose class overlaps the literal `PRIVATE KEY` after it, so an
-  // input carrying many `-----BEGIN ` markers made the engine walk the class back
-  // one character at a time at every one of them (CodeQL `js/polynomial-redos`,
-  // high, on PR 430, against input that is a build log nobody controls). The
-  // bound is what this case defends: the six labels OpenSSL actually emits all
-  // sit inside it, and narrowing it further to buy the ReDoS fix would trade
-  // coverage of a credential for it, which is the wrong direction — a key that
-  // reaches a log fails silently and permanently.
   it('covers every PEM label OpenSSL emits', () => {
     for (const label of [
       'PRIVATE KEY',

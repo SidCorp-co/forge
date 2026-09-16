@@ -11,7 +11,6 @@ pub struct Outcome {
 }
 
 /// Printed by `--help`, because an exit code nobody can look up is a number.
-// cm:edge contract -> packages/core/src/middleware/error.ts — `statusToCode` is the other half: the `code` in the JSON body comes from there, and these rows map it to a number. A new status handled there with no row here still exits 1, which is the honest default, but the pair should move together.
 pub const EXIT_TAXONOMY: &str = "\
 EXIT CODES
   0   success (2xx)
@@ -34,7 +33,6 @@ instead of memorising the table.";
 
 /// Map a status to the taxonomy. `body_code` is core's own `code` when the
 /// response carried one.
-// cm:guard RETRYABLE means "the same request, unchanged, could succeed later" — nothing else. A 409 is a conflict with state the caller must re-read, and a 422 is a request that is wrong; marking either retryable turns a skill's retry loop into a spin that ends in the step's timeout with no new information. Only 429, 5xx and a transport failure qualify.
 pub fn classify(status: u16, body_code: Option<&str>) -> Outcome {
     let code = body_code
         .filter(|c| !c.is_empty())
@@ -95,7 +93,6 @@ pub fn is_json(body: &str) -> bool {
 }
 
 /// A request that did not come back: DNS, connect, TLS, timeout.
-// cm:guard the METHOD decides, and it is not a detail: a dropped connection says nothing about whether core processed the request, so "retry" is only safe where a second identical call cannot change the outcome. GET/HEAD/PUT/DELETE/OPTIONS/TRACE are idempotent per RFC 9110 §9.2.2; POST and PATCH are not, and telling a caller to retry one of those is how a skill files the same issue twice. Buzz calls this DeliveryUnknown; Forge had it collapsed into "retryable" until 2026-08-31.
 pub fn transport_failure(method: &str, message: impl Into<String>) -> (Outcome, String) {
     let idempotent = matches!(
         method.to_uppercase().as_str(),
@@ -130,7 +127,6 @@ mod tests {
         }
     }
 
-    // cm:guard this is the assertion that stops a skill's retry loop from spinning on a request that can never succeed. Flip 409 or 422 to retryable in `classify` and only this goes red.
     #[test]
     fn only_429_5xx_are_retryable_among_errors() {
         let retryable: Vec<u16> = [400u16, 401, 403, 404, 409, 422, 429, 500, 502, 503]
@@ -153,7 +149,6 @@ mod tests {
         assert_eq!(classify(404, None).code, "NOT_FOUND");
     }
 
-    // cm:guard a dropped connection on a POST must NOT say retryable. The request may have been processed and only the response lost, so a caller that retries on this creates the row twice — which is invisible until someone reads the list. Make `transport_failure` ignore the method and only this pair goes red.
     #[test]
     fn a_lost_connection_is_retryable_only_where_a_second_call_is_free() {
         for m in ["GET", "head", "PUT", "DELETE", "OPTIONS", "TRACE"] {
@@ -218,7 +213,6 @@ mod tests {
         );
     }
 
-    // cm:guard DERIVE the codes from what the matcher actually returns, never retype them — a hand-written list passes while the row it forgot is missing, which is exactly how exit 10 shipped undocumented for the length of one commit. The help text and the match arms are one contract, read by a human under time pressure.
     #[test]
     fn the_help_table_lists_the_codes_the_matcher_produces() {
         let produced: std::collections::BTreeSet<i32> =

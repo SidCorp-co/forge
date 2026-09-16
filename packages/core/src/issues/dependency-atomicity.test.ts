@@ -98,7 +98,6 @@ describe('writeIssueDependency — the cycle walk reads the caller executor', ()
     expect(IssueDependencyError).toBeDefined();
   });
 
-  // cm:guard this is the assertion that fails when only the INSERT is threaded and the walk is left on `db`. Without it, reverting `detectCycle(…, ex)` to `detectCycle(…)` keeps all 369 issues tests green — measured 2026-08-31 — while a create transaction declaring both directions commits a cycle the gate is supposed to refuse.
   it('never reaches the pool for the walk, so an uncommitted edge cannot be missed', async () => {
     const tx = txHoldingEdgeBtoA();
 

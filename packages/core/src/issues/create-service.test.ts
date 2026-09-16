@@ -154,7 +154,6 @@ describe('createIssue — the ordering the dispatcher depends on', () => {
     expect(calls.indexOf('relations:flush')).toBeLessThan(calls.indexOf('issueCreated'));
   });
 
-  // cm:guard assert the edge write sits between BEGIN and COMMIT, not merely before `issueCreated`. Ordering alone was already true when the edge was written after the commit — and that is the arrangement ISS-889 found: the issue is durable, the blocker is not, and a crash in between leaves a row the dispatcher's POLL picks up as unblocked. Only the transaction boundary can witness that difference.
   it('writes the edge INSIDE the create transaction, not after it commits', async () => {
     await createIssue(
       { projectId: PROJECT_ID, title: 'New', relations: [{ kind: 'blocks', dependsOnId: 'x' }] },

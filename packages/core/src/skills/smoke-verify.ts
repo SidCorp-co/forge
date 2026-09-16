@@ -99,7 +99,6 @@ export function computeTier1Entries(args: {
   const checkedAt = (args.now ?? new Date()).toISOString();
   const syncByName = new Map(args.sync.skills.map((s) => [s.name, s]));
 
-  // cm:guard walk the project's OWN registration rows, never a fixed stage table. The nine-rung `PIPELINE_STEPS` this used to iterate was the staged lane and went with it (ISS-895); iterating a fixed list would report `not_registered` for every stage on every project — a report that is all FAIL is read as broken tooling, not as a finding.
   const ordered = [...args.registrations].sort((a, b) => a.stage.localeCompare(b.stage));
 
   return ordered.map((reg) => {

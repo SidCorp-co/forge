@@ -93,7 +93,6 @@ async function seed() {
   return { user, project, token };
 }
 
-// cm:guard a project role BELOW admin only exists for someone who is not the org owner — `effectiveProjectRole` is org-aware and hands the org owner implicit project admin, so seeding role:'member' on the project creator produces an admin and every negative role case passes for the wrong reason.
 async function seedNonAdminMember(project: { id: string; orgId: string }) {
   const { user, token } = await verifiedUser();
   await createTestOrgMember(harness.db, {
@@ -148,7 +147,6 @@ describe('GET /api/me/collaborators', () => {
     ]);
   });
 
-  // cm:guard the whole surface of this route is OTHER PEOPLE's user rows, and `users` carries `passwordHash` on the same row — so a projection that ever became a `select()` would answer a people-search with credentials. Assert the absence by name rather than trusting the service's own guard, because this is the route that exposes it.
   it('never returns an auth secret', async () => {
     const owner = await verifiedUser();
     const project = await createTestProject(harness.db, owner.user.id);
@@ -173,7 +171,6 @@ describe('GET /api/me/collaborators', () => {
     }
   });
 
-  // cm:guard the seed is load-bearing: with no `project_members` row anywhere this route answers `{users:[],total:0}` however broken the scoping is, so an unseeded version of this case cannot fail. And `listCollaborators` guards a zero-visibility caller TWICE over — the early return and the `inArray` on the candidate query — each sufficient alone, so deleting either one changes nothing and this stays green. Measured both ways. That means a green here is NOT evidence a given line is dead; it takes both gone before the stranger is handed another account's row.
   it('shows nobody to a caller who shares no project', async () => {
     const owner = await verifiedUser();
     const project = await createTestProject(harness.db, owner.user.id);
@@ -233,7 +230,6 @@ describe('PUT /api/projects/:projectId/skills/:skillId/pin', () => {
     expect((row[0] as { pinned_by: string | null }).pinned_by).not.toBeNull();
   });
 
-  // cm:guard the reason is refused HERE, by the schema, and the service ALSO throws — assert the 400 rather than the throw, because the service signals with a raw `Error` whose message starts `BAD_REQUEST:` and that reaches a caller as a 500. A pin with no reason is a permanent divergence nobody can account for later.
   it('refuses a pin with no reason, as a 400 and not a 500', async () => {
     const { project, token } = await seed();
     const skillId = await seedProjectSkill(project.id);
@@ -276,7 +272,6 @@ describe('PUT /api/projects/:projectId/skills/:skillId/pin', () => {
     expect(res.status).toBe(403);
   });
 
-  // cm:guard a skill that exists but belongs elsewhere must answer 404, not 500 — the UPDATE is keyed on (id, projectId) so it matches nothing and the service throws a raw `NOT_FOUND:` Error. 404 is also what stops the route being used to probe which skill ids exist in projects the caller cannot see.
   it('answers 404 for a skill that belongs to another project', async () => {
     const { project, token } = await seed();
     const other = await seed();
@@ -324,7 +319,6 @@ describe('POST /api/projects/:id/ux-findings', () => {
     expect((rows[0] as { severity: string }).severity).toBe('must');
   });
 
-  // cm:guard 404 and NOT 403 — membership was already proven, so a different status for "exists elsewhere" versus "does not exist" is the only thing it could reveal. Seeded in a real second project rather than a random uuid, because a random uuid is absent from every project and cannot tell the two answers apart.
   it('refuses an issue that belongs to a different project, without saying it exists', async () => {
     const { project, token } = await seed();
     const other = await seed();
@@ -340,7 +334,6 @@ describe('POST /api/projects/:id/ux-findings', () => {
     expect(rows.length).toBe(0);
   });
 
-  // cm:guard the ruleId is DROPPED to null, not refused: a stale id from another project would FK-fail the insert and lose a real finding the agent had no way to validate first. The finding is what is worth keeping; the rule link is not.
   it('keeps the finding and drops a ruleId that belongs elsewhere', async () => {
     const { project, token, user } = await seed();
     const issueId = await seedIssue(project.id, user.id, 902);

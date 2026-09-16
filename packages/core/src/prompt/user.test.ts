@@ -515,7 +515,6 @@ describe('sessionContext staleness banner (ISS-699)', () => {
       issueSnapshot: { ...SAMPLE, sessionContext: stale, supersededBy },
     });
 
-  // cm:guard the ISS-698 reproduction — a release step read this exact FAIL narrative, written before a fix, a re-review, a re-merge and a PASSING re-test, and bounced a verified issue back to `reopen`
   it('warns that the verdict is superseded when later steps have finished', () => {
     const out = build({
       count: 3,
@@ -528,7 +527,6 @@ describe('sessionContext staleness banner (ISS-699)', () => {
     expect(out).toContain('2026-07-20T05:01:56.000Z');
   });
 
-  // cm:guard position is the fix, not the wording — the old footer already carried `last updated` and was read after the verdict it qualifies
   it('puts the warning ABOVE the stale narrative, not after it', () => {
     const out = build({
       count: 1,

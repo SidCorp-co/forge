@@ -100,7 +100,6 @@ describe('resolveNotifications E2E (ISS-879)', () => {
     expect(await row(id)).toEqual({ read: true, resolved: true });
   });
 
-  // cm:guard an already-read row must still be STAMPED — `emitPipelineWedge`'s dedupe reads `resolved_at`, so leaving it NULL on the notifications someone actually opened suppresses the next wedge for that entity forever
   it('stamps an already-read row without re-emitting', async () => {
     const id = await insertNotification('wedge:paused:run-2', true);
 
@@ -110,7 +109,6 @@ describe('resolveNotifications E2E (ISS-879)', () => {
     expect(await row(id)).toEqual({ read: true, resolved: true });
   });
 
-  // cm:guard `Promise.all` over this pool does NOT interleave a SELECT between another call's SELECT and UPDATE, so this case alone passes against the pre-fix shape too — it holds the observable contract and nothing more. The case BELOW is the one that witnesses the defect; do not delete it as a duplicate of this one.
   it('yields exactly one clear and one emit when two clearers run together', async () => {
     const id = await insertNotification('wedge:paused:run-3', false);
 
@@ -124,8 +122,6 @@ describe('resolveNotifications E2E (ISS-879)', () => {
     expect(await row(id)).toEqual({ read: true, resolved: true });
   });
 
-  // cm:why holding the row lock from a third connection is what opens the window a single pooled `Promise.all` never opens — both clearers reach their write while the row is held, so neither can see the other's outcome before starting
-  // cm:guard this is the interleaving itself, and it exists because a guard here once claimed the defect could not be witnessed — which is self-fulfilling, since nobody tries again. Forcing it needs two real connections and no new dependency: A holds a row lock, both clearers then race for it. Measured 2026-08-30 without `FOR UPDATE` on the sub-SELECT: both callers claim the row and `notificationRead` fires TWICE for one notification, which is the client-side unread count decremented twice. `paused:<runId>` (ISS-879) is the first resolution key with two independent clearers, which is what made this reachable at all.
   it('emits once, not twice, when two clearers genuinely interleave on one row', async () => {
     const id = await insertNotification('wedge:paused:run-5', false);
 

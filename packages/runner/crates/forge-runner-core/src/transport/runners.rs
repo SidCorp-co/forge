@@ -33,16 +33,12 @@ pub struct MeRunner {
     /// project's resident master, spliced into its brief by `daemon::master`.
     /// `None` on an older core or a project that has set none — the skill's own
     /// defaults then apply, which is what every project had before ISS-929.
-    // cm:guard the ABSENT case must stay "skill defaults", never a refusal to brief. A master briefed with nothing is the behaviour that shipped for months; a master not briefed at all is a session that orchestrates the whole box off a four-line prompt, which is the failure `install_skill` already refuses for the skill body.
-    // cm:edge contract -> packages/core/src/devices/me-runners.ts — core reads the fact and sends the text; nothing type-checks the key name across the two languages, and a rename on either side reads here as "no policy set" rather than as an error.
     #[serde(default)]
     pub master_policy: Option<String>,
     /// Seconds core says remain on this runner's rate limit: `None` when it is
     /// not limited (and on a core that predates the field), `0` once expired.
     ///
     /// Advisory pacing only — see `daemon::master`.
-    // cm:guard the ABSENT case must stay PERMISSIVE here, the opposite of `kind` above and deliberately so. This field may only ever slow a sweep down; if it is ever allowed to STOP one, the fleet cannot self-heal, because core clears the limit only when a job SUCCEEDS and no job can succeed while the master sits idle. Measured 2026-09-05: forge-vm cleared its own `usage_limit` by running two jobs to completion while the stamp still stood.
-    // cm:edge contract -> packages/core/src/devices/routes.ts — core computes this against ITS clock so the runner needs neither a datetime parser nor a skew correction; a change to a raw instant here puts both back.
     #[serde(default, deserialize_with = "lenient_seconds")]
     pub rate_limited_for_seconds: Option<u64>,
     /// Why core limited this runner (`usage_limit`, `auth`, …). Reported in the
@@ -135,10 +131,6 @@ mod tests {
         assert_eq!(parsed.master_policy.as_deref(), Some("Budget: 5 sessions."));
     }
 
-    // cm:guard a field core still sends that this struct does not name is IGNORED by serde, not an
-    // error, which is what lets `kind` be dropped from both sides in one change without a version
-    // handshake. It is also what would let a NEW field be added to /me/runners and read by nothing
-    // here for months, which is exactly what `kind` did (ISS-1047).
     #[test]
     fn an_unknown_field_from_core_is_ignored_rather_than_fatal() {
         let json = r#"{"projectId":"p1","runnerId":"r1","slug":"store","baseBranch":null,
@@ -151,7 +143,6 @@ mod tests {
 /// Read the limit window as `Some(seconds)`, or `None` for anything else.
 ///
 /// Deliberately total: no shape of this field may fail the parse.
-// cm:guard `#[serde(default)]` covers an ABSENT field and nothing else, and that gap is fleet-wide rather than cosmetic. A wrong type here — `"3600"` for `3600`, a float, a negative — fails the WHOLE `Vec<MeRunner>` parse, so `list_me` errors, `served` comes back empty, and every project on this box stops claiming behind a single `warn!`. That is the STOP this field's own guard forbids, reached through the type system instead of the logic. Mapping every unexpected shape to `None` makes the permissive promise structural rather than a property of today's JSON encoder.
 fn lenient_seconds<'de, D: Deserializer<'de>>(d: D) -> std::result::Result<Option<u64>, D::Error> {
     let raw = serde_json::Value::deserialize(d)?;
     Ok(match raw {
@@ -173,7 +164,6 @@ mod limit_field_tests {
 
     const BASE: &str = r#""projectId":"p","runnerId":"r","slug":"s","status":"online""#;
 
-    // cm:guard the assertion is that the LIST still parses, not that the number is right. A wrong type on this one advisory field would otherwise fail the whole Vec, empty `served`, and stop every project on the box from claiming behind a single warn! — the exact STOP this field must never cause.
     #[test]
     fn no_shape_of_the_limit_field_can_stop_the_box() {
         for shape in [
@@ -190,7 +180,6 @@ mod limit_field_tests {
         assert_eq!(r[0].rate_limited_for_seconds, None);
     }
 
-    // cm:guard a number and its string form must agree, because which one arrives depends on the JSON encoder rather than on any decision here.
     #[test]
     fn a_number_and_its_string_form_mean_the_same_wait() {
         let n = one(&format!("[{{{BASE},\"rateLimitedForSeconds\":3600}}]"));

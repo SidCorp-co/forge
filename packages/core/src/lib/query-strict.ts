@@ -32,9 +32,6 @@ function unrecognizedKeys(error: z.core.$ZodError<unknown>): string[] {
  * sent back to find the second on a second round is the round this exists to
  * save.
  */
-// cm:guard the accepted list is read off `schema.shape` at refusal time and NEVER from a literal beside the route. A hand-kept copy drifts silently in the one direction that matters — a route grows a parameter, the refusal goes on omitting it, and the caller reads the omission as "this route does not filter on that" (ISS-991).
-// cm:edge contract -> packages/core/src/issues/routes.ts — `UNKNOWN_QUERY_PARAMETER` is the code a caller branches on to tell "a parameter I do not have" from "a value I cannot parse"; the two are one `BAD_REQUEST` everywhere else and a caller cannot separate them
-// cm:why the error type is zod's CORE `$ZodError` and not `z.ZodError`: `zValidator`'s failure hook hands over the core shape, and the classic wrapper's extra members (`flatten`, `addIssue`) make the two unassignable under `exactOptionalPropertyTypes`
 export function queryBadRequest<T>(
   schema: z.ZodObject<z.ZodRawShape>,
   error: z.core.$ZodError<T>,

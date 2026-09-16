@@ -22,7 +22,6 @@ const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
 const txInsertValues = vi.fn(async () => undefined);
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
-// cm:why the advisory-lock call is stubbed to a noop; nothing here exercises the serialisation, only the response shape.
 const txExecute = vi.fn(async () => undefined);
 const txProxy = { update: txUpdate, insert: txInsert, execute: txExecute };
 const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown>) => cb(txProxy));
@@ -54,12 +53,10 @@ vi.mock('../jobs/enqueue.js', () => ({
   enqueueJob: (...args: unknown[]) => enqueueJobMock(...args),
 }));
 
-// cm:why the real `ws/server.js` reaches pg-boss through heartbeat-ws, which throws at import without DATABASE_URL — extras-routes reaches it transitively via `./transition.js`, so the stub is what lets this suite stay hermetic
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
-// cm:why the run-lifecycle helpers are stubbed so the enrich/pipeline-step routes do not need the extra `pipeline_runs` SELECT/INSERT modelled in the db mock (ISS-101).
 
 vi.mock('../pipeline/runs.js', () => ({
   openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
@@ -172,7 +169,6 @@ describe('POST /api/issues/:id/enrich', () => {
 });
 
 describe('POST /api/issues/:id/run-pipeline-step', () => {
-  // cm:guard the three selectLimit mocks below are POSITIONAL and must stay in this order — verified email, the issue row, then loadPipelineConfig's project row. A test that queues them in another order still passes its own assertion while exercising a different code path.
   function setupHappyPath(opts: { status?: string; agentConfig?: unknown } = {}) {
     authVerified();
     selectLimit.mockResolvedValueOnce([
@@ -198,7 +194,6 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     });
   }
 
-  // cm:guard `awaiting_release` and no `jobId`, because since ISS-933 core mints nothing for an autonomous issue. Answering `queued` with a fabricated id would tell the UI work started that no box has yet decided to take.
   it('202 releases the issue at the entry status, minting no job', async () => {
     setupHappyPath({ status: 'open' });
 
@@ -210,7 +205,6 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     expect(wakeMastersForProject).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard this endpoint is the one exit from an entry stage set to `mode: 'manual'` — the gate means "a human decides", and this IS the human. It must NOT start honouring the gate.
   it('202 even when the entry stage is gated to a human', async () => {
     setupHappyPath({
       status: 'open',
@@ -222,7 +216,6 @@ describe('POST /api/issues/:id/run-pipeline-step', () => {
     expect(res.status).toBe(202);
   });
 
-  // cm:guard a `stage` in the body is REFUSED, not ignored. It named a rung of the staged ladder; accepting it silently would 202 a request the server did not honour, which is worse than the 400.
   it('400 on a body that still names a staged stage', async () => {
     authVerified();
 

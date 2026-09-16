@@ -26,7 +26,6 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 /** Whether the room is still bound to the turn's project; flipped by the rebind case. */
 const roomBound = true;
-// cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
 vi.mock('./room-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./room-delivery.js')>()),
   roomStillBoundTo: async () => roomBound,
@@ -133,7 +132,6 @@ const openConversation = vi.fn(
   }),
 );
 
-// cm:why ISS-1004 split the old `handle()` in two: a message is COLLECTED into its conversation and its window, and the turn is taken later over everything the window holds. These fakes stand in for the rows that path reads, and `handle` below drives both halves so every assertion in this file still measures one message in and one reply out.
 const collected: Array<Record<string, unknown>> = [];
 const conversationsById = new Map<
   string,
@@ -196,7 +194,6 @@ const recordDeliveredReply = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('../../conversations/transcript.js', () => ({
   recordDeliveredReply: (...a: unknown[]) => recordDeliveredReply(...(a as [never])),
 }));
-// cm:why `conversations/ports.js` is NOT stubbed: it is the registry the runner reads to find a venue's transport, so a stub would leave the adapter registering into one map and the turn reading another, and every delivery would refuse for a reason no room ever sees (ISS-1002).
 const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'rc-server-id-9' }));
 const { clearConversationTransports, registerConversationTransport } = await import(
   '../../conversations/ports.js'
@@ -248,10 +245,7 @@ const MESSAGE = {
   images: [],
 };
 
-// cm:why a turn's conversation is a ROW resolved per message, not a pointer on this instance: the Map it lived in emptied on every restart, so a room talking for weeks restarted empty (ISS-1001 criterion 1).
-// cm:guard the fake transport is the FOUR ports and the registry is the real one: `handle` is a caller of the neutral turn now, and a suite that stubbed the registry would prove the adapter against a delivery path production does not have (ISS-1002).
 beforeEach(() => {
-  // cm:why every message now resolves its speaker, whatever the room's shape — ISS-1004 attributes a collected message to whoever actually spoke, while authority still follows the shape. In a group room an unlinked speaker is a fact and not a refusal, so this default is the ordinary case.
   resolveSpeaker.mockResolvedValue({
     linked: false,
     refusal: { code: 'SPEAKER_UNLINKED', message: 'UNLINKED' },
@@ -267,7 +261,6 @@ beforeEach(() => {
   recordDeliveredReply.mockClear();
 });
 
-// cm:why the steps are ordered so a routeless room costs no round trip (ISS-987 criteria 10-12). ISS-1004 removed the addressing step between the shape and the tracker, so the tracker now sees every message in a bound room and its only job is the duplicate re-emit it was added for.
 describe('connection-manager routing order', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -295,7 +288,6 @@ describe('connection-manager routing order', () => {
     expect(ac.seenMessage).not.toHaveBeenCalled();
   });
 
-  // cm:guard the deliverable of ISS-1004 at this level: the message that used to be dropped for naming nobody is now the one that reaches the tracker and the collector. A change that put an addressing test back would make this the only assertion that went red.
   it('takes in a group message that names nobody', async () => {
     const ac = connect(new Map([['room-1', ROUTE]]));
 
@@ -333,7 +325,6 @@ describe('connection-manager routing order', () => {
     expect(openConversation).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard the mark is a claim the message is durable SOMEWHERE, so a collect that rolled back must withdraw it: RC re-emits the same id after enrichment, and a mark left by a failed attempt makes that re-emit a false duplicate — the question is then in no log and no window, and nobody is owed an answer for it (review pass 2 F3).
   it('gives a failed collect its message id back, so the re-emit is taken in', async () => {
     const { createSeenTracker } = await import('./inbound-gate.js');
     const ac = {
@@ -351,7 +342,6 @@ describe('connection-manager routing order', () => {
     expect(openConversation).toHaveBeenCalledTimes(2);
   });
 
-  // cm:guard the order the room typed in is the order the log holds, and the shape and thread lookups are what threaten it: two messages a moment apart can finish those round trips either way round, and the window would then show the model "deploy to staging" before "do not deploy" (review pass 2 F4).
   it('keeps two messages in a room in the order they arrived, whatever the lookups do', async () => {
     const ac = {
       ...makeAc(),
@@ -388,7 +378,6 @@ describe('connection-manager routing order', () => {
     expect(ac.client.sendMessage).not.toHaveBeenCalled();
   });
 
-  // cm:why the room has to be IN the refusal, not merely absent from the reply: an unresolvable room is a fault somebody has to find, and a log line that does not say which room leaves them the whole fleet to search
   it('names the room it could not resolve', async () => {
     resolveRoomShape.mockResolvedValue(null);
     connect(new Map([['room-1', ROUTE]]));

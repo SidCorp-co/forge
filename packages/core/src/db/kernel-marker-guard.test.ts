@@ -21,12 +21,10 @@ const SRC_ROOT = fileURLToPath(new URL('..', import.meta.url));
 /** Drizzle model var names for the three tables `0219`'s triggers watch. */
 const KERNEL_TABLES = ['jobs', 'agentSessions', 'pipelineRuns'];
 
-// cm:why a `projects` or `issues` DELETE removes kernel rows without naming a kernel table: `jobs.project_id`, `agent_sessions.project_id` and `pipeline_runs.project_id` are all `ON DELETE CASCADE`, and so is `pipeline_runs.issue_id`. The cascade runs in the parent's transaction, so the parent's marker covers every child — which is exactly why the parent has to carry one.
 const CASCADING_PARENTS = ['projects', 'issues'];
 
 const DELETE_TABLES = [...KERNEL_TABLES, ...CASCADING_PARENTS];
 
-// cm:guard `transition.ts` is exempt because it stamps through `stampKernelTxn` itself, inside the transaction it opens; `db/kernel-marker.ts` is the stamp. Adding a third name here is how the whole guard stops meaning anything, so a new entry needs the reason it cannot use `withKernelMarker` written next to it.
 const EXEMPT = ['lifecycle/transition.ts', 'db/kernel-marker.ts'];
 
 const MARKER = 'withKernelMarker';
@@ -56,7 +54,6 @@ function stripComments(src: string): string {
  * "is this write lexically inside a marked scope". String and template bodies
  * are skipped so a `(` in a message or an SQL fragment cannot unbalance it.
  */
-// cm:why the walk is a heuristic and its failure direction is the reason that is acceptable: `stripComments` runs first and could eat a `//` inside a string, so a pathological file could close a marked range early — which reports a WRAPPED write as unwrapped. That is a loud false positive on the next run, never a silent pass, so the guard cannot be defeated by the imprecision it admits.
 function markedRanges(body: string): Array<[number, number]> {
   const ranges: Array<[number, number]> = [];
   const stack: Array<{ at: number; marked: boolean }> = [];
@@ -122,7 +119,6 @@ function setArgument(after: string): { opaque: boolean; topLevel: string } | nul
     }
     if (depth === 1) top.push(ch);
   }
-  // cm:guard an unbalanced walk means this file is not parseable HERE, so the answer is `opaque` — the conservative one. Returning "no status" would clear whatever the walk failed to read, which is the one direction a guard may not fail in.
   return { opaque: true, topLevel: '' };
 }
 
@@ -163,7 +159,6 @@ function findViolations(path: string, rawBody: string): string[] {
     }
   }
 
-  // cm:why raw SQL is the other door into the same rows and the same triggers, and `transition-guard.test.ts` already scans for it on the terminal axis — a `sql.raw` sweeper or a `db.execute(sql\`…\`)` owes the marker for exactly the reason a drizzle chain does.
   const rawStatus = new RegExp(
     `UPDATE\\s+"?(${['jobs', 'agent_sessions', 'pipeline_runs'].join('|')})"?\\b[\\s\\S]{0,400}?status\\s*=`,
     'gi',
@@ -203,7 +198,6 @@ describe('kernel marker guard (ISS-943)', () => {
     ).toEqual([]);
   });
 
-  // cm:guard the meta-test is the whole evidence for the one above: a scanner with a broken paren walk or a typo'd table name reports zero violations on a clean tree and zero on a dirty one, and the two greens are indistinguishable. Every shape this guard claims to catch is planted here.
   it('detects each planted bypass, and clears each planted stamp', () => {
     const plants: Array<[string, string]> = [
       ['opaque set', 'await db.update(agentSessions).set(updates).where(eq(x, y));'],
@@ -238,7 +232,6 @@ describe('kernel marker guard (ISS-943)', () => {
     expect(findViolations('synthetic.ts', clean)).toEqual([]);
   });
 
-  // cm:guard a `cm:` note is allowed to quote the very shapes above — they are the clearest way to say what the rule is — so the comment stripper has to run before the scan or the doctrine that documents this guard breaks it.
   it('ignores the shapes when they appear in a comment', () => {
     const commented = [
       "// await db.update(jobs).set({ status: 'queued' });",

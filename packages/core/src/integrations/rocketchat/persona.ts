@@ -9,7 +9,6 @@ import { rocketChatDoorLines, rocketChatDoorPersona } from '../../assistant/door
 /**
  * What is true of a Rocket.Chat room and of no other door.
  */
-// cm:edge contract -> packages/core/src/assistant/prompt/door-rocketchat.ts — the five lines this returns are that layer's text; the guards on why each is room-only live there.
 export function rocketChatChannelLines(
   authorUsername?: string,
   opts?: { botName?: string | undefined },

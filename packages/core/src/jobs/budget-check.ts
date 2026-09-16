@@ -68,7 +68,6 @@ export async function checkMonthlyBudget(
 
   let spent = 0;
   try {
-    // cm:why the month floor goes through `utcDateTrunc` so the cutoff is a timestamptz: a bare `date_trunc('month', now() AT TIME ZONE 'UTC')` yields a NAIVE timestamp, which Postgres then coerces against `started_at` using the session TimeZone — on UTC+7 the window opened 7h into the previous month and counted its spend against this month's cap
     const rows = (await db.execute(sql`
       SELECT COALESCE(SUM(cost_usd), 0)::float AS spent
       FROM pipeline_run_step_durations
@@ -96,7 +95,6 @@ export async function checkMonthlyBudget(
   return { action: 'allow', spent, budget, stageStatus };
 }
 
-// cm:why bounded at 1024 with a drop-oldest-half eviction rather than an LRU: the key is per project × stage × hour, so 1024 live entries is already far past any realistic load and the bookkeeping would cost more than the bound is worth
 const warnDedup = new Map<string, number>();
 
 export function shouldEmitWarn(projectId: string, stageStatus: string): boolean {

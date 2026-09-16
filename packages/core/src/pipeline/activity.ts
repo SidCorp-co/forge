@@ -4,7 +4,6 @@ import { type ActorType, activityLog } from '../db/schema.js';
 import type { ActorAgency } from '../issues/actor-agency.js';
 import { logger } from '../logger.js';
 
-// cm:guard `agency` is REQUIRED so a new writer cannot omit it and silently record the column's default — the default reads as a plausible `human` and nobody reports a feed that looks right. Where a caller genuinely has no agency to give, it must write `'human'` at the call site with a comment saying why, not by leaving the field off here.
 export type Actor = { type: ActorType; id: string; agency: ActorAgency };
 
 export interface RecordActivityInput {
@@ -60,7 +59,6 @@ export async function safeRecordActivity(input: RecordActivityInput): Promise<vo
   }
 }
 
-// cm:guard read `agency` off the context, do NOT infer it from which principal matched — a job token authenticates as a user and is held by an agent, which is the whole reason the field exists. A device principal is an agent by construction and has no context value to read.
 export function resolveActor(c: Context): Actor {
   const userId = (c.get('userId' as never) as string | undefined) ?? undefined;
   if (userId) {

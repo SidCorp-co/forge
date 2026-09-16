@@ -188,7 +188,6 @@ describe('forge_projects.list', () => {
 
   it('a pairing that derives no role surfaces role null rather than a guess', async () => {
     const tool = forgeProjectsListTool(patCtx());
-    // cm:guard org `member` derives nothing and there is no membership row, so the visibility predicate would not return this project at all — if it ever did, the role must be null rather than defaulted to something the caller can act on
     mockVisibleProjects([{ id: PROJECT_A, memberRole: null, orgRole: 'member' }]);
 
     const result = (await tool.handler({})) as { projects: Array<{ role: unknown }> };
@@ -216,7 +215,6 @@ describe('forge_projects.list', () => {
 
   it('PAT principal with projectIds allowlist filters output to allowed projects only (ISS-150)', async () => {
     const tool = forgeProjectsListTool(patCtx({ scopes: ['read'], projectIds: [PROJECT_A] }));
-    // cm:why the query returns both projects and the allowlist is what narrows the answer to one
     mockVisibleProjects([
       { id: PROJECT_A, memberRole: 'member', orgRole: null },
       { id: PROJECT_B, memberRole: 'member', orgRole: null },
@@ -487,7 +485,6 @@ describe('forge_projects.update', () => {
     expect(selectImpl).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard previewDeploy holds testCredentials; the notes write MERGES into the existing jsonb. Replacing it would silently delete the project's test logins the first time somebody saved a note.
   it('previewDeployNotes merges into previewDeploy without dropping the credentials beside it', async () => {
     mockAccess({ memberRole: null, orgRole: 'owner' });
     mockSelect([
@@ -708,7 +705,6 @@ describe('forge_projects.get', () => {
     expect(res.project.orgId).toBe(ORG_ID);
     expect(res.project.createdBy).toBe(OWNER_ID);
     expect(res.project.repoPath).toBe('/srv/a');
-    // cm:guard the handler hand-builds its response, so asserting the KEY EXISTS is not enough — a selected column dropped from the return literal still yields a key with `undefined`, which is how this field shipped invisible on 2026-08-18. Assert the value.
     expect(res.project.workspaceSetup).toBe('pnpm install --frozen-lockfile');
     expect(res.project.defaultDeviceId).toBe(DEVICE_ID);
     expect(selectImpl).toHaveBeenCalledTimes(2);

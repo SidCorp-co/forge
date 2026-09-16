@@ -45,7 +45,6 @@ pub struct WsConfig {
 /// reconnect is worthless the moment a newer one exists. This is also what
 /// makes a reconnect free — the loop re-reads the current value on connect and
 /// nothing has to remember what it failed to send.
-// cm:edge protocol -> packages/runner/crates/forge-runner-core/src/transport/session_ledger.rs — the producer. Each value is ONE complete frame body, already serialized; this transport does not know what is in it.
 pub type Outbound = watch::Receiver<Option<String>>;
 
 pub async fn connect(
@@ -87,8 +86,6 @@ pub async fn connect(
                 .to_string();
                 let _ = write.send(Message::Text(sub.into())).await;
 
-                // cm:guard emitted as a LOCAL frame on the same channel core's events arrive on, so the daemon has one place that decides what a wake means. This transport deliberately knows nothing about masters or pools — it reports that the socket came up and stops there. Sent AFTER the subscribe so a catch-up read cannot race the subscription it depends on.
-                // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/mod.rs — the `ws.connected` arm turns this into a `master::Wake::Reconnect`. The name is local to this binary and is not a core event; core must never publish it.
                 if frame_tx
                     .send(Frame {
                         event: "ws.connected".into(),
@@ -117,9 +114,6 @@ pub async fn connect(
                     }
                 }
 
-                // cm:guard the current snapshot goes out on CONNECT, before the read loop, so a
-                // reconnect does not leave core reading a box's state from before the drop until
-                // the next tick (ISS-934 criterion 4).
                 outbound.mark_unchanged();
                 let current = outbound.borrow_and_update().clone();
                 if let Some(text) = current {
@@ -129,7 +123,6 @@ pub async fn connect(
                 let mut ping_interval = tokio::time::interval(PING_INTERVAL);
                 ping_interval.tick().await; // skip immediate tick
 
-                // cm:guard once the publisher is gone this arm is DISABLED, never merely ignored. A closed `watch` sender makes `changed()` return `Err` immediately and forever, so an arm left enabled resends the last snapshot in a tight loop for as long as the socket lives.
                 let mut publishing = true;
                 let mut awaiting_pong = false;
                 let mut pong_deadline = tokio::time::Instant::now() + PONG_TIMEOUT;
@@ -234,7 +227,6 @@ mod tests {
     use tokio_tungstenite::accept_async;
 
     /// Accept one connection and hand back every text frame the client sent.
-    // cm:guard the read is bounded. A frame the client never sends is exactly what these tests are looking for, and an unbounded `next()` turns that finding into a hang the runner kills — a test that cannot go red has not been written.
     async fn collect(listener: TcpListener, want: usize) -> Vec<String> {
         let (stream, _) = listener.accept().await.unwrap();
         let mut ws = accept_async(stream).await.unwrap();
@@ -261,7 +253,6 @@ mod tests {
         }
     }
 
-    // cm:guard the snapshot must go out on CONNECT and not merely when it next changes. A reconnect that waits for the tick leaves core answering from the box's state before the drop, and nothing distinguishes that stale answer from a fresh one (ISS-934 criterion 4).
     #[tokio::test]
     async fn a_snapshot_already_held_goes_out_as_soon_as_the_socket_opens() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();
@@ -293,7 +284,6 @@ mod tests {
         );
     }
 
-    // cm:guard the publisher outliving nothing is the case that hangs a box: a closed sender makes `changed()` ready forever, and an enabled arm then floods the socket with the same frame.
     #[tokio::test]
     async fn a_publisher_that_goes_away_does_not_flood_the_socket() {
         let listener = TcpListener::bind("127.0.0.1:0").await.unwrap();

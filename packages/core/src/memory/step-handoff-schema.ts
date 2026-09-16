@@ -116,7 +116,6 @@ const fixHandoff = z.object({
   knownLimitations: z.array(z.string().min(1)).max(5),
 });
 
-// cm:why `drive` is the AUTONOMOUS driver's whole turn, not a stage of a ladder — it has no successor to brief, so this payload exists to be the turn's own record that it ran to completion, which `jobs/finalize-done.ts` reads to tell a lost result event apart from a dead agent.
 const driveHandoff = z.object({
   step: z.literal('drive'),
   schema_version: z.literal(1),
@@ -217,7 +216,6 @@ export function renderHandoffSchemaPrompt(step: HandoffStep): string {
         '    { "what": <string>, "why": <string> },',
         '    ...',
         '  ],',
-        // cm:why A later step re-runs these verbatim from the repo root, so a cwd-dependent command inverts its verdict there — ISS-829: bare `npx biome check <path>` passed in packages/core, failed at root, false-failing a mergeable branch.
         '  "verificationCommands": [<string>, ...]   // max 10; each must run from the repo ROOT — carry your own `cd <dir> &&` when the tool resolves config from the cwd',
         '  "knownLimitations": [<string>, ...]       // max 5',
         '  "commitSha": <string, optional>',
@@ -311,8 +309,6 @@ export interface HandoffScope {
  * so instructing them makes that net fire on every session it was built to
  * catch once.
  */
-// cm:guard do NOT restate the five statuses here. The driver skill (`issue-flow`, forge-plugin repo) declares what the agent reads and `AUTONOMOUS_DRIVER_STATUSES` declares what core enforces; a third list in the prompt is one more copy to drift in the same context window, and no gate reads it.
-// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the other side is `plugin/skills/issue-flow/SKILL.md` in github.com/SidCorp-co/forge-plugin. the skill owns the protocol and this block owns only what the skill cannot know: the scope literals. Adding process here duplicates an authority that is already gated.
 export function renderDriveTerminationBlock(scope: HandoffScope): string {
   return [
     '## Before you stop',

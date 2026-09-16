@@ -23,8 +23,6 @@ impl Ack {
     }
 }
 
-// cm:edge contract -> packages/core/src/agent-sessions/inbox-routes.ts — the route accepts `delivered` and `gone` only, from the device that owns the session. A third value here is a 400 the runner logs and drops, which core then resolves as `unknown` — the outcome no caller may act on, so the human's answer waits for the episode to lapse instead.
-// cm:guard best-effort on purpose, and the silence is SAFE: an ack core never receives resolves `unknown`, and `unknown` is the outcome that makes core wait rather than act. A throw here would only turn a recoverable silence into a failed turn.
 pub async fn ack(client: &CoreClient, session_id: &str, seq: u64, outcome: Ack) {
     post(
         client,

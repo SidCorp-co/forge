@@ -28,13 +28,11 @@ const liveEdge = or(
  * they were holding. Runs inside the transition's transaction, so a rollback
  * drops the expiry alongside the status flip.
  */
-// cm:guard collect the dependents BEFORE the UPDATE and hand the list to the caller — never re-query after. Every dependent read in this repo filters `valid_until > now()` (issues/transition.ts, issues/pipeline-health.ts, jobs/queued-gates.ts), so a read after the write returns an empty set and the unblock ships with nothing announced and nothing recorded. Auto-release was the owner's call; releasing SILENTLY was not.
 export async function expireBlocksEdgesOnDrop(
   tx: Tx,
   projectId: string,
   issueId: string,
 ): Promise<UnblockedDependent[]> {
-  // cm:guard serialize drop expiry against `blocks` writes per project — without matching the graph lock, a relation can commit after the scan from a dropped blocker and strand its dependent behind an impossible merged_at
   await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${projectId}))`);
   const scope = and(
     eq(issueDependencies.fromIssueId, issueId),

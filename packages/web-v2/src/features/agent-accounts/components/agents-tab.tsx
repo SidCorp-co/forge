@@ -49,14 +49,12 @@ export function AgentsTab() {
   const mint = useMintAgentCredential(orgId);
   const revoke = useRevokeAgentCredentials(orgId);
   const rename = useSetAgentDisplayName(orgId);
-  // cm:guard ONE flag across both credential actions, not one each: mint and revoke are independent mutations against the same agent's token set, so left separately disabled an admin can start a revoke while a mint is in flight and the two land in either order — the screen announces the credentials are gone and a live one exists, or it shows plaintext the revoke has already killed. Renaming is deliberately outside it: a display name decides nothing, so it races with nothing (ISS-1003 criteria 3, 5).
   const busy = mint.isPending || revoke.isPending;
   const { toast } = useToast();
 
   const [revealed, setRevealed] = useState<{ userId: string; plaintext: string } | null>(null);
   const [renaming, setRenaming] = useState<{ userId: string; value: string } | null>(null);
 
-  // cm:guard the whole tab is gated on the caller's org role rather than on the API's refusal alone. The routes gate too and that is the real fence; this is so an ordinary member is not shown four buttons that every one of them answers 403 to.
   if (activeOrg && activeOrg.role !== "owner" && activeOrg.role !== "admin") {
     return (
       <EmptyState
@@ -76,7 +74,6 @@ export function AgentsTab() {
   async function onMint(agent: AgentAccountRow) {
     try {
       const { plaintext } = await mint.mutateAsync(agent.userId);
-      // cm:guard the plaintext is held in component state and shown ONCE, exactly as a personal token is: no route reads it back, because the row stores a hash. Persisting it anywhere would turn one leak into every credential this screen ever minted.
       setRevealed({ userId: agent.userId, plaintext });
     } catch (err) {
       toast({ title: "Could not mint a credential", description: formatApiError(err), tone: "error" });

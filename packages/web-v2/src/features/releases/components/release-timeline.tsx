@@ -19,8 +19,6 @@ import { ReleaseAttemptEntry } from "./release-attempt-entry";
  * component's contract is that what it renders is in order: a caller holding a
  * list from anywhere else gets the same guarantee.
  */
-// cm:edge contract -> packages/core/src/release-batch/ledger.ts — compares `startedAt` as STRINGS, which is only chronological because that endpoint emits `Date.toISOString()` (always UTC, fixed width). An endpoint that ever sent a zoned offset like `+07:00` would silently order the timeline by a clock nobody is reading.
-// cm:guard `<` and never `localeCompare`. `localeCompare` with no locale argument collates in the VIEWER's browser locale, and ICU may order the hyphens in a uuid or a timestamp differently from byte value — so the order of a release would depend on who was looking at it, which is not an order. Postgres sorts `uuid` by byte value and that is what `listAttempts` returns, so byte comparison on the canonical lowercase hex is the one that cannot disagree with core.
 function byBytes(a: string, b: string): number {
 	if (a < b) return -1;
 	return a > b ? 1 : 0;

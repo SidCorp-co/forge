@@ -27,9 +27,6 @@ import {
 import { conversationTitle } from "../types";
 import { ConversationRow } from "./conversation-row";
 
-// cm:why the placeholder rows are keyed by a fixed list of names rather than by their index: the
-// set never reorders, and an index key on a list that never reorders is still a lint the budget
-// counts.
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
 export function ConversationList({
@@ -49,14 +46,8 @@ export function ConversationList({
   activeConversationId?: string | undefined;
   onOpen: (row: ListedConversation) => void;
   onNew: () => void;
-  // cm:guard `inline` drops this component's OWN scroll container rather than shrinking it: the
-  // inline mount sits inside the chat body, which already scrolls, and two nested scrollers make a
-  // list whose bottom rows can only be reached by scrolling the right one of them.
   /** Rendered inside the draft's body rather than as the panel's whole view. */
   inline?: boolean;
-  // cm:guard the panel is told when a room LEAVES the list rather than left to notice: it may be
-  // showing that very room, and a panel left on a thread its own list no longer offers is a room a
-  // person cannot get back to and cannot tell is gone.
   onGone: (conversationId: string) => void;
 }) {
   const [showArchived, setShowArchived] = useState(false);
@@ -73,10 +64,6 @@ export function ConversationList({
   }));
   const project = { name: projectName, slug: projectSlug };
 
-  // cm:guard the panel is told the room is gone only once the SERVER says so, and never on the way
-  // to asking: a refused archive — a viewer's role, a dropped connection — would otherwise clear the
-  // open room, leaving a person looking at a fresh draft, a toast, and a conversation that is still
-  // there and no longer on screen (review F2).
   const doArchive = (row: ListedConversation, archived: boolean) => {
     archive.mutate({ id: row.id, archived }, { onSuccess: () => onGone(row.id) });
   };

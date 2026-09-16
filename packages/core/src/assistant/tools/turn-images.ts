@@ -71,7 +71,6 @@ function runOf(result: CallToolResult): CliRun | null {
   }
 }
 
-// cm:guard the key is read from where each verb PUTS the report and nowhere else: `new` names it in its own stdout (`ISS-n is filed, …`) and on the fold path that is the NEIGHBOUR's key, which is where the report went; `comment` names it in argv[1] and only when a `-` body rides along, because the same verb with no body is the thread read. No other verb a chat turn runs lands a report, so no other verb earns the pictures (ISS-1009).
 function landedOn(argv: readonly string[], stdout: string): string | null {
   if (argv[0] === 'new') return stdout.match(ISSUE_KEY)?.[0] ?? null;
   if (argv[0] === 'comment' && argv.includes('-')) return argv[1] ?? null;
@@ -142,7 +141,6 @@ export function withTurnImages(inner: ChatToolset, images: readonly TurnImage[])
       if (name !== CLI_TOOL || result.isError) return result;
       const argv = argvOf(argsJson);
       const run = runOf(result);
-      // cm:guard attach only AFTER the write returned exit 0: a refused `new` has no row to attach to, and the model's next call will be the corrected filing, which is the one that earns the pictures — attaching on the refusal would send them to whatever key the refusal text happened to name (ISS-1009).
       if (!argv || !run || run.exitCode !== 0) return result;
       const target = landedOn(argv, run.stdout);
       if (!target) return result;

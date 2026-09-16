@@ -81,7 +81,6 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
 
 export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_config',
-  // cm:edge contract -> packages/core/src/projects/project-facts.ts — the description ENDS with both notes, appended rather than paraphrased; a rewrite that drops them puts the enforcement promise back
   description:
     "Read or write project configuration. Action `get` returns `config` with `repoPath`, `baseBranch`, `liveBranch`, `releaseModel` and `releaseStrategy` read DIRECTLY from the `projects` table columns. `releaseModel` is `none` (no release step — `closed` means closed), `promote` (the release moves code from `baseBranch` to `liveBranch`, by `releaseStrategy`) or `publish` (the ref does not change; the release is an act on a live deploy binding). `liveBranch` is non-null only under `promote` and MUST NOT be read under any other model; `baseBranch` may be `null` when not configured and callers MUST NOT silently default it to 'main'; plus `categories`, `pipelineConfig`, `projectFacts` from `agent_config` JSON. When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config`, a `projectFacts` patch (kebab-case key→text map referenced from skill bodies as `{{project:<key>}}`; per-key merge, value `null` removes a key, whole-map `null` wipes it; reserved keys base-branch/live-branch/repo-path/test-urls/test-creds are derived and ignored here, and `production-branch` is retired — it still resolves, to a refusal naming `live-branch`; NEVER store secrets — they would sync to disk), and a `projectFactsConfig` patch (per-key `{ alwaysInject }` map — when a fact key is flagged `alwaysInject: true` its FULL body is injected verbatim into every agent system prompt for this project, unmissable rather than fetch-on-demand; same per-key merge semantics, value `null` removes a key's config, whole-map `null` wipes it; capped at a char budget that warns on overflow rather than truncating), and a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?, autoUpdate?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA). UNLIKE the patches above, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`. " +
     ALWAYS_INJECT_GUARANTEE_NOTE +
@@ -89,7 +88,6 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
     ALWAYS_INJECT_ENFORCEMENT_NOTE,
   inputSchema: zodToMcpSchema(inputSchema),
   handler: async (args) => {
-    // cm:guard the named refusal comes BEFORE the parse. `inputSchema` is `.strict()`, so dropping the field alone would already answer `Unrecognized key: stateContext` — which tells a caller the argument is gone and nothing about what replaced it, on the one surface an agent reaches this config through (ISS-1000).
     if (args && typeof args === 'object' && 'stateContext' in args) {
       throw new Error(`BAD_REQUEST: RETIRED_KEY: ${RETIRED_STATE_CONTEXT_MESSAGE}`);
     }
@@ -167,7 +165,6 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
             orderIndex: Object.keys(factsMap).indexOf(key),
           });
         }
-        // cm:guard the write-through is ONE batch so a patch of N keys costs one embeddings call rather than N; a failure logs every key it carried, because the upsert lands whole or not at all and naming one key would leave the operator looking for the others.
         if (writes.length > 0) {
           await upsertKnowledgeEntries(writes).catch((err: Error) => {
             logger.warn(

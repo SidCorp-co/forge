@@ -26,7 +26,6 @@ export type PmDispatchInput = {
   modelTier?: ModelTier | undefined;
 };
 
-// cm:guard throw, never return a shaped `{ ok: false }`. The caller is an agent, and a soft result is read as "this issue was not eligible today" — it would keep calling. The staged lane is gone for every project and every issue, which is a permanent condition and has to arrive as one.
 export async function dispatchPmJob(input: PmDispatchInput, _createdBy: string): Promise<never> {
   throw new Error(
     `BAD_REQUEST: PM step dispatch was removed with the staged lane (ISS-895) — jobType "${input.jobType}" has no lane to run in. An autonomous project dispatches one job type, \`drive\`, from the entry status; move the issue to \`open\` instead.`,

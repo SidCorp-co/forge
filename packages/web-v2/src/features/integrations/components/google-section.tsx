@@ -68,10 +68,6 @@ export function GoogleSection({ projectId }: { projectId: string }) {
   );
 
   if (list.isLoading) return <p className="fg-body-sm text-muted">Loading…</p>;
-  // cm:guard a failed read is NOT "no connection". Falling through to the connect
-  // form under a failed list invites an operator to paste a second key file for
-  // an account that may already be connected, which is a credential handled for
-  // nothing and a duplicate binding to unpick.
   if (list.isError)
     return (
       <ErrorState

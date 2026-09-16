@@ -41,7 +41,6 @@ export interface PrepareInput {
  * call. A body that OPENS with a component is taken as `html` because there is
  * no reading of `<forge-review …>` as markdown that anybody wanted.
  */
-// cm:edge contract -> packages/core/skills — the `markdown` default is what keeps every shipped SKILL.md `forge_comments → create` example valid unchanged; `skills/shipped-templates.test.ts` parses them against the strict schema. Flip this default and ISS-898 P1 blinds every reader at once, which is exactly the ordering Decision 9 forbids.
 export function resolveFormat(input: PrepareInput): BodyFormat {
   if (input.format) return input.format;
   const head = input.raw.trimStart();
@@ -83,7 +82,6 @@ export function prepareBody(input: PrepareInput): PreparedBody {
  * serializers are what actually carry a description or a comment to an agent —
  * wiring only the named pair would project almost none of the bytes.
  */
-// cm:guard never let this throw. It reads rows already in the table, including any written before a registry change, and a read path that refuses its own data takes the issue view and the agent prompt down together. An unparseable stored body degrades to its own bytes.
 export function bodyText(body: string, format: string | null | undefined): string {
   if (!readsAsHtml(body, format)) return body;
   try {
@@ -109,8 +107,6 @@ export function bodyText(body: string, format: string | null | undefined): strin
  * is worth more than one event made complete. An explicit `'markdown'` still
  * wins, so a markdown row can never be misread as markup.
  */
-// cm:guard the sniff must stay the SAME rule as `resolveFormat`'s — a body that opens with `<forge-` is html on the way in and on the way out, or a body stores one way and reads the other
-// cm:guard the `<forge-` sniff is NOT dead code now that component markup is refused on write (2026-09-14): it is what keeps the rows written BEFORE that projecting to text when their format is lost in transit, and `track` in `issues/routes.ts` is what loses it.
 function readsAsHtml(body: string, format: string | null | undefined): boolean {
   if (format === 'html') return true;
   if (format) return false;
@@ -126,7 +122,6 @@ function readsAsHtml(body: string, format: string | null | undefined): boolean {
  * declares arrives as an ordinary element and web draws its generic card —
  * which is the whole of ISS-967 gap 6, with no second name list anywhere.
  */
-// cm:guard never let this throw, for `bodyText`'s reason and one more: this feeds the ISSUE DETAIL screen, so a row the scanner cannot read must degrade to `null` and let the caller fall back to the raw bytes, never take the screen down with it
 export function bodyNodes(body: string, format: string | null | undefined): BodyNode[] | null {
   if (!readsAsHtml(body, format)) return null;
   try {

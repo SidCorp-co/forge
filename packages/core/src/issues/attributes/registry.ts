@@ -10,8 +10,6 @@ export interface AttributeDef {
   readonly required: boolean;
 }
 
-// cm:guard The seed, not the schema, is where a key is added — that is the whole of "open set of keys". Adding one here plus a migration row costs no table change; adding a column instead defeats the design (ISS-1010).
-// cm:edge lockstep -> packages/core/drizzle/migrations/0245_issue_attributes.sql — the migration seeds exactly these rows; a key added here with no seed row is refused at every write with "unregistered".
 export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
   {
     key: 'obligation',
@@ -29,7 +27,6 @@ export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
     cardinality: 'one',
     writtenBy: 'agent',
     surfaces: ['state'],
-    // cm:guard Required WITH `obligation`, not on its own: an obligation nobody owns is how steps 2-5 of ISS-1002 fell out of sight. Paired-required is checked in write.ts, which is the only place that sees both.
     required: true,
   },
   {
@@ -38,7 +35,6 @@ export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
     valueType: 'ref_issue',
     cardinality: 'one',
     writtenBy: 'agent',
-    // cm:why The other legal answer to "who owes it": not a person but the issue the work moved to. ISS-1002 owed steps 2-5 and the answer was ISS-1004, which `obligation_owner` alone cannot say.
     surfaces: ['state'],
     required: false,
   },
@@ -93,7 +89,6 @@ export const ATTRIBUTE_REGISTRY: readonly AttributeDef[] = [
     valueType: 'text',
     cardinality: 'one',
     writtenBy: 'agent',
-    // cm:why The interrupt bar's enforceable half: a question that cannot name what becomes irreversible is a question the agent should have answered itself (ISS-1010).
     surfaces: ['decision'],
     required: false,
   },

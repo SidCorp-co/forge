@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:guard the env stub is here only because this module sits beside `askParkQuestion`, which reaches the db client — and the two belong in one file: whoever changes what mints must see the sentence that explains not minting, in the same screen (ISS-996).
 vi.mock('../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
@@ -33,7 +32,6 @@ describe('a `needs` that mints nothing says so', () => {
     expect(asked(PERSON, 'in_progress', '   ')).toBeNull();
   });
 
-  // cm:guard the caller is told WHICH of the two reasons it was, because the remedies are different and opposite: one is a field on the wrong call, the other is the right call on the wrong credential, and a single "not minted" leaves a run guessing between them (ISS-996).
   it('names the status when the target mints no question at all', () => {
     const said = asked(AGENT, 'waiting', 'the signed contract');
     expect(said).toContain('`waiting`');
@@ -48,7 +46,6 @@ describe('a `needs` that mints nothing says so', () => {
     expect(said).toContain('agent account or a paired device');
   });
 
-  // cm:guard a `device` actor is an agent whatever else it carries, so this case must stay the silent one — it is the whole happy path of an autonomous park, and a warning on it would train every run to ignore the field.
   it('is silent for the actor that actually mints, on the status that actually mints', () => {
     expect(asked(AGENT, 'needs_info', 'x')).toBeNull();
   });

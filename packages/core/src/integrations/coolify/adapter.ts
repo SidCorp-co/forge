@@ -47,7 +47,6 @@ interface CoolifyFailureVerdict {
  * conditions and the only place they can still be told apart is here, at the
  * call that failed (ISS-924).
  */
-// cm:guard 403 is NOT `needs_reauth`. Coolify answers 401 for a token it does not recognise and 403 for one it recognises and refuses this route, so collapsing them tells the operator to re-enter a working credential and re-entering it reproduces the state exactly. The same guard is on `github/adapter.ts` for the same reason.
 function classifyCoolifyFailure(err: unknown): CoolifyFailureVerdict {
   const status = err instanceof CoolifyApiError ? err.status : null;
   const route = err instanceof CoolifyApiError ? err.route : null;
@@ -74,7 +73,6 @@ function describeCoolifyFailure(err: unknown): string {
 
 export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> = {
   provider: 'coolify',
-  // cm:guard `canReceiveWebhook` is FALSE and repairing it is not the fix (ISS-922): Coolify's `SendWebhookJob` posts with no headers and no signature, so it can satisfy neither half of the `/in/:slug` contract. `confirm.ts` polls the deployment instead.
   capabilities: {
     canDispatch: true,
     canReceiveWebhook: false,
@@ -92,7 +90,6 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
       if (targets.length === 0) {
         throw new Error('coolify: no deploy targets configured');
       }
-      // cm:guard resolve EVERY target, never just the first — a stale resourceUuid is the "deploys the wrong repo" trap, and a healthcheck that stops at target one reports green for a binding whose second app does not exist.
       const names: string[] = [];
       for (const t of targets) {
         const res = await client.getResource(t.resourceUuid);
@@ -180,7 +177,6 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     let totalDurationMs = 0;
     const failures: { targetLabel: string; message: string; status: number | null }[] = [];
 
-    // cm:edge lockstep -> packages/core/src/pipeline/deploy-confirmations.ts — one hold per target is what makes "the run is proven when EVERY target is" a fact rather than a comment; a fan-out that records a single hold proves the run on its first target.
     const confirmations: {
       deliveryId: string;
       targetLabel: string;
@@ -279,7 +275,6 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
           durationMs,
           completedAt: new Date(),
         });
-        // cm:guard the deploy route wants `api.ability:deploy` and the healthcheck only ever wants `read`, so a read-scoped token passes Test-connection and is first refused HERE — this site must write the same verdict the healthcheck would, which is why both go through `classifyCoolifyFailure` (ISS-924)
         const verdict = classifyCoolifyFailure(err);
         if (verdict.health !== 'error') {
           await updateConnection(ctx.connectionId, {
@@ -351,7 +346,6 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     };
   },
 
-  // cm:guard REFUSE, never accept-and-drop (ISS-922). Coolify's `SendWebhookJob` sends no event header and no signature, so nothing can reach here through `/in/:slug`; a body that somehow does is a provider Forge has not read, and answering it 200 would be a second, unproven writer of run-terminal state beside `confirm.ts`.
   async handleInbound() {
     throw new Error(
       'coolify: inbound webhooks are not supported — Coolify sends no signed callback, so a deploy is confirmed by polling `GET /api/v1/deployments/{uuid}` (see integrations/coolify/confirm.ts)',

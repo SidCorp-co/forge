@@ -28,7 +28,6 @@ import {
 
 const JWT_SECRET = 'test-secret-at-least-32-chars-long-abcdef-123456';
 
-// cm:guard ONE harness for the whole file — `db/client.ts` binds to DATABASE_URL at import time, so a second setup puts the fixtures on one database and the code under test on another.
 let harness: TestDatabase;
 let app: Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>;
 let ownerId: string;
@@ -76,7 +75,6 @@ beforeAll(async () => {
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
 
-  // cm:guard the WHOLE of what a second adapter costs the store, and this line is the measurement ISS-1002 asked for: no store module is touched, no migration runs, and `registeredConversationAdapters()` gains a name.
   expect(registeredConversationAdapters()).not.toContain('web');
   registerConversationTransport(webConversationPorts);
   expect(registeredConversationAdapters()).toContain('web');
@@ -161,17 +159,14 @@ describe('the Forge UI conversation · what a send leaves behind', () => {
       authorLabel: 'Ada',
     });
 
-    // cm:guard the window is the unit a decision was taken over, and it must be CLOSED carrying one: an open window here would mean the send returned before anything decided, which is the 202 shape this route exists not to be.
     expect(body.windows).toHaveLength(1);
     expect(body.windows[0]).toMatchObject({ firstSeq: 0, lastSeq: 0 });
     expect(body.windows[0]?.closedAt).toEqual(expect.any(String));
     expect(body.windows[0]?.decision).toEqual(expect.any(String));
     expect(body.decision).toBe(body.windows[0]?.decision);
-    // cm:guard `unreachable` is what this module writes when it knows BEFORE anything was sent that it cannot answer — no conversation, no readable message, no transport. A reachable room reaching it means a guard threw, which is exactly the defect this file found: `recentDecisions` bound its `since` into a raw `sql` fragment, `postgres` refused the Date, and every routed window closed `unreachable` over a room nobody had asked (ISS-1004 rule 4).
     expect(body.windows[0]?.decision).not.toBe('unreachable');
   });
 
-  // cm:guard the same defect at its own seam rather than only through the route above: a guard that throws is swallowed by `routeWindow`'s catch, so the only thing a route-level assertion can see is the decision that came out. This one fails where the fault is.
   it('reads the decisions settled since an anchor, with a real Date', async () => {
     const id = await openRoom();
     await say(id, 'hello');
@@ -180,7 +175,6 @@ describe('the Forge UI conversation · what a send leaves behind', () => {
     await expect(windows.recentDecisions(id, { since, limit: 8 })).resolves.toHaveLength(1);
   });
 
-  // cm:guard this is criterion 28 as a row rather than as a rendering: a turn that SAID NOTHING leaves a decision naming why, and a turn that was NEVER TAKEN leaves no window at all — so the two are told apart by what is present, not by reading a message's text.
   it('tells a turn that was never taken from one that said nothing', async () => {
     const id = await openRoom();
     const before = (await (await readRoom(id)).json()) as ConversationRead;

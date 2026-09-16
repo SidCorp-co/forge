@@ -62,7 +62,6 @@ type Row = Record<string, unknown>;
  * both shapes the preamble path uses: `from→where→limit` (project/member rows)
  * and `from→innerJoin→where→orderBy` (listBindingsForProject).
  */
-// cm:guard the chain must stay awaitable at EVERY link — a missing method (innerJoin) makes the query throw, and buildChatPreamble's best-effort catch turns that into a silently absent block that still passes a call-count assertion
 function queueSelects(...rowsList: Row[][]): void {
   // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
   const mockDb = db as any;
@@ -102,8 +101,6 @@ describe('buildChatPreamble — lens override (ISS-674)', () => {
 
     expect(preamble).toContain('Speak their language');
     expect(preamble).not.toContain('implementation depth');
-    // cm:guard the pin must NOT cost a member-lens lookup — 2 selects = branches + integrations only; a 3rd means resolveMemberLenses leaked back in
-    // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
     expect((db as any).select).toHaveBeenCalledTimes(2);
   });
 
@@ -147,7 +144,6 @@ describe('buildChatPreamble — integrations + MCP diagnostics', () => {
     expect(preamble).toContain('DRAFT theme');
   });
 
-  // cm:guard mirrors the dispatch-side gate: a binding whose connection is inactive injects NOTHING, so advertising it here would promise tools the session cannot call
   it('omits an integration whose connection is inactive', async () => {
     queueSelects(BRANCHES, [
       {

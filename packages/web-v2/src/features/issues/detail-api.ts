@@ -25,8 +25,6 @@ export const issueDetailApi = {
 
   /** `GET /api/issues/:id/comments` — comment TREE (nested via `replies`),
    *  every page of it, with `totalCount` = every comment on the issue. */
-  // cm:edge contract -> packages/core/src/comments/routes.ts — the route answers `cursorList`, so the body is `{ items, total, nextCursor, … }` and `items` is the TREE for THIS PAGE while `total` counts every comment flat. Read as a bare array it is an object that passes every truthiness guard and throws `is not iterable` in the first walk of it (ISS-893: every issue-detail page on the deploy). `apiClientCursorAll` is the one place that knows the envelope — do not hand-unwrap `{ items }` here.
-  // cm:guard the screen renders the WHOLE thread, so this walks every page rather than showing the first one — a first page rendered as the thread is a silent truncation, and the route pages at 50 roots where it used to cap at 1000 comments (ISS-956). A load-more control instead of the walk is a screen change and owes the UX contract.
   listComments: (id: string) => apiClientCursorAll<CommentNode>(`/issues/${id}/comments`),
 
   /** `POST /api/issues/:id/comments` — create (optional `parentId`). */

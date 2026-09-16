@@ -23,7 +23,6 @@ beforeEach(() => {
 });
 
 describe('classifyBoxFault', () => {
-  // cm:guard the pixelight failure text verbatim — three boxes emitted this for three days while lastError stayed null
   it('keys a preflight failure on its check, not on the whole message', () => {
     expect(
       classifyBoxFault(
@@ -56,7 +55,6 @@ describe('classifyBoxFault', () => {
     expect(fault?.key).toBe('preflight_failed: work_tree');
   });
 
-  // cm:why the class the fleet was blind to (ISS-862): a box that takes the dispatch and never starts it
   it('recognises a never-claimed dispatch and gives it a readable summary', () => {
     const fault = classifyBoxFault(NO_ACK_ERROR);
     expect(fault?.key).toBe(NO_ACK_ERROR);
@@ -69,7 +67,6 @@ describe('classifyBoxFault', () => {
     );
   });
 
-  // cm:guard the whole point is that this is BOX-scoped. Attributing an agent's or the model provider's failure to the box would put a red badge on a healthy machine and send the operator to the wrong place.
   it.each([
     ['[RESULT_ERROR] success: You have hit your org monthly spend limit', 'provider quota'],
     ['job_failed', 'generic job failure'],
@@ -102,7 +99,6 @@ describe('attributeFailureToRunner', () => {
     );
   });
 
-  // cm:why the measured complaint: lastError read null on a box that had failed 10 dispatches running
   it('stamps lastError for a never-claimed dispatch', async () => {
     expect(await attributeFailureToRunner(RUNNER_A, NO_ACK_ERROR)).toBe(true);
     expect(updateSet).toHaveBeenCalledWith(

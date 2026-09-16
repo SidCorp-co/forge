@@ -8,7 +8,6 @@
  * close a real ESM cycle over top-level `const` init.
  */
 
-// cm:edge contract -> packages/core/src/mcp/tools/project-authz.ts — `assertPmActor`'s refusal is the complement of this list minus `dispatch`/`write_decision`; adding an action here without deciding which side it is on makes the refusal advertise it as reachable
 export const PM_ACTIONS = [
   'snapshot',
   'graph',

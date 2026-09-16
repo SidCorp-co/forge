@@ -43,7 +43,6 @@ describe('absentPrerequisites', () => {
     expect(missing[0].remedy).toBe('pnpm install --frozen-lockfile');
   });
 
-  // cm:why the two are separate prerequisites because they fail at different moments and only one of them is `pnpm install`: measured 2026-09-07, an installed workspace whose `@forge/observability` was never built gave `tsc` eight `Cannot find module` errors, which read as broken imports in the repo rather than as an unbuilt dependency
   it('separates an uninstalled workspace from an unbuilt one', () => {
     placeAll('deps');
     const missing = absentPrerequisites(root, ['deps', 'observability-build']);
@@ -51,7 +50,6 @@ describe('absentPrerequisites', () => {
     expect(missing[0].remedy).toBe('pnpm --filter @forge/observability build');
   });
 
-  // cm:guard EVERY declared path, not the first. `node_modules` at the repo root exists after a partial or interrupted install while the package-level ones do not, and a check that resolves only the root would call that checkout ready and hand its `biome: not found` back as a lint verdict.
   it('is absent when any one of its declared paths is missing', () => {
     place('node_modules/.keep');
     expect(absentPrerequisites(root, ['deps'])).toHaveLength(1);
@@ -84,7 +82,6 @@ describe('the sentence a reader gets', () => {
     expect(remedyLines(missing)[0]).toContain('pnpm install --frozen-lockfile');
   });
 
-  // cm:guard the aside must never read as a verdict on the repo. A gate that could not run has measured nothing, so no wording here may name a rule, a violation or a count.
   it('says it could not run and counts the rest', () => {
     const missing = absentPrerequisites(root, ['deps', 'observability-build']);
     const aside = blockedAside(missing);

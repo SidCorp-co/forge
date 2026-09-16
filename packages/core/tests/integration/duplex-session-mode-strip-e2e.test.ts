@@ -80,7 +80,6 @@ describe('ISS-873 phase 6 — stripping sessionMode from stored configs', () => 
       pipelineConfig: Record<string, unknown>;
     };
     expect(cfg.pipelineConfig).not.toHaveProperty('sessionMode');
-    // cm:guard the siblings are the assertion, not decoration — a `#-` path or a whole-object rewrite strips the key and takes these with it, and the project then reads as configured-by-nobody rather than as migrated.
     expect(cfg.pipelineConfig.enabled).toBe(true);
     expect(cfg.pipelineConfig.sessionResidencySeconds).toBe(600);
     expect(cfg.pipelineConfig.states).toEqual({ open: { mode: 'auto' } });
@@ -99,7 +98,6 @@ describe('ISS-873 phase 6 — stripping sessionMode from stored configs', () => 
     await runMigration();
 
     expect(await configOf('key-absent')).toEqual({ pipelineConfig: { enabled: true } });
-    // cm:guard a project with no `pipelineConfig` must not GAIN one — `jsonb_set` over an absent path is what conjures it, which is why the strip is guarded by a `?` existence test rather than run over every row.
     expect(await configOf('no-pipeline-config')).toEqual({ projectFacts: { a: 'b' } });
   });
 
@@ -132,11 +130,9 @@ describe('ISS-873 phase 6 — stripping sessionMode from stored configs', () => 
 
     await expect(runMigration()).rejects.toThrow();
 
-    // cm:guard the one assertion that fails if the `DO` block is dropped: an opted-out project must still SAY it opted out afterwards, because a migration that stripped the key moves exactly the project that refused duplex onto duplex and leaves nothing recording that its answer was overridden.
     expect(await configOf('opted-out')).toEqual({
       pipelineConfig: { sessionMode: 'print', enabled: true },
     });
-    // cm:guard asserts the migration is ALL-OR-NOTHING rather than half-applied — the abort shares one implicit transaction with the strip, so a duplex project it would have cleaned still carries its key after the refusal.
     expect(await configOf('on-duplex')).toEqual({ pipelineConfig: { sessionMode: 'duplex' } });
   });
 });

@@ -128,7 +128,6 @@ describe('a person’s own notes (ISS-1034 criteria 28–31)', () => {
     return ((await res.json()) as { hits: Array<{ text: string }> }).hits.map((h) => h.text).sort();
   };
 
-  // cm:guard two members of ONE project, in ONE room, and the read is asserted to split by author: a filter on project or on conversation would pass a one-author fixture and hand every note in the room to whoever asks (ISS-1034 criteria 28, 30).
   it('lists only the caller’s notes, in a room two people share', async () => {
     const alice = await member(null);
     const bob = await member(alice.projectId);

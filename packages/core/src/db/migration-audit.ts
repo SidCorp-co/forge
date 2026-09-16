@@ -27,8 +27,6 @@ export interface JournalEntry {
  * `0062_personal_access_tokens` → personal_access_tokens;
  * `0063_mcp_audit_log` → mcp_audit_log. All present.
  */
-// cm:guard baseline the measured three so a FOURTH is visible — before this, every boot warned and raised the same Sentry event forever, and new drift would have surfaced only as the count going 3 → 4 inside noise nobody reads
-// cm:edge lockstep -> packages/core/src/db/migrate.ts — removing a tag here re-arms its warning; the two files are one mechanism
 export const INVESTIGATED_UNRECORDED: ReadonlySet<string> = new Set([
   '0041_pm_agent',
   '0062_personal_access_tokens',

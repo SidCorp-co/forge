@@ -28,7 +28,6 @@ export interface PresenceConfig {
   heartbeat?: { enabled?: boolean | undefined; intervalMs?: number | undefined } | undefined;
 }
 
-// cm:guard keyed on the agent's `users.id` and holding NO name column: the label a person reads is `users.display_name` (ISS-1003) and the address is `organization_members.handle`, and a third copy of either here is the drift ISS-1003's three-column split exists to refuse. A self RENDERS and decides nothing — `db/display-name-readers.test.ts` names who may read the name, and this table adds nothing to that list.
 export const agentSelves = pgTable(
   'agent_selves',
   {
@@ -42,7 +41,6 @@ export const agentSelves = pgTable(
     /** How it presents: a short emoji or glyph, and the line it opens with. */
     emoji: text('emoji'),
     greeting: text('greeting'),
-    // cm:guard `{}` and never NULL, so every reader folds the same shape and no branch exists for "a self with no presence": an absent row and an empty object mean the same thing, which is today's constants.
     presence: jsonb('presence').$type<PresenceConfig>().notNull().default({}),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
@@ -59,7 +57,6 @@ export type PreferenceChangeField = (typeof preferenceChangeFields)[number];
 export const preferenceChangeActors = ['person', 'admin', 'assistant'] as const;
 export type PreferenceChangeActor = (typeof preferenceChangeActors)[number];
 
-// cm:guard one ROW per write and never a column on `user_preferences`: the person's way back from a change the assistant made is the previous value, and a single "last value" column loses it on the second write — which is the write that would have been the assistant's (ISS-1034).
 export const preferenceChanges = pgTable(
   'preference_changes',
   {
@@ -71,7 +68,6 @@ export const preferenceChanges = pgTable(
     previousValue: text('previous_value'),
     newValue: text('new_value'),
     changedBy: text('changed_by', { enum: preferenceChangeActors }).notNull(),
-    // cm:guard the ACTOR's id, distinct from `user_id`: for a person's own edit the two agree, for an admin's they differ, and for the assistant's this is the handle that spoke — so a change can always be traced to who made it rather than whose it is.
     changedByUserId: uuid('changed_by_user_id').references(() => users.id, {
       onDelete: 'set null',
     }),

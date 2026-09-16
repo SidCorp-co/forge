@@ -34,10 +34,6 @@ function provider(rounds: ChatStreamEvent[][]): ChatProvider {
 }
 
 describe('ToolCallRecord.resultIssueRefs', () => {
-  // cm:guard the references come from the WHOLE result and not from `resultPreview`, which is cut
-  // at 500 characters: the reply screen reads this to answer "did this turn look that id up?", and
-  // a listing that names an issue past the cut would otherwise read as an id nobody verified —
-  // refusing a reply that quoted a row the model really was shown (ISS-1057, codex F1).
   it('records the issue references a tool result named, past the preview cut', async () => {
     const long = `${'x'.repeat(600)} ISS-538 and iss-11`;
     const tools: ChatToolset = {
@@ -60,10 +56,6 @@ describe('ToolCallRecord.resultIssueRefs', () => {
     expect(call.resultIssueRefs).toEqual(['ISS-538', 'ISS-11']);
   });
 
-  // cm:guard the set the TURN keeps is uncapped, and the cap lives on the audit write in
-  // `external-chat.ts`: a listing naming more references than the cap would otherwise have the
-  // reply screen refuse a citation the model genuinely read — the same false refusal this change
-  // exists to remove, arriving once a list gets long (codex F1 of the whole-set read).
   it('keeps every reference a long listing named, past any audit cap', async () => {
     const many = Array.from({ length: 120 }, (_, i) => formatIssueRef('ISS', i + 1)).join(' ');
     const tools: ChatToolset = {

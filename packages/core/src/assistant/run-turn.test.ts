@@ -1,7 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why the SSE callback is run against a fake stream, because what this file judges is the events
-// a turn emits and their order, which no HTTP assertion over the body can separate from framing.
 const captured: Array<{ event: string; data: string }> = [];
 vi.mock('hono/streaming', () => ({
   streamSSE: async (
@@ -22,8 +20,6 @@ vi.mock('hono/streaming', () => ({
   },
 }));
 
-// cm:why the audit row and the message rows both reach the database, and this file is about the SSE
-// stream rather than either of them.
 vi.mock('../db/client.js', () => ({
   db: { insert: () => ({ values: async () => undefined }) },
 }));
@@ -76,14 +72,7 @@ vi.mock('./conversation-turn.js', () => ({
       blocks: opts?.blocks ?? null,
     });
   },
-  // cm:why the mock RETURNS rows: `runChatTurn` reads the written row back and streams it as the
-  // final frame, which is what makes the stream and the transcript one thing rather than two that
-  // resemble each other. A mock returning nothing would hide that frame from every assertion.
   persistMessages: async (t: { pending: Array<Record<string, unknown>> }) => {
-    // cm:guard the double honours a caller-supplied `id` because the REAL insert does: the column
-    // default only mints one where the caller did not. A double that always minted its own is what
-    // let ISS-1029 ship streaming 19 frames under one id and settling under another — the assertion
-    // below could not have failed against it, whatever the production code did.
     const rows = t.pending.map((m, i) => ({
       id: (m.id as string | null) ?? `row-${i}`,
       seq: i,
@@ -127,10 +116,6 @@ function turn(): ConversationTurn {
 
 type RawBlock = Record<string, unknown>;
 
-// cm:guard these REFUSE by name rather than casting past an absence. What this file judges is which
-// block landed at which index, and an accessor that yields `undefined` for a missing one reports a
-// wrong-order defect as `expected undefined to be 'Let me look.'` — a message naming neither the
-// index nor the block that was actually there.
 function blocksOf(row: Record<string, unknown> | undefined, what: string): RawBlock[] {
   const blocks = row?.blocks;
   if (!Array.isArray(blocks)) throw new Error(`${what} carries no blocks array`);
@@ -154,7 +139,6 @@ describe('runChatTurn tool loop', () => {
     captured.length = 0;
     appended.length = 0;
 
-    // cm:why two provider turns: the first asks for a tool, the second answers with it done
     let call = 0;
     const provider: ChatProvider = {
       id: 'mock',
@@ -201,9 +185,6 @@ describe('runChatTurn tool loop', () => {
 
     expect(executedWith).toEqual({ name: 'forge_issues', args: '{"action":"list"}' });
 
-    // cm:guard the route speaks ONE event kind and the tool round-trip is inside it, not beside it:
-    // what used to be a `tool_call` frame and a `tool_result` frame is now one tool block that
-    // settles (ISS-1029). The old assertion named those two frames and is replaced, not dropped.
     const kinds = new Set(captured.map((e) => e.event));
     expect([...kinds].sort()).toEqual(['conversation', 'message']);
     const entries = captured
@@ -214,9 +195,6 @@ describe('runChatTurn tool loop', () => {
     );
     expect(toolBlocks).toHaveLength(1);
 
-    // cm:guard the PRE-tool assistant text is not persisted AS CONTENT: a turn that called a tool
-    // and then answered is one answer, and storing the intermediate text replays it to the model as
-    // a second one. It is kept in `blocks`, which nothing replays (ISS-1029).
     expect(appended).toEqual(['You have 2 open issues.']);
 
     const provider_called_twice = call === 2;
@@ -334,8 +312,6 @@ describe('runChatTurn writes the canonical transcript entry', () => {
     const messages = captured.filter((e) => e.event === 'message');
     expect(messages.length, 'the stream carries canonical entries').toBeGreaterThan(0);
 
-    // cm:guard the LAST `message` is the persisted entry itself, emitted after the write — that is
-    // what makes "the stream and the transcript agree" an equality rather than a resemblance.
     const last = JSON.parse(messages.at(-1)?.data ?? '{}') as Record<string, unknown>;
     expect(last.type).toBe('assistant');
     expect(last.blocks).toEqual(persisted.at(-1)?.blocks);
@@ -346,11 +322,6 @@ describe('runChatTurn writes the canonical transcript entry', () => {
     expect(captured.some((e) => e.event === 'tool_result')).toBe(false);
   });
 
-  // cm:guard ONE identity for the whole turn, growing frames and settled row alike. A client keyed
-  // by `id` reduces this stream to one assistant entry; with the row minting its own, the growing
-  // frames carried one id and the final frame another and a reducer showed the answer twice. Seen
-  // on beta before the fix: 19 frames under `a4e93846`, the 20th under `838917e6`
-  // (ISS-1029 review F1).
   it('streams every frame of a turn under the id the row is written with', async () => {
     const { provider, tools } = proseToolProse();
     await run(provider, tools);
@@ -395,8 +366,6 @@ describe('runChatTurn writes the canonical transcript entry', () => {
 
     expect(silences.length, 'an empty answer is still a silence').toBe(1);
     const blocks = persisted.at(-1)?.blocks as Array<Record<string, unknown>> | null;
-    // cm:guard the tool work survives the silence: this is the ONE turn a person opens the
-    // transcript to investigate, and dropping its blocks reproduces the defect here.
     expect(blocks?.some((b) => b.type === 'tool')).toBe(true);
   });
 

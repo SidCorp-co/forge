@@ -8,6 +8,5 @@
  * same reason.
  */
 
-// cm:guard adding a format means teaching `prepareBody` a branch AND giving web a renderer for it in the same change — a value the column accepts and no reader knows produces a row that renders as nothing
 export const BODY_FORMATS = ['markdown', 'html'] as const;
 export type BodyFormat = (typeof BODY_FORMATS)[number];

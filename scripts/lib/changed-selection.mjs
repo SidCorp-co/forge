@@ -16,7 +16,6 @@
 export function selectionFor({ all, selected, always, fullRunShare }) {
   const union = [...new Set([...selected, ...always])].sort();
 
-  // cm:guard skipping needs BOTH lanes empty, never `selected` alone: the always lane reads the source TREE rather than importing it, so a change no test imports — a new file, a config, a renamed export — is exactly what it catches and exactly what a skip on `selected` would drop in silence. That is the hole the two-lane split exists to close, and it was reopened at this last step.
   if (union.length === 0) return { skip: true, full: false, files: [], union };
 
   const full = union.length > all.length * fullRunShare;

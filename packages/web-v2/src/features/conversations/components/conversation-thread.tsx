@@ -17,7 +17,6 @@ import {
 } from "../types";
 
 function Said({ message }: { message: ConversationMessage }) {
-  // cm:guard a row carrying a `silence_reason` is a turn that RAN and said nothing, and it renders as that rather than as an empty bubble — an assistant message with no text and no label is indistinguishable on screen from one still streaming.
   if (message.silenceReason) {
     return (
       <div className="flex items-start gap-2 text-muted">
@@ -28,7 +27,6 @@ function Said({ message }: { message: ConversationMessage }) {
       </div>
     );
   }
-  // cm:guard a `system` row is ONE muted line and never a bubble: it is the room telling its readers what happened to it — who joined, why it is a group now — and rendered as an assistant turn it would read as the agent claiming somebody joined (ISS-1034 criterion 48).
   if (message.role === "system") {
     return (
       <p
@@ -58,9 +56,6 @@ function Said({ message }: { message: ConversationMessage }) {
   );
 }
 
-// cm:guard an unsent message renders through THIS component and the same bubble a said one gets,
-// rather than a list of its own beside the thread: two renderers for "what I typed" is how the
-// queued copy and the stored copy start disagreeing about spacing, order and who said it (ISS-1031).
 function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string) => void }) {
   const failed = item.state === "failed";
   return (

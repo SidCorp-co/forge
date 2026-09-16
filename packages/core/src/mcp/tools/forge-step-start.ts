@@ -39,7 +39,6 @@ import { assertPrincipalIsWriter, zodToMcpSchema } from './lib.js';
 const STEP_START_RECENT_COMMENTS = 20;
 const STEP_START_COMMENTS_MAX_CHARS = 30_000;
 
-// cm:why past this many chars of heavy fields, one complex issue would dominate the agent's context window on every step call, so step_start returns a lean manifest and lets the agent pull what it needs; under it, the full body still arrives in one round-trip.
 const STEP_START_BODY_MANIFEST_THRESHOLD = 2000;
 
 const inputSchema = z
@@ -51,7 +50,6 @@ const inputSchema = z
   })
   .strict();
 
-// cm:guard the step can no longer be DERIVED, and the caller must not be handed a guess. ISS-895 removed `STATUS_TO_JOB_TYPE` with the staged lane, so there is no status→step map left to read; the only lane this pipeline has dispatches `drive`, whose whole walk is one step. Defaulting to `drive` when `stage` is absent would label every check-in as the driver's, including a caller that meant something else.
 function resolveStage(input: { stage?: JobType | undefined }): JobType {
   if (input.stage) return input.stage;
   throw new Error(
@@ -75,7 +73,6 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     const stage = resolveStage(input);
 
-    // cm:guard this tool NEVER moves the issue any more, and the note says so on every call rather than going quiet. The trigger→working flip it used to perform belonged to the staged lane's step table (ISS-895); the driver owns its own status writes, and a silent `statusChanged:false` would read to an agent as "already there" rather than "this no longer happens".
     const statusChanged = false;
     const statusNote = `no status flip: the staged lane was removed (ISS-895), so no step has an in-flight status — the driver writes its own status. Issue is at '${issue.status}'.`;
 

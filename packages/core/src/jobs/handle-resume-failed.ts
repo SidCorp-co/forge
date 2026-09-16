@@ -3,7 +3,6 @@
 // failure is reclassified so the retry chain reads it as a code failure
 // rather than an infrastructure one.
 //
-// cm:why the `onResumeFail` policy and the prior-session invalidation that used to live here went with `sessionGroups` (ISS-897): both keyed on `payload.sessionGroup`, which has had no producer since `states[x].sessionGroup` left the config schema. A retry still resumes through its parent attempt (`jobs/resume-policy.ts`), and that path never needed either.
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';

@@ -227,7 +227,6 @@ uxContractProjectRoutes.post(
   },
 );
 
-// cm:why ISS-579 — returns the improver's refusals alongside its candidates: a gap it declined to propose and a gap it never noticed are indistinguishable to the caller otherwise, and the scheduled agent needs the difference to know whether it is looking at a quiet project or a broken detector.
 uxContractProjectRoutes.get(
   '/:id/ux-improver/candidates',
   zValidator('param', projectIdParamSchema, (r) => {
@@ -315,7 +314,6 @@ uxContractRuleRoutes.patch(
       .returning();
     if (!updated) throw notFound('ux contract rule not found');
 
-    // cm:guard ISS-579 — approving a supersede proposal MUST retire its target before the recompile below, in this same request. Skip it and both rules are active, so compileUxContract emits the rule twice and the pipeline reads a contract stating the same requirement at two severities.
     if (patch.status === 'active' && rule.supersedesRuleId) {
       await db
         .update(uxContractRules)

@@ -130,7 +130,6 @@ describe('attachAuthors', () => {
     expect(tree[0]?.author?.displayName).toBe('runner-1');
   });
 
-  // cm:guard a comment on a person's credential is THAT PERSON's, even when an agent typed it — this is the priced consequence of dropping `comments.is_ai` (2026-09-04) and it must fail loudly if someone reintroduces a per-row agent flag rather than giving agents an identity of their own.
   it('marks a write on a human credential as that human, whoever held the token', () => {
     const tree = buildCommentTree([{ ...row('a', null), authorDeviceId: null }]);
     attachAuthors(tree, resolvedMap());

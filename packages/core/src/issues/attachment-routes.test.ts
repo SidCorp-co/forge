@@ -20,7 +20,6 @@ const selectInnerJoinLimit = vi.fn();
 const selectInnerJoinWhere = vi.fn(() => ({ limit: selectInnerJoinLimit }));
 const selectInnerJoin = vi.fn(() => ({ where: selectInnerJoinWhere }));
 const selectOrderBy = vi.fn();
-// cm:why the list route awaits orderBy() directly while the ISS-963 name lookup chains .limit(1) onto it; one resolver cannot answer both, so the chained call gets its own and defaults to no collision
 const selectOrderByLimit = vi.fn(async () => [] as unknown[]);
 const selectListWhere = vi.fn(() => ({ orderBy: selectOrderBy }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
@@ -79,7 +78,6 @@ vi.mock('../pipeline/activity.js', () => ({
 const verifyPatMock = vi.fn();
 vi.mock('../auth/pat.js', async () => {
   const actual = await vi.importActual<typeof import('../auth/pat.js')>('../auth/pat.js');
-  // cm:guard `touchPatUsage` is stubbed OUT, not left real: it fires a `db.update` the moment a PAT verifies, and this file's db mock serves one shared queue, so the real one steals the row the handler was about to read and the failure lands on the handler as a 500. Its own error handling is irrelevant here — the theft happens before anything throws.
   return { ...actual, verifyPat: verifyPatMock, touchPatUsage: () => {} };
 });
 
@@ -267,7 +265,6 @@ describe('POST /api/issues/:id/attachments', () => {
   });
 
   it('201 via PAT: requireAnyAuth resolves userId from PAT.userId', async () => {
-    // cm:guard `scopes` carries BOTH, because that is what `mintPat` defaults to and `requireAnyAuth` now gates the method on it — the `scopes: []` this used to pass 403s every write, which reads as a broken route rather than as a token nobody would ever mint.
     const row = { id: 'pat-1', userId: USER_ID, scopes: ['read', 'write'] };
     verifyPatMock.mockResolvedValueOnce({ row });
     grantIssueAccess();
@@ -286,7 +283,6 @@ describe('POST /api/issues/:id/attachments', () => {
 
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',
-      // cm:guard the literal below must keep the shape `forge_pat_<env>_<64 hex>` — requireAnyAuth picks its verifier off that pattern, so a token that merely looks plausible falls through to the JWT path and the test proves nothing about PAT auth
       headers: {
         authorization:
           'Bearer forge_pat_dev_0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef',
@@ -298,7 +294,6 @@ describe('POST /api/issues/:id/attachments', () => {
     expect(verifyPatMock).toHaveBeenCalledOnce();
   });
 
-  // cm:guard the ISS-927 version asserted `verifyDeviceToken` went UNCALLED, since a 401 could equally come from a device branch that failed. ISS-932 deleted `auth/deviceToken.ts`, so no such verifier exists to call and the assertion is unwritable rather than merely passing. `verifyPatMock` going uncalled is the surviving half: an opaque non-PAT bearer never reaches the one credential path this route has.
   it('401 for the opaque token a pre-ISS-932 box holds, and nothing is stored', async () => {
     const res = await buildApp().request(`/api/issues/${ISSUE_ID}/attachments`, {
       method: 'POST',

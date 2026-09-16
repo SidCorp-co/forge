@@ -93,7 +93,6 @@ const AGENT_OF = /\b(?:written|owned|set|filled|decided|declared|produced|author
 /** `the plan step exists to decide` — the step is the subject, verb adjacent. */
 const ACTIVE_VERB = '(?:declares?|owns?|writes?|decides?|produces?|sets?|exists?\\s+to)';
 
-// cm:guard the two shapes above are the WHOLE rule, and widening them is what turns this gate off. Measured on this tree: a bare active verb anywhere in the sentence flags `On a review or test step that rejects … after your write` (`write`), and a possessive flags `the release stage's human-confirm gate` — two lines whose correct fix is NO CHANGE, so the only way to silence the gate is to add a mode name that makes the doc say something false. A rule whose fix makes the doc worse gets waived, not obeyed.
 function namesStepAsActor(sentence, alt) {
   const adjacent = new RegExp(`\\b(?:${alt})\\s+${STEP_NOUN}\\s+${ACTIVE_VERB}\\b`, 'i');
   return AGENT_OF.test(sentence) || adjacent.test(sentence);

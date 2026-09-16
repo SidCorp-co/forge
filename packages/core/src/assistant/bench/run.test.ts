@@ -331,7 +331,6 @@ describe('what a trial records', () => {
 
   it('a non-default baseline comes back equal', async () => {
     const prefs = { answerStyle: 'concise', assistantInstructions: 'Always cite the issue key.' };
-    // cm:why 2 rows for summary-in-style (setup, restore) and 4 for preference-restore (setup, the move, the undo, restore): every real move is one row through the one writer
     for (const [id, rows] of [
       ['summary-in-style', 2],
       ['preference-restore', 4],

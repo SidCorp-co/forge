@@ -16,14 +16,12 @@
  * mechanism. They assert INTENT, not bytes — the surfaces legitimately differ
  * in framing, escaping and audience, so byte-equality would just get disabled.
  */
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/workspace/orientation.rs — the runner template is the other copy of the affordance rules; edit one, this test fails until you edit the other
 
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { OPERATING_AFFORDANCES_TEXT, renderFact } from './registry.js';
 
-// cm:why five levels up from packages/core/src/prompt/facts reaches the repo root
 const REPO_ROOT = join(import.meta.dirname, '..', '..', '..', '..', '..');
 const ORIENTATION_RS = join(
   REPO_ROOT,
@@ -37,7 +35,6 @@ function normalize(text: string): string {
       .replaceAll('\\`', '`')
       .replaceAll('\\n', '\n')
       .replaceAll('\\"', '"')
-      // cm:why the runner copy is a `format!` template, where a literal brace is doubled — without this an affordance rule containing `{` can never match on that side, and the parity rule silently becomes unassertable
       .replaceAll('{{', '{')
       .replaceAll('}}', '}')
       .replace(/\s+/g, ' ')
@@ -140,14 +137,12 @@ describe('rule parity — operating affordances (prompt preamble vs runner orien
     expect(runnerCopy, 'missing from the runner orientation template').toContain(flag);
   });
 
-  // cm:guard the exact row that survived two of three fixes on 2026-08-07 — if it comes back anywhere, an agent is being taught to file notes as issues again.
   it('neither surface still routes a note to a draft issue', () => {
     const retired = /To record a note \/ follow-up \| create an issue at `draft`/;
     expect(promptCopy).not.toMatch(retired);
     expect(runnerCopy).not.toMatch(retired);
   });
 
-  // cm:guard removed 2026-08-18 (owner decision) — stages were deferring fixable bugs into unowned drafts instead of fixing them; 30 had accumulated on forge-dev, two of them (ISS-791, ISS-845) describing that very failure while sitting in it. If "an issue that passes the gates" returns as a residual home on either surface, the deferral loop is back.
   it('neither surface offers a new issue as a home for a residual', () => {
     const retired = /ONE of: an issue that passes the gates/;
     expect(promptCopy).not.toMatch(retired);

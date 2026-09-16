@@ -1,6 +1,5 @@
 "use client";
 
-// cm:why the nine-row stage ladder and its per-stage skill picker were removed with the lane they configured (ISS-897): there is one dispatching status now, and the driver skill arrives as a plugin that `skill_registrations` never resolves, so a picker here had nothing left to bind — the Plugins section is where the skill actually comes from
 
 import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
@@ -30,7 +29,6 @@ import { PluginsSection } from "./plugins-section";
 import { ReleaseSection } from "./release-section";
 import { API_ONLY_KEYS, type PipelineConfig } from "../types";
 
-// cm:edge contract -> packages/core/src/pipeline/autonomous-dispatch.ts — `isEntryGateClosed` reads exactly this pair on exactly this status, and CLOSED is the OR of them: a screen that read only one knob would show "on" for a project whose issues the gate is holding, which is the invisible-gate the nine-row ladder left behind when ISS-897 removed it.
 const ENTRY_STATUS = "open";
 
 type EntryGate = { enabled?: boolean; mode?: string };
@@ -44,7 +42,6 @@ function entryGateOpen(cfg: PipelineConfig): boolean {
   return entry?.enabled !== false && entry?.mode !== "manual";
 }
 
-// cm:guard writes BOTH knobs to a matching pair, never one. Setting `mode` alone leaves a stored `enabled: false` holding the queue behind a toggle that now reads "on" — the two knobs are one decision here and only the OR above is read.
 function withEntryGate(cfg: PipelineConfig, open: boolean): PipelineConfig {
   const states = (cfg.states ?? {}) as Record<string, EntryGate>;
   return {
@@ -98,7 +95,6 @@ export function PipelineTab({
     if (r.deviceId && r.deviceName) deviceNames[r.deviceId] = r.deviceName;
   }
 
-  // cm:guard the draft holds the FULL fetched config, not the keys this tab draws — `pipelineConfigSchema` strips what a PATCH omits, so a save built from the toggles alone deletes every key the screen does not render.
   const [draft, setDraft] = useState<PipelineConfig | null>(null);
   useEffect(() => {
     if (cfgQ.data) setDraft(cfgQ.data.pipelineConfig);

@@ -32,7 +32,6 @@ export const PIPELINE_JOB_TYPES = [
   "fix",
   "custom",
   "pm",
-  // cm:guard `smoke` is the one job type that runs with NO issue, as a one-shot `system` run, so anything keying a job to an issue id must tolerate its absence (ISS-455)
   "smoke",
   "release_batch",
 ] as const satisfies readonly (typeof REGISTRY_JOB_TYPES)[number][];
@@ -118,8 +117,6 @@ export interface PipelineRunSummary {
    *  nothing working on it; status alone cannot tell that apart. */
   liveJobs: number;
   /** ISS-998 — newest heartbeat of a non-terminal session on this run, or null. */
-  // cm:guard the OTHER half of `liveJobs`, and it rides on the same row on purpose: `agent_sessions` hangs off the run rather than off a job, so a master-lane run reads `liveJobs: 0` while fully live. Fetched separately it could not be read consistently at all — `agent_sessions` is paged, and an offset walk over a set that moves loses a row it never names (ISS-998).
-  // cm:edge contract -> packages/core/src/pipeline/runs-rollup.ts — `loadLastSessionBeatByRunIds` is what fills this; it is `null` both for a run with no session and for a caller that did not batch the load, and neither is a claim that the run is dead.
   lastSessionBeatAt: string | null;
   /** ISS-411 — per-attempt device/retry timeline. */
   attempts: PipelineRunAttempt[];
@@ -223,5 +220,4 @@ export interface AnalyticsOpts {
  *  different way, because a label is shared by several statuses and `closed` shares none of its
  *  own — but `draft` does not gate `open`, and the moment one excluded status shares a label with
  *  an included one, subtraction drops a column that holds live rows. */
-// cm:guard this constant and the `statusNot` params are ONE fact. Adding a `statusNot` to the query without adding it here leaves the board with a column nothing can ever fill, and removing one here without removing the param hides live issues with no column to show them in.
 export const BOARD_EXCLUDED_STATUSES = ["draft", "closed"] as const;

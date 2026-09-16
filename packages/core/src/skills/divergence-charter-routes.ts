@@ -18,7 +18,6 @@ import { readCharter, upsertCharterAtomic } from './divergence-charters-service.
 
 const projectIdParamSchema = z.object({ id: z.uuid() });
 
-// cm:guard PUT, never PATCH, and `entries` is required — the write is a FULL REPLACEMENT of the charter's entry list, which is what `upsertCharter` does. A PATCH-shaped verb here would read as "merge these in" and silently drop every entry the caller did not resend.
 const charterPutSchema = z
   .object({
     entries: z.array(divergenceCharterEntrySchema),

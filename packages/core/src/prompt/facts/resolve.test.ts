@@ -71,9 +71,6 @@ describe('renderStageFactsText', () => {
     expect(text).not.toContain('forge-beta.example.com');
   });
 
-  // cm:guard `appliesTo` is the whole of the scoping, so the claim needs a stage that GETS a
-  // fact and one that does not. Since ISS-1047 the only claimable stage with contextual facts is
-  // `drive`; `release_batch` is the live counter-case and gets none of them.
   it('scopes facts by stage', () => {
     const drive = renderStageFactsText(makeInputs(), 'p-1', 'drive');
     expect(drive).toContain('Step handoff');
@@ -97,7 +94,6 @@ describe('renderStageFactsText', () => {
   });
 });
 
-// cm:guard assert the RENDERED release block, not the registry's `appliesTo` — the two are separated by resolve.ts's tier filter, and the whole defect this closes was an instruction that existed in the registry and reached no prompt. Checking the metadata would have passed the entire time the leak was open.
 describe('renderStageFactsText — worktree cleanup reaches the release prompt', () => {
   it('injects the removal step at release', () => {
     const text = renderStageFactsText(makeInputs(), 'p-1', 'release');
@@ -142,7 +138,6 @@ describe('renderStageFactsText — always-inject tier (ISS-521)', () => {
     expect(indexSection).toContain('- build-commands');
   });
 
-  // cm:guard ISS-936 decided this heading KEEPS "Follow them exactly." and does NOT carry the sentence about nothing checking the rule — that sentence is owed to the owner who sets the flag, and putting it in the rule's own prompt tells the agent that ignoring the rule costs nothing.
   it('ISS-936: the heading instructs the agent and makes the agent no excuse', () => {
     const text = renderStageFactsText(
       makeInputs({ alwaysInjectFacts: [{ key: 'contracts-boundary', text: RULE }] }),
@@ -260,7 +255,6 @@ describe('renderIntegrations — capability-guide pointer (ISS-746)', () => {
     expect(text).toContain('Full guide: `forge_guide get integration-epodsystem`.');
   });
 
-  // cm:guard the org's runtime guide must WIN over the seeded slug — an org authors one to correct the shipped default, so pointing at the default would send the agent to the text they replaced
   it('the org guide overrides a seeded slug (coolify)', () => {
     const text = renderIntegrations([
       {
@@ -292,7 +286,6 @@ describe('renderIntegrations — per-binding instructions (A11)', () => {
     expect(text).toContain('    Ask the owner for the size chart.');
   });
 
-  // cm:guard every line must stay indented — an unindented operator line escapes its bullet and reads to the agent as a new top-level instruction
   it('indents every line of a multi-line instruction', () => {
     const text = renderIntegrations([
       {
@@ -354,7 +347,6 @@ describe('renderIntegrations — per-binding instructions (A11)', () => {
   });
 });
 
-// cm:guard assert the RENDERED block for both projects, never the registry's `relevant` predicate — the predicate could be correct while the tier filter never consults it, which is exactly how the ISS-552 leak stayed open
 describe('renderStageFactsText — module attribution is gated on the taxonomy (ISS-595)', () => {
   const MODULES = [
     { name: 'billing', parentName: null },
@@ -383,7 +375,6 @@ describe('renderStageFactsText — module attribution is gated on the taxonomy (
   });
 
   it('adds no section to a project with no module labels — the headings are pinned', () => {
-    // cm:why the pinned list is the exact heading set a taxonomy-less project got before this change, so a section that leaks past the predicate lands here as an extra entry whatever its wording — asserting `not.toContain` of one phrase would pass on a reworded leak
     const headings = (text: string) => text.split('\n').filter((l) => l.startsWith('### '));
     expect(headings(renderStageFactsText(makeInputs({ modules: [] }), 'p-1', 'drive'))).toEqual([
       '### Release-notes shape',

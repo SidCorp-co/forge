@@ -64,7 +64,6 @@ export function AssistantPreferencesCard() {
       await restore.mutateAsync(change.id);
       toast({ title: "Restored", description: describeChange(change), tone: "success" });
     } catch (err) {
-      // cm:guard the 409 is shown as what it is — a later change holds the field — and never retried or forced: the trail is the person's own record, and a restore over somebody's newer write would be the silent overwrite the trail exists to make visible (ISS-1034 criterion 53).
       toast({ title: "Could not restore", description: formatApiError(err), tone: "error" });
     }
   }

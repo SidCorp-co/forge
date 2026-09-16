@@ -15,7 +15,6 @@ export interface OpenedConversation {
 /**
  * A window that has been claimed and is ready to route.
  */
-// cm:guard `claimedAt` and `claimedBy` are BOTH set, because together they are the claim token every write the router makes is fenced on: a fixture missing either would make `routeWindow` refuse the window outright rather than test anything (ISS-1004).
 export function claimedWindowFor(
   opened: OpenedConversation,
   projectId: string,

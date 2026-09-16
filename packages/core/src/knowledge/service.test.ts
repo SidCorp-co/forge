@@ -22,7 +22,6 @@ vi.mock('../embeddings/index.js', () => ({
 
 const calls: Array<{ where: unknown; limit: number | null }> = [];
 let rows: Array<Record<string, unknown>> = [];
-// cm:guard counted on `db.select` and not on `.limit()`: a second query added without a LIMIT would never reach `calls`, so a one-query assertion resting on that array would stay green while two ran.
 const selects = vi.fn();
 
 function makeChain() {
@@ -102,7 +101,6 @@ describe('listKnowledgeEntries', () => {
    * longer than the character cap.
    */
   it('caps rows above the largest number that can fit under the character cap', () => {
-    // cm:guard measured on the RESPONSE row, with the SQL-only `total` column stripped: `total` is ~35 characters the caller never receives, and counting it makes every row look wider than it is, which is how this assertion would pass for a MAX_LIST_ROWS that does cut rows the cap would have kept.
     const shortestRows = Array.from({ length: MAX_LIST_ROWS }, (_, i) => {
       const { total: _total, ...row } = minimalRow(i, MAX_LIST_ROWS);
       return row;
@@ -161,14 +159,12 @@ describe('listKnowledgeEntries', () => {
     const n = 40;
     rows = Array.from({ length: n }, (_, i) => ({
       ...minimalRow(i, n),
-      // cm:why an astral character is 2 UTF-16 code units and 4 UTF-8 bytes, which is where the two accountings part company
       title: '𝍮'.repeat(perRow / 2),
     }));
     const result = await listKnowledgeEntries({ projectId: PROJECT_ID });
     expect(result.truncated).toBe(true);
     const chars = serialized(result);
     expect(chars).toBeLessThanOrEqual(MAX_RESPONSE_CHARS);
-    // cm:guard the same page measured in UTF-8 bytes is OVER the cap, so byte accounting would have returned fewer rows than this — that gap is the whole assertion, and a fixture whose title is plain ASCII asserts nothing
     expect(Buffer.byteLength(JSON.stringify({ rows: result.rows }), 'utf8')).toBeGreaterThan(
       MAX_RESPONSE_CHARS,
     );

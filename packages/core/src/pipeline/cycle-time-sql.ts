@@ -1,7 +1,6 @@
 import { type SQL, sql } from 'drizzle-orm';
 import { activityLog, issues } from '../db/schema.js';
 
-// cm:guard the ONE place the transitions scan is written, exported so `tests/integration/bounded-read-indexes.test.ts` can `EXPLAIN` the statement this route actually sends rather than a hand-copied likeness of it: the index this read depends on is chosen by the whole shape — the join, the window functions and the payload extraction included — so a copy that drifts turns criterion 54 into a test of the copy (ISS-1022).
 export function cycleTimeTransitionsSql(projectIds: string[], days: number): SQL {
   return sql`
       SELECT

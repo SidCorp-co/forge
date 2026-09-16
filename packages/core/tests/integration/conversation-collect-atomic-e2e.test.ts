@@ -57,7 +57,6 @@ beforeEach(async () => {
   ).id;
 });
 
-// cm:guard the planted failure, and the reason the whole thing is one transaction: without it the message commits and its window does not, so the room holds a question nothing knows it owes an answer to — a silence with no owner, which is exactly what the window row exists to remove (ISS-1004 review F3).
 it('leaves no message behind when its window cannot be written', async () => {
   const externalId = `chat.example.co ${randomUUID()}`;
   const ports = {

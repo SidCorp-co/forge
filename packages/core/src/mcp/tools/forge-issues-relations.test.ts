@@ -12,8 +12,6 @@
 import { beforeEach, expect, it, vi } from 'vitest';
 import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
-// cm:why Mocked independently of the shared `db.select` queue: the attribute read on `get` is its own query, and what it returns is unit-tested in `issues/attributes/attributes.test.ts`.
 vi.mock('../../issues/attributes/read.js', () => ({
   loadIssueAttributes: vi.fn(async () => []),
 }));
@@ -90,8 +88,6 @@ vi.mock('../../issues/dependency-read.js', () => ({
   loadIssueRelations: (id: string, projectId: string) => loadIssueRelationsMock(id, projectId),
 }));
 
-// cm:guard `writeIssueRelations` (issues/relations-service.ts) reaches `writeIssueDependency` across a module boundary, which is the only reason overriding the EXPORT works — inline that call into relations-service.ts and it bypasses this mock, so every relation test starts hitting the real DB chain and passes for the wrong reason
-// cm:guard stub BOTH halves. `writeIssueDependency` alone leaves the real `emitIssueDependencyEffects` running against a mocked db, and the failure surfaces as an unrelated hook error rather than the edge assertion under test.
 const setEdgeMock = vi.fn(async () => ({
   id: 'dep-id-1',
   created: true,
@@ -119,7 +115,6 @@ const BLOCKED_ID = '88888888-8888-4888-8888-888888888888';
 const ORG_ID = '99999999-9999-4999-8999-999999999999';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-// cm:guard a MACHINE principal, because a paired device is what these cases used to run as and `agency: 'agent'` is the load-bearing half of that. It is what turns the ISS-786/812 evidence gates ON — a `makeFakePrincipal` here reads as a person, the gates skip, and `mark_merged refuses ... with no recorded code evidence` passes for the wrong reason (ISS-931).
 const fakePrincipal = makeFakeJobPrincipal(
   '44444444-4444-4444-8444-444444444444',
   OWNER_ID,
@@ -193,7 +188,6 @@ it('update writes the edge with dependsOnId on the from side and reports it back
     },
     expect.anything(),
   );
-  // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
   expect(emitEdgeMock).toHaveBeenCalledWith(
     expect.anything(),
     expect.anything(),
@@ -229,7 +223,6 @@ it('update writes the edge with blocksId on the to side', async () => {
     },
     expect.anything(),
   );
-  // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
   expect(emitEdgeMock).toHaveBeenCalledWith(
     expect.anything(),
     expect.anything(),
@@ -265,7 +258,6 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
     },
     expect.anything(),
   );
-  // cm:guard the deferral moved with the announcement: `deferHealthPublish` is an EFFECTS option now, and asserting it on the write spy would silently pass against the executor argument that took its place.
   expect(emitEdgeMock).toHaveBeenCalledWith(
     expect.anything(),
     expect.anything(),
@@ -278,7 +270,6 @@ it('update passes validUntil through so an existing edge can be retracted', asyn
 it('update commits the edge BEFORE the status transition that wakes the dispatcher', async () => {
   selectLimit.mockResolvedValueOnce([{ ...baseIssueRow, status: 'draft' }]);
   selectLimit.mockResolvedValueOnce([memberAccessRow]);
-  // cm:why the third staged row is the ISS-959 criteria read, which a STATUS write does and a plain field write does not — staging it inside `stageUpdate` would leave one row unconsumed for every case that writes no status
   selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
   selectLimit.mockResolvedValueOnce([baseIssueRow]);
   updateReturning.mockResolvedValue([baseIssueRow]);
@@ -339,7 +330,6 @@ it('get returns the edges on both sides of the issue', async () => {
   expect(result.relations.blockedBy[0]).toMatchObject({ edgeId: 'dep-id-1', expired: false });
 });
 
-// cm:guard the two halves of one principal, and they answer different questions: the edge is ATTRIBUTED to the person whose token it is (`id`), while the agency the gates read is `agent`, because a person's token establishes nobody and `actorAgency` fails closed there (ISS-1003). This asserted `agency: 'human'` until that issue, which is the claim that exempted every agent borrowing a personal token. Collapse the two back into one field and one of these goes red.
 it('attributes the edge to the PAT user — the synthetic device that used to stand in for it is gone', async () => {
   const PAT_USER = '55555555-5555-4555-8555-555555555555';
   stageUpdate();

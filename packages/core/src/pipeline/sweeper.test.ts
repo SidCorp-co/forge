@@ -4,7 +4,6 @@ vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 
 const zeroAxis = { reaped: 0, killRequested: 0, awaitingKill: 0 };
 
-// cm:guard the loop monitor stays MOCKED here — this suite asserts the sweeper's own contract (pass ordering, the alarm passes, the still-active reapers), and unmocking it pulls in the whole reap graph, whose writes then answer assertions about passes that never ran (ISS-449)
 const zeroLoopResult = {
   ackMisses: zeroAxis,
   sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
@@ -36,7 +35,6 @@ vi.mock('./inv7-alarms.js', () => ({
 const resumeOrphanedPausesMock = vi.fn(async () => ({ detected: 0, resumed: 0 }));
 vi.mock('./run-pause.js', () => ({ resumeOrphanedPauses: () => resumeOrphanedPausesMock() }));
 
-// cm:why mocked for the same reason `alertSweep` is — `reapConcludedRuns` issues its own real `db.execute`, and this suite's `dbExecute` is one shared `mockResolvedValueOnce` queue, so an unmocked pass silently eats another pass's queued result. Its own behaviour is proved in `runs-concluded.test.ts` and `tests/integration/concluded-run-reap-e2e.test.ts`.
 const reapConcludedRunsMock = vi.fn(async (_now?: Date) => ({ reaped: 0 }));
 const reapJoblessRunsMock = vi.fn(async (_now?: Date) => ({ reaped: 0 }));
 vi.mock('./runs-concluded.js', () => ({
@@ -44,12 +42,6 @@ vi.mock('./runs-concluded.js', () => ({
   reapJoblessRuns: (now?: Date) => reapJoblessRunsMock(now),
 }));
 
-// cm:why the same reason the alertSweep mock below carries: this pass issues its own real
-// `db.execute` against the suite's single shared mock queue, so unmocked it consumes a row queued
-// for another pass, reads a row with none of its fields, and throws — which `runPass` isolates and
-// `runPipelineSweep` then re-throws at the end of the tick, failing every assertion in the file
-// that calls it. That is the ISS-449 contract working; the fix is to mock the pass, not to soften
-// it (ISS-1050).
 const detectOrphanedRunAssertionsMock = vi.fn(async (_now?: Date) => ({
   detected: 0,
   reported: 0,
@@ -66,19 +58,16 @@ vi.mock('./retry-rescue-alert.js', () => ({
   detectRetryRescueThresholds: (now?: Date) => detectRetryRescueThresholdsMock(now),
 }));
 
-// cm:why ISS-652 — alertSweep issues its own real db.execute calls (alert-queries.ts); this suite's db.execute mock is a single shared mockResolvedValueOnce queue, so an unmocked pass would silently consume another pass's queued result
 const alertsMock = vi.fn(async (_now?: Date) => ({ evaluated: 0, notified: 0, resolved: 0 }));
 vi.mock('../admin/alert-sweeper.js', () => ({ runAlertSweep: (now?: Date) => alertsMock(now) }));
 
 const dbExecute = vi.fn(async (..._args: unknown[]) => [] as Array<Record<string, unknown>>);
 const sessionsWhere = vi.fn();
 const selectWhere = vi.fn(async () => [] as Array<{ status: string }>);
-// cm:why two unrelated writers land in this one mock — the park-comment pass and `applyKernelTransition`'s audit row — so a test that asserts on call count instead of filtering by `body` passes or fails on the other one's behaviour.
 const dbInsertValues = vi.fn(async (..._args: unknown[]) => undefined);
 
 vi.mock('../db/client.js', () => {
   const dbStub: Record<string, unknown> = {
-    // cm:why applyKernelTransition reaches its write through `exec.transaction`
     transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub),
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
     update: () => ({ set: () => ({ where: () => ({ returning: () => sessionsWhere() }) }) }),
@@ -92,7 +81,6 @@ vi.mock('../db/client.js', () => {
   return { db: dbStub };
 });
 
-// cm:why mocked rather than exercised: resolveGateSettings ends in `.limit()`, which this file's `db.select` double does not model
 const resolveGateSettingsMock = vi.fn(async (_projectId: string) => ({
   cap: 1,
   baseStampable: true,
@@ -106,7 +94,6 @@ vi.mock('../issues/apply-transition.js', () => ({
   applyStatusTransition: (...args: unknown[]) => applyStatusTransitionMock(...args),
 }));
 
-// cm:why both run-close SSOTs are mocked to keep `runs.ts -> hooks -> cascade` out of this suite; the sweeper's own contract here is which passes run, in what order, and what they call.
 const closeRunIfOneShotMock = vi.fn(async (..._args: unknown[]) => {});
 const closeOpenRunForIssueMock = vi.fn(async (..._args: unknown[]) => 'settled' as const);
 vi.mock('./runs.js', () => ({
@@ -205,7 +192,6 @@ describe('runPipelineSweep — retry rescue thresholds', () => {
 });
 
 describe('runPipelineSweep — watch-only alarm passes', () => {
-  // cm:guard every pass here must stay in the sweep AND in SweepResult — a pass wired into the driver but dropped from the result is invisible to every caller, which is how a defence stops being noticed before it stops working
   it('runs each alarm pass and exposes its count', async () => {
     const passes = [
       [alarmAgedHoldsMock, 'agedHolds', 2],
@@ -223,7 +209,6 @@ describe('runPipelineSweep — watch-only alarm passes', () => {
     }
   });
 
-  // cm:guard this pass must stay in the sweep AND in SweepResult — it is the only thing that frees a run paused by a mechanism a later build deleted, and the reopen_cap residue it exists for produced no alarm anywhere for 3 days
   it('runs the orphaned-pause reaper and exposes its counts', async () => {
     resumeOrphanedPausesMock.mockResolvedValueOnce({ detected: 2, resumed: 2 });
 
@@ -271,7 +256,6 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
   it('keeps the pipeline/pm scoping + ISS-420 no-client predicate in the detection SELECTs', async () => {
     await alarmZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
 
-    // cm:guard the COUNT is the assertion — three detection SELECTs (queued-past-timeout, running-with-stale-heartbeat, no-client-ack), and a fourth pass added without a fourth SELECT asserted here would alarm rows nobody proved were alarmable.
     expect(dbExecute).toHaveBeenCalledTimes(3);
     const [pass1, pass2, pass3] = dbExecute.mock.calls.map((c) => sqlText(c[0]));
 
@@ -374,7 +358,6 @@ describe('runPipelineSweep — per-pass fault isolation', () => {
 
     await expect(runPipelineSweep()).rejects.toThrow('loop boom');
 
-    // cm:guard every pass must have RUN before the tick surfaces a failure, so this asserts the one-shot reaper's own candidate SELECT reached the db despite the upstream throw. Assert only the rejection and one buggy pass can starve the reapers again, which leaked every global schedule.run and interactive run.
     const ranOneShotReaper = dbExecute.mock.calls.some((c) =>
       /r\.kind\s+IN\s*\(\s*'system'\s*,\s*'interactive'\s*\)/.test(sqlText(c[0])),
     );
@@ -501,7 +484,6 @@ describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal i
     const text = sqlText(dbExecute.mock.calls[0]?.[0]);
     expect(text).toMatch(/r\.kind\s*=\s*'issue'/);
     expect(text).toMatch(/r\.status\s+IN\s*\(\s*'running'\s*,\s*'paused'\s*\)/);
-    // cm:guard the status list here IS `RUN_CLOSING_STATUSES` in issues/apply-transition.ts — assert every member, because this pass is that block's only backstop and a member missing here leaks its runs forever with no reaper on any axis (`dropped` was exactly that drift until 2026-08-30)
     expect(text).toMatch(/i\.status\s+IN\s*\(\s*'closed'\s*,\s*'dropped'\s*\)/);
     expect(text).not.toMatch(/released/);
     expect(text).toMatch(/JOIN\s+issues\s+i/);
@@ -510,7 +492,6 @@ describe('reapOrphanedIssueRuns (ISS-461 — issue runs leaked past a terminal i
   });
 
   it('does not reap a run whose issue is `awaiting_release` (ISS-669 — release runs inside the open run)', async () => {
-    // cm:guard `awaiting_release` must never join the status list above — the release step runs INSIDE the still-open run (ISS-669), so reaping there would cancel the very job doing the release; the SQL-shape assertion above is what actually holds it, this asserts the behaviour that follows
     dbExecute.mockResolvedValueOnce([]);
     const result = await reapOrphanedIssueRuns(new Date('2026-06-12T00:00:00Z'));
 
@@ -564,7 +545,6 @@ describe('reapConcludedRuns wiring (ISS-923 — the inverse orphan direction)', 
     expect(result.concludedRuns.reaped).toBe(3);
   });
 
-  // cm:guard the ordering is the assertion, not decoration: `reapOrphanedIssueRuns` writes `completed` unconditionally to mirror `apply-transition.ts`, so it must claim the closed-issue rows first. Reversed, a closed issue whose last job failed would start closing `failed` — a silent change to ISS-461's contract made by ordering alone.
   it('runs AFTER reapOrphanedIssueRuns', async () => {
     const order: string[] = [];
     dbExecute.mockResolvedValue([{ id: 'run-a', issue_id: 'iss-a' }]);
@@ -594,9 +574,6 @@ describe('detectOrphanedRunAssertions wiring (ISS-1050 — the inverse of the ru
     expect(result.orphanedRunAssertions).toEqual({ detected: 4, reported: 1 });
   });
 
-  // cm:guard the ordering is the assertion. A run session this tick is about to reap is not an
-  // orphaned assertion yet, so a pass that ran before the reapers would name a disagreement that
-  // resolves itself within the same tick — a warning about work that was never wrong.
   it('runs AFTER the reaping passes, not before them', async () => {
     const order: string[] = [];
     reapConcludedRunsMock.mockImplementation(async () => {
@@ -629,7 +606,6 @@ describe('reapJoblessRuns wiring (ISS-654 — the job-less issue-run phantom)', 
     expect(result.joblessRuns.reaped).toBe(2);
   });
 
-  // cm:guard the ordering is the assertion: `reapConcludedRuns` owns every run that HAS a job and this pass owns only the rows with none, so running it second is what keeps one row from answering to two reapers with different outcome rules within a single tick.
   it('runs AFTER reapConcludedRuns', async () => {
     const order: string[] = [];
     reapConcludedRunsMock.mockImplementation(async () => {
@@ -646,7 +622,6 @@ describe('reapJoblessRuns wiring (ISS-654 — the job-less issue-run phantom)', 
     expect(order).toEqual(['concludedRuns', 'joblessRuns']);
   });
 
-  // cm:guard the pass is isolated like every sibling: a throw must not stop the passes AFTER it, and the tick must still reject at the end so `pgboss-health` records a missed tick rather than a clean heartbeat. Both halves are the assertion — drop the second and a failing pass goes green; drop the first and one bad row starves every pass behind it.
   it('a throw leaves the later passes running and still fails the tick', async () => {
     reapJoblessRunsMock.mockRejectedValueOnce(new Error('boom'));
 
@@ -682,7 +657,6 @@ describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {
     });
     const result = await runPipelineSweep();
     expect(result.queueSnapshots).toBe(0);
-    // cm:guard assert a LATER pass reported — that is what shows the tick reached its end rather than unwinding out of the snapshot failure; asserting only `queueSnapshots` would pass on a tick that died right after it.
     expect(result).toHaveProperty('alerts');
   });
 });

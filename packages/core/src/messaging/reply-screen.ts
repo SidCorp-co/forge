@@ -29,7 +29,6 @@ export interface ReplyScreenInput {
   /**
    * The snapshot the writer's own turn was shown.
    */
-  // cm:guard three distinct meanings and they do not collapse (ISS-818): a snapshot screens against itself; `null` means the computation failed and fails CLOSED; `'legacy-session'` is the ONE case that self-computes, for a row written before snapshots were stored. Screening against a fresh re-query bounces a reply that was accurate for what the model actually saw.
   readonly progress: ProgressFacts | null | 'legacy-session';
   /** A caller inside a transaction MUST pass its own handle. */
   readonly executor?: Tx;

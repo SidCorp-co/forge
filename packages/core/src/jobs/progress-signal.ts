@@ -26,16 +26,10 @@ import {
   RESULT_GUARD,
 } from './resident-session.js';
 
-// cm:guard `LEFT JOIN LATERAL ... ON true`, and both halves are load-bearing. The body is a bare aggregate with no GROUP BY, so it emits EXACTLY one row — NULL when the job has no events — which is what makes `ON true` give the same answer the outer-joined `GROUP BY job_id` CTE gave, for a job with history and for one without alike. Add a GROUP BY and the empty case stops producing a row; make it an INNER lateral and a job with no events drops out of the sweep entirely, which is a wedged job that stops being reaped with nothing going red.
-// cm:guard binds the alias `j` for `jobs` and publishes `le`, exactly as `RESIDENT_SESSION_JOIN` binds `s` — a raw fragment carries no FROM of its own, so a caller pasting this without `jobs j` fails at the DB rather than at the type checker.
-// cm:edge contract -> packages/core/src/db/schema.ts — reads `job_events.job_id` and `job_events.ts` by name inside raw SQL, and is served by `job_events_job_id_ts_idx`; renaming either column or dropping that index costs the hop its bound silently instead of failing to compile.
 export const LAST_EVENT_LATERAL = sql`LEFT JOIN LATERAL (SELECT max(e.ts) AS max_ts FROM job_events e WHERE e.job_id = j.id) le ON true`;
 
-// cm:guard the same one-row-always property as `LAST_EVENT_LATERAL`, and here it carries the run that has declared NO phases: the CTE's `last_phase` held no row for it and the outer join produced NULL, the aggregate over no rows produces the same NULL, and `LAST_PROGRESS_AT` falls back to `j.dispatched_at` either way. There is no NULL `pipeline_run_id` to carry — the column is NOT NULL on both `jobs` and `agent_sessions`.
-// cm:edge contract -> packages/core/src/db/schema-journal.ts — reads phase_journal.started_at/ended_at by name inside raw SQL; renaming either column silently costs autonomous jobs their liveness signal instead of failing to compile
 export const LAST_PHASE_LATERAL = sql`LEFT JOIN LATERAL (SELECT max(GREATEST(p.started_at, COALESCE(p.ended_at, p.started_at))) AS max_ts FROM phase_journal p WHERE p.run_id = j.pipeline_run_id) lp ON true`;
 
-// cm:guard both terms, never one: job_events alone reaps a live autonomous driver, and phase rows alone stop covering every staged job, which declares no phases of its own
 export const LAST_PROGRESS_AT = sql`GREATEST(COALESCE(le.max_ts, j.dispatched_at), COALESCE(lp.max_ts, j.dispatched_at), j.dispatched_at)`;
 
 export interface QuietJobCandidateOptions {
@@ -64,7 +58,6 @@ export interface QuietJobCandidateOptions {
  * kill-gate term, and in nothing else.
  */
 export function quietJobCandidateQuery(opts: QuietJobCandidateOptions): SQL {
-  // cm:guard `quietMinutes` reaches the statement through `sql.raw` because an interval's unit cannot be parameterised, so this is the only thing standing between a caller and injected SQL. Refuse the wrong value by name here rather than widening the check — every caller in this repo passes a constant, and one that does not is a caller to fix, not a shape to accommodate.
   if (!Number.isInteger(opts.quietMinutes) || opts.quietMinutes <= 0) {
     throw new Error(
       `quietJobCandidateQuery: quietMinutes must be a positive integer, got ${String(opts.quietMinutes)}`,

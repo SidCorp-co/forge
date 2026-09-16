@@ -18,7 +18,6 @@ import { logger } from '../logger.js';
 const PREFLIGHT_PREFIX = 'preflight_failed:';
 
 /** Job error the ack hop writes when no runner ever claimed the dispatch. */
-// cm:edge contract -> packages/core/src/jobs/loop-monitor.ts — this is `reapAckMisses`'s `cfg.error`, persisted verbatim to `jobs.error`; the two spellings must match or a no-ack box stops being attributable and quarantine goes blind again
 export const NO_ACK_ERROR = 'dispatch_unclaimed';
 
 const NO_ACK_SUMMARY =
@@ -40,7 +39,6 @@ export interface BoxFault {
  * before any agent starts (runner daemon/preflight.rs), keyed per check;
  * `dispatch_unclaimed` is the runner accepting work and never starting it.
  */
-// cm:guard `session_lost` MUST NOT be added here — an agent session that started and then died can die from the agent's OWN work (OOM, a prompt that wedges the CLI), and every consumer of a BoxFault says something about the BOX. `dispatch_unclaimed` is safe precisely because the ack hop's predicate proves zero job events and no ack, which no agent behaviour can produce.
 export function classifyBoxFault(error: string | null | undefined): BoxFault | null {
   if (typeof error !== 'string') return null;
   const text = error.trim();

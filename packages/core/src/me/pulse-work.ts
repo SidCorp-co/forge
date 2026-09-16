@@ -19,10 +19,6 @@ const LIVE = [...PULSE_LIVE_JOB_STATUSES];
 /**
  * Issues the tracker calls in flight that nothing is working.
  */
-// cm:guard the idle clock falls back to `issues.updated_at` where the issue has NEVER carried a job: comparing against a null max drops exactly the strongest case, an `in_progress` row nothing ever dispatched (ISS-988 criterion 12).
-// cm:guard a job counts for this issue when EITHER `jobs.issue_id` names it or its run does — `jobs.issue_id` is nullable and carries `ON DELETE SET NULL`, so reading it alone lets a live job go unseen and reports a worked issue as abandoned, which is the precise inverse of what this figure is for. Both the anti-join and the idle clock read the same pair, or the two disagree about which jobs exist.
-// cm:guard ISS-1022 — that pair is TWO UNION ALL arms and never one `OR`, and the rewrite is what makes it affordable: as a single disjunction over a LEFT JOIN the planner can use neither index and re-read the whole of `jobs` and `pipeline_runs` per issue (measured on beta: a Seq Scan of 31,198 jobs and 7,477 runs, once per candidate). Each arm is served by its own index — `jobs_issue_id_idx` for the direct one, `pipeline_runs_issue_idx` with `jobs_pipeline_run_idx` for the run's. The arms may return the same job twice where both name this issue; that is harmless because the only things read off them are `max()` and `EXISTS`, and it is why this must never become a count of rows.
-// cm:guard the staleness threshold is applied in SQL and the row set is capped, but `total` and the per-project counts are computed BEFORE the cap, over every stale issue: `PulseCapped` documents `total` as the count and `shown` as a sample, so capping first would be the truncation-as-truth defect ISS-988 criterion 46 refuses.
 async function selectAbandoned(
   projectIds: string[],
   thresholds: PulseThresholds,
@@ -104,8 +100,6 @@ async function selectAbandoned(
   };
 }
 
-// cm:guard `total` counts every waiting issue and `shown` is capped, computed IN THAT ORDER: the old read returned the whole set and let JS cap it, so a queue of 400 issues came back as 400 rows to show 20. Reversing the order makes `total` the cap, which is the truncation-as-truth defect `PulseCapped` names (ISS-1022).
-// cm:guard the cutoff is the caller's injected `now` and NOT the database's `now()`, the same clock `ageSeconds` below ages the row against: read against two clocks a row can be selected as waiting and then reported with an age under the threshold that selected it. This read used `now()` before ISS-1022 while its sibling `selectAbandoned` used the injected value, so the two halves of one screen disagreed whenever a test or a caller moved the clock.
 async function selectReleaseWaiting(
   projectIds: string[],
   thresholds: PulseThresholds,

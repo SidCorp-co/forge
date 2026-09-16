@@ -43,7 +43,6 @@ describe("threadEntries", () => {
     expect(entries.map((e) => e.kind)).toEqual(["said", "silence", "said"]);
   });
 
-  // cm:guard the whole criterion in one case: the SAME messages and a window that has not closed must not render as a silence, because "it read this and had nothing to add" and "nobody has got to this yet" are different facts and a person acts differently on each.
   it("renders an open window as pending rather than as a silence", () => {
     const entries = threadEntries([said(0)], [window({ closedAt: null, decision: null })]);
     expect(entries.map((e) => e.kind)).toEqual(["said", "pending"]);

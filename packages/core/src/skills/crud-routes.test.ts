@@ -176,7 +176,6 @@ describe('files round-trip (AC #4)', () => {
     },
   ];
 
-  // cm:guard proves the LOCK IS WIRED, not merely implemented: the pure resolver has its own unit tests, and a lock that never reaches the create path protects nothing
   it('400 SKILL_LOCKED when the project declares the name locked', async () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]);

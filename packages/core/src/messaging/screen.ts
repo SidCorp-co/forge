@@ -42,7 +42,6 @@ function refusalsFor(rule: MessageRule, text: string, facts: MessageFacts): Mess
 /**
  * A pair no cell covers is REFUSED, never admitted.
  */
-// cm:guard the unknown-pair arm is the load-bearing one: admitting a message whose audience nobody declared is how a new surface ships unscreened and looks screened, which is the state ISS-997 found the comment door in. A caller that cannot name its pair has to fail here rather than pass.
 function noCell(audience: Audience, intent: Intent): MessageVerdict {
   const known = audienceSpec(audience)
     ? `no rules are declared for intent "${intent}" on audience "${audience}"`
@@ -74,7 +73,6 @@ export function screenMessage(input: ScreenInput): MessageVerdict {
       const broke = refusalsFor(rule, segment ?? '', facts);
       if (broke.length === 0) continue;
       refusals.push(...broke);
-      // cm:why a halting rule stops the rest for THIS segment only: an empty segment has nothing for the later rules to read, and running them anyway produced a second problem about the same silence (the old operator screen `continue`d for the same reason).
       if (rule.halts) break;
     }
   }

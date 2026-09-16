@@ -77,7 +77,6 @@ function KindTag({ kind }: { kind: AttentionKind }) {
   );
 }
 
-// cm:why `questionId` earns a tag of its own because an agent's decision and a `waiting` somebody entered by hand arrive in this one bucket looking identical — the first is settled in a click on the issue screen and the second is not settled at all (ISS-980).
 function AttentionRow({ item, onOpen }: { item: AttentionItem; onOpen: (link: string) => void }) {
   return (
     <button
@@ -128,13 +127,10 @@ function Group({
   collapsible?: boolean;
 }) {
   const matched = total ?? items.length;
-  // cm:why collapsing is opt-in per bucket, never derived from length alone: the buckets core caps at 5 could not trip it, but skill updates (cap 20) and offline runners (client-derived, unbounded) could — and an operator with 6 dead runners would open this screen to an infra alert collapsed to nothing by default.
   const collapsible = mayCollapse && items.length > COLLAPSE_ABOVE;
-  // cm:guard `toggled` only ever applies WHILE the group is collapsible, and it starts null so the default follows the CURRENT length. Both halves are load-bearing: seed it from the first render and a group that grows past the threshold stays expanded, and let a stale `false` outlive `collapsible` and a group that shrinks back under it renders its header over zero rows with no button left to reopen them.
   const [toggled, setToggled] = useState<boolean | null>(null);
   if (items.length === 0) return null;
   const expanded = collapsible ? (toggled ?? false) : true;
-  // cm:why the h2 wraps the button rather than sitting inside it: a heading nested in a button is not announced as a heading, so collapsible groups would silently drop out of screen-reader heading navigation while the non-collapsible ones stayed in it.
   return (
     <section className="flex flex-col gap-2">
       <h2 className="fg-label text-fg">
@@ -194,7 +190,6 @@ export function AttentionScreen() {
     unseenDrafts: view.unseenDrafts.filter(keep),
     offlineRunners: view.offlineRunners.filter(keep),
   };
-  // cm:why the org filter can drop rows core counted, so the unclipped total is scaled down to what survived it rather than shown raw — a "20 of 22" over 3 visible rows reads as a bug, and re-deriving it from the list alone would hide a real backlog instead.
   const unseenDraftsTotal =
     scoped.unseenDrafts.length === view.unseenDrafts.length
       ? view.unseenDraftsTotal

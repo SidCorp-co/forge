@@ -22,7 +22,6 @@ export interface HtmlArtifactProps {
 export function HtmlArtifact({ html, title, className, height = 420 }: HtmlArtifactProps) {
   const [expanded, setExpanded] = useState(false);
 
-  // cm:guard the iframe's sandbox below must NEVER gain `allow-same-origin`. Paired with `allow-scripts` that hands the embedded page the app's own origin, and this markup is uploaded by anyone who can comment — session cookies, tokens and the whole DOM become readable. `allow-scripts` alone keeps the origin opaque, which is the only reason rendering uploaded HTML at all is safe.
   return (
     <div className={cn("overflow-hidden rounded-lg border border-line bg-surface", className)}>
       <header className="flex items-center gap-2 border-b border-line bg-sunken px-3 py-1.5">

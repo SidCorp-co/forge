@@ -22,7 +22,6 @@ use nix::unistd::{mkfifo, write};
 use crate::error::{Error, Result};
 
 /// Whether a ring reached anybody.
-// cm:guard `NoListener` is an OUTCOME, never an error: it is what a ringer meets whenever the run took the human branch and exited, which is the ordinary case rather than a fault. An `Err` here makes a peer's fast path fail on the slow path's success (ISS-964 criterion 11).
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Ring {
     /// A reader holds the door open; the wake is now its business.
@@ -32,7 +31,6 @@ pub enum Ring {
 }
 
 /// The open read end of one run's door.
-// cm:guard HOLD this for as long as the run is blocked and do not drop it early: dropping closes the read end, and the next ring meets `ENXIO` and parks a question the run was live and waiting for (ISS-964 criteria 10, 11).
 #[derive(Debug)]
 pub struct Listening {
     path: PathBuf,
@@ -46,7 +44,6 @@ impl Listening {
 }
 
 /// Where one run's door lives.
-// cm:guard derived from the LEDGER's own directory and nothing else, so a ringer that can read the ledger can always find the door. `XDG_RUNTIME_DIR` would separate two runner services that share a data dir from each other's doors while sharing their runs, and a fixed name would put two boxes' doors on one path.
 pub fn path_for(ledger_path: &Path, run_id: &str) -> PathBuf {
     ledger_path
         .parent()
@@ -71,7 +68,6 @@ fn ensure(path: &Path) -> Result<()> {
 }
 
 /// Open one run's door for READING, creating it if this is the first arm.
-// cm:guard `O_NONBLOCK` on the read side is what makes this return at all: a FIFO opened `O_RDONLY` without it blocks until a writer appears, so the arm would hang inside the step that is supposed to precede the declaration (ISS-964 criteria 10, 11).
 pub fn listen(ledger_path: &Path, run_id: &str) -> Result<Listening> {
     let path = path_for(ledger_path, run_id);
     ensure(&path)?;
@@ -81,8 +77,6 @@ pub fn listen(ledger_path: &Path, run_id: &str) -> Result<Listening> {
 }
 
 /// Ring one run's door, without ever blocking on it.
-// cm:guard `ENXIO` means no reader holds the door, and it is the ONLY errno that reads as `NoListener`. `EAGAIN` is a listener that has not drained a previous ring, which is still `Heard` — the door has already been rung and re-ringing it adds nothing (ISS-964 criterion 11).
-// cm:guard no control action blocks on the thing it controls: both the open and the write are `O_NONBLOCK`, so a listener that is wedged inside its own turn costs the ringer nothing (ISS-964 criterion 11).
 pub fn ring(ledger_path: &Path, run_id: &str) -> Result<Ring> {
     let path = path_for(ledger_path, run_id);
     if !path.exists() {
@@ -108,7 +102,6 @@ pub fn ring(ledger_path: &Path, run_id: &str) -> Result<Ring> {
 }
 
 /// Take a run's door down once nothing will ring it again.
-// cm:guard removing the path is what turns a later ring into `NoListener` by the cheap check rather than by `ENXIO`, and a door left behind outlives its run exactly as the `11515.sock` in ISS-934 outlived its process. Call it when the run reaches terminal, never merely when it unblocks — a run that unblocks may block again on the same door.
 pub fn take_down(ledger_path: &Path, run_id: &str) -> Result<()> {
     let path = path_for(ledger_path, run_id);
     match std::fs::remove_file(&path) {
@@ -132,7 +125,6 @@ mod tests {
         dir.join("ledger.sqlite")
     }
 
-    // cm:guard the door must sit BESIDE the ledger, because that is the only path a ringer in another process can derive from what it already has. A door under `XDG_RUNTIME_DIR` is unreachable for a service that shares the data dir but not the runtime dir.
     #[test]
     fn the_door_lives_beside_the_ledger() {
         let p = led_path();
@@ -141,7 +133,6 @@ mod tests {
         assert_eq!(door.file_name().unwrap(), "run-7.fifo");
     }
 
-    // cm:guard the falsifying case for criterion 11, and the ordinary one: the run took the human branch and its process is gone, so nobody holds the door. This must be an OUTCOME the ringer acts on, never an `Err` that fails its turn.
     #[test]
     fn a_ring_nobody_is_listening_for_is_an_outcome_not_an_error() {
         let p = led_path();
@@ -162,7 +153,6 @@ mod tests {
         assert_eq!(ring(&p, "run-1").unwrap(), Ring::Heard);
     }
 
-    // cm:guard the EAR is the listener, not the file: the same door reports `Heard` and then `NoListener` with nothing on disk changing, which is why `Listening` must be held for the whole block rather than opened and dropped.
     #[test]
     fn dropping_the_ear_stops_the_door_being_heard() {
         let p = led_path();
@@ -172,7 +162,6 @@ mod tests {
         assert_eq!(ring(&p, "run-1").unwrap(), Ring::NoListener);
     }
 
-    // cm:guard `EAGAIN` is a listener that has not drained, and it is still `Heard`: a full pipe means the door has ALREADY been rung and nobody read it yet, so reporting `NoListener` there would park a question the run is live and waiting for. There is no resident reader in this build, so this is the state a real second ring meets.
     #[test]
     fn a_door_nobody_drains_still_counts_as_heard() {
         let p = led_path();
@@ -184,7 +173,6 @@ mod tests {
         }
     }
 
-    // cm:guard no control action blocks on the thing it controls. Without `O_NONBLOCK` the write side blocks forever once the pipe fills and the read side blocks until a writer appears, so this measures the two calls a wedged listener would otherwise hang.
     #[test]
     fn neither_arming_nor_ringing_waits_on_the_other_side() {
         let p = led_path();

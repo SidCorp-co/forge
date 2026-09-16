@@ -20,7 +20,6 @@ describe("Waffle", () => {
     expect(container.querySelector("li")).toBeNull();
   });
 
-  // cm:guard the cell count is derived from each category's OWN count, so a small total draws exactly that many cells — rounding every category to a share of a fixed grid draws a 3-issue bucket the size of a 300-issue one (ISS-988 criterion 28)
   it("draws one cell per record while the total is small", () => {
     const { container } = render(<Waffle categories={cats([3, 5])} />);
     expect(container.querySelectorAll("[data-waffle-cell]").length).toBe(8);
@@ -43,7 +42,6 @@ describe("Waffle", () => {
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
 
-  // cm:guard a category with no `onOpen` is a figure the response cannot list, so it renders as a span with no button and nothing focusable (ISS-988 criteria 42-43)
   it("draws a category without a destination as no door at all", () => {
     const { container } = render(<Waffle categories={cats([4])} />);
     expect(container.querySelector("button")).toBeNull();

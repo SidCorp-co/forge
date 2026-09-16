@@ -199,7 +199,6 @@ describe('buildSessionFailuresReport (ISS-877)', () => {
     ]);
   });
 
-  // cm:why the row that recorded nothing at all is the purest form of the defect ISS-877 exists to end, and the first version of this query could not see it: `failure_reason IS NOT NULL` dropped it from the numerator AND the denominator, so the unclassified rate improved by not counting the worst rows.
   it('counts a failed session that recorded no reason at all as unclassified', async () => {
     mockMembership();
     executeImpl.mockResolvedValueOnce([
@@ -323,7 +322,6 @@ describe('buildSessionFailuresReport — resumeContinuity (ISS-887)', () => {
     expect(out).toEqual({ offered: 0, resumed: 0, dropped: 0, dropRate: 0, rows: [] });
   });
 
-  // cm:edge contract -> packages/core/tests/integration/resume-continuity-e2e.test.ts — `db.execute` is mocked here, so this can only assert the query TEXT and the SQL never executes; the real predicate, JSON path and GROUP BY are exercised there. Assert the POLARITY, never just that `priorClaudeSessionId` is mentioned: `IS NULL` mentions it too, counts attempt 1 and excludes every real offer, and an earlier version of this test stayed green through exactly that inversion.
   it('asks for rows that HAVE a prior session, and does not inherit the failure filter', async () => {
     await run([{ drop_reason: 'rotation', sessions: '2' }]);
     const sqlText = JSON.stringify(executeImpl.mock.calls.at(-1));

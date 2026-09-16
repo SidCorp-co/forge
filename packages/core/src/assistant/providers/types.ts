@@ -18,7 +18,6 @@ export type ChatContentPart =
 
 export interface ChatMessage {
   role: ChatRole;
-  // cm:guard an adapter that does NOT pass `messages` straight through MUST handle the parts-array form of `content`, not just the string — the deleted Gemini adapter built its own body and dropped every image on `m.content ?? ''`, and a dropped image is indistinguishable from a model that looked and had nothing to say
   /** `null` on an assistant message that only carries `tool_calls`; a parts array carries a multimodal user turn (text + images). */
   content: string | ChatContentPart[] | null;
   tool_calls?: ChatToolCall[];
@@ -44,11 +43,6 @@ export interface ChatStreamUsage {
 export type ChatStreamEvent =
   | { type: 'chunk'; text: string }
   | { type: 'tool_call'; id: string; name: string; arguments: unknown }
-  // cm:guard `tool_result` is the ONLY member of this union no adapter emits — it is yielded once,
-  // by the loop in `run-turn-core.ts`, after it has executed the call itself. That is why it may
-  // carry what the loop measured and the others may not: nothing an adapter implements changes,
-  // so the 1:1 OpenAI-compat claim above still holds. Grep `providers/` before adding a third
-  // field here — if an adapter ever emits this event, these two become a contract it must fill.
   | { type: 'tool_result'; id: string; result: unknown; isError?: boolean; durationMs?: number }
   | { type: 'usage'; usage: ChatStreamUsage }
   | { type: 'done' }
@@ -78,7 +72,6 @@ export interface ChatStreamRequest {
 export interface ChatProvider {
   readonly id: string;
   readonly defaultModel: string;
-  // cm:guard the iterator MUST end with exactly one `done` or `error` and emit nothing after it, and every tool call the model requested (arguments reassembled from the streamed fragments) MUST be yielded BEFORE that terminal event — runTurnEvents swallows the per-round `done` and re-invokes on what it collected, so a call yielded late is a tool the caller never runs and never feeds back
   stream(req: ChatStreamRequest): AsyncIterable<ChatStreamEvent>;
 }
 

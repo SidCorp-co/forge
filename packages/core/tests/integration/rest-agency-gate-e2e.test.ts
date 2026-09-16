@@ -124,7 +124,6 @@ describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
     expect(row?.status).toBe('approved');
   });
 
-  // cm:guard the passing half is not decoration — it is what proves the gate reads who is speaking rather than simply refusing everyone. Identical request, identical missing evidence, and only the credential differs. Since ISS-1003 the credential that passes is a SESSION and not a token a person owns: most agents run on a person's token, so keying the carve-out on ownership handed it to exactly the population the gate exists for.
   it('lets a person in a session through the same request', async () => {
     const { user, issueId } = await seedEvidenceLessIssue();
     const res = await advance(await signUserToken(user.id), issueId);
@@ -136,7 +135,6 @@ describe('PATCH /api/issues/batch honours agency, not just device-ness', () => {
     expect(row?.status).toBe('developed');
   });
 
-  // cm:guard this case asserted the OPPOSITE until ISS-1003 and the flip IS the fix: a token a person owns establishes nobody, so it meets the gate rather than skipping it. The cost is real and is the point — a person driving the CLI on their own token is now asked for the same recorded evidence an agent is, and their way through is to record it or to advance from a session. Read `agency ?? 'human'` anywhere and this goes green again, with every agent on a borrowed token walking through beside them.
   it('refuses a token a person owns, which establishes nobody', async () => {
     const { user, project, issueId } = await seedEvidenceLessIssue();
     const { plaintext } = await mintPat({
@@ -189,7 +187,6 @@ describe('POST/DELETE /api/issues/:id/merge — the CLI route for a merge claim'
     expect(await mergedAtOf(issueId)).toBeNull();
   });
 
-  // cm:guard the same flip as the advance pair above, on the route the CLI actually uses to claim a merge: a token a person owns no longer carries the human carve-out, because it cannot say a person is holding it.
   it('refuses the claim on a token a person owns', async () => {
     const { user, project, issueId } = await seedEvidenceLessIssue();
     const { plaintext } = await mintPat({
@@ -204,10 +201,8 @@ describe('POST/DELETE /api/issues/:id/merge — the CLI route for a merge claim'
     expect(await mergedAtOf(issueId)).toBeNull();
   });
 
-  // cm:guard `target` is the audit label the claim is recorded under, so a POST without one records "merged" with no statement of where — refuse it here rather than defaulting, because a default is indistinguishable in the audit trail from a caller who meant it.
   it('refuses a claim that does not say where it merged', async () => {
     const { user, issueId } = await seedEvidenceLessIssue();
-    // cm:guard a SESSION, so the 400 this asserts is about the missing `target` and not about the evidence gate a token would now meet first — two refusals on one request, and the wrong one would pass this case for the wrong reason.
     expect((await merge(await signUserToken(user.id), issueId, 'POST')).status).toBe(400);
     expect(await mergedAtOf(issueId)).toBeNull();
   });

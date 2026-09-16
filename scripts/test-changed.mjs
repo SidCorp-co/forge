@@ -28,11 +28,9 @@ import { selectionFor } from './lib/changed-selection.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
-// cm:guard the lane is DERIVED by scanning, never a hand-kept list — a list is a second copy of a fact the test files already carry, and the copy is what goes stale. A tree-scanning test added next month joins this lane the first time this runs, with nobody remembering to add it.
 const TREE_COUPLED =
   /from ['"]node:fs['"]|readFileSync|readdirSync|globSync|execFileSync|spawnSync/;
 
-// cm:guard past this share of a package's suite the selection has stopped being a saving, so it runs the whole thing and says so — a fast path that quietly becomes the slow one is worse than not having one, and a hub like `db/schema.ts` reaches most of the suite by itself
 const FULL_RUN_SHARE = 0.5;
 
 const PACKAGES = [
@@ -57,7 +55,6 @@ function vitest(pkgDir, args, capture) {
 function listFiles(pkg, args) {
   const r = vitest(pkg.dir, ['list', '--filesOnly', ...args], true);
   if (r.error) die(`could not run vitest in ${pkg.dir}: ${r.error.message}`);
-  // cm:guard a non-zero exit is a FAILED answer, never an empty collection — a config that errored and one that matched nothing print the same empty stdout, and reading either as zero would shrink the selection until it passes on a package that runs no tests at all
   if (r.status !== 0) die(`vitest list failed in ${pkg.dir}:\n${r.stderr ?? ''}`);
   return (r.stdout ?? '')
     .split('\n')
@@ -120,7 +117,6 @@ for (const pkg of PACKAGES) {
   worst = Math.max(worst, r.status ?? 1);
 }
 
-// cm:guard this line is the whole safety story — nothing consumes this script's exit code, so the only thing keeping a selected run from being read as a pass is that it says it is not one, every time, including when it is green
 console.log(
   '\ntest-changed: a SELECTED run — this is not a green.\n' +
     '  The graph follows imports. A test that reaches its subject any other way — a route by\n' +

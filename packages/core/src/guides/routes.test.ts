@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why the router stopped being DB-free when the write tier landed, so the client is stubbed — the public GETs still never query, and this suite exists to prove they need no tenant context
 vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));

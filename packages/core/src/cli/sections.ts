@@ -16,7 +16,6 @@ export interface FoundSection {
   readonly under: string;
 }
 
-// cm:guard a body's own TITLE line is the parent of its sections and never one of them, and it arrives inside the body anyway. Read as a section it let any title answer for the section named after the same word (ISS-633). What tells a title from a section is being the FIRST heading and shallower than every other one, so a level-2 section with level-3 subsections under it is still a section.
 function sectionMatches(body: string): RegExpMatchArray[] {
   const found = [...String(body).matchAll(HEADING)];
   const titled =
@@ -31,7 +30,6 @@ export function headingsOf(body: string): string[] {
   return sectionMatches(body).map((one) => (one[2] ?? '').trim());
 }
 
-// cm:guard to the next heading of ANY depth, never to the next one of the same depth: a section name with nothing under it is no section, and stopping at the same depth would let a subsection's text answer for its parent's floor
 export function sectionIn(body: string, wanted: RegExp): FoundSection | null {
   const found = sectionMatches(body).find((one) => wanted.test(one[2] ?? ''));
   if (!found || found.index === undefined) return null;

@@ -55,7 +55,6 @@ export interface EffectiveSkill {
   shadowsGlobal: boolean;
   /** The same-name global's skill id (null when none). Catalog hint only. */
   shadowedGlobalSkillId: string | null;
-  // cm:guard adoption provenance on project rows only (globals and unshadowed rows carry null): `basedOnGlobalVersion` is the template version this copy was taken from, null when it predates tracking; `templateVersion` is what the template carries now. Nothing compares the two — the lane that did was deleted with the staged pipeline — so neither may be re-read as drift without a consumer that acts on it.
   basedOnGlobalVersion: number | null;
   templateVersion: number | null;
   /**
@@ -241,7 +240,6 @@ export async function resolveRegisteredEffectiveSkills(
     .from(skillRegistrations)
     .where(eq(skillRegistrations.projectId, projectId));
 
-  // cm:guard resolve registered ids to NAMES and match on those: a legacy registration still pointing at a global keeps working IFF the project has adopted a same-name project skill, and the global itself is never returned.
   const registeredIds = [...new Set(regs.map((r) => r.skillId))];
   let registeredNames = new Set<string>();
   if (registeredIds.length > 0) {
@@ -252,7 +250,6 @@ export async function resolveRegisteredEffectiveSkills(
     registeredNames = new Set(nameRows.map((n) => n.name));
   }
 
-  // cm:guard the registered-name set and the `installOnly` flag are put into the WHERE rather than applied to loaded rows: this is a BODY projection — `skill_md`, `prompt` and the base64 `files` — and `computeEffectiveSkill` sha256s every row it is handed, so filtering afterwards transferred and hashed every skill the project owns on each sync-status call to keep the few that are registered (ISS-1025). The two conditions are the same two facts the in-memory filter tested, so a legacy registration that resolves to a same-name project skill, and an `installOnly` skill under an empty registration set, both still come back.
   const nameCondition =
     registeredNames.size > 0
       ? or(inArray(skills.name, [...registeredNames]), eq(skills.installOnly, true))
@@ -274,7 +271,6 @@ export async function resolveRegisteredEffectiveSkills(
  * Forge MCP server reads them as prompts. A project that ADOPTS one (creates a
  * same-name project skill) owns its copy and serves that instead.
  */
-// cm:guard `forge-message-shape` is served HERE and nowhere else on purpose: it is the contract every agent-written message is judged against, and a copy synced to a device's disk would be the version an agent reads while core refuses it by a newer one. The always-latest prompt channel is the only delivery a screen's own rules may use (ISS-997).
 export const MANAGED_META_SKILLS: readonly string[] = ['forge-skills', 'forge-message-shape'];
 
 export interface ManagedMetaPrompt {
@@ -312,7 +308,6 @@ export async function resolveManagedMetaPrompts(
     .from(skills)
     .where(and(inArray(skills.name, names), scopeCond));
 
-  // cm:guard the project's own copy wins over the global template, by name, and this is the ONLY place that decides it — `forge-message-shape` is served through here, so a project that adopted the document and tightened its own message rules must not be handed the built-in text describing rules it does not run (ISS-997).
   const byName = new Map<string, (typeof rows)[number]>();
   for (const r of rows) {
     const cur = byName.get(r.name);
@@ -325,7 +320,6 @@ export async function resolveManagedMetaPrompts(
   }));
 }
 
-// cm:guard `unknown` (not `synced`) whenever observedSha is null — a runner that never reported observation must never be reported synced
 export type DeviceSkillStatusValue =
   | 'synced'
   | 'outdated'
@@ -351,7 +345,6 @@ interface InstalledRow {
   installedHash: string;
   installedVersion: number | null;
   syncedAt: Date | string | null;
-  // cm:why null below runner 0.7.1 — 0.7.0 shipped before observation, so the version string alone cannot discriminate; absence of the field is the signal
   observedSha: string | null;
   shadowedBy: string | null;
 }
@@ -376,7 +369,6 @@ export function computeDeviceSkillStatus(
     } else if (row.installedHash !== e.effectiveHash) {
       status = 'outdated';
     } else if (row.shadowedBy !== null) {
-      // cm:guard checked before the null-observedSha branch — a shadow with no .hash marker must be 'shadowed', not 'unknown'
       status = 'shadowed';
     } else if (row.observedSha === null) {
       status = 'unknown';

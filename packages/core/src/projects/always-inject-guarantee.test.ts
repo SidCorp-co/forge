@@ -16,7 +16,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { FORGE_GUIDES } from '../guides/registry.js';
 import { ALWAYS_INJECT_ENFORCEMENT_NOTE, ALWAYS_INJECT_GUARANTEE_NOTE } from './project-facts.js';
 
-// cm:guard the MCP tool module reaches `config/env.js` transitively and throws at IMPORT without DATABASE_URL/JWT_SECRET. Only `description` is under test, so env and the client are stubbed rather than the assertion weakened to a source grep — a grep for the identifier proves it is referenced, never that it lands in the text an agent reads.
 vi.mock('../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
@@ -46,7 +45,6 @@ function withoutComments(source: string): string {
     .join('\n');
 }
 
-// cm:guard the tool factory is context-scoped and a real `ctx` needs a principal and a DB. Only `description` is under test, so a cast of the minimum shape is correct here.
 const fakeCtx = { principal: {}, deprecations: new Set<string>() } as never;
 
 describe('ALWAYS_INJECT_GUARANTEE_NOTE — the line the owner reads', () => {
@@ -65,13 +63,11 @@ describe('ALWAYS_INJECT_GUARANTEE_NOTE — the line the owner reads', () => {
     );
   });
 
-  // cm:guard the project's own UX contract asks body copy for ONE calm line, and this string is body copy in the settings tab. A second sentence is what the split into `ALWAYS_INJECT_ENFORCEMENT_NOTE` exists to prevent.
   it('is one sentence, short enough to read as body copy', () => {
     expect(ALWAYS_INJECT_GUARANTEE_NOTE.length).toBeLessThanOrEqual(200);
     expect(ALWAYS_INJECT_GUARANTEE_NOTE.match(/\.\s/g)).toBeNull();
   });
 
-  // cm:guard both strings render into an MCP tool description, a terminal-read guide body and (the first one) a browser paragraph. Markdown would be swallowed by exactly one of the three.
   it('neither note carries markdown', () => {
     for (const note of [ALWAYS_INJECT_GUARANTEE_NOTE, ALWAYS_INJECT_ENFORCEMENT_NOTE]) {
       expect(note).not.toContain('`');
@@ -119,7 +115,6 @@ describe('the surfaces that interpolate it', () => {
   });
 });
 
-// cm:guard these read SOURCE because neither claim can be made any other way: the tab is in another package and cannot import this constant, and the prompt's claim is an ABSENCE.
 describe('the two surfaces the constant cannot reach', () => {
   const TAB = 'packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx';
 
@@ -127,7 +122,6 @@ describe('the two surfaces the constant cannot reach', () => {
     expect(read(TAB)).toContain('alwaysInjectGuarantee');
   });
 
-  // cm:guard the promise spanned two JSX lines when it was there, so the whitespace is collapsed before matching — a line-by-line grep for it went green while the sentence was still on the screen.
   it(`${TAB} makes the owner no promise that the rule is followed`, () => {
     const copy = withoutComments(read(TAB)).replace(/\s+/g, ' ');
     expect(copy).not.toMatch(/the agent must|must always follow|rules? the agent (must|will)/);

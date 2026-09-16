@@ -35,7 +35,6 @@ describe('resolveNotifications', () => {
     const text = sqlTextOf();
     expect(text).toMatch(/SET read = true, resolved_at = now\(\)/);
     expect(text).toMatch(/resolved_at IS NULL/);
-    // cm:guard the lock is the whole fix — without FOR UPDATE two clearers of the same key both read the row unread and both emit, double-decrementing the operator's unread badge. `paused:<runId>` (ISS-879) is the first key with two clearers.
     expect(text).toMatch(/FOR UPDATE/);
     expect(seen).toEqual([
       { id: 'n1', user: 'u1' },
@@ -43,7 +42,6 @@ describe('resolveNotifications', () => {
     ]);
   });
 
-  // cm:guard this pair is the reason the filter moved off `read` — a row the operator had already opened still needs its `resolvedAt` stamp, because emitPipelineWedge's dedupe reads that column and would otherwise suppress the next wedge for the same entity forever
   it('stamps an ALREADY-READ row and does not re-emit notificationRead for it', async () => {
     dbExecute.mockResolvedValueOnce([{ id: 'n1', user_id: 'u1', was_unread: false }]);
     const seen: string[] = [];

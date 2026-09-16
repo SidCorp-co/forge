@@ -24,7 +24,6 @@ export type Collaborator = {
   memberships: Array<{ projectId: string; projectSlug: string; role: string }>;
 };
 
-// cm:guard the projection names its columns. `users` carries `passwordHash` and every auth secret on the same row, so a `select()` here would answer a people-search with credentials — and this tool's whole surface is other people's rows, not the caller's own.
 export async function listCollaborators(
   q: CollaboratorQuery,
 ): Promise<{ users: Collaborator[]; total: number }> {

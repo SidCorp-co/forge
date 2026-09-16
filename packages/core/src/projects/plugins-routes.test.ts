@@ -89,7 +89,6 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     return req(`/${PID}/plugins`, { method: 'PATCH', body: JSON.stringify(body), token });
   }
 
-  // cm:guard the write REPLACES `plugins` and must leave every sibling key of `agentConfig` alone. This is the ISS-767 pattern: a scoped patch that writes the whole blob back is one omitted spread away from wiping `pipelineConfig`, and nothing else in the product would notice until a dispatch.
   it('replaces the list and preserves every sibling key of agentConfig', async () => {
     const token = await signUserToken('uuid-owner');
     seed({
@@ -106,7 +105,6 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     });
   });
 
-  // cm:guard `null` DELETES the key rather than writing `plugins: null` — `GET /api/devices/me/plugins` unions this list across projects, and a null entry there is a shape its reader does not have.
   it('deletes the key on null rather than writing a null value', async () => {
     const token = await signUserToken('uuid-owner');
     seed({ repoPath: '/repo', plugins: [PLUGIN] });
@@ -125,7 +123,6 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     expect(updateSet).toHaveBeenCalledWith({ agentConfig: { plugins: [] } });
   });
 
-  // cm:guard the shape is validated SERVER-side, not only in the form. A device resolves what it installs from this list, so a malformed name or a ref that is not a SHA reaches a box that then fails to install with no operator anywhere near it.
   it('400s on a malformed entry, before any write', async () => {
     for (const bad of [
       { marketplace: '', name: 'forge', pinnedRef: null },

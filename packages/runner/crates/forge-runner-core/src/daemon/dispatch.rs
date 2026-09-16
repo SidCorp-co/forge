@@ -174,7 +174,6 @@ mod tests {
         assert_eq!(r.repo_path, PathBuf::from("/local/app"));
     }
 
-    // cm:guard whitespace must resolve to `None`, not to `Some("   ")`. An owner who clears the fact by blanking it in the editor is asking for the skill's defaults back, and a brief that then carries an empty policy heading tells the master the owner said nothing in particular — which is a different instruction from having set none.
     #[test]
     fn a_blank_master_policy_is_no_policy() {
         let mut server = vec![me("p-1", "app", Some("/srv/app"))];

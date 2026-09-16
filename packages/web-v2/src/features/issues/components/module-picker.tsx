@@ -55,7 +55,6 @@ export function ModulePicker({
   const [selected, setSelected] = useState<Set<string>>(new Set());
   const [primary, setPrimary] = useState<string>(NO_PRIMARY);
 
-  // cm:guard `attached` is memoized on `labels`, which is what keeps this from re-seeding on every render — an unmemoized dep here resets the drawer under the reader mid-edit, and a dep on `open` alone leaves it stale after the save invalidates `['issue', id]`
   useEffect(() => {
     if (!open) return;
     setSelected(new Set(attached.map((l) => l.id)));
@@ -71,7 +70,6 @@ export function ModulePicker({
       else copy.delete(id);
       return copy;
     });
-    // cm:why un-ticking the primary clears it rather than promoting a secondary — which module leads is the reader's call, and a silent promotion writes an attribution nobody chose
     if (!next && primary === id) setPrimary(NO_PRIMARY);
   }
 

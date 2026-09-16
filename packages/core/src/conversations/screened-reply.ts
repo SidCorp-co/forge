@@ -24,7 +24,6 @@ import { codeAuthored, type ScreenedMessage, screened } from './ports.js';
 /**
  * What a turn says when it has nothing to add.
  */
-// cm:guard a SENTINEL and not an empty string, because the two mean different things: an empty reply is a turn that failed to produce one, and this is a turn that produced the judgement "nothing here needs me". A room the bot was never summoned to is owed the second and must never be posted the first's apology (ISS-1004).
 export const NOTHING_TO_ADD = '(nothing to add)';
 
 /** Did the model decline this turn? Punctuation and case are the model's, the judgement is not. */
@@ -65,7 +64,6 @@ export interface ScreenedTurnArgs {
 /**
  * Refuse a door that owes nobody a reply, before a turn is spent on one.
  */
-// cm:guard it is checked BEFORE the turn and not inside it: everything the turn throws becomes the honest fallback so a waiting speaker is never left in silence, and a caller's own contract break swallowed by that arm would post a fallback where a refusal was the deliverable (ISS-1002).
 export function assertAnswerableDoor(door: DoorId): void {
   if (doorPolicy(door).ending === 'fallback') return;
   throw new Error(
@@ -76,8 +74,6 @@ export function assertAnswerableDoor(door: DoorId): void {
 /**
  * Screen a model turn's reply, and return the text that may be sent.
  */
-// cm:guard this always returns something SENDABLE, and that is the DOOR's decision rather than this function's: only a door whose ending is `fallback` reaches here, and substituting a fallback at one that refuses would post words its writer never wrote (ISS-997).
-// cm:guard the budget is DECLARED on the door and spent by `withRepairs`, never counted here — changing it means changing the door's row, where the number sits next to its reason.
 export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<ScreenedMessage> {
   assertAnswerableDoor(args.door);
   let result = args.first;
@@ -85,7 +81,6 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
   args.setPhase('verify');
 
   const outcome = await withRepairs(args.door, [result.reply], {
-    // cm:why an empty FIRST reply is not a screen failure — it is handled below as its own outcome, with a fallback that names why it was empty. An empty REPAIR is: the model was told what to fix and answered with nothing.
     screen: async (segments): Promise<MessageVerdict> => {
       const text = (segments[0] ?? '').trim();
       if (!text) return attempt === 0 ? { ok: true } : { ok: false, refusals: [EMPTY_RETRY] };
@@ -124,7 +119,6 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
         : emptyFallbackReply(args.handleName),
     );
   }
-  // cm:guard the verdict travels WITH the text as its proof — `screened` returns null on anything but an `ok` verdict over that exact string, so no later branch can send unscreened text under a stale one (ISS-978).
   const passed = screened(trimmed, { ok: true, problems: [] });
   if (!passed) throw new Error('conversations: a passing verdict yielded no screened message');
   return passed;

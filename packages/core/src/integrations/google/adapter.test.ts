@@ -139,7 +139,6 @@ describe('googleAdapter.healthcheck (criteria 10, 11, 12, 13)', () => {
     );
   });
 
-  // cm:guard the binding-tier key must NOT appear in that write. `ctx.config` is the connection overlaid with the binding, so writing it back would put THIS project's default sheet on a credential its org shares — and the next project bound to it, declaring none, would silently read the first project's spreadsheet.
   it("does not promote this binding's default spreadsheet onto the shared credential", async () => {
     wireGoogle();
     await googleAdapter.healthcheck(buildCtx({ serviceAccountJson: keyFile() }));

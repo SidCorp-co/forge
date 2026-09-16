@@ -209,7 +209,6 @@ function literalFilters(input: BaseSearchInput) {
   return parts.length ? sql.join(parts, sql` `) : sql``;
 }
 
-// cm:guard the chunk arm joins `c.generation = m.chunk_generation AND m.chunked_at IS NOT NULL` and the flat arm takes `m.chunked_at IS NULL` — the two are one partition of the project's rows, so a row is read through exactly one arm, a superseded passage set is invisible from the parent's rewrite onward, and a project mid-reindex returns migrated and unmigrated rows in one list. Column names are written LITERALLY because a drizzle column reference inside a raw template renders unqualified, which is ambiguous across the join
 async function chunkedSearch(
   input: SearchInput | KeywordSearchInput,
   kind: 'semantic' | 'keyword',
@@ -286,7 +285,6 @@ async function chunkedSearch(
 /** Standard RRF constant — higher k flattens the advantage of top ranks. */
 const RRF_K = 60;
 /** Dense-vector weight in hybrid fusion (keyword gets `1 - alpha`). */
-// cm:guard the two arms are weighted EQUALLY on purpose — at 0.7/0.3 with k=60 a hit the keyword arm ranked first and the semantic arm never returned scored 0.3/61 = 0.0049, below the semantic rank-8 at 0.7/68 = 0.0103 and the rank-24 rerank pool at 0.7/84 = 0.0083, so nothing found only by the keyword arm ever reached the caller and the identifier arm (ISS-907) would have found rows nobody saw; measured 2026-09-05 on six live corpora, equal weights put 93–100% of identifier lookups in the top 8 and changed nothing on natural-language queries, where the keyword arm is empty on 85–95% of them. `reciprocalRankFusion` tests pin the survival of a keyword-only rank 1 at topK 8 and pool 24
 export const HYBRID_ALPHA = 0.5;
 
 /**

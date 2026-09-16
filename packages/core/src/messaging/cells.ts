@@ -33,7 +33,6 @@ function cell(
   return { id: cellId(audience, intent), audience, intent, rules, reserved };
 }
 
-// cm:guard rule ORDER inside a cell is load-bearing and not cosmetic: `legacy-verdicts.fixture.json` froze the order the old composed screens produced their problems in, and the differential test compares the lists rather than the sets. Reordering a cell reds it by name.
 const SHIPPED: readonly CellSpec[] = [
   /** A question put to somebody who can answer it. */
   cell(ROLE_HOLDER, 'ask', [
@@ -45,7 +44,6 @@ const SHIPPED: readonly CellSpec[] = [
   ]),
 
   /** A comment on an issue, read by the person who decides. */
-  // cm:guard `issue-references-exist` is deliberately NOT here, and the reason is measured rather than assumed: in an 18-issue sample of this project's own comments, 6 of 391 cite a `forge-plugin` key — which CLAUDE.md's own carve-out REQUIRES an agent to do when it finds a defect in that repo. An existence rule here would refuse the mandated behaviour once every 66 comments. A reference this project does not hold is very likely another project's, so it is not judged; a status ASSERTED of an issue this project does hold still is.
   cell(ROLE_HOLDER, 'report', [
     COMMENT_HAS_TEXT,
     STATUS_MATCHES_THE_ROW,
@@ -53,7 +51,6 @@ const SHIPPED: readonly CellSpec[] = [
     NO_REDACTED_SECRET,
   ]),
 
-  // cm:guard reserved, and NOT foldable into `public:report`: the product has no door where an agent declares an ask to a reader holding no role, and reading one against `no-empty-promise` would refuse the single message that reader is there to answer. The shortfall is named in ISS-997 itself and priced in docs/proposals/.
   cell(
     NO_ROLE,
     'ask',
@@ -70,9 +67,6 @@ const SHIPPED: readonly CellSpec[] = [
   /**
    * The assistant's reply to somebody holding a role, in a Forge UI room.
    */
-  // cm:guard this is `public:report` MINUS two rules and PLUS two, and each of the four is the difference between the two readers rather than a preference. Dropped: `no-developer-detail`, because its own comment reads "developer detail put to somebody who holds no role and cannot act on it" and this reader holds one — it refused a file path, a fenced block and a raw status word, which are three of the things a person opens the Forge UI to ask for, while the persona instructs the model to produce exactly those (ISS-1005). Dropped: `issue-references-exist`, for the reason `role:report` drops it. Added: `status-matches-the-row`, because a reader who CAN act on a merge claim is the reader a false one costs something; and `non-empty`, which `public:report` got from its own list.
-  // cm:guard KEPT from `public:report`, and the reason each survived the move is that none of the three is about what the reader may be shown: `only-verified-citations` catches an id this project does not hold, which is an error wherever it is read; `no-empty-promise` catches a promise no later turn will keep, and a chat turn ends — that is the turn's lifecycle and not the reader's role; `progress-figures-match` checks figures against the snapshot THIS turn was shown, and `external-chat.ts` computes one unconditionally every turn. Dropping any of them was the regression ISS-1005's own review caught before it shipped.
-  // cm:guard NOT folded into `role:report` by adding these rules there, and the reason is measured rather than tidy: `comments/screen.ts:screenAgentComment` gathers facts with no `progress`, and `progress-figures-match` fails CLOSED on a null snapshot — so adding it to that cell refuses every agent comment on the tracker. A cell of its own costs one row and reaches nothing else.
   cell(ROLE_HOLDER, 'chat', [
     NON_EMPTY,
     STATUS_MATCHES_THE_ROW,

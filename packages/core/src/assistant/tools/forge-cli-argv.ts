@@ -3,8 +3,6 @@
  * free of any import that reaches a database so the rules test on their own.
  */
 
-// cm:guard the reference is what carries `forge-plugin-visibility.d.ts` into every program that compiles this file, because the plugin ships plain `.mjs`, and `@forge/contracts` builds core under a tsconfig whose `include` is its own `src/**`, so without this line the import below falls to TS7016 there (ISS-1006, ISS-1009).
-/// <reference path="./forge-plugin-visibility.d.ts" />
 
 import { withheldForJob } from 'forge-plugin/plugin/src/resolve/visibility.mjs';
 
@@ -13,8 +11,6 @@ import { withheldForJob } from 'forge-plugin/plugin/src/resolve/visibility.mjs';
  * `forge-plugin/.forge.json` declares under that name, because a chat door
  * has no checkout to read one from.
  */
-// cm:guard `jobs.ba.verbs` in the forge-plugin repo's own `.forge.json` is the SOURCE of this list and lives in another repository, which is why this is a guard and not a `cm:edge`: a verb added there is one chat still refuses until it is added here, and one removed there is one chat still offers — check that file when this list changes (ISS-1009).
-// cm:guard `withheld` in the CLI's config HIDES a verb from `forge -h` and does not refuse it at run — `withheldVerbs()` is read by `doctor-keys` and `doctor-jobs` only (checked 2026-09-15 in both the pinned and the installed copy) — so this list is written to the config for what the model is SHOWN and checked in `admitVerb` for what it may RUN. The credential's permissions are the fence under both (ISS-1009).
 export const CHAT_JOB = 'ba';
 export const CHAT_JOB_VERBS: readonly string[] = [
   'issue',
@@ -53,7 +49,6 @@ export function admitVerb(argv: readonly string[]): string | null {
   return null;
 }
 
-// cm:guard the body is SUBSTITUTED for the `-` the caller wrote and never spliced into a position this code picked: splicing at argv[1] turned `guide writing-an-issue` into `guide <path> writing-an-issue` and `issue --search q` into the read-one-issue form, so every call in a measured turn failed on an argument the model never sent (2026-09-15, ISS-1009). An empty body is no body.
 export function placeBody(
   argv: readonly string[],
   body: string | undefined,
@@ -73,7 +68,6 @@ export function placeBody(
 }
 
 /** What the model reads when the CLI was stopped before it answered. */
-// cm:guard it says the outcome is UNKNOWN and never "nothing was filed": a kill on the timeout can land after the tracker committed the write, so a message that asserted a non-write would be the confabulation this issue exists to stop, in the door's own voice (consult F1, 2026-09-15, ISS-1009).
 export function stoppedMessage(seconds: number): string {
   return (
     `forge was stopped after ${seconds}s with no answer: the tracker did not reply in time. ` +

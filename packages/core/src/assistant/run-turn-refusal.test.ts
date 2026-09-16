@@ -77,9 +77,6 @@ vi.mock('./conversation-turn.js', () => ({
   toCanonicalEntry: (row: Record<string, unknown>) => ({ id: row.id, type: 'assistant' }),
 }));
 
-// cm:why the accumulator is doubled to REFUSE: the real loop pairs every result with the call it
-// executed, so an unmatched id cannot be provoked through a provider — and the point here is what
-// `runChatTurn` does with a refusal, not whether the accumulator makes one.
 vi.mock('./transcript-entry.js', () => ({
   createTranscriptAccumulator: () => ({
     apply: (e: { type: string }) => {
@@ -147,8 +144,6 @@ describe('a transcript refusal ends the turn without losing it', () => {
       adapter: 'web',
     });
 
-    // cm:guard the user's message reached the table: without this the refusal would be a worse
-    // defect than the one it refuses — a question with no record that it was ever asked.
     expect(persisted.map((r) => r.role)).toEqual(['user', 'assistant']);
     expect(persisted[0]?.content).toBe('how many?');
 

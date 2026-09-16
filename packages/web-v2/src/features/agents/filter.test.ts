@@ -1,4 +1,3 @@
-// cm:why the filters live in a file of their own since ISS-998: `inState` now takes a clock, because "not progressing" stopped being a property of the two ledger columns alone the moment a run the box calls live but core has not heard from joined it.
 
 import { describe, expect, it } from "vitest";
 import { HEARTBEAT_REAP_MS, STALLED_THRESHOLD_MS } from "@/features/sessions/types";
@@ -42,7 +41,6 @@ describe("the text filter", () => {
     expect(matches(row(), "nothing-like-this")).toBe(false);
   });
 
-  // cm:guard the two filters must not overlap: a reader typing a state word means the state filter, and matching the label in the text search would make both untrustworthy.
   it("does not match the state label as text", () => {
     expect(matches(row({ incarnation: "exited", work: "blocked" }), "parked")).toBe(false);
   });
@@ -55,7 +53,6 @@ describe("the state filter", () => {
     expect(inState(answered, "working", NOW)).toBe(false);
   });
 
-  // cm:guard the whole point of the filter's name, and the assertion pairs the two sides: a build that put EVERY live-runnable run under "waiting" would pass the first expectation alone, and one that still read the two ledger columns only would pass the second alone.
   it("counts a live run core has stopped hearing from as not progressing", () => {
     const working = row({ lastActivityAt: ago(1_000) });
     const silent = row({ lastActivityAt: ago(STALLED_THRESHOLD_MS + 1) });
@@ -68,7 +65,6 @@ describe("the state filter", () => {
     expect(inState(long, "waiting", NOW)).toBe(true);
   });
 
-  // cm:guard a revival in flight has no session and therefore no beat; grading it stuck would put a warning on every start the fleet makes (ISS-998).
   it("leaves a run it has never heard from under working", () => {
     const starting = row({ incarnation: "starting", sessionId: null, lastActivityAt: null });
     expect(inState(starting, "working", NOW)).toBe(true);

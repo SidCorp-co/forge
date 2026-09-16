@@ -119,7 +119,6 @@ describe('project-scoped agent-session reads', () => {
     expect(res.status).toBe(403);
   });
 
-  // cm:guard this is the assertion the route exists to satisfy: the project must come from `row.projectId`, never from the path. Delete the `row.projectId !== id` check and this is the only test that notices — the membership check above still passes, because the caller really IS a member of the project they named.
   it('will not serve another project’s session to a member who names their own', async () => {
     const a = await member();
     const b = await member();

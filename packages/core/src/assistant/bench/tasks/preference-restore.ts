@@ -6,7 +6,6 @@ export const preferenceRestore: Task = {
   capability: 'method',
   intent: 'Set a preference and then undo it, leaving the earlier value in place.',
   budgetSeconds: 120,
-  // cm:why the style is set to default first: on an account already at concise the first turn's write is a no-op that leaves no row, and the undo has nothing to move back
   preference: { setup: { answerStyle: 'default' }, restore: 'baseline' },
   turns: [
     {

@@ -20,7 +20,6 @@
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 
-// cm:edge contract -> packages/core/drizzle/migrations/0217_unaudited_transition_detector.sql — the view is what decides these strings, and `manual_` is a PREFIX with the action appended, not a fixed value. This union read `'manual_cancel'` until ISS-884 while 0181 had been emitting `manual_resume` / `manual_answer` / `manual_inject` for months, and the rollup below charted every one of them as a run flip.
 type EventRow = {
   source: 'wedge' | `manual_${string}` | 'user_run_flip' | 'direct_sql';
   project_id: string;

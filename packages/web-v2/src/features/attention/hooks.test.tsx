@@ -60,7 +60,6 @@ describe("useAttention", () => {
     expect(result.current.view.unseenDraftsTotal).toBe(428);
   });
 
-  // cm:guard `total` is the rail badge. It counts rows SENT, so this bucket can add at most the cap to it — wiring `unseenDraftsTotal` in here would badge 428 on every page of the app.
   it("counts only the rows sent in `total`", async () => {
     list.mockResolvedValue(response({ unseenDrafts: drafts(20), unseenDraftsTotal: 428 }));
     const { result } = renderHook(() => useAttention(), { wrapper });

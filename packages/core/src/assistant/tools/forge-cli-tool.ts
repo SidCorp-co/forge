@@ -50,12 +50,10 @@ export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({
   inputSchema: z.toJSONSchema(input) as Record<string, unknown>,
   handler: async (raw: Record<string, unknown>) => {
     const args = input.parse(raw);
-    // cm:guard the verb is admitted BEFORE a credential is minted: a refused verb costs no token row and no revoke, and the refusal names what is open so the model's next call is a real one (ISS-1009).
     const closed = admitVerb(args.argv);
     if (closed) return { exitCode: 2, stdout: '', stderr: closed, _mcpIsError: true };
     const userId = ctx.principal?.userId;
     const projectId = ctx.boundProjectId;
-    // cm:guard refused rather than defaulted: without a user there is no credential to mint and the only way to still run is a shared one, which is the borrowed authority this tool is built to avoid (ISS-1009).
     if (!userId || !projectId || !ctx.projectSlug) {
       throw new Error(
         'the forge CLI runs as a signed-in person on a bound project, and this turn names none',
@@ -68,7 +66,6 @@ export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({
       projectId,
       projectSlug: ctx.projectSlug,
     });
-    // cm:guard stderr and the exit code are handed BACK rather than thrown: the CLI says what it refused and how to clear it — that refusal IS the answer the model needs, and turning it into a generic tool error deletes the one sentence that names the way out. `_mcpIsError` rides beside it on a non-zero exit so the audit record still reads the call as refused, which is what `detectStateConfab` partitions on (ISS-1009).
     return {
       exitCode: out.code,
       stdout: out.stdout,

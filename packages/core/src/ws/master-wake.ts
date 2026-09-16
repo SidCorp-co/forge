@@ -30,9 +30,6 @@ import { roomManager } from './server.js';
  * in has something new to judge. `awaiting_release` is the hand-back: an issue leaving
  * a run frees the box that was holding it.
  */
-// cm:guard this is a HINT and never the only trigger. `ws/rooms.ts:publish` is fire-and-forget — it returns 0 for a room with no subscriber and skips any socket not OPEN, with no buffer, no queue and no replay — so a wake published while a box's websocket is down is gone with nothing recording that it happened. The 30s sweep in `daemon/master.rs` is what makes a lost wake cost latency instead of costing the work, and the reconnect catch-up read on the runner side covers the same hole from the other end. Deleting either one turns a dropped frame into work that sits forever with nothing reporting why.
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/mod.rs — the `master.wake` arm on the device room. The event NAME and the `projectId` field are the whole contract; a runner that predates this ignores an unknown event and keeps polling, which is why this can ship before the fleet is on a build that reads it.
-// cm:guard `releasing` is deliberately ABSENT while `awaiting_release` is present, and the asymmetry IS the rule: `awaiting_release` is an issue waiting for a person to trigger its release, which a master may see, while `releasing` is a batch already running — waking a master for one hands it a row `TERMINAL_FOR_DISPATCH` refuses, so every in-flight batch would nudge a box for nothing.
 export const MASTER_WAKE_STATUSES: readonly IssueStatus[] = [
   'open',
   'draft',
@@ -50,7 +47,6 @@ export function isMasterWakeStatus(status: IssueStatus): boolean {
  * box has exactly one device room — so a device listed twice would be woken
  * twice for one issue.
  */
-// cm:guard NO filter on `runners.status` here, and `draining` in particular must still be woken. Declining work is the BOX's act, not core's: `daemon/master.rs:accepts_new_work` is the only thing that reads the status, and its guard says core adding the same filter would hide work from a master rather than let the box decline it. A drained box still supervises a master that is already running and still owes its holds back, so it still needs the wake.
 async function devicesServing(projectId: string): Promise<string[]> {
   const rows = await db
     .selectDistinct({ deviceId: runners.deviceId })
@@ -67,7 +63,6 @@ async function devicesServing(projectId: string): Promise<string[]> {
  * on the fleet is bound to do this project's work at all — the second is an
  * operator's problem and the first resolves itself on the next sweep.
  */
-// cm:guard `issueId` is NULLABLE and the frame carries the null through. Since ISS-933 a wake also fires on the mint of a job kind with no issue behind it — `smoke`, `release_batch`, `reconcile`, `verify_skill` — and a wake carries no work anyway: `daemon/mod.rs` reads the event NAME and `projectId`, then reads the whole pool for itself.
 export async function wakeMastersForProject(args: {
   projectId: string;
   issueId: string | null;
@@ -84,7 +79,6 @@ export async function wakeMastersForProject(args: {
  * Publish one `master.wake` per box because a question this project was
  * waiting on has been answered.
  */
-// cm:guard the SAME event as an issue arrival, never a new name: `daemon/mod.rs` reads the event name and `projectId` off this frame and nothing else, so a `question.answered` name would be dropped by the `other =>` arm on every runner already on the fleet — and the master would learn of the answer only on its next 30s sweep. It carries no `status`, because an answer is not an issue status and widening that field would change a contract the runner does read (ISS-964 criterion 44).
 export async function wakeMastersForAnswer(args: {
   projectId: string;
   questionId: string;
@@ -96,7 +90,6 @@ export async function wakeMastersForAnswer(args: {
   });
 }
 
-// cm:guard never throw out of here. Every caller has already committed its own mutation — a transition, an issue insert, an answer — so an error raised here would turn recorded work into a 500 for a push that is only ever an optimisation over the box's own timer.
 async function publishWake(
   projectId: string,
   data: Record<string, unknown>,
@@ -121,7 +114,6 @@ async function publishWake(
  * Wake a project's boxes when an issue arrives at, or returns to, a status
  * that means there is something to look at.
  */
-// cm:guard both arms, or half the arrivals are silent. `issueCreated` fires for an issue INSERTed straight at `open` or `draft` — a create never passes through `transition`, so a subscriber on `transition` alone would push nothing for the commonest way work arrives.
 export function registerMasterWakeSubscribers(bus: HooksBus): void {
   bus.on('transition', (p) => {
     if (!isMasterWakeStatus(p.to)) return;

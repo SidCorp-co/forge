@@ -83,7 +83,6 @@ describe('unaudited transitions: the marker itself (ISS-943)', () => {
     expect(await fx.detected()).toHaveLength(0);
   });
 
-  // cm:guard the marker is transaction-LOCAL (`set_config(..., true)`), and this is the assertion that proves it. A session-scoped stamp would still be set on the next statement the pooled connection served, so one app write would silence every hand-written flip that followed it down the same connection — the instrument would read zero and look healthy.
   it('does not silence a hand-written flip that follows a marked write', async () => {
     const marked = await fx.insertJob('running');
     const byHand = await fx.insertJob('running', { type: 'review' });

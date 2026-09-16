@@ -9,7 +9,6 @@ import { issueLabels, knowledgeEntries, type LabelKind, labels } from '../db/sch
  * acyclic, and that a module always has a colour.
  */
 
-// cm:guard the code IS the contract — REST returns it as `cause.code` and MCP as the `CODE: message` prefix, and both are asserted. A caller distinguishes "that parent does not exist here" from "that parent is a plain label" only by this string.
 export type ModuleErrorCode =
   | 'INVALID_PARENT'
   | 'PARENT_NOT_MODULE'
@@ -31,7 +30,6 @@ export class ModuleHierarchyError extends Error {
   }
 }
 
-// cm:why the palette is the one web-v2 already renders labels with, so an auto-coloured module is indistinguishable from a hand-coloured one. Kept here rather than in routes.ts because the derivation is a property of a module, not of the endpoint that happens to create it.
 const MODULE_PALETTE = [
   '#1f6f4a',
   '#8a3b52',
@@ -84,7 +82,6 @@ export async function assertParentIsLegal(
   }
   if (labelId === undefined) return;
 
-  // cm:guard walk the ancestry and bound the walk — the FK permits a cycle, so a corrupted chain that already loops would spin here forever rather than answering the request. The seen-set ends it at the first repeat, whichever row the loop closes on.
   const seen = new Set<string>([parentId]);
   let cursor = parent.parentId;
   while (cursor !== null) {
@@ -128,7 +125,6 @@ async function loadModuleRow(
  * issue would be left with `is_primary = true` on a row that is no longer a module — the exact
  * state `resolveLabelIdsForWrite` refuses to create, which no database constraint can catch.
  */
-// cm:guard demotion is the ONE label edit that can break an invariant already committed, because it changes the kind of a row other rows point at — refusing it here is the only check; the partial unique index counts primaries and cannot see what kind they are
 export async function assertDemotionIsLegal(labelId: string): Promise<void> {
   const [children] = await db
     .select({ n: count() })
@@ -160,7 +156,6 @@ export async function assertDemotionIsLegal(labelId: string): Promise<void> {
  * punctuation derives nothing, so it falls back to `module` rather than to the empty string the
  * CHECK would then have to call a valid slug.
  */
-// cm:edge lockstep -> packages/core/drizzle/migrations/0216_module_slug_and_knowledge_node.sql — the migration backfills every existing module with this same derivation written in SQL (`lower`, `regexp_replace`, `row_number`). The two must agree, or a module created before the migration and one created after answer to different slugs for the same name.
 export function moduleSlugBase(name: string): string {
   const base = name
     .toLowerCase()
@@ -219,7 +214,6 @@ export async function assertKnowledgeNodeIsLegal(
       'knowledgeEntryId does not name a knowledge entry',
     );
   }
-  // cm:guard the FK cannot express this — a node in another project is a binding the "thin per-project registry" cannot mean anything by, and widening the read to swallow it would answer one project's module with another project's documentation.
   if (node.projectId !== projectId) {
     throw new ModuleHierarchyError(
       'KNOWLEDGE_NODE_NOT_IN_PROJECT',
@@ -227,7 +221,6 @@ export async function assertKnowledgeNodeIsLegal(
     );
   }
 
-  // cm:guard checked here as well as by `labels_knowledge_entry_id_uq` so the caller gets a code rather than a 500 on a unique violation; the index is what holds when a writer bypasses this path.
   const [owner] = await db
     .select({ id: labels.id })
     .from(labels)

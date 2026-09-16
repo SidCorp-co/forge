@@ -26,7 +26,6 @@ export async function issueBelongsToProject(issueId: string, projectId: string):
   return row !== undefined;
 }
 
-// cm:guard `runId` is NULL on the explicit-issueId path, and `eq(col, null)` is SQL NULL — never true — so matching with `eq` makes the caller's cap silently stop capping. Use isNull, or an agent looping on the explicit-issue escape hatch writes unbounded rows.
 export async function countFindingsFor(issueId: string, runId: string | null): Promise<number> {
   const [row] = await db
     .select({ n: count() })

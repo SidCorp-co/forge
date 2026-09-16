@@ -65,7 +65,6 @@ const TABS = [
   { value: "cost", label: "Cost" },
 ];
 
-// cm:edge naming -> packages/web-v2/src/features/issues/components/issue-row-actions.tsx — its PriorityCell holds this same priority→tone table, so a priority recoloured on one side leaves the drawer and the row disagreeing about one issue
 const PRIORITY_TONE: Record<string, "red" | "amber" | "neutral"> = {
   critical: "red",
   high: "amber",
@@ -107,7 +106,6 @@ export function RunDetail({ open, onClose, issue, runId, slug, canWrite = true }
       () => toast({ title: "Couldn't copy link", tone: "error" }),
     );
   }
-  // cm:guard the RUN's own currentStep, never a stage derived from the issue's status — that fallback named a pipeline stage on a drawer opened where no run existed (ISS-999)
   const chipStep = run?.currentStep ?? undefined;
   const label = issue?.displayId ?? (runId ? `run ${runId.slice(0, 8)}` : "run");
   const title = issue?.title ?? "Pipeline run";

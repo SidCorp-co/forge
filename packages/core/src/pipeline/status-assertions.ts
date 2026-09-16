@@ -31,14 +31,11 @@ export type Gate =
 /** Whose move it is for the issue to leave this gate. */
 export type NextActor = 'agent' | 'human' | 'none';
 
-// cm:guard two fields, both placement, and a third must not be added. A field naming a commit, a branch, a merge or a landing would put an evidence claim back inside a status, which is the ISS-940 defect: `developed` meant "at the review gate" to one reader and "on the default branch" to another, and both cited a document. Evidence lives in EVIDENCE_FIELDS below, on the row, where it can be looked at rather than inferred.
 export interface StatusAssertion {
   gate: Gate;
   nextActor: NextActor;
 }
 
-// cm:guard exhaustive by construction — a status added to `db/schema.ts#issueStatuses` without an entry here fails `tsc`. That refusal is the whole point: the next rung someone adds cannot inherit `developed`'s ambiguity by saying nothing, because saying nothing does not compile.
-// cm:edge lockstep -> packages/core/src/pipeline/autonomous-dispatch.ts — `nextActor: 'agent'` must hold for exactly the statuses `autonomousStepFor` returns a step at; a status that dispatches while claiming a human owes the next move sends a person to look at work an agent is already doing, and one that claims an agent while nothing dispatches is the wedge ISS-890 measured.
 export const STATUS_ASSERTIONS: Record<IssueStatus, StatusAssertion> = {
   draft: { gate: 'intake', nextActor: 'human' },
   open: { gate: 'queue', nextActor: 'agent' },
@@ -50,7 +47,6 @@ export const STATUS_ASSERTIONS: Record<IssueStatus, StatusAssertion> = {
   testing: { gate: 'qa', nextActor: 'human' },
   tested: { gate: 'release', nextActor: 'human' },
   awaiting_release: { gate: 'release', nextActor: 'human' },
-  // cm:guard `nextActor: 'human'` and NOT 'agent', although a batch is running: the lockstep rule above binds 'agent' to the statuses `autonomousStepFor` dispatches at, and that is `open` alone. The release batch is not a claimable step, and claiming otherwise would send a master at a row `TERMINAL_FOR_DISPATCH` refuses.
   releasing: { gate: 'release', nextActor: 'human' },
   reopen: { gate: 'build', nextActor: 'human' },
   waiting: { gate: 'paused', nextActor: 'human' },

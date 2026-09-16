@@ -27,7 +27,6 @@ const client = () =>
 	new QueryClient({ defaultOptions: { queries: { staleTime: 60_000, retry: false } } });
 
 describe("invalidateThroughInFlight", () => {
-	// cm:guard this is the case the plain `invalidateQueries` loses: measured at @tanstack/react-query 5.101.4, `Query.fetch` returns the existing retryer when a fetch is running and the query holds no data, so the invalidation starts no call AND `isInvalidated` is false once it settles (ISS-1019).
 	it("refetches a query whose FIRST fetch was still running, once it settles", async () => {
 		const qc = client();
 		let calls = 0;
@@ -47,7 +46,6 @@ describe("invalidateThroughInFlight", () => {
 		expect(calls).toBe(2);
 	});
 
-	// cm:guard the pair to the case above, and the reason the follow-up is narrow: a query that HOLDS data and is refetching already has its invalidation honoured, so treating it the same way would spend a third request on it.
 	it("does not add a follow-up for a query that already holds data", async () => {
 		const qc = client();
 		let calls = 0;
@@ -64,7 +62,6 @@ describe("invalidateThroughInFlight", () => {
 		expect(calls).toBe(2);
 	});
 
-	// cm:guard a query removed or garbage-collected while its first fetch was running must drop out of the outstanding set, or the cache subscription this opens outlives the page and nothing ever closes it.
 	it("releases its cache subscription when the query it was waiting on is removed", async () => {
 		const qc = client();
 		const cache = qc.getQueryCache();

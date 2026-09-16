@@ -97,7 +97,6 @@ describe('states[X].mode over PATCH /pipeline-config (ISS-994)', () => {
     expect(rows[0]?.agent_config.pipelineConfig.states.in_progress).toBeUndefined();
   });
 
-  // cm:guard the entry gate must keep working through this door: `pipeline-config-service.ts` refuses `open.enabled = false`, so `mode: 'manual'` is the only way an operator holds work before it starts.
   it('accepts a mode at the entry status and reads it back', async () => {
     const patch = await call('PATCH', `/api/projects/${projectId}/pipeline-config`, {
       enabled: true,

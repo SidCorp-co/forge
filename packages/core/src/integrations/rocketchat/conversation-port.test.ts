@@ -55,7 +55,6 @@ vi.mock('../../db/client.js', () => ({
   db: {
     select: () => ({
       from: (table: unknown) => ({
-        // cm:why the mock answers by TABLE and not by call order: the two queries are issued in a fixed order today and a counter would silently re-point if that ever changed.
         where: async () =>
           String((table as { [k: symbol]: unknown })[Symbol.for('drizzle:Name')]) ===
           'integration_bindings'
@@ -97,7 +96,6 @@ beforeEach(() => {
       secrets: { authToken: 't', userId: 'bot' },
     },
   ];
-  // cm:why every delivery needs a binding naming the venue's own project: a binding is what says this room belongs to this project TODAY, and a connection alone cannot say it.
   bindings = [{ connectionId: 'conn-1', projectId: PROJECT_ID, config: { rids: ['ROOM1'] } }];
 });
 
@@ -223,7 +221,6 @@ describe('deliver', () => {
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
-  // cm:guard a conversation outlives the binding that opened it: this is the rebind, and the old project's delayed answer must not reach a room somebody else now owns (ISS-1001).
   it('refuses when the room is now bound to another project', async () => {
     bindings = [
       { connectionId: 'conn-1', projectId: OTHER_PROJECT_ID, config: { rids: ['ROOM1'] } },
@@ -242,7 +239,6 @@ describe('deliver', () => {
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
-  // cm:guard one installation can be served by TWO Forge connections under two bot accounts: posting as whichever matched the server first posts as a bot the room may not even hold.
   it('posts as the bot whose binding names the room, not the first bot on the server', async () => {
     connections = [
       {
@@ -288,7 +284,6 @@ describe('deliver', () => {
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
-  // cm:guard the ONE door resolves its own credential from the venue, so a room whose original connection has lost the binding is answered by whichever connection still holds it rather than going silent: the guard the venue carries is the PROJECT's ownership of the room, not which socket the message arrived on (ISS-1002 gave up that affinity deliberately).
   it('answers through the second connection when the first no longer binds the room', async () => {
     connections = [
       {
@@ -311,7 +306,6 @@ describe('deliver', () => {
     });
   });
 
-  // cm:guard the pick among several is ORDERED and said out loud: an unordered one makes the bot a room is answered by change between two consecutive replies for no reason a reader could find, and the row order a database returns is not a decision anybody made.
   it('answers through the same connection every time when two of them bind the room', async () => {
     const both = [
       {

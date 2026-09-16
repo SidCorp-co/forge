@@ -10,12 +10,9 @@
 
 import { z } from 'zod';
 
-// cm:guard ISS-820 — an agent posting a bare `verifiedX: "..."` / `verifiedX: true` into sessionContext is exactly the fabrication this bound exists to catch (a claim with no evidence, trusted as fact by every later stage); bound-exceed on a pathological payload MUST accept (fail-open), never reject a legitimate large payload
 const VERIFIED_KEY_RE = /^verified/i;
-// cm:guard ISS-820 — keep this above ~25000: the 200000-byte sessionContext refinement caps a payload at roughly that many nodes, so a lower budget makes the fail-open branch REACHABLE and a bare verified* claim slips through behind padding keys
 const VERIFIED_CLAIM_MAX_NODES = 100_000;
 const VERIFIED_CLAIM_MAX_DEPTH = 64;
-// cm:why matches the ISO-8601 timestamp promised in the violation message — Date.parse alone also accepts non-ISO strings like "2026" or "March 5 2026"
 const ISO_8601_DATETIME_RE = /^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}(\.\d+)?(Z|[+-]\d{2}:\d{2})$/;
 
 function isShapedVerifiedClaim(value: unknown): boolean {
@@ -29,7 +26,6 @@ function isShapedVerifiedClaim(value: unknown): boolean {
       evidence.every((e) => typeof e === 'string' && e.length > 0));
   if (!evidenceOk) return false;
   const checkedAt = obj.checkedAt;
-  // cm:why regex fixes the shape, Date.parse rejects a syntactically-ISO impossibility like 2026-13-45T99:99:99Z
   return (
     typeof checkedAt === 'string' &&
     ISO_8601_DATETIME_RE.test(checkedAt) &&
@@ -56,11 +52,9 @@ export function findVerifiedClaimViolation(value: unknown): VerifiedClaimViolati
     if (boundExceeded) return null;
     nodeCount++;
     if (nodeCount > VERIFIED_CLAIM_MAX_NODES) {
-      // cm:guard ISS-820 — node budget is global (CPU bound): fail-open the whole walk
       boundExceeded = true;
       return null;
     }
-    // cm:why depth prunes only this subtree (not global) — a sibling verified* key elsewhere must still be checked, or a one-key-deep decoy bypasses requirement 3
     if (depth > VERIFIED_CLAIM_MAX_DEPTH) {
       return null;
     }
@@ -93,7 +87,6 @@ export function findVerifiedClaimViolation(value: unknown): VerifiedClaimViolati
   return walk(value, '', 0);
 }
 
-// cm:guard both write surfaces MUST use this schema, never a hand-rolled `z.record(...)` — the size ceiling and the verified-claim walk are the whole ISS-820 guard, and a surface that accepts sessionContext without them is a fabrication path that no test on the other surface can see. Adding a third writer means importing this, not copying it.
 export const sessionContextSchema = z
   .record(z.string(), z.unknown())
   .nullable()
@@ -119,7 +112,6 @@ export const sessionContextSchema = z
  * neither able to tell. The rule the plugin carried client-side is a
  * compare-and-set, and a compare-and-set nothing enforces is decorative.
  */
-// cm:why the ISS-820 verified-claim walk is deliberately NOT applied here: `expect` is a value the client read BACK off the row rather than a claim it is writing, so re-judging it would make the field unwritable by the very client that read it — the walk already ran on the write that stored the value.
 export const sessionContextExpectSchema = z
   .object({ sessionContext: z.record(z.string(), z.unknown()).nullable() })
   .strict();

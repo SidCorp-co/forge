@@ -278,7 +278,6 @@ describe('parseModuleFlow', () => {
 });
 
 describe('a generated diagram is a product surface, never a repository write', () => {
-  // cm:guard this is the epic's load-bearing rule and nothing else enforces it — `docs/flows/` is this repository's own hand-drawn surface, and a generator that started writing files into the tree would put churn in git on every issue close while every other test here stayed green.
   it('reaches no filesystem from any module the diagram route pulls in', async () => {
     const dir = dirname(fileURLToPath(import.meta.url));
     const sources = await Promise.all(

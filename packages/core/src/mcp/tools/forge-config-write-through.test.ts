@@ -98,8 +98,6 @@ describe('forge_config projectFacts write-through', () => {
     expect(batch.map((b) => b.slug)).toEqual(['deploy-steps', 'gate-policy', 'master-policy']);
   });
 
-  // cm:guard a key flagged `alwaysInject` carries `injection: 'always'`, which puts its FULL body
-  // into every agent system prompt for the project — batching must not flatten that per-key choice
   it('keeps every key own injection mode inside the batch', async () => {
     agentConfig.projectFactsConfig = { 'gate-policy': { alwaysInject: true } };
 
@@ -128,8 +126,6 @@ describe('forge_config projectFacts write-through', () => {
     expect(batch.map((b) => b.slug)).toEqual(['deploy-steps']);
   });
 
-  // cm:guard the reserved keys are DERIVED from the projects table columns, so a write-through
-  // would mint a curated entry shadowing a value nobody set here
   it('sends no reserved key to the batch', async () => {
     await tool().handler({
       action: 'update',

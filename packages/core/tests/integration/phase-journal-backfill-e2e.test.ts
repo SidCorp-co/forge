@@ -89,7 +89,6 @@ describe('phase journal backfill E2E', () => {
     ]);
   });
 
-  // cm:guard the property the backfill's run-selection guard exists for: numbering comes from the run's WHOLE job list, so writing a run that is still moving would hand attempt 1 to the job that happened to finish first and the unique index would then swallow the real first attempt
   it('skips a run that still has an unfinished job, and picks it up once it finishes', async () => {
     await insertJob('code', 'done', 30);
     const running = await insertJob('review', 'running', 10, false);

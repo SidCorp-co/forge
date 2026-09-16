@@ -110,7 +110,6 @@ describe('GET /api/admin/overview — the five glance metrics (ISS-975)', () => 
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    // cm:guard `env.ts` freezes `env` at first import, so ADMIN_EMAILS must be set BEFORE the dynamic import below — set it after and requireAdmin reads an empty allow-list and every case in this file 403s (ISS-816)
     process.env.ADMIN_EMAILS = ADMIN_EMAIL;
 
     const { adminAggregateRoutes } = await import('../../src/admin/aggregate-routes.js');
@@ -128,7 +127,6 @@ describe('GET /api/admin/overview — the five glance metrics (ISS-975)', () => 
     if (harness) await harness.cleanup();
   });
 
-  // cm:guard seeded ONCE and read ONCE: /overview reads live `now()`, so a second request after more seeding would measure a different span and the figures below would stop being one consistent reading.
   beforeEach(async () => {
     await truncateAll(harness.db);
     glance = await seedAndRead();
@@ -151,7 +149,6 @@ describe('GET /api/admin/overview — the five glance metrics (ISS-975)', () => 
     const cur = at(CUR_H);
     const base = at(BASE_H);
 
-    // cm:why every user the harness already made — the admin, this owner — carries `created_at = now()`, a REAL signup inside the current window landing in a different spark bucket than the seeded ones. Pushed clear of the 48h span the glance reads so `signupsWindow` measures only what this file planted.
     await harness.db.execute(sql`UPDATE users SET created_at = now() - interval '200 hours'`);
 
     for (const [i, when] of [cur, cur, cur, base].entries()) {
@@ -180,7 +177,6 @@ describe('GET /api/admin/overview — the five glance metrics (ISS-975)', () => 
       });
     }
 
-    // cm:guard the three close spellings are seeded on purpose: `activity_log` is HISTORY and holds rows written while the rung was called `released` (renamed 2026-09-10, migration 0228). Seeding only `closed` leaves `bucketedResolved`'s status list unguarded, and dropping a spelling there silently halves the denominator two glance metrics divide by.
     for (const [issSeq, when, to, lane] of [
       [10, cur, 'closed', 'kernel-hardening'],
       [12, cur, 'closed', null],

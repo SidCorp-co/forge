@@ -18,7 +18,6 @@ import {
 } from './lib.js';
 import { buildListEnvelope, overfetch } from './list-envelope.js';
 
-// cm:why one review or verify-live job legitimately emits several findings, one per missing state, so the cap is per job rather than per call — a looping agent is what it is defending the table against.
 const MAX_FINDINGS_PER_JOB = 50;
 
 const inputSchema = z
@@ -30,7 +29,6 @@ const inputSchema = z
     detail: z.string().trim().min(1).max(2000).optional(),
     severity: z.enum(uxRuleSeverities).optional(),
     ruleId: z.uuid().optional(),
-    // cm:guard the escape hatch, for when active-job resolution refused — supplying it ROUTINELY defeats the point: it skips the lookup entirely, so a finding lands with runId:null and no record of which pass found it. Reach for it only after a named refusal.
     issueId: z.uuid().optional(),
     filters: z
       .object({
@@ -85,7 +83,6 @@ async function resolveExplicitTarget(issueId: string, projectId: string): Promis
       detail: `No issue ${issueId} in this project. A finding is never written against an issue the caller cannot see — check the id, or drop \`issueId\` to resolve it from the active job.`,
     };
   }
-  // cm:guard runId stays null here — an explicitly-targeted finding is by definition not attributable to a run, and borrowing the caller's current one would credit the wrong pass
   return { ok: true, issueId, runId: null };
 }
 
@@ -126,7 +123,6 @@ export const forgeUxFindingsTool: ContextScopedMcpToolFactory = (ctx) => ({
           return { ok: false, reason: 'rate_limited', limit: MAX_FINDINGS_PER_JOB };
         }
 
-        // cm:guard a ruleId from another project is dropped to null, NOT refused: it would FK-fail the insert and lose a real finding over a stale id the agent had no way to check. The finding is the thing worth keeping; the rule link is not.
         const ruleId = input.ruleId ? await resolveProjectRuleId(input.ruleId, projectId) : null;
 
         const id = await insertUxFinding({

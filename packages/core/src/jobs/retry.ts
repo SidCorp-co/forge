@@ -66,7 +66,6 @@ export const RETRY_MAX_ROUNDS = 10;
  * How long a job may sit deferred for want of ANY usable device before it stops
  * retrying and holds instead.
  */
-// cm:guard short on purpose, and the reason is which HOLD REASON the job lands on. Deferring rides out a seconds-long provider throttle (owner call 2026-08-12: an all-limited fleet defers rather than parks) without spending the lineage's single auto-release on a blip. Past this ceiling, holding is strictly cheaper than retrying: `all_devices_exhausted` is condition-checked in jobs/hold.ts, so `releaseHeldJobs` re-queues it the moment a device frees up — zero dispatch churn and zero human interventions. A LONG ceiling would just burn retries against a fleet that is already known to be empty.
 export const CAPACITY_DEFER_CEILING_MS = 5 * 60_000;
 
 /**
@@ -93,7 +92,6 @@ export interface AutoRetryPayload {
  * What {@link nextRotation} decided. Three outcomes, not two: "nowhere to send
  * it" is not the same answer as "budget spent".
  */
-// cm:guard keep `defer` distinct from `give_up` — collapsing them is the defect this type exists to prevent. A round means one sweep over the usable devices, so advancing it when there are none charges the budget for a sweep that never happened: sid-desk went round 2 -> 3 in 90 seconds against a fully rate-limited pool (measured 2026-08-14), reached `retry_rounds_exhausted` (the hold reason with NO auto-release) and needed a human, when the honest answer was `all_devices_exhausted`, which clears itself.
 export type RotationOutcome =
   | { kind: 'rotate'; state: AutoRetryPayload }
   | { kind: 'defer'; state: AutoRetryPayload }
@@ -139,7 +137,6 @@ export function readAutoRetryPayload(payload: unknown): AutoRetryPayload {
  *   3. If every online device is done → the round is complete. Advance to the
  *      next round (reset `done`) unless we've hit RETRY_MAX_ROUNDS.
  */
-// cm:guard every `rotate` outcome below is reached with `online` non-empty, which is what makes `target` non-null STRUCTURALLY rather than by a check. It used to be `online[0] ?? null` on an empty pool, and a null target cost the retry both of its aims at once (dispatcher.ts: `pinDeviceId = autoRetry.target`, `excludeDeviceIds = autoRetry.done`, and the round advance had just cleared `done`) — so it re-picked the box that had only just failed. Reintroducing a rotate path that tolerates an empty pool brings that back.
 export function nextRotation(
   job: JobRow,
   state: AutoRetryPayload,
@@ -147,7 +144,6 @@ export function nextRotation(
   now: Date,
 ): RotationOutcome {
   const ranOn = job.deviceId ?? null;
-  // cm:why the first failure has no prior target, so the device that just ran IS this round's first target and the original attempt counts as its first try — seeding an empty round instead would give that device a second free try before the sweep moves on.
   const target = state.target ?? ranOn;
   const tries = state.target ? state.tries : 1;
 
@@ -157,7 +153,6 @@ export function nextRotation(
     if (waited > CAPACITY_DEFER_CEILING_MS) {
       return { kind: 'give_up', reason: 'all_devices_exhausted' };
     }
-    // cm:guard carry `target`, `tries`, `done` and `round` through UNCHANGED — a deferral is the absence of an attempt, so the sweep must resume exactly where it stopped. Rebuilding any of them here re-creates the lost-aim bug from the other direction.
     return { kind: 'defer', state: { ...state, target, tries, deferredSince } };
   }
 
@@ -208,8 +203,6 @@ export function nextRotation(
  * The second pool read (`includeLimited`) happens ONLY here, on the deferral
  * path, because it buys exactly one thing: which of the two outages this is.
  */
-// cm:guard the two cases need DIFFERENT human actions and must not be merged into "no capacity": every box rate-limited means top up quota or wait out the provider's reset, while nothing online means go bring a runner up. A single message would send the operator to the wrong place half the time.
-// cm:edge contract -> packages/core/src/pipeline/wedge.ts — the dedup and the resolve BOTH key on `capacityWedgeEntityId`; a caller that builds the id differently on one side emits a notification nothing can ever clear
 async function notifyCapacityOutage(
   job: JobRow,
   entityId: string,
@@ -221,7 +214,6 @@ async function notifyCapacityOutage(
     allowDeviceIds: stagePool,
   });
   const allLimited = present.length > 0;
-  // cm:guard ask this ONLY when the claim-capable set is empty, and never route on the answer. A below-floor box is online with a green heartbeat, so without this the operator is told "no capable device is online" and sent to a Runners tab where everything looks perfect; the real fix is one runner update on a host that is right there. Measured 2026-09-05: dev1 served 20 projects at 0.10.5 against a 0.11.0 floor.
   const tooOld = allLimited
     ? []
     : await onlineCapableDeviceIds(job.projectId, required, {
@@ -247,7 +239,6 @@ async function notifyCapacityOutage(
  * What to tell an operator about an empty pool, given which of the three ways
  * it is empty.
  */
-// cm:guard three cases, never two. "Limited" and "offline" both auto-clear and the copy says so; "too old" does NOT — no reset arrives and no host comes back, because nothing is wrong with the host. Folding it into either of the others promises a wait that never ends.
 function wedgeCopy(
   allLimited: boolean,
   limitedCount: number,
@@ -293,7 +284,6 @@ function wedgeCopy(
  * Best-effort: a query failure returns null (classifier falls through to its
  * text patterns).
  */
-// cm:guard exported for the integration test that proves this query RENDERS and RUNS — the predicate reaches into jsonb through a drizzle column reference inside a raw `sql` template, and a template that fails to render is swallowed by the catch below, which logs and returns null, disabling the classifier signal in silence
 export async function deriveCcStartupSignals(
   job: JobRow,
 ): Promise<{ diedBeforeFirstToolUse: boolean; sessionMessageCount: number } | null> {
@@ -302,8 +292,6 @@ export async function deriveCcStartupSignals(
       .select({
         total: sql<number>`count(*)::int`,
         toolCalls: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'tool_call')::int`,
-        // cm:guard counts ASSISTANT lines, not stdout rows — the threshold that reads this (`<= 3` in pipeline/failure-classifier.ts) is written as "≤3 assistant messages", and a bare stdout count stopped meaning that when `--include-partial-messages` landed (ISS-479): one assistant turn now emits 6-10 stdout rows, so the classifier quietly stopped firing for the class it was built for
-        // cm:edge contract -> packages/core/src/jobs/events-routes.ts — `stream_event` rows are no longer persisted at all, so a stdout count would have shifted again here; naming the frame keeps this signal independent of which frames are stored
         messages: sql<number>`count(*) FILTER (WHERE ${jobEvents.kind} = 'stdout' AND ${jobEvents.data}->'line'->>'type' = 'assistant')::int`,
       })
       .from(jobEvents)
@@ -323,7 +311,6 @@ export async function deriveCcStartupSignals(
  * Backfill `failure_kind` / `failure_action` on a row that reached here without
  * them, and mirror the write onto the in-memory `job` the caller keeps using.
  */
-// cm:why ISS-823 review #2 — the two columns are gated INDEPENDENTLY so a row whose `failureKind` was pre-stamped at flip time (dispatcher.ts / lifecycle-routes.ts / loop-monitor.ts / runs-cascade.ts) still gets `failure_action` written instead of reading null on the `forge_jobs` projection.
 async function persistClassification(
   job: JobRow,
   classified: ReturnType<typeof classifyFailure>,
@@ -331,12 +318,10 @@ async function persistClassification(
   const needsKindPersist = job.failureKind === null || job.failureKind === undefined;
   const needsActionPersist = job.failureAction === null || job.failureAction === undefined;
   if (needsKindPersist || needsActionPersist) {
-    // cm:why backfills from the EXISTING failureKind, not from re-classifying the current error text, so the persisted action never disagrees with the effectiveAction fallback below
     const actionToPersist = needsKindPersist
       ? classified.action
       : deriveActionFromKind(job.failureKind as NonNullable<typeof job.failureKind>);
     try {
-      // cm:why a literal SET list rather than a built `Partial<JobRow>`: `db/kernel-marker-guard.test.ts` can prove a literal carries no `status` and cannot prove it of a variable, so the shape is what saves this backfill a marker round-trip it does not need.
       await db
         .update(jobs)
         .set({
@@ -374,7 +359,6 @@ export async function scheduleAutoRetryWithVerify(
   job: JobRow,
   reason: string,
 ): Promise<RetryOutcome> {
-  // cm:why the classification below DRIVES the per-class retry policy — `code` gets no retry, `transient-cc` an immediate device failover — as well as labelling the row for the operator UI and recovery stats, so removing the persist block does not merely lose a label (ISS-450).
   const inputError = typeof job.error === 'string' && job.error.length > 0 ? job.error : reason;
   const classified = classifyFailure({
     error: inputError,
@@ -383,7 +367,6 @@ export async function scheduleAutoRetryWithVerify(
   });
   await persistClassification(job, classified);
 
-  // cm:guard ISS-812 AC2 — this guard must stay BELOW the persist block above: a cancelled job still failed, and returning before classification is what left 4 rows on forge-beta (measured 2026-08-26, 60d window) at status='failed' carrying real error text ([NO_RESULT_EXIT], [RESULT_ERROR]) with failure_kind, failure_reason and classifier_version all NULL. Every other no-retry path pre-stamps the row at flip time; this was the only one that recorded nothing, and silence is the defect the epic exists to remove.
   if (job.cancellationRequested) {
     return { scheduled: false, reason: 'cancellation_requested' };
   }
@@ -400,13 +383,11 @@ export async function scheduleAutoRetryWithVerify(
     }
   }
 
-  // cm:guard verify FIRST and structurally, never by error type: if the issue already moved past this step, the retry is wasted spend on work that is done.
   if (job.issueId) {
     let verdict: 'advanced' | 'reverted' | 'pending';
     try {
       verdict = await verifyRecovery(job);
     } catch (err) {
-      // cm:guard fail SAFE on a THROW, reversing ISS-197's fail-open-to-pending default for this branch alone: `verifyRecovery` throws only when its single PK SELECT does (a DB outage), and during one we cannot confirm the issue is still eligible. Failing open let a stale zombie job's finalize-failure clobber a deliberately-parked `waiting`/`on_hold` back to this job's entry-status — the ISS-701 incident (ISS-702).
       logger.warn(
         { err, jobId: job.id, issueId: job.issueId },
         'retry: verifyRecovery failed, failing safe — no retry scheduled',
@@ -429,7 +410,6 @@ export async function scheduleAutoRetryWithVerify(
     }
   }
 
-  // cm:why checked AFTER verify-first so an already-advanced issue still resolves completed_via_recovery instead of being parked terminal
   const effectiveAction =
     job.failureAction ?? deriveActionFromKind(job.failureKind ?? classified.kind);
   if (effectiveAction === 'terminal') {
@@ -441,16 +421,13 @@ export async function scheduleAutoRetryWithVerify(
   }
 
   const isFailoverAction = effectiveAction === 'failover' || effectiveAction === 'quarantine';
-  // cm:why resolved once and threaded into BOTH the capacity notification and the rotation: reading the pool twice could straddle a config edit and let the two disagree about which boxes exist
   const stagePool = (await resolveStageOverrides(job.projectId, job.payload)).deviceIds;
   const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
     ?.requiredCapabilities;
-  // cm:guard scope the read to the pool and read it for EVERY action, not just failover — an unscoped set makes a fully-limited pool look survivable, and skipping the read on the `retry` action is how an infra retry used to burn its whole budget against boxes dispatch would refuse
   const healthyDevices = await onlineCapableDeviceIds(job.projectId, required, {
     allowDeviceIds: stagePool,
   });
 
-  // cm:why forcing tries to the per-device cap makes nextRotation treat the device that just ran as exhausted, so it rotates immediately instead of spending same-device tries
   const state = readAutoRetryPayload(job.payload);
   const outcome = nextRotation(
     job,
@@ -469,14 +446,12 @@ export async function scheduleAutoRetryWithVerify(
       { jobId: job.id, attempts: job.attempts, rounds: RETRY_MAX_ROUNDS, reason: outcome.reason },
       'retry: chain stopped',
     );
-    // cm:guard the reason now comes from WHAT HAPPENED, not from a reading taken at give-up time. It used to be `allRunnersLimited ? … : …` evaluated on entry, so one device recovering for one instant mid-burn flipped a capacity outage to `retry_rounds_exhausted` — the hold reason that never auto-releases — and the job then needed a human forever.
     return { scheduled: false, reason: outcome.reason };
   }
 
   if (outcome.kind === 'defer') {
     await notifyCapacityOutage(job, capacityEntityId, required, stagePool);
   } else {
-    // cm:guard resolving here is what makes the capacity notification self-clearing — a successful rotation IS the recovery, and nothing else observes it. Without this the bell stays red about a pool that came back.
     await resolvePipelineWedge(capacityEntityId);
   }
   const next = outcome.state;
@@ -491,7 +466,6 @@ export async function scheduleAutoRetryWithVerify(
     [AUTO_RETRY_PAYLOAD_KEY]: next,
   };
 
-  // cm:why the original promptString embeds the DEAD parent job's id as the vote key — reusing it verbatim means the clone's own vote never matches jobs.id and failReconcileRunIfNoVerdictRecorded fails the run despite a successful vote (MINOR V, ISS-801 review round 4).
   let newJobId: string | undefined;
   if (job.type === 'verify_skill' && typeof basePayload.reconcileRunId === 'string') {
     newJobId = randomUUID();
@@ -513,7 +487,6 @@ export async function scheduleAutoRetryWithVerify(
       attempts: job.attempts + 1,
       retryOf: job.id,
       retryAfterAt,
-      // cm:guard never carry agentSessionId onto the clone — the parent's session is terminal, and copying it would short-circuit ensureAgentSessionForJob's dispatch-time insert and make the job a false reconcileOrphanedJobs candidate. Leaving it NULL lets ensureAgentSessionForJob mint a fresh row, chained via metadata.attempt/retryOfSessionId/rootSessionId, never overwriting the reaped attempt's transcript (ISS-434/ISS-785).
     })
     .returning({ id: jobs.id });
 
@@ -521,7 +494,6 @@ export async function scheduleAutoRetryWithVerify(
 
   const startAfterSeconds = Math.max(0, Math.ceil((retryAfterAt.getTime() - Date.now()) / 1000));
   try {
-    // cm:why reconcile/verify_skill retries must stay on RECONCILE_QUEUE_NAME — enqueueJob would land the clone on the coder queue, defeating the lane isolation it exists for (MINOR T, ISS-801 review).
     if (job.type === 'reconcile' || job.type === 'verify_skill') {
       await enqueueReconcileJob(created.id, { startAfterSeconds });
     } else {

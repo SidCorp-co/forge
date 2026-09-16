@@ -1,6 +1,5 @@
 "use client";
 
-// cm:guard a `features/*` hook must key its query under one of the prefixes invalidated below (e.g. ['projects']) — pick any other and the live update silently no-ops, with nothing red anywhere to say the screen stopped refreshing
 import type { QueryClient } from "@tanstack/react-query";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 import { scheduleInvalidation } from "./invalidation-coalescer";
@@ -27,10 +26,8 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "issue.deleted": {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			scheduleInvalidation(qc, ["issues", "search"]);
-			// cm:why an assignment or status edit moves an issue between the needs-review and awaiting-input buckets, which are derived on read and cached nowhere server-side — so nothing else tells the inbox it is stale (ISS-307)
 			scheduleInvalidation(qc, ["attention"]);
 			scheduleInvalidation(qc, ["pulse"]);
-			// cm:why ISS-665 — the Overview "Recent changes" panel is ordered by `issues.updatedAt`, which every one of these three events bumps; without this it keeps the previous ordering until something unrelated refetches
 			scheduleInvalidation(qc, ["recent-changes"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
@@ -41,17 +38,13 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "issue.statusChanged": {
 			scheduleInvalidation(qc, ["issues", "list"]);
 			scheduleInvalidation(qc, ["issues", "search"]);
-			// cm:why the console's open-issue counts and health are derived from issue status, so a transition is the only event that dates the batch rollup (ISS-290)
 			scheduleInvalidation(qc, ["projects", "health"]);
 			scheduleInvalidation(qc, ["pulse"]);
-			// cm:why every attention bucket is derived from `issues.status` on read (packages/core/src/me/attention-buckets.ts) and none of them is cached server-side, so a status event is the only signal that the cross-project inbox and its rail badge are stale — nothing else fires for an issue in a project this client is not looking at.
 			scheduleInvalidation(qc, ["attention"]);
-			// cm:why the Overview "Recent changes" panel is ordered by `issues.updatedAt`, and a status transition is the commonest writer of it — without this the panel keeps the previous ordering until something unrelated refetches (ISS-665).
 			scheduleInvalidation(qc, ["recent-changes"]);
 			if (data?.issueId) {
 				scheduleInvalidation(qc, ["issue", data.issueId]);
 				scheduleInvalidation(qc, ["activities", data.issueId]);
-				// cm:why a run that parks to ask writes the question and the issue's park status together, and core publishes nothing else a browser subscribes to — this is the only event that reaches a screen already open on an issue whose decision has just appeared (ISS-980).
 				scheduleInvalidation(qc, ["questions", data.issueId]);
 			}
 			return;
@@ -74,7 +67,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "comment.created":
 		case "comment.updated":
 		case "comment.deleted": {
-			// cm:why a human comment is the receipt that clears an unseen agent-filed draft (ISS-881), and an @mention arrives as a comment too; without this the row the user just acted on stays on screen until something unrelated refetches.
 			scheduleInvalidation(qc, ["attention"]);
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.issueId) {
@@ -83,7 +75,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			}
 			return;
 		}
-		// cm:edge contract -> packages/core/src/assistant/conversation-adapter.ts — the `deliver` half of the Forge UI's conversation transport publishes this into each person's own user room; the name and the payload are settled there, and a rename on either side leaves the open thread correct only after a reload. `conversation.settled` is the second half of the pair and arrives after the row is durable, which is why both invalidate rather than either one appending (ISS-1004 step 5).
 		case "conversation.settled":
 		case "conversation.message": {
 			if (data?.conversationId) {
@@ -96,9 +87,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.updated":
 		case "agent-session.status":
 		case "agent-session.deleted": {
-			// cm:why the sessions index keys its queries under ['agent-sessions'], and nothing else fires for a standalone session, so without this the live list never refreshes (ISS-291)
 			scheduleInvalidation(qc, ["agent-sessions"]);
-			// cm:why `quality.sessionFailures` counts failed sessions by reason, so a session reaching `failed` is the only event that dates that figure — the issue and job events elsewhere in this switch never fire for a standalone interactive session (ISS-988)
 			scheduleInvalidation(qc, ["pulse"]);
 			if (data?.sessionId) {
 				scheduleInvalidation(qc, ["agent-session", data.sessionId]);
@@ -111,7 +100,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "agent-session.turn.appended":
 		case "agent-session.turn.edited":
 		case "agent-session.turn.truncated": {
-			// cm:guard these three are the RUN detail's, not a conversation's: since ISS-1004 step 5 `features/session` is the screen whose subject is a session on a runner, and the chat surface reads `conversation.message` / `conversation.settled` above instead. The streaming-tail `turn.appended` is debounced ~100ms server-side (core `agent-sessions/broadcast.ts`), so a caret that stops moving is that debounce before it is this key (ISS-292).
 			if (data?.sessionId) {
 				scheduleInvalidation(qc, ["agent-session", data.sessionId, "turns"]);
 				scheduleInvalidation(qc, ["agent-session", data.sessionId]);
@@ -139,11 +127,9 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "job.assigned":
 		case "job.completed":
 		case "job.failed":
-		// cm:edge contract -> packages/core/src/jobs/resume-job.ts — a resumed job leaves `held` for `queued`, so both the list and the job detail are stale; without this case the operator presses resume and the row keeps reading "held" until something unrelated invalidates it
 		case "job.resumed":
 		case "job.cancelled": {
 			scheduleInvalidation(qc, ["jobs", "list"]);
-			// cm:edge contract -> packages/web-v2/src/features/operator/hooks.ts — A2 (stuck jobs) and the in-flight KPI both count `jobs` rows, so a reap that clears the alert must clear it on screen; without this the operator presses the button and the row it just cancelled is still listed
 			scheduleInvalidation(qc, ["admin", "ops"]);
 			// ISS-307 — a job flipping to failed (incl. deploy) belongs in Attention's
 			// failed-jobs bucket; refresh the cross-project inbox + rail count.
@@ -161,7 +147,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		}
 		case "pipeline_run.status_changed": {
 			scheduleInvalidation(qc, ["pipeline-runs", "list"]);
-			// cm:edge contract -> packages/web-v2/src/features/operator/hooks.ts — all four Operator Ops Console panels roll up from `pipeline_runs` and are keyed under this prefix; a key that does not start ["admin","ops"] leaves the console serving stale cross-tenant numbers with nothing to say it (ISS-653)
 			scheduleInvalidation(qc, ["admin", "ops"]);
 			// Projects console (ISS-290): liveRuns / spend roll up from pipeline_runs.
 			scheduleInvalidation(qc, ["projects", "health"]);
@@ -247,7 +232,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			return;
 		}
 		case "dependencyChanged": {
-			// cm:why ISS-1017 — the issues list renders its badges from the search response (`withDependencies=1`), so the per-issue keys below no longer reach it and the chips would outlive a retracted edge until something unrelated refetched the list
 			scheduleInvalidation(qc, ["issues", "search"]);
 			if (data?.fromIssueId) {
 				scheduleInvalidation(qc, ["issue", data.fromIssueId, "dependencies"]);
@@ -263,7 +247,6 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		}
 		case "issue.unblockCascade":
 		case "dependency.unblocked": {
-			// cm:edge protocol -> packages/web-v2/src/features/issues/use-unblock-cascade.ts — consumed there via wsClient.on, which is why this branch refetches nothing; delete that hook and both events go silent with nothing here going red
 			return;
 		}
 		case "pm.escalation": {
@@ -314,24 +297,16 @@ const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["issues"],
 	["jobs"],
 	["projects"],
-	// cm:why ISS-291 — the sessions index refreshes after a dropped connection here.
 	["agent-sessions"],
-	// cm:why a run thread open across a reconnect re-pulls its turns and its status here, because every live update it has is an invalidation it may have missed (ISS-292)
 	["agent-session"],
-	// cm:guard an open conversation is replayed here or not at all: its reply arrives as ONE `conversation.message` frame, so a dropped frame leaves the answer invisible until something else refetches (ISS-1004)
 	["conversations"],
-	// cm:why ISS-307 — the cross-project Attention inbox and its rail count ride issue/job/notification events, so a dropped connection is repaired here.
 	["attention"],
 	["pulse"],
 	["devices", "me"],
-	// cm:why `chat_logs` has no per-row WS broadcast in core, so this plus window-focus and the Refresh button is the whole of the cross-project Activity feed's freshness until a `chat-log.created` event lands (ISS-314).
 	["chat-logs"],
-	// cm:why ISS-401/C — integration bindings, status and the owner-scoped connections list have no broadcast for connection-only mutations, so reconnect replay is their cross-client freshness.
 	["integrations"],
 	["integration-connections"],
-	// cm:guard the ONE recovery an empty decision panel has. `features/questions` polls only once an issue already carries a question — `agent_questions` has no index on `issue_id` — so a screen open across a dropped connection learns of its first question here or not until the next navigation (ISS-980).
 	["questions"],
-	// cm:guard the three notification keys are HERE because `refetchOnWindowFocus` is off since ISS-1019: `routeEvent` reaches them on every `notification.created`, but a notification arriving while the socket was down was repaired by returning to the tab and by nothing else, so without these the unread badge stays wrong until something unrelated refetches.
 	["notifications"],
 	["notifications-unread"],
 	["invitations-pending"],
@@ -350,7 +325,6 @@ function underAReplayPrefix(queryKey: readonly unknown[]): boolean {
  * still mounted. Project-room events don't have a seq; we just invalidate
  * the high-level caches so React Query refetches anything visible.
  */
-// cm:guard through `invalidateThroughInFlight` and not `qc.invalidateQueries`: a reconnect has a DEFINITE gap, and a query whose first request took its snapshot during the outage has its invalidation swallowed by TanStack exactly as any other first fetch does — so the one path with a certain gap was the one repairing nothing (ISS-1019).
 export function replayOnReconnect(qc: QueryClient): void {
 	for (const prefix of REPLAY_PREFIXES) invalidateThroughInFlight(qc, { queryKey: prefix });
 }
@@ -373,7 +347,6 @@ export function replayOnReconnect(qc: QueryClient): void {
  * This is ONE call with ONE predicate rather than two passes, so a `questions`
  * query holding pre-open data is refetched once and not twice.
  */
-// cm:guard blanket suppression behind a `hasConnected` flag is refused, and this is the shape that replaces it: REST can complete before the socket connects, and a change in that gap reaches the screen through the first-open replay or through nothing (ISS-1019).
 export function replayOnFirstOpen(qc: QueryClient, openedAt: number): void {
 	invalidateThroughInFlight(qc, {
 		predicate: (query) => {

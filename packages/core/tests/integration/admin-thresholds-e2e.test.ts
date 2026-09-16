@@ -37,7 +37,6 @@ describe('admin thresholds routes (ISS-654)', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    // cm:guard `env.ts` freezes `env` at first import, so ADMIN_EMAILS must be set BEFORE the dynamic import below or requireAdmin sees an empty allow-list and every case 403s
     process.env.ADMIN_EMAILS = ADMIN_EMAIL;
 
     const { adminThresholdRoutes } = await import('../../src/admin/thresholds-routes.js');
@@ -87,7 +86,6 @@ describe('admin thresholds routes (ISS-654)', () => {
     const res = await get(await tokenFor(ADMIN_EMAIL));
 
     expect(res.status).toBe(200);
-    // cm:guard literals, never ADMIN_THRESHOLD_DEFAULTS — an assertion against the implementation's own constant cannot go red on a wrong default
     expect(await res.json()).toEqual({
       stuckJobSeconds: 600,
       runnerStarvedSeconds: 300,
@@ -111,7 +109,6 @@ describe('admin thresholds routes (ISS-654)', () => {
     expect(body.stuckJobSeconds).toBe(900);
   });
 
-  // cm:guard the second PUT must not reset the first one's keys — merging over the table defaults instead of over the effective row is the bug this catches.
   it('a second partial PUT keeps the keys the first one set', async () => {
     const token = await tokenFor(ADMIN_EMAIL);
 

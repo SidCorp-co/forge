@@ -70,7 +70,6 @@ const NO_WORK_EVIDENCE_STATUSES: ReadonlySet<string> = new Set(['developed', 'te
  * reachable with zero recorded evidence that code exists (ISS-105 / ISS-75-78
  * shape: a status advance with no branch, commit or handoff behind it).
  */
-// cm:guard stays agent-only, and the carve-out is the rule rather than an accident of where the check sat: an operator advancing by hand makes the shipped claim deliberately and owns it, the same reading `release-gate-hold.ts` and `release-record-required.ts` state for their own rules. A project that wants this held against people too declares `work_evidence` in `statusEntryCriteria`, which is the door built for that decision.
 const noWorkEvidenceRule: EvidenceRule = {
   agentOnly: true,
   check: async (ctx) => {
@@ -116,7 +115,6 @@ const entryCriteriaRule: EvidenceRule = {
 
 const RULES: readonly EvidenceRule[] = [noWorkEvidenceRule, entryCriteriaRule];
 
-// cm:guard fails OPEN on any internal error — a broken content guard must never freeze the writer
 export async function checkTransitionEvidence(
   ctx: TransitionEvidenceContext,
 ): Promise<TransitionEvidenceViolation | null> {

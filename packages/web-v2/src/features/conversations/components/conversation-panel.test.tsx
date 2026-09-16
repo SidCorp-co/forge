@@ -15,7 +15,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
 
-// cm:why jsdom implements no scrolling at all, and the thread pins itself to its newest message on every mount — without this stub the component throws before any assertion here is reached
 Element.prototype.scrollIntoView = vi.fn();
 
 const list = vi.fn();
@@ -71,9 +70,6 @@ beforeEach(() => {
   for (const m of [list, detail, rename, remove, setArchived, openRoom, sendMsg]) m.mockReset();
   openRoom.mockResolvedValue(roomRow("cNew", "Brand new"));
   sendMsg.mockResolvedValue({ conversationId: "cNew", messages: [], windows: [] });
-  // cm:guard the mock branches on the ARCHIVED argument rather than answering one list for every
-  // call: the whole of the Archived toggle is that the two reads return disjoint sets, and a mock
-  // that ignored the flag would make the toggle look like it worked whatever the code sent.
   list.mockImplementation(async (_projectId: string, _pageSize: number, wantArchived: boolean) => ({
     items: wantArchived ? archived : live,
     total: wantArchived ? archived.length : live.length,
@@ -117,9 +113,6 @@ describe("ConversationPanel · what opening Ask agent shows", () => {
   it("opens on a new conversation and resumes none of them", async () => {
     mount();
     expect(await screen.findByRole("heading", { name: "New conversation" })).toBeInTheDocument();
-    // cm:guard the detail read is asserted NOT to have happened: a panel that resumed the most
-    // recent room would render correctly and differ only in this call, which is exactly the shape
-    // ISS-732 was filed about.
     expect(detail).not.toHaveBeenCalled();
     expect(screen.getByTestId("composer")).toBeInTheDocument();
   });
@@ -207,9 +200,6 @@ describe("ConversationPanel · managing a room from the list", () => {
     await waitFor(() => expect(setArchived).toHaveBeenCalledWith("c3", false));
   });
 
-  // cm:guard the delete is asserted NOT to have been called before the confirmation is answered:
-  // the row and the call are one click apart, and a confirm dialogue that rendered after the
-  // request went out would be a prompt about something already gone.
   it("asks before it deletes, and does not delete until it is answered", async () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Delete Release plan" }));
@@ -228,9 +218,6 @@ describe("ConversationPanel · managing a room from the list", () => {
     expect(remove).not.toHaveBeenCalled();
   });
 
-  // cm:guard the panel is asserted to LEAVE the room it was showing, because the alternative is the
-  // quietest failure here: the thread stays on screen, reads as open, and is a room the list no
-  // longer offers and the server no longer has.
   it("leaves a conversation it had open once that conversation is deleted", async () => {
     mount();
     fireEvent.click(await screen.findByRole("button", { name: "Open Release plan in Alpha" }));
@@ -256,9 +243,6 @@ describe("ConversationPanel · managing a room from the list", () => {
   });
 });
 
-// cm:guard the three cases below are the review's F1, F2 and F3. Each is a defect that leaves the
-// screen looking like it worked: a room the person did not choose, a room they are told is gone and
-// is not, and a room they cannot get out of.
 describe("ConversationPanel \u00b7 what a slow or failing request must not do", () => {
   it("does not jump to the room a draft opened after the person had already moved on", async () => {
     let settle: (row: unknown) => void = () => undefined;
@@ -274,11 +258,6 @@ describe("ConversationPanel \u00b7 what a slow or failing request must not do", 
     fireEvent.click(await screen.findByTestId("composer"));
     await waitFor(() => expect(openRoom).toHaveBeenCalledTimes(1));
 
-    // cm:guard the way back to the list is the HEADER control here, not the draft's inline list.
-    // Since ISS-1031 a sent message shows in the thread the moment it is typed, so the empty state
-    // the inline list hangs off is gone by this point — a screen saying "Start a conversation"
-    // underneath the question somebody just asked is the contradiction that change removed. The
-    // property this case guards is unchanged: the draft's room must not take the screen.
     fireEvent.click(screen.getByRole("button", { name: "Conversation history" }));
     // The person gives up waiting and opens an earlier conversation instead.
     fireEvent.click(await screen.findByRole("button", { name: "Open Release plan in Alpha" }));
@@ -286,9 +265,6 @@ describe("ConversationPanel \u00b7 what a slow or failing request must not do", 
 
     // The draft's room finally arrives, and its send runs. It must not take the screen.
     settle(roomRow("cNew", "Brand new"));
-    // cm:guard the assertion waits for the SEND, which is the step after the callback this guards:
-    // asserting straight after `settle` passes whatever the panel does, because the callback has not
-    // run yet and the screen still holds the room the person chose.
     await waitFor(() => expect(sendMsg).toHaveBeenCalledWith("cNew", "hello"));
     expect(detail).not.toHaveBeenCalledWith("cNew");
     expect(screen.getByText("everything said in c1")).toBeInTheDocument();

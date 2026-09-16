@@ -37,17 +37,13 @@ import { subjectForThread } from './thread-registry.js';
 import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 import { drainConversationWindows, startWindowDrainLoop } from './window-drain.js';
 
-// cm:guard the first CORS origin IS the web app's origin (operators must allow it for the UI to work at all); exported so the escalation bridge's Bao turn builds the same issue-link base as the sync path
 export const webBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
 
 const LOCK_NAMESPACE = 'forge:rocketchat';
 const MAX_BACKOFF_MS = 30_000;
-// cm:why gives the DB a beat to come back, and lets another instance win the lock first
 const LOCK_REACQUIRE_DELAY_MS = 5000;
-// cm:guard fan CRUD to EVERY core instance — the advisory-lock owner may not be the process that served the HTTP request
 const RELOAD_CHANNEL = 'forge_rocketchat_reload';
 const LISTEN_RETRY_MS = 5000;
-// cm:guard a subscription can die WITHOUT a `nosub` while server pings keep the link alive, so the watchdog never fires and the bot goes silently deaf; this periodic fresh login+sub bounds that window, and the `nosub` handler covers the signalled case
 const DDP_REFRESH_INTERVAL_MS = 10 * 60_000;
 const capitalize = (s: string): string => (s ? s.charAt(0).toUpperCase() + s.slice(1) : s);
 
@@ -63,12 +59,10 @@ export interface ActiveConnection {
   reconnectAttempt: number;
   reconnectTimer?: NodeJS.Timeout | undefined;
   refreshTimer?: NodeJS.Timeout | undefined;
-  // cm:guard MUST stay per-connection: the same bot user is subscribed on every org connection via `__my_messages__`, so a manager-global tracker let a routeless connection mark an id seen first and the routing connection dropped it as a false duplicate (root cause, 2026-07-15)
   seenMessage: SeenTracker;
   /**
    * The tail of the work already queued for each room.
    */
-  // cm:guard routing is serialized PER ROOM and never fanned out: the shape and thread lookups are round trips, so two messages typed a moment apart can finish them in either order, and the one that finishes first takes the lower seq. The window then shows the model "deploy to staging" before "do not deploy", which is the pair reversed (ISS-1004, review pass 2 F4).
   routeTails: Map<string, Promise<void>>;
   closing: boolean;
 }
@@ -85,7 +79,6 @@ class RocketChatConnectionManager {
   async start(): Promise<void> {
     if (this.started) return;
     this.started = true;
-    // cm:why listen even with zero connections — the first-ever connect arrives as a NOTIFY from whichever instance served the HTTP request
     this.startReloadListener();
     registerConversationTransport(rocketChatConversationPorts);
     this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
@@ -122,7 +115,6 @@ class RocketChatConnectionManager {
       .limit(1);
     if (!conn?.active) return;
 
-    // cm:guard single-owner: a DEDICATED pg connection, never the pooled `db` — `pg_try_advisory_lock` is SESSION-scoped, so the lock binds to THIS backend session and is released only by an explicit unlock or by that session ending. Taken on a pooled checkout it goes back into the pool still attached, where this manager can no longer release it and no other instance can take it: the room then has a lock with no owner instead of one owner
     const lockClient = new pg.Client({ connectionString: env.DATABASE_URL });
     await lockClient.connect();
     const res = await lockClient.query<{ ok: boolean }>(
@@ -135,7 +127,6 @@ class RocketChatConnectionManager {
       return;
     }
 
-    // cm:guard a dead lock connection means the advisory lock is GONE (session-scoped), and without this listener pg.Client's 'error' event crashes the process
     lockClient.on('error', (err) => {
       logger.warn({ err, connectionId }, 'rocketchat: advisory-lock connection lost');
       const ac = this.conns.get(connectionId);
@@ -189,7 +180,6 @@ class RocketChatConnectionManager {
   private async dial(connectionId: string): Promise<void> {
     const ac = this.conns.get(connectionId);
     if (!ac || ac.closing) return;
-    // cm:guard gate every callback on still being current — a slow-dying socket that triggers a second dial leaves two live sockets, i.e. duplicate deliveries
     try {
       ac.client?.close();
     } catch {}
@@ -207,7 +197,6 @@ class RocketChatConnectionManager {
       onError: (e) => {
         if (!isCurrent()) return;
         logger.warn({ err: e, connectionId }, 'rocketchat: DDP error');
-        // cm:why DDP-layer failures live BELOW the message handler, so without this they were invisible — the replies-once-then-deaf blind spot
         Sentry.captureException(e, {
           tags: { area: 'rocketchat', phase: 'ddp' },
           extra: { connectionId },
@@ -226,7 +215,6 @@ class RocketChatConnectionManager {
     }
   }
 
-  // cm:why each successful dial re-arms this, so the interval is measured from the last (re)connect
   private startRefresh(connectionId: string): void {
     const ac = this.conns.get(connectionId);
     if (!ac) return;
@@ -268,12 +256,10 @@ class RocketChatConnectionManager {
     ac.routeTails.set(m.rid, next);
   }
 
-  // cm:guard the order is still the one ISS-987 built and each step is why the next is safe: the shape-free skips first because they need no round trip; the ROUTE before anything async, so a routeless connection neither resolves a shape nor touches its tracker; then the shape, which the venue needs; then the thread lookup, which decides WHICH handler; and the tracker last. What ISS-1004 removed is the addressing step between the shape and the tracker — every message in a bound room is now collected, so the tracker's entries are no longer rationed against unmentioned chatter and its only job is the duplicate re-emit it was added for.
   private async route(connectionId: string, m: RocketChatIncomingMessage): Promise<void> {
     const ac = this.conns.get(connectionId);
     if (!ac) return;
     if (decideSkip(m, ac.botUserId)) return;
-    // cm:guard route BEFORE dedup: the same bot user is subscribed on EVERY connection's socket via `__my_messages__`, so a connection with no route for this room must drop the message without touching its dedup tracker — a shared/global tracker let a routeless connection mark the id seen first, so the connection that owned the route dropped it as a false duplicate (root cause of the intermittent "bot ignores the message", pinned 2026-07-15)
     const route = ac.routes.get(m.rid);
     if (!route) {
       logger.debug({ connectionId, rid: m.rid }, 'rocketchat: no binding for room; ignoring');
@@ -281,19 +267,15 @@ class RocketChatConnectionManager {
     }
     const restAuth = { serverUrl: ac.serverUrl, authToken: ac.authToken, userId: ac.botUserId };
     const shape = await resolveRoomShape(restAuth, m.rid);
-    // cm:guard refuse by NAME rather than assume a shape: `group` would make a direct room need the wrong authority in a one-to-one room and `direct` would run a channel's chatter as whoever spoke. An unresolvable room is a fault to see in the log, not a default to serve (ISS-987).
     if (!shape) {
       const ctx = { connectionId, rid: m.rid, msgId: m.id, projectId: route.projectId };
       logger.error(ctx, 'rocketchat: room type unresolved; refusing the message, not assuming one');
       return;
     }
-    // cm:guard the thread lookup runs AFTER the route for the same reason the shape does: a connection with no binding for this room must touch nothing. It decides WHICH handler takes the message, and a registered thread never reaches the collector (ISS-978 criterion 22).
     const owned = m.tmid
       ? await subjectForThread({ connectionId, rid: m.rid, tmid: m.tmid })
       : null;
     if (ac.seenMessage(m.id)) return;
-    // cm:guard a registered thread is CONSUMED here and never falls through to the collector — refusals included. A refusal that fell through would reach the person who was asked to pick option 2 as a chat reply about something else, and would additionally run a provider turn nobody asked for (ISS-978 criteria 20, 21).
-    // cm:guard the SUBJECT decides which handler, and the two are not interchangeable: a question thread answers an option under `answerAs`'s authority gate, an issue thread writes a comment — routing a prose reply to the first would grant a permission nobody chose, and a chosen option to the second would resume the run twice (ISS-981 criteria 18, 29).
     if (owned) {
       if (owned.kind === 'question') {
         consumeQuestionThreadReply({ questionId: owned.questionId, connectionId, ac, m });
@@ -314,7 +296,6 @@ class RocketChatConnectionManager {
       { ...logCtx, user: m.username, shape, threaded: Boolean(m.tmid) },
       'rocketchat: collecting message',
     );
-    // cm:guard the collect is AWAITED inside the room's queue, which is what makes the seq order the arrival order; and a collect that failed takes its mark back off the tracker, so RC's enrichment re-emit of the same id is a second chance rather than a false duplicate (ISS-1004, review pass 2 F3, F4).
     await this.collect(ac, route, m, connectionId, shape).catch((err) => {
       ac.seenMessage.forget(m.id);
       logger.error({ err, connectionId, rid: m.rid }, 'rocketchat: message collection failed');
@@ -328,7 +309,6 @@ class RocketChatConnectionManager {
   /**
    * Take one message in. Nothing is answered here.
    */
-  // cm:guard the turn is the WINDOW's and this only collects: answering per message is what made two messages typed seconds apart two decisions and two bills, and a turn taken on the socket leaves nothing behind when the process stops mid-way (ISS-1004 rule 1).
   private async collect(
     ac: ActiveConnection,
     route: Route,
@@ -368,8 +348,6 @@ class RocketChatConnectionManager {
   /**
    * The one reply this adapter still sends itself, and the reason it must.
    */
-  // cm:guard a venue that could not be placed has no venue to deliver THROUGH, so the neutral door cannot be reached and this socket is the only way to the person. It is confined to a one-to-one room on purpose: a group room runs under the binding's principal and is owed no answer about an identity it never consults, which is the misdescription ISS-1002's review refused.
-  // cm:guard the text is the speaker port's own and is not rewritten here — for this fault it names the server address that could not be read, which is the thing an operator has to change.
   private async sayWhyUnplaceable(
     ac: ActiveConnection,
     m: RocketChatIncomingMessage,
@@ -395,7 +373,6 @@ class RocketChatConnectionManager {
     try {
       ac.client?.close();
     } catch {}
-    // cm:why a teardown swallows both failures rather than reporting them: the socket and the lock are being given up, so a close that fails has already lost the thing the failure is about.
     try {
       await ac.lockClient.query('select pg_advisory_unlock(hashtext($1), hashtext($2))', [
         LOCK_NAMESPACE,
@@ -414,7 +391,6 @@ class RocketChatConnectionManager {
    * so it runs on every instance, not just the one that served the request.
    */
   async reload(connectionId: string): Promise<void> {
-    // cm:why an idle manager — no connections at boot — may start owning one at a reload
     this.started = true;
     await this.teardown(connectionId);
     await this.acquire(connectionId).catch((err) =>
@@ -447,7 +423,6 @@ class RocketChatConnectionManager {
   }
 
   private restartReloadListener(failed: pg.Client): void {
-    // cm:guard a stale event from a client this manager already replaced restarts nothing
     if (this.listenClient !== failed) return;
     this.listenClient = undefined;
     void failed.end().catch(() => {});

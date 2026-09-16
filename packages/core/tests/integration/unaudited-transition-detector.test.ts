@@ -57,7 +57,6 @@ describe('unaudited transitions: a hand on the database (ISS-884, ISS-943)', () 
     });
   });
 
-  // cm:why the `failed`→`queued` re-dispatch is one of the three interventions ISS-442's own discipline rule names, and it was uncounted until the marker reached the non-terminal writers — so this is the class-2 assertion, not a variation on the one above.
   it('records a hand-written NON-terminal re-dispatch', async () => {
     const jobId = await fx.insertJob('failed');
 

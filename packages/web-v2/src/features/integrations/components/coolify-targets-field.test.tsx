@@ -75,7 +75,6 @@ describe("CoolifyTargetsField", () => {
     expect(screen.getByText(/main@abc1234/)).toBeInTheDocument();
   });
 
-  // cm:guard a bound uuid Coolify does not list must be SAID, not rendered as an ordinary row — that silence is the "deploys the wrong repo" trap the healthcheck already refuses to stop at (ISS-925).
   it("names a bound uuid Coolify does not list", () => {
     applications.mockReturnValue([APP]);
     identities.mockReturnValue([
@@ -97,7 +96,6 @@ describe("CoolifyTargetsField", () => {
     expect(screen.getByText(/does not list this application/i)).toBeInTheDocument();
   });
 
-  // cm:guard the free-text fallback is the ONLY way to configure a target when Coolify cannot be read, so removing it would make an unreachable Coolify an unconfigurable integration rather than a slower one.
   it("falls back to a typed uuid when the list cannot be read", () => {
     applications.mockReturnValue([]);
     appsError.mockReturnValue(true);
@@ -108,7 +106,6 @@ describe("CoolifyTargetsField", () => {
   });
 });
 
-// cm:why the health URL is what ARMS the post-deploy gate, so it has to be settable here — an operator who cannot type it cannot turn the gate on (ISS-971)
 describe("the post-deploy health URL", () => {
   it("shows the URL already stored for a target", () => {
     render(

@@ -4,7 +4,6 @@ vi.mock('../logger.js', () => ({
   logger: { warn: vi.fn(), info: vi.fn(), debug: vi.fn(), error: vi.fn() },
 }));
 
-// cm:guard the queue is consumed in call order, one entry per db.select() — a test that adds a query without queueing a row for it silently eats the NEXT test's row rather than failing where the gap is. The pipelineConfig read this once described went with the toggles (ISS-895); do not re-add an entry for it.
 const selectQueue: unknown[][] = [];
 function pushSelect(rows: unknown[]) {
   selectQueue.push(rows);
@@ -93,7 +92,6 @@ describe('updateProjectSkill — lineage columns', () => {
     basedOnGlobalSkillId: 'global-1',
   };
 
-  // cm:guard an update must never write `basedOnGlobalVersion`. It records which template version this copy was ADOPTED at, and the only writer that ever restamped it — `markRebased` — was deleted with the rebase lane; a write here would silently re-date a provenance nothing recomputes.
   it('does not touch basedOnGlobalVersion on an ordinary update', async () => {
     await updateProjectSkill(existing as never, { description: 'new description' });
     expect(updatedSets).toHaveLength(1);
@@ -109,7 +107,6 @@ describe('updateProjectSkill — lineage columns', () => {
 });
 
 describe('registerSkillForProject({ stage: null }) — unbind', () => {
-  // cm:guard the ISS-238 auto-toggle refusal was deleted here by ISS-895 with the toggles themselves. It read `pipelineConfig[step.toggle]` off a step table that no longer exists, and ISS-897 had already made those keys unparseable — so the refusal could not fire, and a test asserting it was asserting the mock, not the code.
   it('unbinds and emits, recording the stage it came from', async () => {
     pushSelect([{ stage: 'developed' }]);
 

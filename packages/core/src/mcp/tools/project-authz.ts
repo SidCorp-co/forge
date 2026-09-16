@@ -32,8 +32,6 @@ export async function loadUserProjectRoleFlags(
   };
 }
 
-// cm:guard DERIVE the PAT-reachable list, never retype it — this refusal is the one place that names the actions a caller CAN reach, so a hand-written copy tells callers a newly device-only action still works while every test stays green.
-// cm:edge contract -> packages/core/src/mcp/tools/pm-actions.ts — PM_ACTIONS is the enum this complement is taken against, and DEVICE_ONLY_PM_ACTIONS the set removed from it
 const patReachablePmActions = PM_ACTIONS.filter((a) => a !== 'dispatch' && a !== 'write_decision');
 
 /**
@@ -47,7 +45,6 @@ const patReachablePmActions = PM_ACTIONS.filter((a) => a !== 'dispatch' && a !==
  * that reaches it. It refuses BY NAME rather than falling back, and the
  * message says what a caller can do instead.
  */
-// cm:guard this refuses unconditionally and that is the intended state, not a bug to "fix" by widening the gate. `capabilities.pm` is a deliberate per-runner opt-in and a PAT cannot hold it; letting a token through here would be inventing an authorization policy nobody approved. The two actions have no REST twin either (`pm/read-routes.ts` covers snapshot/graph/runner_load only) — that residual is recorded in `docs/proposals/pm-dispatch-has-no-rest-twin.md`. Lifetime device traffic when this landed: 5 calls, last 2026-08-08.
 export async function assertPmActor(principal: McpPrincipal): Promise<void> {
   throw new Error(
     'FORBIDDEN: PM_REQUIRES_DEVICE — this action acts on runner state (a `runners` row ' +

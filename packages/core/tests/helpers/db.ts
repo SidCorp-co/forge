@@ -99,7 +99,6 @@ export async function setupTestDatabase(): Promise<TestDatabase> {
  * config without `globalSetup`), so the original container/schema paths stay
  * as the fallback.
  */
-// cm:edge contract -> packages/core/tests/helpers/global-setup.ts — reads the two env names that file exports; rename one there and every worker silently falls back to the slow per-file container path
 async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null> {
   const adminUrl = process.env.TEST_PG_ADMIN_URL;
   const template = process.env.TEST_PG_TEMPLATE;
@@ -139,7 +138,6 @@ async function cloneFromTemplate(workerId: string): Promise<TestDatabase | null>
   };
 }
 
-// cm:guard say which CONDITION the failure is, never only which object it names. Postgres answers a lost template with `template database "<name>" does not exist`, and that sentence sends a reader looking for a defect in the suite: six files failed on it and all six passed on a serial re-run, because the real subject was another process, not this repo (ISS-937). A message that cannot distinguish "the code is wrong" from "this box is busy" costs a re-run of everything at best, and a wrong belief about main at worst.
 function explainCloneFailure(template: string, err: unknown): string {
   const detail = err instanceof Error ? err.message : String(err);
   if (/does not exist/.test(detail)) {
@@ -165,7 +163,6 @@ async function quiesceOrReport(_dbName: string): Promise<void> {
   await quiesceBackgroundWork();
 }
 
-// cm:why the DROP below is WITH (FORCE), so a leaked connection is severed silently and resurfaces as a failure in whichever file runs next. This names the leak in the file that caused it, which is the only place it can be fixed.
 async function reportLingeringConnections(admin: Sql, dbName: string): Promise<void> {
   try {
     const rows = await admin<{ count: string }[]>`

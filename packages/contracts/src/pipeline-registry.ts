@@ -28,12 +28,9 @@ export const REGISTRY_ISSUE_STATUSES = [
 	"on_hold",
 	"needs_info",
 	"draft",
-	// cm:edge contract -> packages/core/src/db/schema.ts#issueStatuses — closed-without-stamping; a client union missing it renders an unknown status on a terminal issue
 	"dropped",
 ] as const;
 
-// cm:guard ISS-917 — the statuses a project MAY admit to its master's pool backlog: `issueStatuses` minus `AUTONOMOUS_DRIVER_STATUSES`, because a driver status already carries a run and a job by the time it holds it, so a backlog row at one could never be promoted. Hardcoded here for the same reason the tuple above is — contracts must not import core — and held to core by the parity test named below.
-// cm:edge contract -> packages/core/src/pipeline/autonomous-mode.ts#BACKLOG_ADMISSIBLE_STATUSES — parity asserted in packages/core/src/pipeline/registry.test.ts; a status that becomes a driver status must leave this tuple in the same change or the settings screen offers a value the config schema rejects
 export const REGISTRY_BACKLOG_ADMISSIBLE_STATUSES = [
 	"confirmed",
 	"clarified",
@@ -60,21 +57,16 @@ export const REGISTRY_JOB_TYPES = [
 	"fix",
 	"custom",
 	"pm",
-	// cm:why ISS-455 — the skill smoke-verify canary, the one job type that runs with NO issue: a one-shot `system` run, so anything keying a job to an issue id must tolerate its absence here
 	"smoke",
 	"release_batch",
-	// cm:why ISS-801 — Update Pipeline stage ② (Reconcile): Master agent + verifier jobs
 	"reconcile",
 	"verify_skill",
-	// cm:edge contract -> packages/core/src/db/schema.ts#jobTypes — the autonomous driver's single job type; a client union missing it renders an unknown badge instead of failing
 	"drive",
 ] as const;
 
 export const REGISTRY_RUNNER_TYPES = ["claude-code"] as const;
 
-// cm:edge contract -> packages/core/src/db/schema.ts#issuePriorities — client-facing mirror of the
 //   issue/run enums, so web-v2/dev derive their unions from here instead of hand-copying the DB enum
-// cm:edge contract -> packages/core/src/pipeline/registry.test.ts#REGISTRY_ISSUE_PRIORITIES — the
 //   parity suite that fails when the two sides drift; adding a value here without it there is silent
 export const REGISTRY_ISSUE_PRIORITIES = [
 	"critical",
@@ -101,9 +93,6 @@ export const REGISTRY_PIPELINE_RUN_KINDS = [
 	"system",
 ] as const;
 
-// cm:guard `steps`, `manualOnlyJobTypes` and the eight `auto*` toggle keys left with the staged lane (ISS-895) and must not come back here alone: this schema is what a client PARSES, so re-adding a required key the server no longer sends makes every registry read throw. The nine staged job types stay in REGISTRY_JOB_TYPES because ~30k historical `jobs` rows hold them and a client must still render one.
-// cm:guard OPTIONAL, and it stays optional: a client carrying this schema must parse a response from a core that predates `statusExits` rather than throw, which is what keeps the rollout order of the two halves free (ISS-982). The reader's absent-map branch is the same one it shows while the read is still in flight.
-// cm:edge contract -> packages/core/src/pipeline/registry.ts#getPipelineRegistry — the server sends this key on every response; parity asserted in packages/core/src/pipeline/registry.test.ts
 export const pipelineRegistryResponseSchema = z.object({
 	version: z.number().int().positive(),
 	runnerCapabilities: z.record(

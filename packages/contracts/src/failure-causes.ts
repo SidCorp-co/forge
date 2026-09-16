@@ -12,9 +12,7 @@
  * import core. `NOTIFICATION_TYPES` has the same shape for the same reason.
  * What keeps the copies honest is `failure-causes-parity.test.ts` in core.
  */
-// cm:edge lockstep -> packages/core/src/pipeline/failure-causes.ts — the canonical list; a cause added there and not here renders an operator a raw snake_case token, and one added here alone is a cause nothing writes
 
-// cm:guard every member needs live rows or a named writer, and the line must say which — a cause nobody emits is indistinguishable from one nobody looked for, and it is what lets a taxonomy rot the way `job_failed` rotted
 export const FAILURE_CAUSES = [
   /** org/account monthly spend cap. 4,412 jobs/60d; 7 of the 8 ISS-871 sessions. */
   'provider_spend_cap',
@@ -114,7 +112,6 @@ export type FailureCause = (typeof FAILURE_CAUSES)[number];
  * IS the unclassified era, and pretending otherwise would trade an admitted
  * lie for a confident one.
  */
-// cm:edge contract -> packages/web-v2/src/features/sessions/types.ts — that file renders these same strings; a key added here without its label/tooltip there shows an operator a raw token
 export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
   job_failed: 'unclassified',
   usage_limit: 'provider_usage_limit',
@@ -122,7 +119,6 @@ export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
 };
 
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
-// cm:guard a Map, not the object literal — `raw` comes from a free-text column, and a plain object answers `toString`, `constructor` and `valueOf` off its PROTOTYPE, so a bare `LEGACY_CAUSE_ALIAS[raw]` hands back a function typed `FailureCause` for a row holding any of those words
 const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(Object.entries(LEGACY_CAUSE_ALIAS));
 
 /**
@@ -139,8 +135,6 @@ const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(Object.entries(L
  * `{ enum }` on the column, and `patchSchema` staying `.strict()` without a
  * `failureReason` field so no request body can supply one past the type.
  */
-// cm:guard read the column through this, never by comparing the raw string — pre-ISS-877 rows carry `job_failed`, `usage_limit` and `ws-publish-failed`, and a literal comparison silently stops matching them
-// cm:edge lockstep -> packages/core/src/db/schema.ts — the `{ enum: agentSessionFailureReasons }` on `agent_sessions.failure_reason` is the write-side half of this module; dropping it leaves the column plain `string` and re-opens the enum-mixed-with-free-text hole with nothing at runtime to catch it
 export function resolveFailureCause(raw: string | null | undefined): FailureCause {
   if (!raw) return 'unclassified';
   if (CAUSE_SET.has(raw)) return raw as FailureCause;
@@ -160,7 +154,6 @@ export type FailureCausePresentation = 'cleanup' | 'swept' | 'failure';
  * `residency_expired` came to be a real failure on one surface and a sweep on
  * the other in a single change.
  */
-// cm:guard both surfaces derive from THIS map — web-v2 re-deriving its own neutral set from a hand-copied list of strings is exactly what let `no_client_ack` ship with no label at all
 export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresentation> = {
   provider_spend_cap: 'failure',
   provider_usage_limit: 'failure',

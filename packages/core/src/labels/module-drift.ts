@@ -39,7 +39,6 @@ export interface ModuleDriftDeclaredEdge {
 
 export interface ModuleDriftResponse {
   generatedAt: string;
-  // cm:guard the layer is part of the answer, not documentation — `.arch.json`'s 63 modules are source-path globs and `cm:edge` is file-to-file, both a lower layer gated elsewhere. A consumer that reads this report as a statement about source paths is reading the wrong graph, and only this field tells it apart.
   layer: 'module-taxonomy';
   minCoOccurrence: number;
   declaration: {
@@ -84,8 +83,6 @@ export async function observedModuleEdges(projectId: string): Promise<ObservedMo
   const leftModule = alias(labels, 'left_module');
   const rightModule = alias(labels, 'right_module');
 
-  // cm:guard `count(*)` IS the issue count only because `issue_labels` is keyed on `(issue_id, label_id)` — that PK is what makes one row per issue per pair, so a schema change that dropped it would turn every weight in this report into a junction-row count without a single test noticing.
-  // cm:guard both sides re-check `kind='module'` and `project_id` — `issue_labels` cannot see either, so dropping one side's join condition admits a plain label as a module (ISS-593 keeps them in one table) and dropping `project_id` admits another project's taxonomy through a shared issue.
   const rows = await db
     .select({
       aLabelId: issueLabels.labelId,
@@ -144,7 +141,6 @@ export async function moduleNodes(projectId: string): Promise<ModuleNodeRow[]> {
     .orderBy(labels.name);
 }
 
-// cm:guard the separator must be a character no uuid can contain — the key is split back apart in `driftFromSets` to name the two ends of a declared edge, so a separator that could appear inside a label id would silently truncate one of them.
 const PAIR_SEP = '|';
 const pairKey = (a: string, b: string): string =>
   a < b ? `${a}${PAIR_SEP}${b}` : `${b}${PAIR_SEP}${a}`;
@@ -277,7 +273,6 @@ export function driftFromSets(input: ModuleDriftInput): ModuleDriftResponse {
     layer: 'module-taxonomy',
     minCoOccurrence,
     declaration: {
-      // cm:why "nothing is declared" is a legal and common state, so it is a named state rather than an empty list: a project that never built a hierarchy gets its observed graph and is told the declaration is absent, which reads differently from a full declaration that happens to agree with everything.
       state: nodes.some((n) => n.parentId !== null) ? 'present' : 'absent',
       source: 'label-hierarchy',
       edgeCount: declaredPairs.size,

@@ -40,7 +40,6 @@ let deviceToken: string;
 let app: typeof import('../../src/index.js').app;
 let seq = 0;
 
-// cm:guard `bindsTo: 'session'` and a uuid id, matching the fixture in `question-answer-atomic-e2e.test.ts`: `checkOptions` runs BEFORE the project check and refuses a `this_call` option carrying no fingerprint, so an invalid option here makes every case below pass on the wrong refusal.
 const WRITER = {
   id: '22222222-2222-4222-8222-222222222222',
   label: 'Take the safe path',
@@ -76,7 +75,6 @@ beforeEach(async () => {
   deviceToken = issued.plaintext;
 });
 
-// cm:guard the route refuses before `askQuestion` unless the box is bound to the project it names, so every route case binds first — without it the assertion would land on `assertDeviceBoundToProject` and never reach the check it is about.
 async function bindDeviceTo(project: string): Promise<void> {
   await harness.db.execute(sql`
     INSERT INTO runners (device_id, project_id, name, type, status)
@@ -124,7 +122,6 @@ describe('asking a question about an issue of another project', () => {
     );
   });
 
-  // cm:guard a code of its own, not the generic one: web-v2's `formatApiError` turns a bare refusal into a sentence about permissions, and this is a malformed request rather than a denied one.
   it('is refused with a code of its own rather than a generic one', async () => {
     const elsewhere = await createTestProject(harness.db, adminId);
 
@@ -134,7 +131,6 @@ describe('asking a question about an issue of another project', () => {
     );
   });
 
-  // cm:guard the refusal must leave NO row. A written-then-rejected question is the crossed row this refusal exists to prevent, arriving by the path that reports it refused.
   it('writes no row when it refuses', async () => {
     const elsewhere = await createTestProject(harness.db, adminId);
     const id = randomUUID();
@@ -150,7 +146,6 @@ describe('asking a question about an issue of another project', () => {
 });
 
 describe('the route a box reaches this by', () => {
-  // cm:guard asserted through the ROUTE and not through `askQuestion`, because the code's whole purpose is to reach the box: this handler is the only producer of the ask-time refusals and it used to flatten every one of them to `BAD_REQUEST`, leaving the per-refusal distinction alive in the type system and dead on the wire (ISS-989).
   it('answers the crossed question with its own code, not a flattened BAD_REQUEST', async () => {
     const elsewhere = await createTestProject(harness.db, adminId);
     await bindDeviceTo(elsewhere.id);
@@ -197,7 +192,6 @@ describe('the route a box reaches this by', () => {
 });
 
 describe('the questions this refusal must not touch', () => {
-  // cm:guard a question with NO issue is legal and must stay legal: a project-level question hangs off no issue, and a check demanding one would refuse every one of them.
   it('still writes a question that names no issue', async () => {
     const q = await ask({ issueId: undefined });
 

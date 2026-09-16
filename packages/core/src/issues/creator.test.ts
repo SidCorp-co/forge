@@ -105,7 +105,6 @@ function columnsOf(node: unknown, acc = new Set<string>()): Set<string> {
 }
 
 describe('buildOriginCondition', () => {
-  // cm:why keying the lane on created_via alone is the bug — a scheduled sweep writing through MCP records `mcp`, so its findings landed in the human Backlog lane (on forge-dev, every single one)
   it('detector keys off detector_key, not just created_via', () => {
     const cols = columnsOf(buildOriginCondition('detector'));
     expect(cols).toContain('detector_key');

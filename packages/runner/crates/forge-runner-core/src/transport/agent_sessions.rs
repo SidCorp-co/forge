@@ -46,7 +46,6 @@ pub async fn get_messages(client: &CoreClient, session_id: &str) -> Result<Vec<V
 /// Report the PROCESS state for a session with no other patch riding along.
 /// Used when the session ends with nobody consuming its event stream — the
 /// idle ceiling closing an abandoned resident session.
-// cm:guard best-effort by design: a failed report must not take down the close. The row is left claiming `awaiting_input` on a session whose status is already terminal, which the heartbeat hop does not look at — a lost PATCH here costs a stale field, while a close that unwound on it would leak the process this call exists to record the death of.
 pub async fn report_runtime_state(client: &CoreClient, session_id: &str, state: &str) {
     let patch = SessionPatch {
         runtime_state: Some(state.to_string()),
@@ -64,7 +63,6 @@ pub async fn report_runtime_state(client: &CoreClient, session_id: &str, state: 
 pub struct SessionPatch {
     #[serde(skip_serializing_if = "Option::is_none")]
     pub status: Option<String>,
-    // cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `runtimeState` on patchSchema there is a `.strict()` enum accepted from the DEVICE principal only, and `awaiting_input` is the one value that exempts a session from the heartbeat hop. A value this side does not have there is a 400 the runner logs and drops, leaving the park invisible and the session reaped at 3 minutes.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub runtime_state: Option<String>,
     #[serde(skip_serializing_if = "Option::is_none")]
@@ -72,8 +70,6 @@ pub struct SessionPatch {
     // `null` is meaningful (clear), so serialize Some(None) as null but omit None.
     #[serde(skip_serializing_if = "Option::is_none")]
     pub claude_session_id: Option<String>,
-    // cm:guard OMIT rather than send 0 when the count is unknown — core reads absent as "this runner cannot report" and a reported 0 as "this run called nothing", and only the second one fails a schedule session. Send 0 from a path that never counted and every run on that path is recorded blind.
-    // cm:edge contract -> packages/core/src/agent-sessions/routes.ts — `toolCallCount` on patchSchema there; the transcript carries no tool frames (parse_assistant_message keeps assistant text only), so this counter is core's ONLY evidence that a scheduled run read anything
     #[serde(skip_serializing_if = "Option::is_none")]
     pub tool_call_count: Option<u32>,
 }

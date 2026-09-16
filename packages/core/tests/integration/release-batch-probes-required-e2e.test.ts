@@ -66,9 +66,6 @@ describe('a release refuses a project that declares no probes', () => {
     `);
   }
 
-  // cm:guard the refusal must land BEFORE the claim, and the assertion on the issue's status is
-  // what says so. A refusal thrown after the CAS update would leave the roster at `releasing`
-  // under a run nobody will ever finish, which is worse than the hole it replaces.
   it('refuses to create a batch, naming RELEASE_PROBES_UNDECLARED, and claims nothing', async () => {
     await declareProduction({ verify: null });
     await seedReleaseRunner();
@@ -79,9 +76,6 @@ describe('a release refuses a project that declares no probes', () => {
     expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
   });
 
-  // cm:guard a run created BEFORE this rule existed is the case this exists for, and it is why the
-  // refusal cannot live at creation alone. Seeded by claiming with probes and then taking them
-  // away, which is the same world that run wakes up in.
   it('refuses to finish a run whose project declares no probes, and closes nothing', async () => {
     await declareProduction();
     await seedReleaseRunner();
@@ -96,8 +90,6 @@ describe('a release refuses a project that declares no probes', () => {
     expect(await runStatus(runId)).toBe('running');
   });
 
-  // cm:guard the counterexample: the SAME path with probes declared closes the roster. Without it
-  // the two refusals above are satisfied by a `finish` that refuses everything.
   it('closes the roster once the probes are declared and agree', async () => {
     await declareProduction();
     await seedReleaseRunner();

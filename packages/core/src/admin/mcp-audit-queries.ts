@@ -41,10 +41,6 @@ export interface McpAuditToolsReport {
   rows: McpToolCallCounts[];
 }
 
-// cm:guard `deviceCalls`, `tokenCalls` and `unattributedCalls` are three INDEPENDENT counts over the same rows, not a partition of `totalCalls`, and they must not be added or subtracted from each other. A row may carry both ids, and `user_id` is stamped `device.ownerId` for a device caller — which is why splitting on it reads 100% user and 0 device for every tool, the mistake `7f0c5a56` deleted six live tools on.
-// cm:guard count the WHOLE table with no date filter, and normalise with `replace(tool,'.','_')` on BOTH sides — this column stores `request.params.name` verbatim and agents send the underscore form their MCP client shows them, so a query for the dotted name alone finds none of those rows.
-// cm:guard FULL OUTER, never inner and never a plain LEFT from the log: a tool nothing has ever called has no row here at all (an inner join drops exactly the tools the deletion rule is hunting), and a name that was called but is NOT registered has no registry row (a LEFT from the registry drops the misspelling evidence). Both directions are findings.
-// cm:edge contract -> docs/architecture/agent-surface.md — the deletion rule reads these fields by name; `oldestRow` exists because that page's "whole table means lifetime" clause holds only while `enforceMcpAuditRetention` is unwired, and a caller must be able to see that for itself rather than trust a claim in prose
 export async function mcpToolCallCounts(): Promise<McpAuditToolsReport> {
   const rows = (await db.execute(sql`
     WITH agg AS (
@@ -90,7 +86,6 @@ export async function mcpToolCallCounts(): Promise<McpAuditToolsReport> {
   };
 }
 
-// cm:why bound one element at a time into an `ARRAY[...]::text[]` rather than passed as a JS array: drizzle expands an array parameter into a parenthesised `($1, $2, …)` RECORD, and Postgres refuses `cannot cast type record to text[]`
 function registryArray(): SQL {
   return sql`ARRAY[${sql.join(
     REGISTERED_TOOLS.map((t) => sql`${t}`),

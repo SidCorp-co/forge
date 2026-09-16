@@ -11,9 +11,7 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:guard the two mocks stand in for a parsed environment and a database connection, and the third for the org lookup that would need one — never for the guide registry: `resolveGuide` reaches `getCodeGuide` directly for any slug outside the `integration-` prefix, so the body this test reads back is the real `ASSISTANT_METHOD_GUIDE` and the real `buildToolset` dispatch that fetched it.
 vi.mock('../../config/env.js', () => ({ env: {} }));
-// cm:guard the stub answers the ONE query the org tier makes — `integration_guides` for this org — with no rows, which is the state of every org that has authored no integration guide. The code tier `resolveGuide` returns is not reached through it: `providerFromGuideSlug` sends any slug outside the `integration-` prefix straight to the real registry.
 vi.mock('../../db/client.js', () => ({
   db: { select: () => ({ from: () => ({ where: async () => [] }) }) },
 }));
@@ -60,7 +58,6 @@ describe('reaching the assistant-method guide from a chat door', () => {
     expect(textOf(result as never)).toContain(ASSISTANT_METHOD_SLUG);
   });
 
-  // cm:guard the refusal is asserted on the RESULT rather than on the spec, because the spec is what `registry-allowlist.test.ts` freezes and this file owes the other half: that the fence actually fires at call time, ahead of `assertOrgAdmin`, for a principal the handler's own check might have let through (ISS-1007).
   it('refuses upsert at the door, naming what a room may do instead', async () => {
     const result = await toolset().execute(
       'forge_guide',

@@ -82,7 +82,6 @@ function req(body: unknown, token: string) {
   });
 }
 
-// cm:guard the two selectLimit queues are ORDER-COUPLED to the route: assertEmailVerified reads first, the issue row second — swap them and the route reads the issue row as its verification check, so the failure arrives as a 500 rather than the status under test
 function queueAuthAndIssue(status: string) {
   selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
   selectLimit.mockResolvedValueOnce([
@@ -97,7 +96,6 @@ function queueAuthAndIssue(status: string) {
 }
 
 describe('a waitingKind the target cannot store', () => {
-  // cm:guard 422 and not a silent 200: before ISS-965 this exact request was accepted, the kind was nulled by the CLEAR arm in apply-transition.ts, and the only observable effect was the status move — so a caller could not tell a stored park from a dropped one. Measured on 16 `needs_info` parks, 2026-09-07.
   it('422 WAITING_KIND_NOT_APPLICABLE on a `needs_info` park', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue('tested');
@@ -116,7 +114,6 @@ describe('a waitingKind the target cannot store', () => {
     expect(dbUpdate).not.toHaveBeenCalled();
   });
 
-  // cm:guard the companion case: `in_progress` demands no authored reason, so it is the target a refusal nested in the reason block would miss entirely
   it('422 on a target that demands no reason at all', async () => {
     const token = await signUserToken(USER_ID);
     queueAuthAndIssue('tested');

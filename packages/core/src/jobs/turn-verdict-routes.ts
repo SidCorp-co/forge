@@ -48,7 +48,6 @@ jobTurnVerdictRoutes.get(
       throw forbidden('job is not dispatched to this device');
     }
 
-    // cm:guard a job with no issue can never be parked on a question, so it is DONE — never "unknown". An answer this endpoint cannot give must still be an answer: a runner that reads a missing verdict as "stay resident" holds its slot forever on a job nobody can ever reply to.
     if (!job.issueId) return c.json({ done: true });
 
     const [issue] = await db
@@ -56,7 +55,6 @@ jobTurnVerdictRoutes.get(
       .from(issues)
       .where(eq(issues.id, job.issueId))
       .limit(1);
-    // cm:guard a DELETED issue is done for the same reason — the park cannot be answered, so holding the session open only costs the slot.
     return c.json({ done: issue?.status !== AUTONOMOUS_QUESTION_STATUS });
   },
 );

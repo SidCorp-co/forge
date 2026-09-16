@@ -361,7 +361,6 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     expect(body.linkedIssueId).toBe(LINKED_ISSUE_ID);
   });
 
-  // cm:why the issue that fixes a report normally lives in the Forge project, not the one it was filed from — this must mirror the MCP `review` action exactly (see the cm:edge on the route)
   it('links to an issue in ANOTHER visible project (the Forge project)', async () => {
     const FORGE_ISSUE_ID = 'bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb';
     authVerified();
@@ -387,7 +386,6 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     expect(body.linkedIssueId).toBe(FORGE_ISSUE_ID);
   });
 
-  // cm:guard visibility remains the fence — relaxing same-project must not open a link to a project the caller cannot see
   it('returns 404 for an issue in a project the caller cannot see, and stamps nothing', async () => {
     const HIDDEN_ISSUE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
     authVerified();

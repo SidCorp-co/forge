@@ -47,7 +47,6 @@ function asAgentConfig(raw: unknown): ProjectAgentConfig {
 
 const PRESET_OPTIONS = UX_PRESETS.map((p) => ({ value: p, label: UX_PRESET_LABELS[p] }));
 
-// cm:guard do NOT restore a Re-scan button here, or rename this back to "Detected stack", unless auto-detect is revived first — nothing detects this: the values come from `uxContractProfile.designSystem`, which apply-preset writes. Auto-detect WAS ISS-576, dropped 2026-08-30 with its four children (docs/proposals/ux-contract-direction.md) — measured on live, the `detected` rule source never held a row and the project yielding the most findings has no rows in `ux_contract_rules` at all. The button that sat here was disabled with a tooltip naming that issue, which is a control promising work nobody is doing; `ux-contract-tab.test.tsx` asserts its absence.
 const STACK_PANEL_HEADING = "Stack profile";
 
 export function UxContractTab({
@@ -319,7 +318,6 @@ function Field({ label, value }: { label: string; value: string }) {
 	);
 }
 
-// cm:guard ISS-579 — a proposal carrying `supersedesRuleId` RETIRES that rule the moment it is approved, so the "Replaces" block must keep rendering the target's text and severity. Drop it and an admin approves a rule removal they were never shown.
 function ProposalRow({
 	rule,
 	supersedes,

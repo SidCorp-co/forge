@@ -82,7 +82,6 @@ const createSchema = z
         });
       }
     } else if (kind === 'release_batch') {
-      // cm:guard a release_batch schedule carries NO authored text at all — what it cuts is whatever is sitting at the gate, and a prompt or script here would be a second, silent definition of that
       for (const field of ['prompt', 'script', 'templateKey'] as const) {
         if (data[field] !== undefined && data[field] !== null) {
           ctx.addIssue({

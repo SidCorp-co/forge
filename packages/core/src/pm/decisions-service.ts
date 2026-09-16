@@ -85,7 +85,6 @@ export async function writePmDecision(input: PmDecisionInput) {
     });
   });
 
-  // cm:guard the decision row is committed BEFORE the escalation, deliberately: a notification that fails must surface, and must not take the record of the turn with it. A PM that decided something and could not reach the owner has still decided it, and the next turn reads that decision back out of the table.
   if (input.escalate) {
     const escalate = input.escalate;
     const [project] = await db
@@ -107,7 +106,6 @@ export async function writePmDecision(input: PmDecisionInput) {
       expiresAt: escalate.expiresAt,
     });
 
-    // cm:edge protocol -> packages/core/src/notifications/emit.ts — ISS-510: go through that helper, never a bare insert. It is what sets severity from the contract and fires `notificationCreated`, whose fan-out carries the project-room escalation bridge keyed on `decisionId`; an insert here lands a row nobody is told about.
     const escalationNotification = await emitNotification({
       userId: project.createdBy,
       projectId: input.projectId,

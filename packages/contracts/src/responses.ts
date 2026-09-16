@@ -46,8 +46,6 @@ export interface RefreshResponse {
   token: string;
 }
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/runners.rs — `MeRunner` deserializes this shape and every field here defaults on the Rust side, so a field renamed or dropped on either half is read as ABSENT rather than as an error, and each field's own annotation says which way its absent case falls (ISS-271, ISS-929).
-// cm:guard `repoPath`/`branch` are the source of truth for the working dir and `config.toml` is only the fallback when the server has no path — inverting that lets a stale local binding outlive a repo move nobody on the box can see.
 export interface MeRunnerAssignment {
   projectId: string;
   runnerId: string;
@@ -123,15 +121,12 @@ export interface DeviceSkillReportBody {
     skillId: string;
     installedHash: string;
     installedVersion?: number;
-    // cm:why differs from installedHash (or absent) when a user-level ~/.claude/skills/<name>/ shadows the project copy
     observedSha?: string;
     shadowedBy?: string;
   }>;
-  // cm:why NAMES, not ids — a manifest that dropped a skill gives the runner no id to report it by
   pruned?: string[];
 }
 
-// cm:guard status is `synced` only when observedSha === installedHash; a runner pre-dating observation (<0.7.1) must report `unknown`, never `synced`
 export type DeviceSkillStatusValue = 'synced' | 'outdated' | 'missing' | 'unknown' | 'shadowed' | 'stale';
 
 // One row of the per-device skill freshness from

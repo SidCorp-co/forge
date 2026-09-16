@@ -31,7 +31,6 @@ export function registerPhaseJournalClose(bus: HooksBus): void {
     }
   };
 
-  // cm:guard both hooks, never only the happy one — a job that FAILS is exactly when a phase is most likely left open, and closing only on success leaves the crashed ones looking identical to the abandoned ones
   bus.on('jobCompleted', async (p) => close(p.jobId, 'ok'), { name: 'phase-journal-close' });
   bus.on('jobFailed', async (p) => close(p.jobId, 'failed'), { name: 'phase-journal-close' });
 }

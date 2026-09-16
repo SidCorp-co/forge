@@ -29,8 +29,6 @@ export type AttachmentErrorCode =
 
 export class AttachmentError extends Error {
   readonly code: AttachmentErrorCode;
-  // cm:guard every route that maps this class must forward `details` — an ATTACHMENT_NAME_TAKEN whose body drops it names a collision without naming what it collided with, and a MIME_NOT_ALLOWED whose body drops it names a type without naming the set (ISS-957, ISS-963)
-  // cm:guard this rides to the client as `body.details`, so it must stay free of storage paths, uploader ids and anything else the refusal does not need
   readonly details: unknown;
   constructor(code: AttachmentErrorCode, message: string, details?: unknown) {
     super(message);
@@ -76,7 +74,6 @@ export interface PersistIssueAttachmentInput {
   mime: string;
   bytes: Buffer;
   uploaderId: string;
-  // cm:guard required, not defaulted — `uploaderId` is the row's owner and stays the owner whoever uploaded, so it cannot answer the agency question, and a default here would record every agent upload as the person who holds the token.
   uploaderAgency: ActorAgency;
 }
 
@@ -103,7 +100,6 @@ export function validateIssueAttachment(input: {
   bytes: Buffer;
 }): string {
   if (!input.name) throw new AttachmentError('INVALID_NAME', 'name is empty after sanitisation');
-  // cm:guard refuse an over-budget name, never trim it to fit — the name is the identity the collision rule compares, so a trim maps every name sharing its first 180 bytes onto one row, and it is the storage key's `<epoch>-` prefix plus ext4's 255-byte component that sets the number (ISS-963)
   if (nameExceedsByteBudget(input.name))
     throw new AttachmentError(
       'INVALID_NAME',
@@ -142,11 +138,9 @@ export async function persistIssueAttachment(
   const name = safeName(input.name || 'file');
   const mime = validateIssueAttachment({ name, mime: input.mime, bytes });
 
-  // cm:guard the check, the storage write and the insert are ONE transaction under a name lock — the check alone is decorative because `getStorage().put` sits inside the read-to-write window, and four concurrent uploads of one name stored four rows before this (ISS-963)
   const inserted = await db.transaction(async (tx) => {
     await lockAttachmentName(tx, 'issue', issueId, name);
 
-    // cm:guard decide the collision on the SANITISED name, never `input.name` — that is what the row stores and what a record cites, and `a b.md`/`a_b.md` both sanitise to `a_b.md`, so checking the input would admit the pairs that actually collide and refuse the pairs that do not (ISS-963)
     const taken = await findIssueAttachmentByName(issueId, name, tx);
     if (taken) throw nameTakenError(taken, 'issue');
 
@@ -184,7 +178,6 @@ export async function persistIssueAttachment(
   return { ...inserted, url: `/api/attachments/${inserted.id}/download` };
 }
 
-// cm:guard validate the charset BEFORE decoding, never after: `Buffer.from(s, 'base64')` drops invalid characters silently rather than throwing, so a malformed payload decodes to a short buffer and the only remaining symptom is a truncated blob already written to storage.
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 function decodeBase64Strict(input: string): Buffer | null {
   const trimmed = input.trim().replace(/\s+/g, '');
@@ -275,7 +268,6 @@ async function discardIssueAttachments(ids: readonly string[]): Promise<void> {
     try {
       await getStorage().delete(row.path);
     } catch {
-      // cm:why swallowed on purpose, as in the comment twin: an orphan blob is recoverable by a sweep, whereas a row surviving a refused batch is the half-landed attachment this path promises cannot exist.
     }
   }
   await db.delete(issueAttachments).where(inArray(issueAttachments.id, [...ids]));
@@ -298,7 +290,6 @@ export async function persistDecodedIssueAttachments(
   uploaderAgency: ActorAgency,
 ): Promise<{ persisted: PersistedIssueAttachment[]; errors: AttachmentErrorEntry[] }> {
   const errors: AttachmentErrorEntry[] = [];
-  // cm:guard the name collision is checked HERE as well as in persistIssueAttachment, and both are load-bearing: without this pass a batch carrying the same name twice passes validation, member 1 lands, member 2 collides with it, the rollback deletes member 1, and the refusal hands the caller the id of a row that no longer exists (ISS-957)
   const seen = new Set<string>();
   for (const [i, d] of decoded.entries()) {
     const name = safeName(d.name || 'file');

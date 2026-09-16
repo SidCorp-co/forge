@@ -119,7 +119,6 @@ describe('GET /api/me/pulse — rollups (ISS-988) · the output', () => {
     expect(body.quality.reopened).toEqual({ issues: 1, events: 2 });
   });
 
-  // cm:guard `markMergedOnClose` stamps `merged_at` on EVERY close, so the bare column degenerates to "closed" and reports never-merged work as shipped. This plants exactly that row — a close whose activity_log entry carries the same timestamp as the stamp — and it must land in `closedUnmerged` (ISS-817, ISS-988 criterion 17).
   it('does not read a close that stamped its own merged_at as merge evidence', async () => {
     const { user, project, token } = await seed.member();
     const id = await seed.addIssue({
@@ -141,7 +140,6 @@ describe('GET /api/me/pulse — rollups (ISS-988) · the output', () => {
     expect(body.quality.finished.closedUnmerged).toBe(1);
   });
 
-  // cm:guard ISS-1022 — the two rows with NO activity_log at all, which the correlated form and the grouped one can disagree about silently: a grouped LEFT JOIN yields NULL for both evidence flags where the old form yielded false for each EXISTS, so folding the NULL late would move a row with a real `merged_at` and no audit trail out of `merged`. Work claimed through `applyMergeMarker` on an issue whose transitions predate the trail is exactly that row, so the pair below is planted rather than reasoned about.
   it('counts an issue with no activity trail and a merged_at stamp as merged', async () => {
     const { user, project, token } = await seed.member();
     await seed.addIssue({

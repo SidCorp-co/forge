@@ -38,7 +38,6 @@ export interface InboundCollection<Frame> {
 /**
  * How collecting a frame ended.
  */
-// cm:guard `venue-unresolved` is the ONLY ending before anything is written: a frame nobody could place has no conversation to write into. An unlinked speaker is NOT one of them any more — the message is collected and `route-window.ts` refuses it under the window's delivery key, which is the only arrangement that sends the refusal exactly once. Refusing here first meant a transport that accepted the text and then dropped the connection got a second refusal from the window (ISS-1004, review pass 1 F3 and the plan's own read).
 export type CollectOutcome =
   | { kind: 'collected'; conversationId: string; windowId: string; seq: number }
   | { kind: 'venue-unresolved' };
@@ -46,9 +45,6 @@ export type CollectOutcome =
 /**
  * Take one inbound frame into its conversation and its window.
  */
-// cm:guard the authority follows the venue's SHAPE and is settled at ROUTE time, not here: a one-to-one venue has exactly one human and runs as them, a many-speaker venue runs under the binding's principal because there is no single authority to be (ISS-987). What this does is remember who spoke, as the transport names them, so the window can ask the directory the same question.
-// cm:guard ATTRIBUTION is the resolved SPEAKER and not the authority, and the two are different questions: filing every group-room message under the binding's principal makes a second agent's message look like a person's, which blinds the loop breaker to the exact case it exists for. A speaker nothing has linked is filed as nobody plus the label the transport gave, which is a fact rather than a gap (ISS-1003, ISS-1004).
-// cm:guard the append and the window are ONE transaction: a message durable with no window is owed an answer nothing knows to give, and a window with no message is a decision about nothing (ISS-1004 review F3).
 export async function collectInboundMessage<Frame>(
   inbound: InboundCollection<Frame>,
 ): Promise<CollectOutcome> {

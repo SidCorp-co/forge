@@ -20,7 +20,6 @@ use std::time::Duration;
 use crate::daemon::agent_activity::Doing;
 
 /// How long a run pane may report idle before the box ends it.
-// cm:guard a floor on REPORTED idleness and not on age: the clock starts at the turn boundary the session itself reported, so a run working for six hours is never near it and one that stopped six minutes ago is never past it. Fifteen minutes rather than the master's hour because the two are answering different questions — a master's idleness is a gap between passes and costs a cold context to restart, a run's is the end of its life and costs a slot for every minute it is indulged.
 pub const RUN_IDLE_BEFORE_EXIT: Duration = Duration::from_secs(15 * 60);
 
 /// What a run's own session last reported about itself.
@@ -51,8 +50,6 @@ pub enum StayReason {
 }
 
 /// The whole decision, from what the session said and the clock.
-// cm:guard an absent report is `NeverReported` and NEVER idleness, which is the same refusal `Activities::get` makes for the same reason: a pane whose hooks failed to install, or which predates the hook channel, reports nothing — and reading that silence as "finished" would end live agents on every box that has not upgraded. The honest reading of no evidence is no verdict.
-// cm:guard `AwaitingPermission` stays, and it outranks the clock rather than being aged out of. A question put to a human is answered on human time; ending the pane that asked it destroys the question along with the context needed to act on the answer, which is the same asymmetry `recovery::reconcile` grants a park before it reads either orphan premise.
 pub fn verdict(reported: Option<Reported>, now: i64) -> Verdict {
     let Some(r) = reported else {
         return Verdict::Stay(StayReason::NeverReported);
@@ -60,7 +57,6 @@ pub fn verdict(reported: Option<Reported>, now: i64) -> Verdict {
     match r.doing {
         Doing::Working => Verdict::Stay(StayReason::Working),
         Doing::AwaitingPermission => Verdict::Stay(StayReason::AwaitingPermission),
-        // cm:guard a boundary in the FUTURE is treated as recent, never as an elapsed age. The timestamp is the pane's own clock reported over a socket, so a skewed one would otherwise subtract to a huge idle span and end a session that had just spoken.
         Doing::Idle => {
             let idle_for = now.saturating_sub(r.at);
             if idle_for >= RUN_IDLE_BEFORE_EXIT.as_millis() as i64 {
@@ -104,8 +100,6 @@ mod tests {
         );
     }
 
-    // cm:guard the case that decides whether this may ever run at all: a pane
-    // whose turn has been going for a day is not idle for a day.
     #[test]
     fn a_long_turn_is_not_idleness() {
         assert_eq!(
@@ -134,8 +128,6 @@ mod tests {
         );
     }
 
-    // cm:guard an unhooked pane is indistinguishable from a finished one by
-    // screen and by process; only the absence of a report separates them.
     #[test]
     fn a_session_that_never_reported_is_never_ended() {
         assert_eq!(verdict(None, NOW), Verdict::Stay(StayReason::NeverReported));

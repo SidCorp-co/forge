@@ -13,7 +13,6 @@ import { AUTH_COOKIE_NAME, fetchOperatorWhoami } from "./whoami-fetch";
 
 export type OperatorGateDecision = { kind: "redirect"; to: string } | { kind: "render" };
 
-// cm:why unverified/error render rather than redirect — the gate's own failure must reach the user as ErrorState + Retry (the RSC layout owns those two branches), not a silent bounce
 export function operatorGateDecision(result: OperatorWhoamiResult): OperatorGateDecision {
   if (result.kind === "unauthenticated") return { kind: "redirect", to: "/login" };
   if (result.kind === "not-admin") return { kind: "redirect", to: "/" };

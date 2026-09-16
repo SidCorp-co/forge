@@ -11,7 +11,6 @@
 
 import type { Audience, CellId, DoorId, DoorPolicy, Intent } from './contract.js';
 
-// cm:guard the whole set is asserted by `doors.test.ts`, not a sample: a door added here without a policy, or a policy pointing at a cell that does not exist, fails by name rather than defaulting to something plausible.
 export const DOORS: readonly DoorPolicy[] = [
   {
     id: 'comment-write',
@@ -70,8 +69,6 @@ export function doorPolicy(id: DoorId): DoorPolicy {
 }
 
 /** The pair a door screens at, read off its own row. */
-// cm:guard the split lives here and nowhere else: a caller that re-derives the pair from a door — or worse, names an audience and an intent of its own beside one — is how a surface comes to be screened against a cell its door does not declare, which is the shape ISS-997 found the comment door in (ISS-1002).
-// cm:guard it cuts at the LAST colon, because `Audience` is an open string and nothing forbids one containing a colon: cutting at the first turns `internal:operator:report` into audience `internal` and intent `operator`, which names no cell, so that door would fail closed on every message it screened and say only that the pair is unknown.
 export function doorCell(id: DoorId): { audience: Audience; intent: Intent } {
   return cellPair(doorPolicy(id).cell);
 }

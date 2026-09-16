@@ -20,14 +20,12 @@
 import { existsSync } from 'node:fs';
 import { join } from 'node:path';
 
-// cm:guard every entry resolves against the FILESYSTEM, never against a tool's output text. A missing binary and a broken import both print `Cannot find module`, so classifying by message would turn a real repo defect into "could not run" — the inverse of this bug and strictly worse, because it goes green. A prerequisite is absent when a path is absent, and that is the whole test.
 export const PREREQUISITES = {
   deps: {
     what: 'workspace dependencies are not installed (no node_modules)',
     remedy: 'pnpm install --frozen-lockfile',
     paths: ['node_modules', 'packages/core/node_modules', 'packages/web-v2/node_modules'],
   },
-  // cm:edge naming -> packages/observability/package.json — the `main`/`exports` target that packages importing @forge/observability resolve to; a build-output rename here reports the workspace as unbuilt forever
   'observability-build': {
     what: '@forge/observability has not been built, so everything importing it fails to resolve',
     remedy: 'pnpm --filter @forge/observability build',
@@ -46,7 +44,6 @@ export function absentPrerequisites(root, names = []) {
     .filter(Boolean);
 }
 
-// cm:guard this is a STRUCTURAL signal — node telling us it could not start the process — not a match on what the process printed. Keep it that way for the same reason the table above resolves paths: the moment it reads stderr, a compile error that mentions a missing module becomes "could not run".
 /** True when the OS could not start the command at all. */
 export function couldNotStart(spawnResult) {
   return spawnResult?.error?.code === 'ENOENT';

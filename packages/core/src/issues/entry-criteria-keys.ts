@@ -8,8 +8,6 @@
  * eager env validation) behind every import of the schema and closes the loop
  * schema → entry-criteria → autonomous-project → schema.
  */
-// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — `statusEntryCriteria` is a `z.enum` of exactly this array, so a key added here becomes declarable and a key removed here makes every project that already declared it fail its next config save. Removing one is a data change, not a rename.
-// cm:edge lockstep -> packages/core/src/issues/entry-criteria.ts — every key here needs an entry in that module's `CRITERIA` map, which is exhaustive by type; a key with no criterion would be a declaration that silently checks nothing.
 export const ENTRY_CRITERION_KEYS = [
   'plan',
   'acceptance_criteria',

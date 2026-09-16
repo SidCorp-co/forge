@@ -120,7 +120,6 @@ beforeEach(() => {
 });
 
 describe('a window whose connection is no longer the live one', () => {
-  // cm:guard the connection is re-read between the claim and the route: a reload replaces the object and a lock loss marks it closing, and neither clears the old object's route map — so a stale one still places the room and would answer it under the former binding's credentials (review pass 2 F2).
   it('is released rather than routed when the manager has replaced the connection', async () => {
     await routeOne(() => null, 'conn-1', window(), undefined);
     expect(routeWindow).not.toHaveBeenCalled();
@@ -143,7 +142,6 @@ describe('a window whose connection is no longer the live one', () => {
     expect(routeWindow).toHaveBeenCalled();
   });
 
-  // cm:guard the drain asks the map for the connection at each window rather than trusting the one it started the tick with, which is the only way a teardown part-way through a batch is seen at all.
   it('stops routing the rest of a batch once the connection is torn down', async () => {
     const ac = connection();
     const conns = new Map([['conn-1', ac]]);
@@ -170,7 +168,6 @@ describe('the words a window hands the model', () => {
     expect(subject.username).toBe('alice');
   });
 
-  // cm:guard two speakers are LABELLED and the window has no single asker, because both are the same fact: joining the pair unlabelled under the newest name attributes the question to whoever happened to answer it (review pass 2 F5).
   it('labels each line and names no asker when two people spoke', async () => {
     const subject = await subjectFor([
       said('alice', 'deploy production?', 0),

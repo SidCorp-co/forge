@@ -6,7 +6,6 @@
 
 import type { ForgeGuide } from './types.js';
 
-// cm:edge lockstep -> packages/core/src/guides/registry.ts — must appear in FORGE_GUIDES there or it is unreachable; the registry test asserts every slug is unique and reachable
 export const CONFORMANCE_GUIDE: ForgeGuide = {
   slug: 'conformance-and-verify',
   title: 'Conformance gates & `pnpm verify`',

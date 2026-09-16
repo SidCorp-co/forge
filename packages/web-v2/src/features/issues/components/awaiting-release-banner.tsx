@@ -8,7 +8,6 @@ import { useBatchRelease, useReleaseRoster } from "../hooks";
  * What "awaiting release" means, on the issue a person is actually reading:
  * it is merged, it is not shipped, and here is when that changes.
  */
-// cm:guard the countdown must degrade honestly. No schedule prints "no schedule — waiting for a person", never a number: a person told their issue ships tonight, when nothing will cut it, is worse off than one told nobody scheduled a release.
 export function AwaitingReleaseBanner({
 	projectId,
 	issueId,

@@ -95,7 +95,6 @@ describe('requireAuth', () => {
 });
 
 describe('assertEmailVerified', () => {
-  // cm:guard mounted TWICE on one path, the way a request that crosses two routers sees it: measured 2026-09-15, `GET /api/projects/:id/issues` read `email_verified_at` eight times, and this is the assertion that keeps it at one (ISS-1009).
   it('reads the row once however many mounts a request crosses', async () => {
     const token = await signUserToken('uuid-ok');
     selectLimit.mockResolvedValueOnce([VERIFIED]);
@@ -147,7 +146,6 @@ describe('assertEmailVerified', () => {
     await expect(res.json()).resolves.toEqual({ ok: true, userId: 'uuid-ok' });
   });
 
-  // cm:guard the row and never the verdict: these two assertions are what stop the memo becoming a `verified` flag again, which would let the second mount through on a row the first refused (ISS-1009, ISS-1012).
   it('refuses EMAIL_NOT_VERIFIED on every invocation, not only the first', async () => {
     const token = await signUserToken('uuid-unverified');
     selectLimit.mockResolvedValueOnce([{ email: 'no@example.com', emailVerifiedAt: null }]);
@@ -236,7 +234,6 @@ describe('assertEmailVerified', () => {
     expect(selectLimit.mock.calls.length).toBe(2);
   });
 
-  // cm:guard the device token stands in for the mailbox, so this branch must read no row at all — a device has no `userId`, and a lookup here would refuse every paired box as unverified.
   it('lets a device principal through without reading users', async () => {
     verifyDeviceCredentialMock.mockResolvedValueOnce({ id: 'dev-1' });
 

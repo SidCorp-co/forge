@@ -48,7 +48,6 @@ function templateText(q: unknown): string {
 
 export const dbExecute = vi.fn(async (q: unknown) => {
   const firstSql = templateText(q);
-  // cm:guard the ISS-890 wedge query also selects FROM issues, so it must be routed off its LATERAL join BEFORE the generic issues check below, or the stuck-issue branch swallows it and its tests assert on rows the pass never saw. The third arm this router used to carry (the ISS-598 staged wedge, disambiguated from this one by `agent_config`) went with that pass in ISS-895 — which is why `lateral` alone is now unambiguous.
   if (/lateral/i.test(firstSql)) {
     return autonomousWedgeQueue.shift() ?? [];
   }
@@ -58,7 +57,6 @@ export const dbExecute = vi.fn(async (q: unknown) => {
   if (/from\s+pipeline_outbox/i.test(firstSql)) {
     return staleCountQueue.shift() ?? [{ count: 0 }];
   }
-  // cm:guard this branch must stay BELOW the `from issues` one: the stuck-issue query carries `FROM jobs j` inside its NOT EXISTS, so a jobs-first router swallows it and every test sees an empty stuck list. Default is "a job appeared", the successful-rescue case.
   if (/from\s+jobs/i.test(firstSql)) {
     return jobsQueue.shift() ?? [{ one: 1 }];
   }

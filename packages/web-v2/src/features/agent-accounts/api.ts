@@ -1,4 +1,3 @@
-// cm:edge contract -> packages/core/src/orgs/agent-accounts-routes.ts — the paths and their bodies are the wire shape. `/api/orgs` is deliberately absent from the PAT surface, so every call here is a signed-in org admin's and none of it is reachable by a token.
 
 import { apiClient } from "@/lib/api/client";
 import type { AgentAccountRow, AgentCredentialMinted, AgentSelf, AgentSelfPatch } from "./types";

@@ -54,7 +54,6 @@ describe('answer-resume E2E', () => {
     projectId = (await createTestProject(harness.db, owner.id)).id;
   });
 
-  // cm:guard `'unreadable'` writes a config the schema REJECTS, which since ISS-897 is the only shape that is not autonomous — `mode` is gone and `isAutonomous` collapsed to `cfg !== null`. Do not spell the negative case as a valid config with an unusual value; that parses, and the test would pass for the wrong reason.
   async function setMode(mode: 'autonomous' | 'unreadable' | null): Promise<void> {
     const pipelineConfig = mode === 'unreadable' ? { enabled: 'yes-please' } : { enabled: true };
     const agentConfig = mode === null ? {} : { pipelineConfig };
@@ -111,7 +110,6 @@ describe('answer-resume E2E', () => {
     expect(await statusOf(id)).toBe('needs_info');
   });
 
-  // cm:guard this asserted the OPPOSITE until 2026-09-02, and it is kept rather than deleted because it is the only place the one-lane default is observable end to end: a project with an EMPTY config resumes on a human comment. If this ever reads `needs_info` again, something has started treating "declared nothing" as "declared another lane".
   it('resumes a project with an empty config, because there is one lane', async () => {
     await setMode(null);
     const id = await insertIssue('needs_info');
@@ -121,7 +119,6 @@ describe('answer-resume E2E', () => {
     expect(await statusOf(id)).toBe('open');
   });
 
-  // cm:guard the autonomous board renders waiting and needs_info alike as needs_human and `on_hold` as `paused` (ISS-970), but only needs_info was entered by the AGENT asking — resuming the other two takes a pause away from the person who chose it. ISS-886 made an agent's `waiting` unreachable on this mode, which narrows what these two rows represent (a human's pause, and the decompose review gate) without changing the rule: still not resumable by comment.
   it('never resumes the two parks a person entered deliberately', async () => {
     await setMode('autonomous');
     const waiting = await insertIssue('waiting');

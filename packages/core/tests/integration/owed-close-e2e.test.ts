@@ -102,7 +102,6 @@ describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
   }
 
   describe('the reconciler refuses to re-dispatch it', () => {
-    // cm:guard the repair is a WAKE since ISS-933, and what counts is a box BOUND rather than a socket connected: a wake is a hint the 30s sweep duplicates, so a disconnected box is not a failed rescue — a project nothing is bound to serve is.
     it('rescues a stuck `open` issue that never shipped', async () => {
       const { projectId } = await seed({ mergedAgo: null });
       await bindABox(projectId);
@@ -121,7 +120,6 @@ describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
       ).toBe(0);
     });
 
-    // cm:guard this is the ISS-920 / ISS-931 case and the ONLY difference from the test above is the merge mark — the two run the same seed so a deleted `merged_at IS NULL` clause cannot hide behind a second variable
     it('leaves a stuck `open` issue that already carries a merge mark', async () => {
       const { issueId } = await seed({});
       const { runReconcilerOnce } = await import('../../src/pipeline/reconciler.js');
@@ -161,14 +159,12 @@ describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
       expect(await detect(projectId)).toEqual({ detected: 0, notified: 0 });
     });
 
-    // cm:guard these two arms are what separate this shape from a REOPENED issue, which legitimately carries the mark of its first landing while real work is in flight — delete either clause and the alarm fires on every issue that has ever shipped
     it('leaves an issue under a running pipeline run', async () => {
       const { projectId } = await seed({ status: 'in_progress', runStatus: 'running' });
 
       expect(await detect(projectId)).toEqual({ detected: 0, notified: 0 });
     });
 
-    // cm:guard the run is PAUSED, not running, so only the job arm can exclude this row — a queued step under a paused run is the one live-work shape the run arm cannot see (a live job under a TERMINAL run is not representable: the close-cascade trigger cancels it at insert)
     it('leaves an issue with a queued job under a paused run', async () => {
       const { projectId } = await seed({
         status: 'in_progress',

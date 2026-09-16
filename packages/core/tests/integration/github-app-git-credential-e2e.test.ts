@@ -35,7 +35,6 @@ const INSTALLATION_ID = 159473037;
 const OWNER = 'SidCorp-co';
 const REPO = 'epodsystem_cli';
 
-// cm:why a real RSA key, because `buildAppJwt` signs RS256 for real — only GitHub's HTTP answer is faked, so a broken JWT would still fail here rather than pass on a stub
 const { privateKey: APP_PRIVATE_KEY } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
   privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
@@ -105,7 +104,6 @@ async function seedBinding(
     ownerId,
     provider: 'github',
     displayName: 'GitHub App test',
-    // cm:guard a DISTINCT appId per seeded connection — `installationTokenWithExpiry` caches on `base|appId|installationId`, so a shared id lets one test's mint answer the next one's and the assertion on the outbound URL then measures nothing.
     secrets: {
       appId: randomUUID(),
       privateKey: APP_PRIVATE_KEY,

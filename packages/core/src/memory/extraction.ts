@@ -169,7 +169,6 @@ export interface RefusedItem {
  * never used does not reach `indexMemory` or `knowledge_edges`. Pure, so the
  * refusal is testable without a model or a database.
  */
-// cm:guard `source` is the HUMAN signal only — the issue title and its comments — never the existing-memories block that shares the prompt. Licensing off already-stored model output makes one leaked character license the next, and the store becomes self-perpetuating rather than self-correcting.
 export function refuseForeignScript(
   parsed: ParsedExtraction,
   source: string,
@@ -333,7 +332,6 @@ export function registerMemoryExtraction(bus: HooksBus): () => void {
   const unsub = bus.on('jobCompleted', (p) => {
     if (!p.issueId || !EXTRACTION_JOB_TYPES.has(p.type)) return;
     const { projectId, issueId, jobId } = p;
-    // cm:why detached deliberately — extraction adds an LLM round-trip, and awaiting it here would put a model provider's latency and its outages on the job-finalization path
     queueMicrotask(() => {
       runExtractionForIssue(projectId, issueId as string).catch((err) => {
         logger.warn(

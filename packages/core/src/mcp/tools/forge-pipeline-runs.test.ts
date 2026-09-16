@@ -25,7 +25,6 @@ const selectWhere = vi.fn(() => ({
   orderBy: selectOrderBy,
   groupBy: selectGroupBy,
 }));
-// cm:edge contract -> packages/core/src/lib/authz.ts — `effectiveProjectRole` chains TWO leftJoins before `where().limit(1)`, and this mock must offer the same depth: drop one and the builder returns undefined mid-chain, which reads as an authz failure rather than a broken stub
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
@@ -56,7 +55,6 @@ const {
   pipelineRunsCancelInputSchema,
 } = await import('./forge-pipeline-runs.js');
 
-// cm:why only `forge_pipeline_runs.get` is still registered — forge-skill-audit calls it by that name. The other four shim factories were deleted once nothing named them, so these cases run the handlers the `forge_project_pipeline_runs` dispatcher calls, one layer down.
 const forgePipelineRunsListTool = (c: {
   principal: Parameters<typeof pipelineRunsListHandler>[0];
 }) => ({
@@ -123,7 +121,6 @@ function makePrincipalCtx() {
 describe('forge_pipeline_runs.list', () => {
   it('returns runs filtered by issueId/status when the caller is a member', async () => {
     const tool = forgePipelineRunsListTool(makePrincipalCtx());
-    // cm:guard the member check is resolved BEFORE the runs query, matching the handler's order — swap these two and the authz row is read as the run list, so the test asserts a shape the handler never produced
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectLimit.mockResolvedValueOnce([baseRun]);
 
@@ -137,7 +134,6 @@ describe('forge_pipeline_runs.list', () => {
     expect(result.runs[0]?.id).toBe(RUN_ID);
   });
 
-  // cm:guard assert BOTH halves — the limit reaching `.limit()` as limit+1 AND the un-inflated limit reaching the envelope. Passing overfetch() to both reports a bound page as `hasMore:false`, and no other test in this file reads the envelope at all.
   it('over-fetches by one and reports the limit that bound the page', async () => {
     const tool = forgePipelineRunsListTool(makePrincipalCtx());
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
@@ -197,7 +193,6 @@ function makePatCtx(projectIds: string[] | null) {
 describe('forge_pipeline_runs.get', () => {
   it('returns the run plus a per-status jobCounts breakdown', async () => {
     const tool = forgePipelineRunsGetTool(makePrincipalCtx());
-    // cm:guard `get` looks the RUN up first and only then checks membership — the reverse of `list`, because the run is what names the project to check against
     selectLimit.mockResolvedValueOnce([baseRun]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
     selectGroupBy.mockResolvedValueOnce([
@@ -229,7 +224,6 @@ describe('forge_pipeline_runs.get', () => {
     await expect(tool.handler({ runId: RUN_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  // cm:guard the allowlist must be enforced on the project the RUN resolves to, not only on an explicit projectId argument — ISS-150 review #1 found exactly that hole, where a PAT reached any run by id because nothing re-checked the project the lookup landed on
   it('returns NOT_FOUND for a PAT when the run’s project is outside the allowlist', async () => {
     const tool = forgePipelineRunsGetTool(makePatCtx(['99999999-9999-4999-8999-999999999999']));
     selectLimit.mockResolvedValueOnce([baseRun]);

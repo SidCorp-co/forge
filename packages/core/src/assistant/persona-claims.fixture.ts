@@ -29,7 +29,6 @@ export interface Claim {
   origin: 'moved' | 'kept' | 'hoisted' | 'new';
 }
 
-// cm:guard this is the accounting the issue demands and it is FROZEN: every instruction the pre-change `rocketChatPersona` carried has a row, each naming exactly one owner. Deleting a row to make a failing test pass is deleting the record that the claim landed anywhere at all, which is the shape of the drop this ledger exists to catch (ISS-1007).
 export const LEDGER: readonly Claim[] = [
   {
     id: 'identity',
@@ -37,7 +36,6 @@ export const LEDGER: readonly Claim[] = [
     clauses: ['You are the working assistant for project'],
     origin: 'moved',
   },
-  // cm:guard this row was ISS-1007's `guide-pointer` — the sentence telling the model to FETCH the method — and ISS-1034 replaced it in place rather than deleting it: the method now renders inline (asserted below by body, not by slug), and the one sentence the opening still owns is the seam between method and channel. The count stays thirty because a row left and a row arrived (ISS-1034).
   {
     id: 'method-then-channel',
     owner: 'sharedOpening',
@@ -56,11 +54,6 @@ export const LEDGER: readonly Claim[] = [
     ],
     origin: 'moved',
   },
-  // cm:guard ISS-1057's own row, and it is `new`: the old line named the shape it WANTED and left
-  // the reader to infer the rest, and over beta's 146-turn QA window at 45d92580 the model wrote
-  // `/issues/ISS-351`, `/issues/538`, `#/issues/24` and `/issues/ISS-23` on 7 of them. This names
-  // what the web refuses as well as what it serves. The count goes to thirty-one and the
-  // twenty-from-Rocket.Chat assertion is untouched, because this claim came from neither.
   {
     id: 'issue-link-wrong-shapes',
     owner: 'sharedOpening',
@@ -72,8 +65,6 @@ export const LEDGER: readonly Claim[] = [
     ],
     origin: 'new',
   },
-  // cm:guard also ISS-1057's, for the same reason: the `-h` sentence that left the tracker row is
-  // an instruction in its own right and its replacement has to be owned by something.
   {
     id: 'help-is-the-way-out',
     owner: 'guide',
@@ -85,9 +76,6 @@ export const LEDGER: readonly Claim[] = [
     origin: 'new',
   },
 
-  // cm:guard the method's own preamble had NO ledger row until ISS-1057's sentence-by-sentence
-  // assertion asked for one: the old checks walked the doors' rendered lines with the guide body
-  // subtracted, so three sentences of the guide were instruction nobody had recorded arriving.
   {
     id: 'method-preamble',
     owner: 'guide',
@@ -152,14 +140,9 @@ export const LEDGER: readonly Claim[] = [
     ],
     origin: 'moved',
   },
-  // cm:guard the four rows below are ISS-1009's and `new`: the tracker moved from two wrapper tools to the `forge` CLI while this ledger was being written, and its method rides the same guide so both doors read it — a Rocket.Chat-only copy would leave the web door filing by hand (ISS-1009).
   {
     id: 'tracker-is-forge',
     owner: 'guide',
-    // cm:guard the middle clause moved with ISS-1057 and the ROW stayed: the instruction to open a
-    // task with `forge -h` is gone — it cost a round-trip on 25 of 146 measured turns — and what
-    // stands in its place is the carried forms plus `-h` as the way out. Deleting the row instead
-    // would delete the record that the claim landed anywhere at all.
     clauses: [
       'THE TRACKER IS THE `forge` TOOL',
       'the forms you need are already in its description',

@@ -28,7 +28,6 @@ describe('judge', () => {
     expect(v.code).toBe(0);
   });
 
-  // cm:guard this is the whole reason judge() exists as its own function. A runner that cannot answer must be exit 2 — "the gate could not run" — and NEVER exit 1 with a violation list, because that list would name every file the broken runner owns and read as a real finding. Two of this repo's gates shipped with the mirror-image bug: an empty measurement reported as a clean pass.
   it('is exit 2, not a violation list, when a runner could not answer', () => {
     const v = judge({
       ...base,
@@ -48,7 +47,6 @@ describe('judge', () => {
     expect(judge({ ...base, declaredSkips: null }).code).toBe(2);
   });
 
-  // cm:guard a tracked file missing from disk is exit 2 NAMING the file, and it is judged before coverage: `git ls-files` answers the index, so a deletion nobody staged is tracked and absent, and the unguarded read this replaced exited 2 with a `node:fs` stack that named neither the file nor the remedy (2026-09-14).
   it('is exit 2 naming the file when a tracked test file is not on disk', () => {
     const v = judge({ ...base, unreadable: ['packages/web-v2/src/gone.test.ts'] });
     expect(v.code).toBe(2);
@@ -75,7 +73,6 @@ describe('judge', () => {
     expect(v.code).toBe(0);
   });
 
-  // cm:guard an unreachable file must not ALSO be reported as an undeclared skip. It is already named once, and naming it twice pushes whoever reads the output toward declaring a skip for a file that no runner even collects — which would silence the real finding.
   it('reports an unreachable file once, not also as a skip', () => {
     const v = judge({
       ...base,
@@ -88,7 +85,6 @@ describe('judge', () => {
 });
 
 describe('isSuiteSkip', () => {
-  // cm:guard these two lines are verbatim what the device-runner E2E and memory-live carried. If a refactor makes the detector stop matching them, this gate goes quiet on exactly the shape it was built for and nothing else will say so.
   it('matches the two forms this repo actually used', () => {
     expect(isSuiteSkip("describe.skipIf(!runE2E)('F2 device-runner E2E', () => {")).toBe(true);
     expect(isSuiteSkip('const describeIfLive = HAS_LIVE_ENV ? describe : describe.skip;')).toBe(
@@ -103,7 +99,6 @@ describe('isSuiteSkip', () => {
     expect(isSuiteSkip('export const d = cond ? describe : describe.skip;')).toBe(true);
   });
 
-  // cm:guard `it.skip` must NOT match. Quarantining one case is visible in the run summary as a skipped test; treating it as a whole-file skip would put every ordinary quarantine through the declaration file and get the rule switched off.
   it('leaves a single quarantined case alone', () => {
     expect(isSuiteSkip("  it.skip('flaky under load', () => {")).toBe(false);
     expect(isSuiteSkip("  test.skip('later', () => {")).toBe(false);
@@ -113,7 +108,6 @@ describe('isSuiteSkip', () => {
     expect(isSuiteSkip("describe('dispatchChatTurn', () => {")).toBe(false);
   });
 
-  // cm:guard the regression that made this a function instead of a bare regex. The unanchored pattern flagged THIS file, because a test for a skip detector has to quote skip syntax. Caught before it was tracked; without the anchor the fix would have been an exemption entry, and an exemption is where the next real skip hides.
   it('ignores skip syntax quoted inside an argument', () => {
     expect(isSuiteSkip('expect(isSuiteSkip("describe.skip(\'x\', () => {")).toBe(true);')).toBe(
       false,

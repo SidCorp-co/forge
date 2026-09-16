@@ -86,7 +86,6 @@ describe('admin aggregate routes (ISS-651)', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    // cm:guard `env.ts` freezes `env` at first import, so ADMIN_EMAILS must be set BEFORE the dynamic import below — set it after and requireAdmin reads an empty allow-list and every case in this file 403s (ISS-816)
     process.env.ADMIN_EMAILS = ADMIN_EMAIL;
 
     const { adminAggregateRoutes } = await import('../../src/admin/aggregate-routes.js');
@@ -181,7 +180,6 @@ describe('admin aggregate routes (ISS-651)', () => {
       }
       expect(body.glance.leadTimeMinutes?.spark).toHaveLength(24);
     });
-    // cm:guard ISS-654 — `openAlerts` is the count of non-`ok` alerts from the SHARED `computeAlerts`, not a second definition. The approximation it replaced counted `status='running'` jobs only, so a job stuck at `dispatched` — which A2 reports and an operator has to act on — left the tile reading "0 · nothing needs you" above a red alert row.
     it('counts a `dispatched` stuck job, which the running-only approximation could not see', async () => {
       await seedStuckDispatchedJob(harness);
 

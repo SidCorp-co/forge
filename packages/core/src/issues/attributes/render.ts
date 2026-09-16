@@ -22,7 +22,6 @@ export interface RenderedAttribute {
   readonly assertedAt: string;
 }
 
-// cm:why A ref resolves to what it points at — `ISS-1004`, an address — because the consumer is an agent reading one issue, and a uuid it would have to look up separately is a field it will not use (ISS-1010).
 export function renderAttribute(row: AttributeRow, labels: Map<string, string>): RenderedAttribute {
   const def = attributeDef(row.key);
   const value =

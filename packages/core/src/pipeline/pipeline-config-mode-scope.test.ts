@@ -16,7 +16,6 @@ import {
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
 
-// cm:why ISS-994 — `mode` gated only at the entry status while parsing, persisting and displaying on all four. These assert the split that fixed it: the canonical schema STRIPS a non-entry `mode` so no stored document becomes unparseable, and the PATCH schema REFUSES one so an operator is told the field does not reach there.
 describe('states[X].mode reaches only the entry status (ISS-994)', () => {
   it('keeps mode on the entry status, where isEntryGateClosed reads it', () => {
     const out = pipelineConfigSchema.parse({ states: { open: { mode: 'manual' } } });
@@ -30,7 +29,6 @@ describe('states[X].mode reaches only the entry status (ISS-994)', () => {
     expect(out.states?.awaiting_release).toEqual({ enabled: true, model: 'sonnet' });
   });
 
-  // cm:guard the strip must never become a refusal on the READ path: sidpeak stores needs_info.mode and awaiting_release.mode today, and one unparseable value makes cfg null, isAutonomous false and that project dispatch nothing in silence (measured 2026-09-10).
   it('parses a stored document that names a non-entry mode rather than refusing it', () => {
     const stored = {
       enabled: true,

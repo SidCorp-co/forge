@@ -59,10 +59,6 @@ export interface CascadeResult {
  * unifying here closes that gap.
  */
 // cm:flow release/reap after:close — closing the run reaps its child jobs, and on a `pipeline_completed` close the release job that is still running flips to done, NOT cancelled; that sentinel is why a successful release does not look like a cancelled one
-// cm:guard every terminal pipeline_runs.status transition must route through this helper — nothing else reaps child jobs
-// cm:edge lockstep -> packages/core/src/jobs/loop-monitor.ts — orphan-hygiene defence 2; the three defences move together
-// cm:edge lockstep -> packages/core/src/devices/pool.ts — orphan-hygiene defence 3: the pool offers a job only under a `running`/`paused` parent, so an orphan the cascade missed is never handed to a master. It took this role from the dispatch gates when the central picker was deleted.
-// cm:edge lockstep -> packages/core/src/pipeline/runs-concluded.ts — the INVERSE direction, and it is part of the same statement: this module keeps child jobs from outliving a terminal run, that one keeps a run from outliving its last terminal job. Defending only this direction is what left 98 of 114 live runs `running` with nothing in flight (ISS-923); a change to what `terminal` means on either axis has to move both.
 export async function cascadeCancelChildJobs(
   tx: Tx | Db,
   runId: string,
@@ -106,8 +102,6 @@ export async function cascadeCancelChildJobs(
     if (j.agentSessionId && j.deviceId) deviceBySession.set(j.agentSessionId, j.deviceId);
   }
 
-  // cm:edge sideeffect -> packages/core/src/skills/reconcile-service.ts — a reconcile/verify_skill job cancelled here never routes through finalizeFailedJob, so it still needs the same terminal path (BLOCKER M path 3, ISS-801 review); only the genuine-cancel branch, since a `pipeline_completed` close flips these to 'done' instead.
-  // cm:why dynamic import avoids a runs-cascade -> reconcile-service -> pipeline/runs -> runs-cascade cycle (reconcile-service imports closeRun/openOneShotRun from pipeline/runs.js, which imports this module).
   if (!completedSuccess) {
     const reconcileJobs = cancelledJobs.filter(
       (j) => j.type === 'reconcile' || j.type === 'verify_skill',

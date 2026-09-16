@@ -50,12 +50,10 @@ function loadConfig() {
   }
 }
 
-// cm:guard the vocabulary lives in the manifest beside this checker's other config, NOT in the source annotations — a flow that exists only because somebody typed `cm:flow x:1` somewhere is a flow nobody declared, and this gate would then measure coverage of whatever was most recently invented rather than of the two paths the repo says it defends.
 function declaredFlows(cfg) {
   return (cfg.flows ?? []).map((f) => f.name);
 }
 
-// cm:guard the site list is this scan and nothing cross-checks it, so `parseSites` in lib/flow-coverage.mjs is the only thing standing between a malformed annotation and a step silently vanishing from the gate — its 13 unit tests ARE that defence and deleting them un-gates this checker without failing it.
 function stepSites(flows) {
   const r = spawnSync('git', ['grep', '-n', '-I', '--', 'cm:flow'], {
     cwd: ROOT,
@@ -65,8 +63,6 @@ function stepSites(flows) {
   return parseSites(r.stdout, flows);
 }
 
-// cm:edge lockstep -> .forge/conformance.json — every entry in `checkers.flow-coverage.sources` declares the `scope` its report claims to measure; a source added there without one fails below rather than being trusted whole
-// cm:guard the floor is the scope's last COMMIT time, maxed with working-tree mtimes — neither alone is enough. mtimes alone call every report stale after a `git checkout` moves files whose content is older than the report; commit time alone misses uncommitted edits, which is the state a local `verify` runs in.
 /** When the code this report claims to measure last changed, and which file says so. */
 function newestSourceChange(scopeRel) {
   const abs = join(ROOT, scopeRel);
@@ -104,7 +100,6 @@ function loadSource(src) {
   if (!existsSync(abs)) return { ...src, missing: true };
   if (!src.scope) die(`source "${src.label}" declares no scope in ${CONFIG_PATH}`);
 
-  // cm:guard a report OLDER than the code it measures must exit 2, never report its rows — this gate reads coverage as evidence a flow step is defended, and a stale report answers for code that no longer exists. Measured 2026-09-06: `verify` was green on "6 settled end-to-end" from a report dated 2026-08-31, taken before the staged lane was deleted. The absent case was already handled by `missing`; the stale case read exactly like a current one.
   const producedAt = statSync(abs).mtimeMs;
   const newest = newestSourceChange(src.scope);
   if (producedAt < newest.at) {
@@ -113,7 +108,6 @@ function loadSource(src) {
       `${src.path} is STALE — produced ${day(producedAt)}, but ${newest.what} changed ` +
       `${day(newest.at)}. It cannot say what today's code covers.\n` +
       `  regenerate: ${src.produce ?? '(no producer declared)'}`;
-    // cm:guard stale is unusable evidence either way; only WHERE it is fatal differs. CI produces the report in the same job (ci.yml, `test:integration:coverage` immediately before this), so a stale one there is an anomaly and `--require-sources` fails on it. Locally stale is the NORMAL state — every edit outdates the report — so it degrades to the same skip an absent report takes. Making the local run fatal would mean a 3-minute coverage rebuild before every `verify`, and a gate that expensive gets deleted rather than obeyed.
     if (requireSources) die(detail);
     console.log(`check-flow-coverage: skipped — stale coverage report.\n  ${detail}`);
     return { ...src, missing: true, stale: true };
@@ -227,7 +221,6 @@ const fixed = [...frozen].filter((id) => !uncovered.includes(id));
 
 const reached = rows.filter((r) => r.settled);
 const stmtNever = reached.filter((r) => !r.stmtRan);
-// cm:guard the summary names the evidence it READ, and never the phrase "settled end-to-end" — that phrase is what ISS-955 removed, because a reader took it for "the flow ran" when what was measured is one entry into the annotated function
 console.log(
   `\ncheck-flow-coverage: ${rows.length} step(s) across ${flows.length} flow(s), ` +
     `${reached.length} reached by the authoritative suite\n` +

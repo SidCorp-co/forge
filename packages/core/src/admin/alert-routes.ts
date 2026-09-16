@@ -18,7 +18,6 @@ import { computeAlerts } from './alert-queries.js';
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// cm:guard `staleSeconds` must stay OPTIONAL with no default — a default here is indistinguishable from a caller-supplied value inside `computeAlerts`, and it would shadow the configured `stuckJobSeconds` on every request, so the GET would keep answering on 600s however the operator set the threshold.
 const alertsQuerySchema = z.object({
   staleSeconds: z.coerce.number().int().min(60).max(86_400).optional(),
 });

@@ -32,7 +32,6 @@ pub enum Event {
     /// The turn ended.
     Stopped,
     /// The turn ended on an API or model error.
-    // cm:guard Claude Code emits this INSTEAD of `Stop` after a model error, so a reader that knows only `Stop` leaves the turn spinning forever. It is a turn END like any other and must not be a third state.
     StoppedFailed,
     /// Stopped on a question only a human can answer.
     PermissionRequested,
@@ -41,16 +40,13 @@ pub enum Event {
     /// A child agent finished.
     SubagentStopped,
     /// A turn-based teammate went idle. Alive and resumable, not gone.
-    // cm:guard mapped to "no longer gating" and NOT to "gone", which is the same answer here for the only question this module asks: an idle child does not hold a pane working (Orca's #8825 idle-squat rule). Verified in claude 2.1.257: `TeammateIdle` is its own hook event beside `Stop`, and the payload names the teammate (`teammate_name`) rather than carrying an id — so a roster keyed on a child id is not available to build even if this needed one.
     TeammateWentIdle,
     /// A manual `/compact` finished.
-    // cm:guard a manual compact ends at an idle prompt and emits NO `Stop`, so without this event a pane that was compacted by hand stays `Working` for the rest of its life.
     Compacted,
 }
 
 impl Event {
     /// The Claude Code hook event name, which is the wire name.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/hook_install.rs — these strings are what gets registered in the pane's settings; a name here that Claude Code does not emit registers a hook that never fires, and the failure is silence.
     pub fn from_wire(s: &str) -> Option<Self> {
         Some(match s {
             "UserPromptSubmit" => Self::PromptSubmitted,
@@ -92,7 +88,6 @@ impl Event {
 }
 
 /// One report from a session's hook, with everything the frame carried.
-// cm:guard `subject` and `conversation` are OPTIONS and a missing one may never be guessed. Measured against claude 2.1.257: a child event carries `agent_id` and a LEAD event carries none, so absence is the lead/child discriminator itself — inventing an id for an unattributable event would let a child event own the lead's turn.
 #[derive(Debug, Clone, Copy)]
 pub struct Report<'a> {
     pub event: Event,
@@ -122,7 +117,6 @@ pub struct Activity {
     /// When the running turn began. `None` once it has ended.
     pub turn_started_at: Option<i64>,
     /// The children currently holding this pane working, BY ID.
-    // cm:guard a set of ids and not a count, because the two failures a count cannot survive are both routine: the same `SubagentStart` seen twice would gate twice, and a `SubagentStop` for a child this process never saw would cancel a DIFFERENT child's claim. An id makes both idempotent, and it is the only way a log line can ever name which child is holding a pane.
     pub children: std::collections::BTreeSet<String>,
     /// The conversation these claims belong to (Claude Code's `session_id`).
     pub conversation: Option<String>,
@@ -137,7 +131,6 @@ impl Activity {
         if self.awaiting_permission {
             return Doing::AwaitingPermission;
         }
-        // cm:guard a lead `Stop` while a child is outstanding is NOT idle, and this is the case that cost Orca a named rule (`attachClaudeChildOnlyBoundary`): a run whose reviewer subagent is still working emits the lead's Stop first, and a reader without this term calls the pane finished and reclaims a worktree being written.
         if self.turn_started_at.is_some() || !self.children.is_empty() {
             return Doing::Working;
         }
@@ -146,7 +139,6 @@ impl Activity {
 }
 
 /// Every session's activity on this box, keyed by the session the token named.
-// cm:guard IN MEMORY on purpose, and a daemon that restarts therefore knows nothing rather than something stale. An absent entry reads as "never reported" at every caller, which is the honest answer for a pane whose hooks predate this process; persisting it would let a restart resurrect a turn boundary no live agent stands behind.
 #[derive(Default)]
 pub struct Activities(Mutex<HashMap<String, Activity>>);
 
@@ -168,7 +160,6 @@ impl Activities {
             awaiting_permission: false,
             sequence: 0,
         });
-        // cm:guard a DIFFERENT conversation voids every claim before the event is applied, and this is the backstop for the exits no hook reports: `/clear`, a relaunch and a resume all leave the pane alive with a new `session_id` and emit nothing terminating, so claims from the old conversation would otherwise gate the pane forever. Scoped to claims ABOUT the conversation — this module holds no evidence about OS processes, which is the thing such a void must never take with it.
         if let Some(seen) = r.conversation {
             if a.conversation.as_deref().is_some_and(|had| had != seen) {
                 a.turn_started_at = None;
@@ -180,7 +171,6 @@ impl Activities {
         a.last_event = event;
         a.last_event_at = at;
         a.sequence += 1;
-        // cm:guard the child-only boundary is CARRIED only while the events that follow it are the child's own, and any other event strips it. Establishing it without this exit is the same unbounded claim `PreCompact` is refused for: a child killed, crashed, or whose hook was dropped never sends `SubagentStop`, and the pane is then `Working` for the rest of its life with nothing on the box able to say why.
         let child_only = a.turn_started_at.is_none() && !a.children.is_empty();
         if child_only
             && !matches!(
@@ -195,19 +185,16 @@ impl Activities {
                 a.turn_started_at = Some(at);
                 a.awaiting_permission = false;
             }
-            // cm:guard a permission wait is cleared by the NEXT boundary and never by a timer: the question stands until the agent moves, and a wait that expired on its own would read as progress nobody made.
             Event::PermissionRequested => a.awaiting_permission = true,
             Event::Stopped | Event::StoppedFailed | Event::Compacted => {
                 a.turn_started_at = None;
                 a.awaiting_permission = false;
             }
-            // cm:guard a child event with NO subject changes nothing — it is unattributable, and the rule is void nothing rather than guess. Gating on an id-less child event would let one child's start hold the pane after a different child's stop, and an id-less stop would cancel a claim it cannot name.
             Event::SubagentStarted => {
                 if let Some(id) = r.subject {
                     a.children.insert(id.to_string());
                 }
             }
-            // cm:guard a teammate going idle takes the SAME arm as a child finishing, and the difference between them is deliberately not modelled: a turn-based teammate fires this at every turn end while staying alive, so a reader that treated it as existence would keep the pane working across every boundary, and one that treats it as departure is wrong only about a fact nothing here asks. On that event the subject is `teammate_name`, not `agent_id` — the frame carries whichever the payload had.
             Event::SubagentStopped | Event::TeammateWentIdle => {
                 if let Some(id) = r.subject {
                     a.children.remove(id);
@@ -285,7 +272,6 @@ mod tests {
         );
     }
 
-    // cm:guard the error path is a turn END, and this is the test that fails if anyone treats `StopFailure` as a state of its own: Claude Code emits it INSTEAD of `Stop`, so a reader that only knows `Stop` leaves the pane `Working` forever after one model error.
     #[test]
     fn a_model_error_ends_the_turn_as_surely_as_a_stop() {
         let a = acts();
@@ -296,7 +282,6 @@ mod tests {
         );
     }
 
-    // cm:guard the failure this exists for: a run's reviewer subagent is still writing the worktree when the lead emits `Stop`, and a reader without the child term calls that pane finished. Reclaiming on it takes a checkout out from under a live agent.
     #[test]
     fn a_leads_stop_over_a_live_child_is_still_working() {
         let a = acts();
@@ -314,7 +299,6 @@ mod tests {
         );
     }
 
-    // cm:guard the boundary needs an EXIT and this is the test for it: it is carried only while the events that follow are the child's own, so a lead that starts working again strips a child claim nothing has closed. Without this half a child that dies without its `SubagentStop` — killed, crashed, or its hook dropped — pins the pane `Working` for the rest of its life, which is exactly the failure `PreCompact` is refused for.
     #[test]
     fn a_child_only_boundary_does_not_outlive_the_leads_next_turn() {
         let a = acts();
@@ -334,7 +318,6 @@ mod tests {
         );
     }
 
-    // cm:guard the same exit, on the arm that has no second turn to strip it: a hand `/compact` after the lead stopped over a child is a non-child event and must clear the claim too.
     #[test]
     fn a_compact_after_a_child_only_boundary_clears_it() {
         let a = acts();
@@ -347,7 +330,6 @@ mod tests {
         );
     }
 
-    // cm:guard and the boundary must still HOLD across the child's own events, or the fix above has simply deleted the term it is fixing.
     #[test]
     fn the_boundary_holds_across_a_second_childs_start_and_stop() {
         let a = acts();
@@ -368,7 +350,6 @@ mod tests {
         );
     }
 
-    // cm:guard the failure a COUNT could not survive, and the reason this is a set: the same child's stop arriving twice — a retried hook, a duplicated delivery — would have cancelled a second child's claim and idled a pane with live work in it.
     #[test]
     fn one_childs_stop_seen_twice_does_not_cancel_another_childs_claim() {
         let a = acts();
@@ -383,7 +364,6 @@ mod tests {
         );
     }
 
-    // cm:guard the other half of the same property: one child's start seen twice must not need two stops.
     #[test]
     fn one_childs_start_seen_twice_needs_only_one_stop() {
         let a = acts();
@@ -396,7 +376,6 @@ mod tests {
         );
     }
 
-    // cm:guard an unattributable child event must VOID NOTHING. A stop with no id cannot name the claim it would cancel, and a start with no id would gate a pane no event can ever ungate.
     #[test]
     fn a_child_event_that_names_no_child_changes_nothing() {
         let a = acts();
@@ -415,15 +394,9 @@ mod tests {
         );
     }
 
-    // cm:guard the backstop for every exit that reports NOTHING: `/clear`, a relaunch and a resume leave the pane alive under a new conversation and emit no terminating hook, so claims from the old one would gate it forever.
     #[test]
     fn a_new_conversation_voids_the_claims_of_the_old_one() {
         let a = acts();
-        // cm:guard the turn is left RUNNING on purpose, so the child-only strip
-        // cannot fire and take the credit: with `turn_started_at` set, the only
-        // thing that can clear this child is the conversation changing. The
-        // first version of this test asserted the same outcome with the turn
-        // ended, and stayed green with the whole backstop deleted.
         a.record(
             "s1",
             Report {
@@ -474,7 +447,6 @@ mod tests {
         assert_eq!(a.get("s1").unwrap().doing(), Doing::Working);
     }
 
-    // cm:guard a `SubagentStop` with no matching start is the normal case for every pane that predates this daemon, so the counter MUST saturate: an underflow pins the pane `Working` for the rest of its life and nothing on the box could explain why.
     #[test]
     fn a_childs_end_this_process_never_saw_the_start_of_does_not_wrap() {
         let a = acts();
@@ -503,7 +475,6 @@ mod tests {
         );
     }
 
-    // cm:guard a manual `/compact` ends at an idle prompt and emits no `Stop`, so this event is the only thing that can end that turn. Without it the pane stays `Working` forever and every liveness reader believes it.
     #[test]
     fn a_hand_compacted_pane_does_not_stay_working_forever() {
         let a = acts();
@@ -514,7 +485,6 @@ mod tests {
         );
     }
 
-    // cm:guard the sequence is what lets a caller prove a NEW turn started: an agent already working when a prompt is pasted cannot show a `→Working` edge, so without a counter the only proof left is a screen read.
     #[test]
     fn every_event_moves_the_sequence_so_a_new_turn_is_provable_under_an_old_one() {
         let a = acts();
@@ -523,7 +493,6 @@ mod tests {
         assert!(second > first, "{second} must exceed {first}");
     }
 
-    // cm:guard a turn-based teammate fires `TeammateIdle` at EVERY turn end while staying alive and resumable, so this is the event that ends the gate — not `SubagentStop`, which such a child may never send at all. Without it the counter never comes down and the pane is `Working` until the lead happens to speak again.
     #[test]
     fn a_teammate_going_idle_stops_gating_the_pane() {
         let a = acts();
@@ -539,7 +508,6 @@ mod tests {
         );
     }
 
-    // cm:guard idle is not gone: the same teammate resuming must gate again, which is why this event may not be read as a departure either.
     #[test]
     fn a_teammate_that_resumes_gates_the_pane_again() {
         let a = acts();
@@ -552,7 +520,6 @@ mod tests {
         );
     }
 
-    // cm:guard `TeammateIdle` is CHILD-scoped and must not strip the boundary the way a lead event does, or a teammate going idle would clear a second child that is still working.
     #[test]
     fn a_teammates_idle_does_not_strip_another_childs_claim() {
         let a = acts();
@@ -586,7 +553,6 @@ mod tests {
         assert_eq!(Event::from_wire(""), None);
     }
 
-    // cm:guard `PreCompact` must NOT be registered or accepted: it fires before the compact is validated and an aborted compact emits it alone, so mapping it to a boundary strands the pane in exactly the state this module exists to prevent.
     #[test]
     fn precompact_is_refused_by_name_in_the_source_and_not_merely_absent() {
         assert!(

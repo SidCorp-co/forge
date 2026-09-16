@@ -25,7 +25,6 @@ use serde::{Deserialize, Serialize};
 const BOOT_ID_PATH: &str = "/proc/sys/kernel/random/boot_id";
 
 /// How long a SIGTERM'd group gets before SIGKILL. Mirrors `graceful_kill`.
-// cm:why cfg-gated with the signalling path that reads them: `cargo clippy` on the windows-latest leg of ci.yml's `runner` matrix warns on an unused const, and the runner-release workflow re-runs that same gate, where a warning is one more line of noise over the failure that actually stops a binary shipping
 #[cfg(unix)]
 const TERM_GRACE: Duration = Duration::from_secs(5);
 #[cfg(unix)]
@@ -44,7 +43,6 @@ pub enum Reaped {
 
 impl Reaped {
     /// The `outcome` value core's `POST /jobs/:id/kill-ack` accepts.
-    // cm:edge contract -> packages/core/src/jobs/lifecycle-routes.ts — the kill-ack zod schema is `z.enum(['killed','not_found'])`; a third word here is a 400 the runner logs and drops, and core falls back to waiting out the whole heartbeat window
     pub fn wire(self) -> &'static str {
         match self {
             Reaped::Killed => "killed",
@@ -62,7 +60,6 @@ struct Marker {
 
 /// Something that changes on every boot, or `None` on a platform where this
 /// daemon cannot obtain one.
-// cm:guard a platform with NO boot identity MUST return None here, and `record` + `marker_is_current` must both refuse to act on that — the empty-string fallback this replaced made `marker.boot_id != current` compare "" against "", which never rejects, so on macOS (a shipped release target) a marker that outlived a reboot went straight to kill_group on a pid something else now owns. Reporting `not_found` for a process we cannot vouch for is wrong-but-honest; killing a stranger is not.
 #[cfg(target_os = "linux")]
 pub fn boot_identity() -> Option<String> {
     std::fs::read_to_string(BOOT_ID_PATH)
@@ -90,7 +87,6 @@ pub fn boot_identity() -> Option<String> {
 }
 
 /// Whether a marker was written by the boot we are running now.
-// cm:why a pure function taking the identity as an argument, because the cases that matter are the ones the test host cannot be put into: a platform with no boot identity at all, and a marker left by the version of this file that wrote an empty one
 fn marker_is_current(marker_boot: &str, current: Option<&str>) -> bool {
     match current {
         Some(now) => !now.is_empty() && marker_boot == now,
@@ -102,7 +98,6 @@ fn default_dir() -> Option<PathBuf> {
     dirs_next::config_dir().map(|d| d.join("forge-runner").join("inflight"))
 }
 
-// cm:guard the job id is reflected straight off a WS frame into a filesystem path — reject anything that is not the id core sends, or a crafted `job.cancel` chooses which file this deletes
 fn marker_path(dir: &Path, job_id: &str) -> Option<PathBuf> {
     if job_id.is_empty()
         || job_id.len() > 64
@@ -117,7 +112,6 @@ fn marker_path(dir: &Path, job_id: &str) -> Option<PathBuf> {
 
 /// Remember that `pid` is running `job_id`, so a later daemon can kill it.
 pub fn record(job_id: &str, pid: u32) {
-    // cm:guard no boot identity means no marker: a record this daemon could never verify would be read back as a live pid after the next reboot, so the honest state is the pre-ISS-862 one (no record, `not_found`) rather than a record nobody may act on
     let (Some(dir), Some(boot)) = (default_dir(), boot_identity()) else {
         return;
     };
@@ -177,7 +171,6 @@ async fn reap_orphan_in(dir: &Path, job_id: &str, current_boot: Option<&str>) ->
     let Ok(marker) = serde_json::from_str::<Marker>(&raw) else {
         return Reaped::NotFound;
     };
-    // cm:why a pid only means anything within one boot — after a reboot the child is gone by definition and the number may already belong to something else, so a marker from another boot is discarded rather than signalled
     if !marker_is_current(&marker.boot_id, current_boot) {
         return Reaped::NotFound;
     }
@@ -210,7 +203,6 @@ fn prune_previous_boots(dir: &Path, current: &str) {
 }
 
 /// Kill a process GROUP by the leader's pid, reporting whether one was there.
-// cm:guard the ONE killer on this box, and it is public so a second caller cannot grow its own: `terminate.rs` kills a run's process group through this, `reap_orphan` kills a job's, and both must send SIGTERM to the GROUP with the same grace before SIGKILL — a caller signalling the leader alone leaves the agent's children holding the worktree (ISS-964 criterion 32).
 #[cfg(unix)]
 pub async fn kill_group(pid: u32) -> Reaped {
     use nix::sys::signal::{kill, Signal};

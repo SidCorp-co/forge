@@ -48,7 +48,6 @@ pub async fn fail(client: &CoreClient, job_id: &str, error: &str) -> Result<()> 
 }
 
 /// Force-fail a job, carrying what the runner preserved of its working copy.
-// cm:edge contract -> packages/core/src/jobs/lifecycle-routes.ts — `failBodySchema` there is `.strict()`, so an unknown key in `salvage` rejects the WHOLE request with a 400 and the failure itself is never recorded. `workspace::salvage::Salvage::to_json` is the only thing that should build this value.
 pub async fn fail_with_salvage(
     client: &CoreClient,
     job_id: &str,
@@ -94,8 +93,6 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
 }
 
 /// Ask core whether a duplex turn ending is also the JOB ending.
-// cm:edge contract -> packages/core/src/jobs/turn-verdict-routes.ts — reads `done` out of the JSON body by name; a rename there does not fail here, it makes `unwrap_or(true)` the answer for every turn and every park finalizes the job it was waiting on.
-// cm:guard fails CLOSED to `done: true` on ANY error — a runner that cannot reach core must finish the job, not hold a resident session on a question core never confirmed. The direction does NOT rest on the box's cap, which is now per-device (`devices.max_concurrent` via core's `effectiveDeviceCap`, so it can be >1): it rests on the asymmetry underneath it — a job finished early is retryable, a slot wedged by a session waiting on an answer nobody will give is not, and it is wedged on exactly the failure where nobody is watching. Re-argue THAT before flipping it; a bigger cap only changes how many slots the leak costs.
 pub async fn turn_is_job_end(client: &CoreClient, job_id: &str) -> bool {
     let url = client.url(&format!("/api/jobs/{job_id}/turn-verdict"));
     let resp = match client
@@ -169,7 +166,6 @@ mod tests {
         assert!(turn_is_job_end(&client(url), "job-1").await);
     }
 
-    // cm:guard the three failure shapes all answer TRUE, and that asymmetry is deliberate: a wrong `true` finishes a job that is retryable, a wrong `false` wedges the only runner slot on a question core never confirmed. These are the tests that fail if someone "fixes" the default to be cautious.
     #[tokio::test]
     async fn a_renamed_key_finishes_the_job_rather_than_holding_the_slot() {
         let url = serve_once("200 OK", r#"{"finished":false}"#).await;

@@ -35,7 +35,6 @@ function token() {
 }
 
 async function get(path) {
-  // cm:guard a real User-Agent is required — Cloudflare answers the default fetch/urllib UA with 403 1010 on this host, and a 403 here reads as an auth failure
   const res = await fetch(`${API}${path}`, {
     headers: { Authorization: `Bearer ${token()}`, 'User-Agent': 'curl/8.5.0' },
   });
@@ -43,7 +42,6 @@ async function get(path) {
   return res.json();
 }
 
-// cm:why comments are stripped from the corpus before any symbol lookup: this repo writes obituaries — `state-machine.ts` names four helpers it deleted — so a grep over raw source reports a dead identifier as live, which is the exact inversion this gate exists to catch
 const CODE = new Set(['.ts', '.tsx', '.mjs', '.js', '.rs']);
 const TEXT = new Set(['.sql', '.json', '.md', '.toml', '.yml', '.yaml']);
 const SKIP = /node_modules|[/\\]\.next|[/\\]dist|[/\\]target|[/\\]coverage|[/\\]\.git/;
@@ -81,7 +79,6 @@ function buildCorpus(roots) {
   return out.join('\n');
 }
 
-// cm:guard a gitignored path is absent BY DESIGN, not rotted — the local search-eval harness is the standing case, and gating it would teach authors to stop naming where a thing actually lives
 let ignoredCache = null;
 function gitIgnored(p) {
   if (ignoredCache === null) ignoredCache = new Map();
@@ -111,8 +108,6 @@ function pathLive(p) {
   return false;
 }
 
-// cm:guard both controls run BEFORE any result is reported and a failure exits 2, never 0 — a scan that cannot fail is the failure mode this file exists to prevent (measured 2026-09-12: a `compgen`-based version reported 0 of 89 dead paths and passed a fabricated filename)
-// cm:guard the negative tokens are ASSEMBLED at runtime, never written whole: this file lives under `scripts/`, which the corpus walks, so a literal sentinel here would find itself and turn the control green against a broken scan
 function controls(corpus) {
   const ghostSym = ['zzQq', 'NotAReal', 'Symbol'].join('');
   const ghostPath = `packages/core/src/${['zz', 'not', 'real'].join('-')}.ts`;
@@ -129,13 +124,11 @@ function controls(corpus) {
 
 const PATH_RE = /\b(?:packages|scripts|docs|drizzle|\.forge|\.github)\/[A-Za-z0-9_./@-]+/g;
 const SYM_RE = /`([A-Za-z_][A-Za-z0-9_]{4,60})`/g;
-// cm:guard a backticked WORD is not a citation and must not be gated: this corpus quotes git SHAs, Coolify uuids, other systems' table names and plain tool names, and every one of them is legitimately absent from this tree. Only a symbol the row itself anchors to a repo path is a claim about THIS repo — that is the rule `docs-doctrine` §4 already asks authors for, and gating anything looser produced 21 findings of which 17 were noise (measured 2026-09-12).
 const HEXISH = /^[0-9a-f]{6,40}$/i;
 const OPAQUE = /^[a-z0-9]{16,}$/;
 function citedSymbols(text) {
   const out = new Set();
   for (const line of text.split(/\n|(?<=[.!?])\s+/)) {
-    // cm:guard the anchor must be a REPO path, never any `*.ts`-shaped filename: this project reaches forge-plugin by issue and cites its files by name, so a loose filename test gates a symbol that lives in a repo this checkout does not contain (`markedCommit` in the plugin's `src/flow/machine.mjs`, measured 2026-09-12)
     const anchored = PATH_RE.test(line);
     PATH_RE.lastIndex = 0;
     if (!anchored) continue;
@@ -148,7 +141,6 @@ function citedSymbols(text) {
   return out;
 }
 const LINK_RE = /\[\[([^\]]+)\]\]/g;
-// cm:why a row citing something absent is often CORRECT — naming what was deleted is what an obituary does — so those are reported apart rather than failed, and the split is heuristic, which is why the count is printed instead of hidden
 const GONE =
   /\b(deleted|removed|gone|retired|no longer|used to|superseded|gutted|gutting|gutted|was deleted|gutted)\b/i;
 

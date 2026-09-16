@@ -22,7 +22,6 @@ import type {
   AdminMetricWindow,
 } from './types.js';
 
-// cm:edge naming -> packages/core/src/mcp/tools/forge-metrics.ts — `project_timeseries` is the OTHER time-series surface and deliberately shares NO computation with this one: different metric names (cost|throughput|cycle_time|queue_wait|runner_utilization|cache_hit_rate), different window vocabulary (days 1..90 + bucket day|hour), different fence (project membership vs ADMIN_EMAILS) and different scope (one project vs cross-tenant). Neither is canonical; a shared fold would have to reconcile four disagreements to serve two callers.
 
 export type BucketUnit = 'hour' | 'day' | 'week';
 
@@ -51,7 +50,6 @@ function bucketStepMs(unit: BucketUnit): number {
 /** Dense, oldest→newest UTC bucket-start boundaries for `count` buckets of
  *  `unit`, ending at the bucket containing `now`. Week buckets floor to UTC
  *  Monday to match `utcDateTrunc('week', ...)`. */
-// cm:edge contract -> packages/core/src/lib/time-buckets.ts#utcDateTrunc — both sides floor in UTC or `toBucketMap` joins nothing and every glance reads zero
 export function bucketBoundaries(unit: BucketUnit, count: number, now: Date): string[] {
   const end = new Date(now);
   end.setUTCMilliseconds(0);
@@ -59,7 +57,6 @@ export function bucketBoundaries(unit: BucketUnit, count: number, now: Date): st
   end.setUTCMinutes(0);
   if (unit !== 'hour') end.setUTCHours(0);
   if (unit === 'week') {
-    // cm:why remaps JS's Sun=0..Sat=6 to ISO Mon=0..Sun=6 so the floor below lands on Monday, matching Postgres date_trunc('week', ...)
     const isoDay = (end.getUTCDay() + 6) % 7;
     end.setUTCDate(end.getUTCDate() - isoDay);
   }
@@ -117,7 +114,6 @@ async function bucketedLeadTime(
   return { num: toBucketMap(rows, 'num'), den: toBucketMap(rows, 'den') };
 }
 
-// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
 async function bucketedResolved(spec: WindowSpec, baseStart: SQL): Promise<Map<string, number>> {
   const rows = (await db.execute(sql`
     SELECT ${utcDateTrunc(spec.unit, sql`created_at`)} AS bucket, count(*)::int AS n
@@ -130,7 +126,6 @@ async function bucketedResolved(spec: WindowSpec, baseStart: SQL): Promise<Map<s
   return toBucketMap(rows, 'n');
 }
 
-// cm:guard match label lanes by NAME, never by id — `labels` rows are project-scoped and this query is cross-tenant, so the same lane is a different id in every workspace.
 async function bucketedResolvedWithInterventionLabel(
   spec: WindowSpec,
   baseStart: SQL,
@@ -198,7 +193,6 @@ export interface RawLoaders {
   runOutcomes: () => Promise<{ num: Map<string, number>; den: Map<string, number> }>;
 }
 
-// cm:guard memoised because `resolved` is the DENOMINATOR of two metrics — `/overview` builds all five and would otherwise run that query twice. The memo is per-call and holds the promise, not the result, so two metrics awaiting it concurrently still share one round trip.
 export function createRawLoaders(spec: WindowSpec, baseStart: SQL, lanes: string[]): RawLoaders {
   const memo = new Map<string, Promise<unknown>>();
   const once = <T>(key: string, load: () => Promise<T>): Promise<T> => {
@@ -221,7 +215,6 @@ export function createRawLoaders(spec: WindowSpec, baseStart: SQL, lanes: string
   };
 }
 
-// cm:guard keyed by AdminGlanceMetricName, so this registry and `AdminOverview['glance']` cannot disagree about what the console measures (ISS-975) — the whole point of the shared union. A metric reachable at the series route that the glance cannot show, or the reverse, is the drift the type error prevents.
 export const METRIC_SOURCES: Record<
   AdminGlanceMetricName,
   (raw: RawLoaders) => Promise<MetricInput>
@@ -281,7 +274,6 @@ export function computeSeries(input: MetricInput, spec: WindowSpec, now: Date): 
       baseNum += num;
       baseDen += den;
     }
-    // cm:guard a ratio bucket with a zero denominator is `null` — "nobody closed anything in this hour", which an operator reading a shape must be able to tell from a ratio that really was zero. A count bucket with no rows is 0, never null: the absence IS the measurement there.
     const value = input.den ? (den > 0 ? (num / den) * input.scale : null) : num * input.scale;
     return { bucketStart, value };
   });

@@ -55,7 +55,6 @@ describe('requireAnyAuth', () => {
     expect(res.status).toBe(401);
   });
 
-  // cm:guard this is the assertion, not `status === 401`. A 401 would also be produced by the middleware simply failing to reach a still-present device branch, and the whole defect class this issue closes is a credential path that looks retired and is not. `verifyDeviceCredential` being uncalled is the only evidence that no device code path survives here.
   it('does not so much as verify a device token — the branch is gone, not merely refusing', async () => {
     verifyDeviceCredential.mockResolvedValue({ id: 'dev-1', ownerId: 'owner-1' });
     await asDevice();

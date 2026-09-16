@@ -61,7 +61,6 @@ export function InlineSelect({
   );
 }
 
-// cm:guard `needs_info` is exempt from the lock and must stay exempt — it is the one park a person's answer restarts, so locking it greys out the only way forward on an issue whose session is still resident; everything else set while a drive job is live is written over by that job moments later, which reads as the edit silently not taking.
 const ANSWERABLE_WHILE_RUNNING = new Set<IssueStatus>(["needs_info"]);
 
 interface StatusEditProps {
@@ -78,7 +77,6 @@ interface StatusEditProps {
  * registry — forward move first, then the bounces, then the discards. A rung
  * with no exit says so rather than opening empty (ISS-982).
  */
-// cm:guard the three no-target states are DISTINCT lines and must stay so: "loading", "could not load" and "no exits at all" are three different things for the person holding the mouse, and collapsing them renders ordinary latency as a failure and a terminal issue as a broken menu
 export function StatusEdit({ status, agentStatus, onTransition, disabled, size }: StatusEditProps) {
   const statusLabel = useStatusLabeller();
   const { exits, isPending, isError } = useStatusExits();

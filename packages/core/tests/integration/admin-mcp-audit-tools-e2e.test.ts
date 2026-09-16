@@ -44,7 +44,6 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    // cm:guard `env.ts` freezes `env` at first import, so ADMIN_EMAILS must be set BEFORE the dynamic import below or requireAdmin sees an empty allow-list and every case 403s
     process.env.ADMIN_EMAILS = ADMIN_EMAIL;
 
     const { adminMcpAuditRoutes } = await import('../../src/admin/mcp-audit-routes.js');
@@ -161,7 +160,6 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
       expect(r.totalCalls).toBe(3);
     });
 
-    // cm:guard THE regression case for `7f0c5a56`, which deleted six live tools: a device call stamps `user_id` = `device.ownerId` as well, so a split that reads `user_id` sees every call as a user call and reports 0 devices. If this ever passes while the query groups on `user_id`, the assertion has stopped testing anything.
     it('does not read a device call as a token call, though both stamp user_id', async () => {
       const device = await createTestDevice(harness.db, admin.id);
       await audit({ tool: 'forge_skill_facts.get', deviceId: device.id, userId: admin.id });
@@ -172,7 +170,6 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
       expect(r.unattributedCalls).toBe(0);
     });
 
-    // cm:guard the `deviceCalls` assertion here is what discriminates `device_id` from `user_id`, and the case above cannot: a device row stamps BOTH, so any split that reads `user_id` still answers 1 there. This row stamps `user_id` and NEITHER id, so it is the only shape where the two columns disagree — a split on `user_id` reads it as a device call and goes red exactly here.
     it('counts a row carrying neither id as unattributed rather than dropping it', async () => {
       await audit({ tool: 'forge_health', userId: admin.id });
 
@@ -185,7 +182,6 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
   });
 
   describe('the spelling normalisation', () => {
-    // cm:guard the underscore form is what agents actually send — the MCP client shows them `forge_memory_search`, not `forge_memory.search` — and every one of those rows lands as `not_found`. A query for the dotted name alone finds none of them, which is how three tools were read as never-called.
     it('folds the underscore spelling onto the registry’s dotted name', async () => {
       const tokenId = await makeToken(admin.id, 'agent');
       await audit({ tool: 'forge_memory_search', tokenId, resultCode: 'not_found' });
@@ -201,7 +197,6 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
   });
 
   describe('the join runs in both directions', () => {
-    // cm:guard a tool nothing has EVER called has no row in `mcp_audit_log`, so an inner join drops precisely the tools the deletion rule is looking for. `forge_memory.revisions` sat at zero rows lifetime and was invisible to the wave-3 query, which then reported "no candidates".
     it('returns every registered tool, including the ones with no rows at all', async () => {
       const body = await asAdmin();
       expect(body.rows.length).toBeGreaterThanOrEqual(body.registeredCount);
@@ -224,7 +219,6 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
   });
 
   describe('what the numbers mean', () => {
-    // cm:guard `oldestRow` is the only thing that lets a reader decide whether these are LIFETIME counts. `agent-surface.md`'s "whole table" clause holds only while `enforceMcpAuditRetention` stays unwired; when someone wires it, this field is what shows a 90-day floor instead of a claim in prose going quietly stale.
     it('reports the oldest row, so a reader can judge the window for themselves', async () => {
       const tokenId = await makeToken(admin.id, 'old');
       const oldest = new Date('2026-01-02T03:04:05.000Z');

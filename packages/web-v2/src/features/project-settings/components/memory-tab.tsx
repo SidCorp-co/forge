@@ -42,7 +42,6 @@ export function MemoryTab({ project, canEdit }: { project: ProjectDetail; canEdi
 	const cancel = useCancelMemoryReindex(project.id);
 	const [liveConflict, setLiveConflict] = useState(false);
 
-	// cm:guard a 409 is drawn as this sentence and nothing else happens: the mutation's onSettled already refetches the state, so the live reindex appears on its own and no code path here re-sends the POST
 	const flip = (model: "flat" | "chunked") =>
 		setModel.mutate(model, {
 			onError: (err) => {
@@ -274,7 +273,6 @@ function Row({ label, children }: { label: string; children: React.ReactNode }) 
 	);
 }
 
-// cm:guard the confirm names the seven-day purge in its own copy — a revert is cheap for a week and destructive after, and a button that only says "flat" hides the half that costs
 function RevertToFlat({
 	projectName,
 	pending,

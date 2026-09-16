@@ -15,10 +15,8 @@ vi.mock('../../knowledge/service.js', () => ({
 }));
 vi.mock('../../logger.js', () => ({ logger: { warn: vi.fn() } }));
 
-// cm:why imported at module scope, AFTER the vi.mock calls above — a dynamic import inside it() charges module-graph loading to the 5s test budget, which is what made this file flake
 const { renderStageFactsText } = await import('./resolve.js');
 
-// cm:why keys stay literal (no index signature) so `FIXTURE_FACTS['contracts-rule']` is a `string`, not `string | undefined`, under noUncheckedIndexedAccess
 const FIXTURE_FACTS = {
   'build-test-commands': 'pnpm build && pnpm test',
   'deploy-guide': 'Use forge_coolify_deploy with serviceId from Coolify.',

@@ -66,33 +66,20 @@ export type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'run
  * a job was taken by whoever asked first. On success the job is still `queued`
  * and now HELD: the caller owes either a `startJobForMaster` or a release.
  */
-// cm:guard how MANY jobs this box may hold is deliberately NOT decided here — the master weighs `GET /me/load` and the runner refuses on physical fullness (RAM, permit, repo lock), neither of which core can see. Do not reintroduce a device count: a ceiling in the kernel is the knob this design removed, and a master that meets one stops weighing the facts.
-// cm:guard L1 — one issue, one in-flight job, whatever the TYPE. `jobs_active_unique` is on (issue_id, type) and so permits a `code` and a `review` job for one issue at once; this NOT EXISTS is the only thing left standing between that and two agents writing the same worktree. It MUST stay inside the UPDATE's WHERE so the check and the hold are one statement — read separately, two masters both see a clear issue.
-// cm:guard a refusal here is NOT a job failure and must never touch `attempts` or `failure_kind`. A busy issue and a lost race are the ordinary case, and spending a retry on either burns an issue's budget on something that was never wrong.
 export async function prepareJobForMaster(args: {
   jobId: string;
   deviceId: string;
   sessionId: string;
 }): Promise<PrepareResult> {
-  // cm:guard a version skew is a REFUSAL, not an error, and it is checked before the hold so there is nothing to give back. Throwing instead would reach the master as a bare 500 with the reason nowhere — this route's own rule is that a refused claim answers 200 with `ok:false`, and an operator whose box has gone quiet reads that reason in the master's transcript. Like every other refusal it must not be retried in a loop: only updating the runner clears it.
   if (!(await canNameItsAgent(args.deviceId))) {
     return { ok: false, reason: 'runner_too_old' };
   }
 
-  // cm:guard a withdrawn box is refused BY NAME, and the pool's exclusion is not enough on its own — a master holds a page of pool rows across the round trip, so an operator draining mid-flight would otherwise get a silent claim on a box they just took out of service. `readPool` filtering and this refusing are the same predicate answered twice on purpose (pool-admission.ts).
-  // cm:guard checked BEFORE the hold, like `runner_too_old`, so there is nothing to give back. A refusal after the stamp would need the release path and would leave the job briefly held by a box that may never come back.
   const admission = await runnerAdmission({ jobId: args.jobId, deviceId: args.deviceId });
   if (!admission.admitted) {
     return { ok: false, reason: admission.reason };
   }
 
-  // cm:guard the pool's filter is not enough on its own, for the same reason `runnerAdmission` is
-  // checked here: a master holds a page of pool rows across a round trip, and an operator moving
-  // the release label in that window would otherwise hand the production deploy to a box that no
-  // longer holds the credential. Refused BEFORE the hold, so there is nothing to give back.
-  // cm:edge lockstep -> packages/core/src/devices/pool.ts — `RUNNER_MAY_TAKE_JOB` is this same
-  // verdict as SQL. Answer differently in either place and the fleet either burns claims on work it
-  // can never take or hides work a box was entitled to.
   const releaseLabel = await releaseLabelVerdict({ jobId: args.jobId, deviceId: args.deviceId });
   if (!releaseLabel.allowed) {
     logger.warn(
@@ -111,7 +98,6 @@ export async function prepareJobForMaster(args: {
           eq(jobs.id, args.jobId),
           eq(jobs.status, 'queued'),
           isNull(jobs.heldBy),
-          // cm:guard write `jobs.issue_id` / `jobs.id` LITERALLY, never as `${jobs.issueId}`. Drizzle renders a column reference inside a raw `sql` template UNQUALIFIED, so `issue_id` would resolve against the subquery's own `other` row — a NOT EXISTS comparing a row to itself, always true, and L1 silently gone.
           sql`NOT EXISTS (
             SELECT 1 FROM jobs other
             WHERE other.issue_id = jobs.issue_id
@@ -123,9 +109,7 @@ export async function prepareJobForMaster(args: {
       .returning();
 
     const row = held[0];
-    // cm:guard name the refusal the master can ACT on. `issue_busy` means come back for this job later; `already_held` means another master has it and this one never will. Collapsing them into one reason is how a master learns to treat both as "pick something else" and quietly stops working an issue nothing is wrong with.
     if (!row) {
-      // cm:guard do NOT filter this diagnosis to `status = 'queued'`. The claim stamps a job `dispatched`, so the commonest reason to land here is that another master already took it — and a queued-only lookup finds nothing and answers `not_found`, telling a master the job does not exist when it is running one box over.
       const diag = (await tx.execute(sql`
         SELECT j.held_by IS NOT NULL OR j.status <> 'queued' AS taken,
                EXISTS (SELECT 1 FROM jobs o
@@ -153,7 +137,6 @@ export async function prepareJobForMaster(args: {
 
   if (claimed.kind !== 'held') return { ok: false, reason: claimed.kind };
 
-  // cm:guard the breach ENDS the job (ISS-823 shape: terminal + a `held` retry), it does not merely refuse it. The reason returned here is for the master's next choice; the rows `endJobForBudgetBreach` writes are the kernel's record, and leaving the job `queued` instead would have the next master claim it and post the same comment again.
   const budget = await checkMonthlyBudget(claimed.job);
   if (budget.action === 'pause') {
     await releaseJobFromMaster({ jobId: claimed.job.id, sessionId: args.sessionId });
@@ -175,7 +158,6 @@ export async function prepareJobForMaster(args: {
     });
   }
 
-  // cm:guard a preparation that throws MUST give the hold back, for the same reason a failed mint does: the job would otherwise sit claimed by a master that never received the work, reachable only by the 3-minute reaper.
   let prepared: PreparedJob;
   try {
     prepared = await prepareClaimedJob({ jobId: claimed.job.id, deviceId: args.deviceId });
@@ -202,9 +184,6 @@ export async function prepareJobForMaster(args: {
  * spawning it. Until this lands the job is plain `queued` and held, which is
  * the state every existing release path already knows how to undo.
  */
-// cm:guard THE HANDOVER, and it must be all four columns. The runner's own routes gate on `jobs.device_id` (lifecycle-routes, events-routes, turn-verdict-routes all 403 without it) and ack additionally requires `status IN ('dispatched','running')`, so a start that stamps neither leaves a process core will not talk to: measured live 2026-09-05, two jobs ran on the right repos and every ack and event came back 403. The old `claimRunnerSlot` stamped exactly these four; the pool path owes the same.
-// cm:guard the stamp ENDS the hold, in the same statement, and that is what makes the ISS-919 split safe: everything between `prepareJobForMaster` and here is a plain held `queued` job, so a master that dies mid-preparation is recovered by `releaseJobFromMaster` and the three-minute reaper with no stamp to unwind. Leaving the hold set is what let the reaper unwind a stamp out from under a live agent: measured on epodsystem 2026-09-05, jobs f7f4bce4 and 8b8b7be4 sat `queued` with `device_id` NULL while their agents posted events at 2/s, every one 403, forever.
-// cm:guard `runnerId` is re-derived HERE rather than carried from the preparation, because the preparation crossed a process boundary and a caller-supplied runner id is a caller asserting which box owns the job. `resolveRunnerForDevice` is the same lookup `prepareClaimedJob` used, so the two cannot disagree.
 export async function startJobForMaster(args: {
   jobId: string;
   deviceId: string;
@@ -218,7 +197,6 @@ export async function startJobForMaster(args: {
     .from(jobs)
     .where(and(eq(jobs.id, args.jobId), eq(jobs.heldBy, args.sessionId)))
     .limit(1);
-  // cm:guard a job this session does not hold is `hold_lost`, never an error. The reaper taking a preparation back mid-spawn is an ordinary outcome the runner answers by dropping the spawn; raising instead would reach the master as a 500 with the reason nowhere.
   if (!job) return { ok: false, reason: 'hold_lost' };
   const runner = await resolveRunnerForDevice(job.projectId, args.deviceId);
 
@@ -238,7 +216,6 @@ export async function startJobForMaster(args: {
       )
       .returning({ id: jobs.id }),
   );
-  // cm:guard a lost hold here means the reaper took the job back between the two acts. Refuse rather than stamping anyway: another master may already hold it, and two boxes stamped onto one job is the state nothing downstream can untangle.
   if (!stamped.length) {
     await releaseJobFromMaster({ jobId: args.jobId, sessionId: args.sessionId });
     return { ok: false, reason: 'hold_lost' };
@@ -247,7 +224,6 @@ export async function startJobForMaster(args: {
 }
 
 /** Give a held job back to the pool. */
-// cm:guard release NEVER makes a job look failed — it goes back to being claimable, not back to being retried, so `attempts` and the failure columns stay untouched. And it drops the hold ALONE: a held job is always still `queued`, because the stamp that leaves `queued` clears the hold in the same statement, so there is no dispatch stamp here left to undo. Re-adding one would let this path unwind a stamp belonging to a job that has been running for an hour.
 export async function releaseJobFromMaster(args: {
   jobId: string;
   sessionId: string;
@@ -266,8 +242,6 @@ export async function releaseJobFromMaster(args: {
  * Only the hold moves. Anything this master actually started is no longer
  * held at all, so a running job is not reachable from here.
  */
-// cm:edge lockstep -> packages/core/src/devices/master-reaper.ts — the third path that drops a hold, and like the other two it drops the hold ALONE. Adding a stamp unwind to any one of them re-opens the epodsystem wedge: a running agent's job re-queued underneath it, reachable by no route it can talk to.
-// cm:guard THE load-bearing link of the whole design. Without it a master that dies at 3am leaves its jobs unclaimable forever, and nothing reports why — the exact silent wedge `VISION: state-never-lies` calls a kernel bug. It is called from the runner when the local socket drops and from the session reaper when the heartbeat stops; both paths must stay, because a box that loses power never drops a socket.
 export async function releaseAllHeldBySession(sessionId: string): Promise<number> {
   const rows = await db
     .update(jobs)

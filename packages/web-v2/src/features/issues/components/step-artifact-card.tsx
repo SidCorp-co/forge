@@ -23,12 +23,10 @@ interface StepArtifactCardProps {
 
 const STATE_META: Record<StepState, { dot: string; label: string }> = {
   done: { dot: "var(--green-500)", label: "Done" },
-  // cm:guard cobalt --pipeline-active, never the flame --accent that primary buttons own (ISS-509)
   running: { dot: "var(--pipeline-active)", label: "Running" },
   failed: { dot: "var(--red-500)", label: "Failed" },
 };
 
-// cm:guard the envelope keys are hidden from the generic body on purpose: a handoff payload repeats the step name and its schema version, which the card already has from its own row, so printing them gave every step two lines of noise above the sentence a person came for
 const SKIP_KEYS = new Set(["step", "schema_version", "schemaVersion"]);
 
 function fmtDuration(seconds: number): string {
@@ -94,7 +92,6 @@ export function StepArtifactCard({ outcome, open, onToggle }: StepArtifactCardPr
   }
   const hasBody = paragraphs.length > 0 || lists.length > 0;
 
-  // cm:guard the header row below WRAPS and its figures are flex-none: at 375px `ml-auto` on a non-wrapping row pushed the duration and the cost past the card's edge, so a step's two measured numbers were unreadable on a phone while the document reported no horizontal overflow, because the card clipped rather than the page scrolling (ISS-999)
   return (
     <div
       id={`step-card-${outcome.step}`}

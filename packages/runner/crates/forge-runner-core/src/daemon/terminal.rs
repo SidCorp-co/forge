@@ -19,22 +19,18 @@ use tokio::process::Command;
 use crate::error::{Error, Result};
 
 /// The prefix on every master's session name.
-// cm:guard the name is the IDENTITY, both halves. tmux refuses a second session under a name that exists, which is what bounds one master per (box, project) now that the daemon's in-process map cannot see a session it does not parent; and the same string round-trips to core on the `agent_sessions` row so an operator reading the UI knows what to attach to. Two names for one master would leave both checks looking at something the other cannot see.
 pub const MASTER_PREFIX: &str = "forge-master";
 
 /// A run session's pane, distinct from its master's so `alive`/`kill` cannot cross them.
-// cm:guard a run pane and a master pane differ ONLY by this string and share every primitive below — `ensure`, `alive`, `kill` and `send_line` all take the name a caller built from a prefix. A second copy of those primitives for runs is what this constant exists to prevent: two spawn paths drift, and the one that runs less often is the one that rots (ISS-933 criterion 1).
 pub const RUN_PREFIX: &str = "forge-run";
 
 /// Whether this box can host a resident session at all.
-// cm:guard REFUSE by name when tmux is missing rather than falling back to the `claude -p` pass this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of B3's liveness, B5's transcript or B6's inbox exist on it — the silent substitution `CLAUDE.md` forbids, on the exact machinery that is supposed to detect silence. `forge-runner doctor` names the same missing binary before an operator finds it this way.
 pub fn available() -> bool {
     static AVAILABLE: OnceLock<bool> = OnceLock::new();
     *AVAILABLE.get_or_init(|| which::which("tmux").is_ok())
 }
 
 /// A tmux session name derived from `raw`, safe as an argument and a target.
-// cm:guard `.` and `:` are the two characters that must not survive. tmux reads `:` as a window separator inside a target and rewrites `.` in session names, so a project slug carrying either produces a session whose real name differs from the one this module later looks up — `has-session` then answers "no" forever and every sweep starts another master.
 pub fn session_name(prefix: &str, raw: &str) -> String {
     let cleaned: String = raw
         .chars()
@@ -61,7 +57,6 @@ pub fn session_name(prefix: &str, raw: &str) -> String {
 ///
 /// One reading, because the socket and the unit are two halves of one identity
 /// and a caller that resolved them separately could temp one and not the other.
-// cm:guard the SINGLE source for both `socket_path` and `session_unit`. Before ISS-1044 the socket was derived here and the unit was a literal, so a test's temp config dir moved the socket and left `systemctl --user stop forge-sessions.service` naming the one real unit hosting every pane on the box: 38 evictions in 12h, measured forge-vm 2026-09-15, each killing every master and agent pane across every project on it.
 fn session_config_dir() -> Option<std::path::PathBuf> {
     crate::config::Config::path()
         .ok()
@@ -74,7 +69,6 @@ fn session_config_dir() -> Option<std::path::PathBuf> {
 /// telling "the box's own" from "a temp one" needs the unoverridden value, and
 /// there is no way to ask `dirs_next` for it without unsetting a process-wide
 /// variable under every other thread.
-// cm:guard this DUPLICATES `dirs_next`'s rule for the platform, which is why `the_unoverridden_dir_is_what_the_box_resolves_with_no_override` pins the two together: the day `dirs_next` changes where it puts a Linux config dir, that test goes red rather than this silently classifying the box's own dir as an override and renaming the live unit out from under the panes.
 fn unoverridden_config_dir() -> Option<std::path::PathBuf> {
     #[cfg(target_os = "linux")]
     {
@@ -94,19 +88,16 @@ fn unoverridden_config_dir() -> Option<std::path::PathBuf> {
 /// socket is: dev1 runs several runner services that differ ONLY by
 /// `XDG_CONFIG_HOME`, and a shared session server would let one of them address
 /// another's panes.
-// cm:guard a socket of OUR OWN is not tidiness, it is the survival property: on the default socket the runner shares a server with whatever tmux the operator is running, so one `tmux kill-server`, or their last personal session ending, takes every agent on the box with it. Measured forge-vm 2026-09-11: `-L`/`-S` appeared zero times in this crate and 47 agent panes were sitting on the operator's own server.
 pub fn socket_path() -> Option<std::path::PathBuf> {
     SessionIdentity::current().map(|id| id.socket)
 }
 
 /// Whether a path can be a unix socket at all on this platform.
-// cm:guard `sockaddr_un.sun_path` is 108 bytes INCLUDING the terminator, and a path over it fails with `File name too long` — measured while writing this, on a 122-character scratch path. Without this filter every tmux call on such a box fails, which is not a degraded runner but a dead one: `XDG_CONFIG_HOME` is operator-set and dev1 already runs several runners that differ only by it.
 fn fits_a_unix_socket(path: &str) -> bool {
     path.len() <= 100
 }
 
 /// `-S <socket>`, or nothing when this box cannot name its config dir.
-// cm:guard falling back to the DEFAULT socket is deliberate and is the safe direction: a box that cannot resolve its config dir still runs work, it simply runs it where the old builds ran it. Refusing instead would take the whole box out over a path lookup.
 fn socket_args() -> Vec<String> {
     match socket_path() {
         Some(p) => vec!["-S".into(), p.to_string_lossy().into_owned()],
@@ -126,20 +117,17 @@ async fn tmux(args: &[&str]) -> Result<std::process::Output> {
 }
 
 /// A session target: exact name, no window or pane part.
-// cm:guard the `=` prefix forces an EXACT match. Without it tmux resolves a target by prefix, so `forge-master-forge` would answer alive for `forge-master-forge-dev` — one project reporting another project's master as its own, and neither ever restarted.
 fn session_target(name: &str) -> String {
     format!("={name}")
 }
 
 /// A PANE target for the same session — the trailing `:` is not optional.
-// cm:guard `send-keys`, `paste-buffer` and `pipe-pane` take a target-PANE, and a bare `=name` is not one: tmux answers `can't find pane: =name` and the write is lost. The trailing colon names the session's current window, which resolves to its active pane — and it is used rather than `:0.0` because `base-index` is operator-settable and a hardcoded 0 misses the pane on any box whose tmux.conf sets it to 1.
 fn pane_target(name: &str) -> String {
     format!("={name}:")
 }
 
 /// Whether a session by this exact name exists right now.
 /// The pid of the process a pane is running, once it exists.
-// cm:guard read from tmux rather than remembered from the spawn: `ensure` adopts a session that already exists as readily as it creates one, so a pid captured only on creation is absent for every adoption — which is the daemon restart the residency design exists to survive.
 pub async fn pane_pid(name: &str) -> Option<u32> {
     let target = session_target(name);
     let out = tmux(&["list-panes", "-t", &target, "-F", "#{pane_pid}"])
@@ -166,9 +154,6 @@ pub async fn alive(name: &str) -> bool {
 /// Returns whether this call created it. Idempotent by construction: the
 /// liveness check and tmux's own refusal to duplicate a name are both in play,
 /// so a race between two sweeps costs a log line and not a second master.
-// cm:guard `-x`/`-y` are not cosmetic. A detached tmux session defaults to 80x24, and Claude Code's TUI reflows its input box to the pane width — at 80 columns a pasted pass prompt wraps into the composer and a human attaching later reads a mangled transcript. The numbers only need to be generous; they are not a layout.
-/// The unit the session server runs as, when this box can give it one.
-// cm:edge naming -> packages/runner/crates/forge-runner/src/cmd/service.rs — the runner's own unit is `forge-runner*`; this one must NOT share that prefix, or an operator's `systemctl --user stop forge-runner*` takes the sessions this exists to spare.
 const SESSION_UNIT: &str = "forge-sessions";
 
 /// The unit name for the config dir in force, which is what every systemd call
@@ -178,10 +163,6 @@ const SESSION_UNIT: &str = "forge-sessions";
 /// real runner changes. Any OTHER config dir — a test's temp dir, a leaked
 /// `/tmp/forge-cred-*` inherited by a stray subprocess — gets a unit of its
 /// own, and can no longer reach the one this box's panes run under.
-// cm:guard no systemd call may name `SESSION_UNIT` directly; `no_systemd_command_names_a_literal_unit` is the gate. That is the whole of ISS-1044: the cold-start test interpolated the const into `systemctl --user stop`, so `cargo test` on a box hosting live sessions stopped the unit every pane was in, then re-placed it bound to the test's temp socket — leaving the live unit holding a socket nothing used and the panes outside its cgroup.
-// cm:guard the SUFFIX is keyed on the config dir and not on the pid, the hostname or a random value: a daemon that restarts must resolve the same unit it placed, or `ensure_server` places a second one beside the first and neither owns the panes.
-// cm:guard both the comparison and the digest read `resolved`, never the path as written. `XDG_CONFIG_HOME` reaching the box's own dir through a symlink or a `..` is an operator's ordinary setup, and a lexical `==` would call it an override and rename the live unit out from under panes already inside it — the eviction this issue fixes, wearing the fix's clothes. Two spellings of one dir must also hash alike, or one directory grows two units and two servers race for one socket.
-/// The unit name one config dir resolves.
 fn unit_for(dir: &std::path::Path) -> String {
     let Some(own) = unoverridden_config_dir() else {
         return SESSION_UNIT.to_string();
@@ -199,7 +180,6 @@ fn unit_for(dir: &std::path::Path) -> String {
 ///
 /// Every systemd call and every tmux call on the placement path takes its half
 /// from one of these rather than asking again.
-// cm:guard one VALUE carrying both halves, not two functions that agree by convention. `ensure_server` used to read the socket and then let `ask_systemd_for_the_server` read the unit on its own; a shared source function is not one reading, and anything moving the config dir between the two hands systemd the unit for one dir and the tmux command the socket for another — the split identity ISS-1044 criterion 6 forbids, surviving the fix that was supposed to close it.
 struct SessionIdentity {
     socket: std::path::PathBuf,
     unit: String,
@@ -226,7 +206,6 @@ impl SessionIdentity {
 /// does exist and appending the rest as written is what makes a symlinked
 /// `~/.config` still the box's own dir before the first run has made
 /// `forge-runner/` inside it.
-// cm:guard the FALLBACK is the path as written and never an error. Refusing here would take out the boxes this exists to leave alone, over a path lookup — the same reasoning as `socket_path`'s. What the fallback costs is stated where it bites: two spellings of one dir that share no existing ancestor read as two dirs, so one gets a suffixed unit. A `..` inside a path that does not exist is that case.
 fn resolved(p: &std::path::Path) -> std::path::PathBuf {
     if let Ok(whole) = p.canonicalize() {
         return whole;
@@ -248,7 +227,6 @@ fn resolved(p: &std::path::Path) -> std::path::PathBuf {
 }
 
 /// A path's own bytes, for hashing.
-// cm:guard NOT `to_string_lossy`. A Unix path is bytes and need not be UTF-8; lossy conversion maps every invalid sequence to the same replacement character, so two config dirs with different invalid bytes would get different sockets and the same unit name.
 fn path_bytes(p: &std::path::Path) -> Vec<u8> {
     #[cfg(unix)]
     {
@@ -262,7 +240,6 @@ fn path_bytes(p: &std::path::Path) -> Vec<u8> {
 }
 
 /// The session the server is started with, so it has one and does not exit.
-// cm:guard named OUTSIDE both `MASTER_PREFIX` and `RUN_PREFIX`, because every reader on this box classifies a session by that prefix and would otherwise adopt the keep-alive as a master with no project.
 const KEEPALIVE: &str = "forge-session-host";
 
 /// Start the session server under a unit of its OWN, if it is not already up.
@@ -272,20 +249,12 @@ const KEEPALIVE: &str = "forge-session-host";
 /// takes its panes with it — so a server forked into this service's cgroup
 /// means `systemctl restart forge-runner` kills every agent on the box. That is
 /// what makes an ordinary update destructive.
-// cm:guard a transient SERVICE with `--service-type=forking`, never `--scope`: measured 2026-09-11, `tmux start-server` daemonizes, so the process a scope tracks exits immediately, the scope is collected, and the server it was supposed to hold ends up in the caller's cgroup after all. The scope form looks right and places nothing.
-// cm:guard the server is started WITH a session (`new-session`), never bare (`start-server`): a tmux server with no sessions exits on the spot — `exit-empty` is on by default — so the bare form leaves the unit inactive and no server at all. Measured the same day, twice.
-// cm:guard a box with no `systemd-run` (macOS, a container) is NOT refused. It runs exactly as every build before this one did, and says so by name once — the property is unavailable there, the work is not.
-// cm:guard idempotent under CONCURRENCY, not just repetition: a master sweep starts several panes at once, so the attempt is serialized in-process and a caller that loses the race waits for the winner's socket instead of reporting a failure. Across processes systemd itself is the lock, and `already exists` is the same loss.
-// cm:guard the caller is never refused. `ensure` proceeds either way — a box with no `systemd-run` runs exactly as every build before this one did, and says so by name once.
 async fn ensure_server() -> bool {
     static PLACING: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
     let _one_attempt = PLACING.lock().await;
     if server_answers().await {
         return true;
     }
-    // cm:guard ONE reading for the whole placement. Everything below takes its
-    // socket and its unit from this value rather than asking again, which is
-    // criterion 6 made structural instead of conventional.
     let Some(id) = SessionIdentity::current() else {
         tracing::warn!(
             "[terminal] no usable session socket path — agent panes will run on the default tmux server and die with this service, as they did before"
@@ -293,11 +262,6 @@ async fn ensure_server() -> bool {
         return false;
     };
     let sock = &id.socket;
-    // cm:guard `tmux -S` does NOT make the directory it is handed, so a box whose
-    // config dir has never been written cannot bind here and every pane fails with
-    // a message about tmux rather than about a missing directory. Until ISS-1044 no
-    // test found that, because `cred_store` leaked an `XDG_CONFIG_HOME` that happened
-    // to exist and every pane test bound inside it.
     if let Some(parent) = sock.parent() {
         if let Err(e) = std::fs::create_dir_all(parent) {
             tracing::warn!(
@@ -315,7 +279,6 @@ async fn ensure_server() -> bool {
             );
             true
         }
-        // cm:guard name the CONSEQUENCE, never just the failed command: the operator reading this line is being told that the next update kills every agent on the box, which is the only part of it they can act on.
         Placement::Accepted => {
             tracing::warn!(
                 "[terminal] systemd took the session server but its socket never answered within {SERVER_READY_WITHIN:?} — panes will be killed with this service, as they were before"
@@ -332,14 +295,12 @@ async fn ensure_server() -> bool {
 }
 
 /// What systemd did with the request, which is NOT the same as whether our own call won.
-// cm:guard the two outcomes carry different WAITS, and conflating them is what CI caught on 2026-09-11: a cold machine took longer than the bound to fork tmux, three callers in a row declared the placement impossible, and each one would have gone on to start an implicit server inside this service's cgroup — the destructive shape, back silently, on exactly the slow box that can least afford it. A box that HAS no systemd must not pay that wait either, so `Unavailable` returns at once.
 enum Placement {
     Accepted,
     Unavailable(String),
 }
 
 /// The most placements this process has ever had in flight at once.
-// cm:guard the OVERLAP is what this process owns, and it is the only part a gate can hold anywhere. How long systemd then takes to fork tmux belongs to the host — measured 2026-09-11 on a GitHub runner, a cold user manager took over thirty seconds, and a caller that waited that out is RIGHT to ask again rather than give up on the box forever. So the count of attempts is not an invariant and the overlap is: two at once means five losers racing `new-session` against a socket nothing has bound yet.
 static PLACEMENTS_AT_ONCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 static MOST_AT_ONCE: std::sync::atomic::AtomicUsize = std::sync::atomic::AtomicUsize::new(0);
 
@@ -399,7 +360,6 @@ async fn ask_systemd_for_the_server(id: &SessionIdentity) -> Placement {
 }
 
 /// Whether systemd already holds the unit, asked structurally rather than by reading a message.
-// cm:guard `is-active`, never a substring of `systemd-run`'s stderr: losing the race prints `Unit forge-sessions.service already exists`, which is a translated, version-specific sentence — and the thing the caller actually needs to know is whether the unit is coming up, which systemd will answer directly.
 async fn unit_is_running(unit: &str) -> bool {
     Command::new("systemctl")
         .args(["--user", "is-active", &format!("{unit}.service")])
@@ -415,7 +375,6 @@ async fn unit_is_running(unit: &str) -> bool {
 }
 
 /// Whether a server is listening on our socket right now.
-// cm:guard a tmux server with no sessions cannot exist (`exit-empty` is on by default), so an exit-0 listing is the whole liveness probe — there is no "up but empty" state to distinguish.
 async fn server_answers() -> bool {
     tmux(&["list-sessions"])
         .await
@@ -423,7 +382,6 @@ async fn server_answers() -> bool {
 }
 
 /// How long a caller waits for a socket systemd has ALREADY agreed to bring up.
-// cm:guard generous on purpose, and it costs nothing in steady state: a running server short-circuits every call before this, so the wait is paid once per box and only while the server is genuinely starting. Five seconds was not enough on a cold CI machine (measured 2026-09-11, three callers timed out in a row), and the price of being too short is silent — a false "could not place it" followed by an implicit server in this service's cgroup.
 const SERVER_READY_WITHIN: Duration = Duration::from_secs(30);
 
 /// Poll the socket until it answers, or `within` elapses.
@@ -455,7 +413,6 @@ pub async fn ensure(
     if alive(name).await {
         return Ok(false);
     }
-    // cm:guard BEFORE `new-session`, always: the implicit server `new-session` would start is forked by this process into this service's cgroup, and once it is there nothing can move it — cgroup membership is inherited at fork and the pane is already inside it.
     ensure_server().await;
     let cwd = cwd.to_string_lossy().to_string();
     let mut args: Vec<String> = vec![
@@ -485,7 +442,6 @@ pub async fn ensure(
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    // cm:guard `pipe-pane` can only attach to a pane that already exists, so anything the process prints in the milliseconds before this line is NOT in the transcript. That is the startup banner and nothing a master decides, and it is stated here rather than left for a reader to discover from a transcript that begins mid-sentence.
     if let Some(path) = transcript {
         pipe_pane(name, path).await;
     }
@@ -493,8 +449,6 @@ pub async fn ensure(
 }
 
 /// Append everything the pane prints to `path`, for as long as it lives.
-// cm:guard `>>` and never `>`. The transcript is the master's only account of what it decided, and B5 exists because the file this replaces was truncated once per pass — measured 2026-09-05, the master's reasoning about ISS-917 was gone three minutes later, overwritten by the next pass. Appending is the whole fix; a redirect that clobbers is the bug wearing a new path.
-// cm:guard best-effort, and deliberately not fatal. A session that runs with no transcript is worse than one with a transcript, but a session that never starts because the log directory is unwritable is worse than both — the work stops, and B5 is a record, not a precondition.
 async fn pipe_pane(name: &str, path: &std::path::Path) {
     let target = pane_target(name);
     let shell = format!("cat >> {}", shell_quote(&path.to_string_lossy()));
@@ -509,18 +463,14 @@ async fn pipe_pane(name: &str, path: &std::path::Path) {
 }
 
 /// Single-quote a string for a `sh -c` line.
-// cm:guard tmux hands this string to a shell, so a path with a space or a quote in it is a command injection and not merely a broken log. `$XDG_CONFIG_HOME` is operator-set and dev1 runs several runners that differ only by it.
 pub fn shell_quote(s: &str) -> String {
     format!("'{}'", s.replace('\'', "'\\''"))
 }
 
 /// How long a freshly spawned pane needs before a paste reaches its composer.
-// cm:guard a paste that lands before Claude Code has drawn its composer is dropped on the floor with NO error anywhere — the text goes to the terminal as raw output and the Enter submits nothing, so the pane sits alive, briefed on screen, and having run no turn at all. Measured on forge-vm 2026-09-09: 4 of 4 sidpeak runs and 6 of 16 overall spent $0.00 for six hours, while the beat kept them out of core's reaper forever.
 pub const PANE_BRIEF_DELAY: Duration = Duration::from_secs(5);
 
 /// Brief a pane that has just been spawned, after giving its TUI time to draw.
-// cm:guard EVERY freshly spawned pane is briefed through here, master and run alike — the run path pasted immediately and lost the race under load while the master path slept, which is exactly the drift `SESSION_PREFIXES` exists to prevent. A caller that reaches for `send_line` on a pane it just created has reintroduced the bug.
-// cm:guard the liveness check comes BEFORE the wait, not after: it makes an absent session fail at once instead of costing five seconds, which is what keeps this callable from a test that has no tmux.
 pub async fn brief_new_pane(name: &str, text: &str) -> Result<()> {
     if !alive(name).await {
         return Err(Error::Other(format!("no session named {name}")));
@@ -533,7 +483,6 @@ pub async fn brief_new_pane(name: &str, text: &str) -> Result<()> {
 ///
 /// Multi-line text goes through a tmux buffer with bracketed paste rather than
 /// `send-keys`, so the TUI receives one paste and one Enter.
-// cm:guard bracketed paste (`paste-buffer -p`) is mandatory for anything with a newline in it. `send-keys -l` types the text a character at a time, and every embedded newline is an Enter — a five-line pass prompt submitted as five turns, the first four of them fragments. Measured against Claude Code's composer, which is what a master is looking at.
 pub async fn send_line(name: &str, text: &str) -> Result<()> {
     if !alive(name).await {
         return Err(Error::Other(format!("no session named {name}")));
@@ -541,7 +490,6 @@ pub async fn send_line(name: &str, text: &str) -> Result<()> {
     let target = pane_target(name);
     let buffer = format!("forge-{}", std::process::id());
 
-    // cm:guard the SECOND spawn site, and it needs the socket as much as the wrapper does: a buffer loaded on the default server is invisible to a `paste-buffer` on ours, so the paste finds no buffer and the pane is briefed with nothing while every call reports success.
     let mut load = socket_args();
     load.extend(
         ["load-buffer", "-b", &buffer, "-"]
@@ -578,7 +526,6 @@ pub async fn send_line(name: &str, text: &str) -> Result<()> {
             String::from_utf8_lossy(&out.stderr).trim()
         )));
     }
-    // cm:guard the Enter is a SEPARATE call after the paste, never a newline inside the buffer. A trailing newline inside a bracketed paste is pasted as text by the composer and submits nothing, so the master would sit holding a prompt it was never asked to answer — alive, silent, and indistinguishable from hung.
     let out = tmux(&["send-keys", "-t", &target, "Enter"]).await?;
     if !out.status.success() {
         return Err(Error::Other(format!(
@@ -597,11 +544,6 @@ pub async fn kill(name: &str) -> Result<()> {
 }
 
 /// The argv every pane this daemon opens runs — a master's and a run's alike.
-// cm:guard ONE argv for both, because a run pane and a master pane differ only by their session prefix (ISS-933 criterion 1). A second list here is how the two drift into different permission modes with nothing comparing them.
-// cm:guard `unset CLAUDECODE` through a shell rather than tmux's `-e`. A tmux session inherits the client environment and `-e` can only SET a variable, so the daemon's own `CLAUDECODE` would reach the pane and the master would believe it is nested inside another Claude session. `build_command` removes it for every other spawn on this box; this is the same removal on the one path that does not go through it.
-// cm:guard no `-p`. The whole change is that this process reads from a terminal instead of taking one prompt and exiting, so `-p` here would restore the per-pass process with a tmux session wrapped uselessly around it.
-// cm:guard `--strict-mcp-config` is NOT passed and adding it is a behaviour change, not a tightening: it would make this file the ONLY MCP configuration the pane has, dropping the checkout's `.mcp.json` — which is where the `forge` server itself comes from — and every server the operator configured on the box. The file this flag names carries the project's declared servers and nothing else, on purpose (ISS-1043).
-// cm:guard a pane reads `--mcp-config` at STARTUP and never again, so this argument is the whole of what a master will ever have. A project whose declaration changes mid-session needs a new pane; nothing here can retrofit one.
 pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> Vec<String> {
     let bin = shell_quote(crate::runner::process::resolve_claude_bin());
     let mut line = format!("unset CLAUDECODE; exec {bin} --permission-mode bypassPermissions");
@@ -611,13 +553,6 @@ pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> 
             shell_quote(&path.to_string_lossy())
         ));
     }
-    // cm:guard the conversation id is SHELL-QUOTED like every other interpolation here. This string
-    // reaches the box from a hook event and is stored in the ledger, so it is not this module's to
-    // trust: an unquoted one would let whatever wrote it run a command in the master's pane.
-    // cm:guard the caller decides whether a resume is possible, not this function — `ensure_master`
-    // is the half that can see the transcript and say so in the log. Deciding here would put the
-    // "starts cold and names the conversation" half somewhere with nothing to name it to
-    // (ISS-1050 criterion 18).
     if let Some(id) = resume.filter(|s| !s.is_empty()) {
         line.push_str(&format!(" --resume {}", shell_quote(id)));
     }
@@ -625,7 +560,6 @@ pub fn pane_argv(mcp_config: Option<&std::path::Path>, resume: Option<&str>) -> 
 }
 
 /// The environment a master's pane needs that a tmux session does not inherit.
-// cm:guard `MCP_TOOL_TIMEOUT` must be carried here explicitly. Every other spawn on this box gets it from `build_command`, which a tmux session does not go through — and Claude Code's own default is ~28h, so one hung MCP call would wedge a master's turn for the rest of the day with the silence ceiling reading it as a healthy pause it cannot distinguish. The operator's own value wins, exactly as it does on the other path.
 pub fn pane_env() -> Vec<(String, String)> {
     match crate::runner::process::mcp_tool_timeout_default(
         std::env::var_os("MCP_TOOL_TIMEOUT").as_deref(),
@@ -652,14 +586,12 @@ mod tests {
     }
 
     /// Every test below drives ONE server on one socket, so they run one at a time.
-    // cm:guard serialised because a cold-start test has to kill that shared server, and `cargo test` runs this module's tests concurrently by default — without the lock it takes the panes the other two tests are mid-assertion on.
     static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
 
     /// A config dir of this test's own, removed however the test ends.
     ///
     /// The `forge-runner` directory inside it is made here because `tmux -S`
     /// will not make it.
-    // cm:guard RAII for the same reason `ScopedVar` is. A `remove_dir_all` at the end of the body is skipped by a panic, and skipping it is how 90 `/tmp/forge-cred-*` dirs came to sit on forge-vm — the newest of them holding another module's `skills-cache` and the very `tmux.sock` the box's LIVE session unit was bound to (ISS-1044).
     struct ConfigHome(std::path::PathBuf);
 
     impl ConfigHome {
@@ -684,8 +616,6 @@ mod tests {
     ///
     /// Constructing it tears down first, which is the cold start the test needs;
     /// dropping it tears down again, which is the one a panic needs.
-    // cm:guard RAII, and `Drop` cannot await, so this is the blocking `Command`. Without it a panic anywhere after the placement leaves a transient `forge-sessions-*.service` and its `sleep infinity` running on a box that never asked for either — the same leak `ConfigHome` closes for the directory, and the same one that put 90 dirs on forge-vm.
-    // cm:guard the caller passes `session_unit()` and the socket beside it, never a name of its own: that is what keeps every stop in this module inside the config dir in force. `no_systemd_command_names_a_literal_unit` is the static half of that and the `assert_ne!` in the cold-start test is the running half.
     struct PlacedUnit {
         unit: String,
         socket: std::path::PathBuf,
@@ -701,7 +631,6 @@ mod tests {
 
         /// Tears down on drop only, for a test that places a unit as a side
         /// effect of what it is really asserting.
-        // cm:guard the `assert_ne!` is the whole safety of this type. Everything below stops a unit, so a caller that reached it with the box's own name would evict every pane on the box from inside the guard meant to prevent exactly that.
         fn guarding(unit: String, socket: std::path::PathBuf) -> Self {
             assert_ne!(
                 unit.as_str(),
@@ -736,7 +665,6 @@ mod tests {
     ///
     /// Fields are dropped in declaration order, so the unit goes before the env
     /// is put back and before the directory is removed.
-    // cm:guard the test's OWN dir, never "whatever dir is in force". An earlier draft of this guard read any non-default config dir as disposable and stopped it — which on a box running a SECOND runner from an overridden `XDG_CONFIG_HOME`, a setup this module exists to support, would have killed that runner's server and every pane in it. That is ISS-1044's own defect one box over, arriving inside the fix for it. Owning the dir is what makes the teardown safe; a name comparison is not.
     struct Sandbox {
         _placed: Option<PlacedUnit>,
         _xdg: ScopedVar,
@@ -747,12 +675,6 @@ mod tests {
         fn new(label: &str) -> Self {
             let home = ConfigHome::new(label);
             let xdg = ScopedVar::set("XDG_CONFIG_HOME", home.path());
-            // cm:guard guard only a unit whose socket is INSIDE the directory this
-            // sandbox made — ownership, not a name comparison. `dirs_next` reads
-            // `XDG_CONFIG_HOME` on XDG platforms only, so on macOS and Windows the
-            // variable moves nothing and the dir in force is still the box's own;
-            // guarding there would hand `PlacedUnit` the live unit, which is what
-            // its `assert_ne!` refused when this was written the other way round.
             let placed = socket_path()
                 .filter(|sock| sock.starts_with(home.path()))
                 .map(|sock| PlacedUnit::guarding(session_unit(), sock));
@@ -775,7 +697,6 @@ mod tests {
                 .is_ok_and(|o| !String::from_utf8_lossy(&o.stdout).trim().is_empty())
     }
 
-    // cm:guard a bare `=name` is a SESSION target and not a pane target, and the two are not interchangeable: tmux answers `can't find pane: =name` and every write is silently lost. Measured against tmux 3.4 while building this.
     #[test]
     fn a_pane_target_is_not_a_session_target() {
         assert_eq!(session_target("m"), "=m");
@@ -786,7 +707,6 @@ mod tests {
         );
     }
 
-    // cm:guard `.` and `:` must both go. tmux rewrites `.` in a session name and reads `:` as a window separator in a target, so either one produces a session whose real name is not the one `alive` later asks about — and a master that can never be found is a master started again every sweep.
     #[test]
     fn a_name_that_tmux_would_rewrite_is_cleaned_first() {
         assert_eq!(
@@ -802,7 +722,6 @@ mod tests {
         assert!(session_name(MASTER_PREFIX, &"x".repeat(300)).len() <= 96);
     }
 
-    // cm:guard a trailing dash would make the name end in the separator and read as a truncated slug in every log line and every `tmux ls`; a leading one is worse, because tmux takes a leading dash as a flag.
     #[test]
     fn the_derived_name_never_starts_or_ends_with_the_separator() {
         for raw in ["-lead", "trail-", "--both--", "///"] {
@@ -816,8 +735,6 @@ mod tests {
     ///
     /// Everything above it is string handling; this is the only assertion that
     /// the pane actually receives what a master is typed.
-    // cm:guard the body is MULTI-LINE on purpose, because that is the case `send-keys -l` gets wrong and bracketed paste gets right: every embedded newline would otherwise be an Enter, and a five-line pass prompt would arrive as five turns, the first four of them fragments. A single-line body here would pass against the bug.
-    // cm:guard skipped rather than failed when tmux is absent, and the daemon refuses to start a master on such a box — so the skip cannot hide a broken transport in production, only on a developer machine that could never have run one.
     // cm:hack ISS-1044 until:one of these tests asks for a runtime flavour — `await_holding_lock` is allowed here because holding `ENV_TEST_LOCK` across the body IS the point: `XDG_CONFIG_HOME` is process-global, so a guard dropped before the first await protects nothing. What is traded is clippy's warning about starving a runtime, and it costs nothing while every test here is a bare `#[tokio::test]`, which is current-thread and has no other task to starve. `the_serialised_tests_stay_on_a_current_thread_runtime` is that condition as a gate rather than as a sentence.
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
@@ -833,7 +750,6 @@ mod tests {
         std::fs::create_dir_all(&dir).expect("temp dir");
         let log = dir.join("transcript.log");
         let name = session_name("forge-test", &format!("t{}", std::process::id()));
-        // cm:guard kill FIRST as well as last. A panic anywhere below leaves a live tmux session behind on a shared box — measured while building this, three of them survived failing runs — and tmux refuses to create a name that already exists, so the leak turns the next run red for a reason that has nothing to do with the code.
         let _ = kill(&name).await;
 
         let created = ensure(
@@ -873,7 +789,6 @@ mod tests {
                 break;
             }
         }
-        // cm:guard the env assertion is not incidental: a tmux session inherits the CLIENT environment and `-e` is the only way to set one on it, so a dropped `-e` would leave the master running with the daemon's `CLAUDECODE` and without `MCP_TOOL_TIMEOUT` — both silent, both changing how it behaves.
         assert!(
             seen.contains("env=carried"),
             "the -e value must reach the pane: {seen:?}"
@@ -895,8 +810,6 @@ mod tests {
 
     /// The residency claim itself: the pane's parent is the tmux server, so a
     /// daemon restart re-enters the session it left rather than replacing it.
-    // cm:guard the PID comparison is the assertion, not `created == false`. A second `ensure` that killed the pane and started a fresh one would also report "created nothing" while the master lost every word of the pass it was in the middle of — the two are indistinguishable from the return value alone.
-    // cm:guard the second `ensure` passes a DIFFERENT argv on purpose, because that is what a restarted daemon carrying a new build sends. A reuse path that read the argv would relaunch here and the test would catch it; one that matched on the name alone is what the design needs.
     // cm:hack ISS-1044 until:one of these tests asks for a runtime flavour — `await_holding_lock` is allowed here because holding `ENV_TEST_LOCK` across the body IS the point: `XDG_CONFIG_HOME` is process-global, so a guard dropped before the first await protects nothing. What is traded is clippy's warning about starving a runtime, and it costs nothing while every test here is a bare `#[tokio::test]`, which is current-thread and has no other task to starve. `the_serialised_tests_stay_on_a_current_thread_runtime` is that condition as a gate rather than as a sentence.
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]
@@ -963,7 +876,6 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    // cm:guard tmux runs the `pipe-pane` string through a shell, so this is an injection boundary and not a formatting nicety. The assertion runs the quoted form through a REAL shell rather than pattern-matching the escape, because the escape `'\''` legitimately contains every character a pattern would look for — a string test here passes on correct output and on a hole alike.
     #[test]
     fn a_transcript_path_survives_the_shell_tmux_runs_it_through() {
         for hostile in [
@@ -986,7 +898,6 @@ mod tests {
         }
     }
 
-    // cm:guard `-p` must never come back, and neither may `CLAUDECODE`. The first would restore the per-pass process ISS-919 removed, with a tmux session wrapped uselessly around it; the second makes the master believe it is nested inside another Claude session, which changes its behaviour with nothing in any log naming why.
     #[test]
     fn a_pane_runs_interactively_with_no_inherited_claudecode() {
         let argv = pane_argv(None, None);
@@ -1003,7 +914,6 @@ mod tests {
         );
     }
 
-    // cm:guard a project that declares no MCP servers must get NO flag rather than an empty file. An empty `--mcp-config` document is a second thing to write, sweep and compare for every project on the box that never wanted one, and the absent flag is the shape every pane had before ISS-1043.
     #[test]
     fn a_project_with_no_servers_leaves_the_pane_argv_exactly_as_it_was() {
         assert_eq!(pane_argv(None, None), pane_argv(None, None));
@@ -1016,16 +926,6 @@ mod tests {
     /// Composes the three production pieces on a REAL tmux — `resume_for`'s decision, `pane_argv`'s
     /// argv, and `ensure`'s spawn — which the unit tests above each cover alone and none covers
     /// together.
-    // cm:guard `#[ignore]` and the price of it: this needs tmux and a writable PATH shim, so it is
-    // not a gate, and the four unit tests above are what actually hold criteria 17 and 18. It ends
-    // when the composition is shown by hand; it is not a permanent exemption. CI running it would
-    // add a tmux dependency to a suite that has none.
-    // cm:guard runs against a tmux server of its OWN, via `TMUX_TMPDIR`. Masters for live projects
-    // run on this box's default socket, and a test that addressed those could kill real work; with
-    // its own socket directory there is no name it could reach even by accident.
-    // cm:guard `claude` is a SHIM that records its argv rather than the real binary. The subject is
-    // which arguments the box builds, and spawning the real one would burn an account's quota to
-    // learn nothing this cannot answer.
     #[tokio::test]
     #[ignore]
     async fn a_killed_pane_is_rebuilt_on_the_conversation_it_had() {
@@ -1115,8 +1015,6 @@ mod tests {
         );
     }
 
-    // cm:guard the flag is ABSENT, not empty. `--resume ''` is not the same command as no
-    // `--resume`, and a cold start must be the command it was before this parameter existed.
     #[test]
     fn a_pane_with_nothing_to_resume_carries_no_resume_flag() {
         for none in [None, Some("")] {
@@ -1137,8 +1035,6 @@ mod tests {
         );
     }
 
-    // cm:guard the conversation id reaches this box from a hook event and is stored in the ledger,
-    // so it is not this module's to trust. Unquoted it would run in the master's pane.
     #[test]
     fn a_conversation_id_carrying_shell_metacharacters_cannot_run_a_command() {
         let hostile = "a'; touch /tmp/forge-pwned; echo '";
@@ -1157,7 +1053,6 @@ mod tests {
         );
     }
 
-    // cm:guard the path is SHELL-QUOTED. tmux hands this line to a shell, and `mcp_config_dir()` sits under `$XDG_CONFIG_HOME`, which is operator-set — dev1 runs several runners that differ only by it. An unquoted space is a pane that starts without its servers and a shell error nobody reads.
     #[test]
     fn the_mcp_config_path_reaches_the_pane_quoted_and_without_strict() {
         let path =
@@ -1188,7 +1083,6 @@ mod tests {
         );
     }
 
-    // cm:guard a tmux session inherits the client environment and `-e` can only SET, never unset — so every variable a pane needs that `build_command` would have given it has to be listed here, and the ones it must NOT have are removed by the `sh` line instead. Dropping either half is silent: the master runs, and behaves differently.
     #[test]
     fn the_pane_carries_the_mcp_timeout_and_respects_an_operator_override() {
         let env = pane_env();
@@ -1203,7 +1097,6 @@ mod tests {
     }
     const THIS_SOURCE: &str = include_str!("terminal.rs");
 
-    // cm:guard the boundary is the box-killer: one character over and EVERY tmux call on that box fails with `File name too long`, which is not a degraded runner but a dead one. Measured 2026-09-11 on a 122-character path.
     #[test]
     fn a_socket_path_too_long_to_bind_is_refused_before_it_is_used() {
         assert!(fits_a_unix_socket(&"a".repeat(100)));
@@ -1214,7 +1107,6 @@ mod tests {
         )));
     }
 
-    // cm:guard a refused path falls back to the DEFAULT socket rather than to nothing: `socket_args` empty means "run where the old builds ran", which is degraded and alive, where a bad `-S` is neither.
     #[test]
     fn a_refused_socket_leaves_the_args_empty_rather_than_broken() {
         let args = socket_args();
@@ -1224,7 +1116,6 @@ mod tests {
         }
     }
 
-    // cm:guard EVERY tmux invocation has to carry the socket, so the count of raw spawns is the assertion: a third `Command::new("tmux")` added without the socket would talk to the operator's default server, and the failure is silent — a buffer loaded there is simply invisible to a paste on ours.
     #[test]
     fn nothing_spawns_tmux_without_the_socket() {
         let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
@@ -1244,7 +1135,6 @@ mod tests {
         assert!(load.contains("&load"), "and passes them");
     }
 
-    // cm:guard the ORDER is the property: cgroup membership is inherited at fork and cannot be changed afterwards, so a server started implicitly by `new-session` is already inside this service's cgroup by the time anything could move it.
     #[test]
     fn the_server_is_placed_before_the_first_session_is_created() {
         let body = THIS_SOURCE
@@ -1262,7 +1152,6 @@ mod tests {
         );
     }
 
-    // cm:guard the keep-alive is not an agent pane and must never be read as one — every reader on this box classifies a session by these two prefixes.
     #[test]
     fn the_keepalive_session_is_not_mistakable_for_an_agent() {
         assert!(!KEEPALIVE.starts_with(MASTER_PREFIX));
@@ -1270,8 +1159,6 @@ mod tests {
     }
 
     /// The condition the `cm:hack` above each serialised test ends on.
-    // cm:guard this is the amnesty's price made checkable. `#[allow(clippy::await_holding_lock)]` is sound only while these tests run on a current-thread runtime with no other task to starve; the day one of them takes `flavor = "multi_thread"`, the allow is hiding a real hazard and this goes red instead of the hazard being found by a hung suite.
-    // cm:guard the needle is SPLIT across `concat!` for the same reason the systemd scan's are: written whole, this test matches its own source and fails on a file that has not drifted at all.
     #[test]
     fn the_serialised_tests_stay_on_a_current_thread_runtime() {
         let flavoured = concat!("tokio::", "test(");
@@ -1281,7 +1168,6 @@ mod tests {
         );
     }
 
-    // cm:guard the unit name is what stops an operator's `systemctl --user stop forge-runner*` from taking the sessions with it, so it may not share that prefix.
     #[test]
     fn the_session_unit_is_not_matched_by_a_glob_over_the_runners_own() {
         assert!(!SESSION_UNIT.starts_with("forge-runner"));
@@ -1289,7 +1175,6 @@ mod tests {
 
     /// Criterion 4. Nothing about a real runner changes: the box's own config
     /// dir still resolves the bare name its live panes are already inside.
-    // cm:guard the SECOND half — the same dir named explicitly through `XDG_CONFIG_HOME` — is the case an operator hits, not a contrivance. A comparison made against the variable rather than against the resolved path would call that an override and rename the unit out from under every pane on the box, which is the eviction this issue fixes wearing the fix's own clothes.
     #[test]
     fn the_boxs_own_config_dir_resolves_the_bare_session_unit() {
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -1309,7 +1194,6 @@ mod tests {
     }
 
     /// F2 from the ISS-1044 review: a Unix path is bytes and need not be UTF-8.
-    // cm:guard the two dirs differ ONLY in bytes `to_string_lossy` maps to the same replacement character. Hashed lossily they produce one unit name for two directories, so two runners would race `systemd-run` for the same unit while their sockets stayed apart — the "second one beside the first" failure the suffix exists to prevent, arriving through the encoding instead.
     #[cfg(all(unix, target_os = "linux"))]
     #[test]
     fn two_config_dirs_differing_only_in_invalid_utf8_get_different_units() {
@@ -1336,7 +1220,6 @@ mod tests {
 
     /// F1 from the ISS-1044 review: an operator whose `XDG_CONFIG_HOME` reaches
     /// the box's own config root through a symlink must keep the bare unit.
-    // cm:guard the SYMLINK is the case a lexical `==` gets wrong, and getting it wrong renames the live unit out from under panes already inside it — the eviction this issue fixes, arriving as the fix. The `..` case below is the same alias by another spelling.
     #[cfg(all(unix, target_os = "linux"))]
     #[test]
     fn a_config_dir_reached_through_an_alias_is_still_the_boxs_own() {
@@ -1350,11 +1233,6 @@ mod tests {
             return;
         }
 
-        // cm:guard the symlink lives INSIDE a `ConfigHome`, so its removal is the
-        // directory's and survives a panic. Left at the top of `/tmp` with a line
-        // at the end of the body, a failing run leaves a dangling `forge-alias-*`
-        // pointing into the operator's real config root — measured while planting
-        // this test's own failure.
         let holder = ConfigHome::new("alias");
         let link = holder.path().join("config");
         std::os::unix::fs::symlink(&root, &link).expect("a symlink into the box's own config root");
@@ -1396,7 +1274,6 @@ mod tests {
 
     /// What the `cm:guard` on `unoverridden_config_dir` promises: the rule
     /// spelled out there and `dirs_next`'s own must agree.
-    // cm:guard this is the test that goes red the day `dirs_next` moves a Linux config dir, instead of `session_unit` silently classifying the box's own dir as an override.
     #[test]
     fn the_unoverridden_dir_is_what_the_box_resolves_with_no_override() {
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
@@ -1406,8 +1283,6 @@ mod tests {
 
     /// Criterion 5, and the whole of what makes `cargo test` cost a box nothing:
     /// a config dir that is not this box's own cannot name this box's unit.
-    // cm:guard the assertion is `!=` against the LIVE name and not a shape. A suffix scheme that produced the bare `forge-sessions` for some temp dir would satisfy every naming assertion in this module and still stop the unit hosting every master and agent pane on the box.
-    // cm:guard LINUX because the property is Linux's, not because it was red elsewhere. The override this issue is about is `XDG_CONFIG_HOME`, which `dirs_next` consults on XDG platforms only — on Windows it reads `%APPDATA%` and the variable moves nothing — and the unit being protected lives in a systemd user manager, which no other platform has. Asserting it off Linux asserts a rule the platform does not have.
     #[cfg(target_os = "linux")]
     #[test]
     fn a_config_dir_that_is_not_the_boxs_own_resolves_a_unit_of_its_own() {
@@ -1428,9 +1303,6 @@ mod tests {
 
     /// Criteria 6 and 7: one reading of the config dir, so the socket and the
     /// unit cannot be temped separately.
-    // cm:guard BOTH halves in ONE test and never two. The defect was precisely that one half moved with the config dir and the other did not — two tests each asserting its own half would both have been green while `cargo test` evicted the box 38 times in 12 hours.
-    // cm:guard the return to `a` is not tidy-up, it is the suffix's other property: it is keyed on the dir and not on a pid, a hostname or a random value, so a daemon that restarts resolves the unit it placed rather than placing a second one beside it.
-    // cm:guard LINUX because the property is Linux's, not because it was red elsewhere. The override this issue is about is `XDG_CONFIG_HOME`, which `dirs_next` consults on XDG platforms only — on Windows it reads `%APPDATA%` and the variable moves nothing — and the unit being protected lives in a systemd user manager, which no other platform has. Asserting it off Linux asserts a rule the platform does not have.
     #[cfg(target_os = "linux")]
     #[test]
     fn moving_the_config_dir_moves_the_socket_and_the_unit_together() {
@@ -1460,8 +1332,6 @@ mod tests {
 
     /// Criterion 8: the prefix guard holds for every name the override can
     /// produce, not only for the constant it is derived from.
-    // cm:guard the test above this one asserts the CONST, which before ISS-1044 was the only name there was. A derived name beginning `forge-runner` would be swept up by an operator's `systemctl --user stop 'forge-runner*'` — the single thing that constant exists to prevent — and no assertion in this file would have said so.
-    // cm:guard LINUX because the property is Linux's, not because it was red elsewhere. The override this issue is about is `XDG_CONFIG_HOME`, which `dirs_next` consults on XDG platforms only — on Windows it reads `%APPDATA%` and the variable moves nothing — and the unit being protected lives in a systemd user manager, which no other platform has. Asserting it off Linux asserts a rule the platform does not have.
     #[cfg(target_os = "linux")]
     #[test]
     fn no_config_dir_produces_a_unit_inside_the_runners_own_prefix() {
@@ -1485,8 +1355,6 @@ mod tests {
     }
 
     /// Criteria 9 and 10, statically over this whole file.
-    // cm:guard the scan covers the TEST half too, because the defect was in a test: the cold-start test interpolated `SESSION_UNIT` into `systemctl --user stop`, and that one line stopped the unit every master and agent pane on the box was running under, 38 times in 12 hours (forge-vm, 2026-09-15). A gate reading only the production half would have been green throughout.
-    // cm:guard the needles are SPLIT across `concat!` so this test's own source does not match them. A scanner that finds itself reports on a segment it wrote and passes over a file that has drifted.
     #[test]
     fn no_systemd_command_names_a_literal_unit() {
         let forbidden = concat!("SESSION", "_UNIT");
@@ -1523,7 +1391,6 @@ mod tests {
         // segment contains. The rule that terminates is about the FUNCTION, not
         // about the call expression: an item that spawns systemd may not hold
         // the const or the literal at all, however it is spelled or aliased.
-        // cm:guard comment lines are stripped first, because the prose around the deriver names both and must go on being allowed to. Code is what this counts.
         let code: String = production
             .lines()
             .filter(|l| !l.trim_start().starts_with("//"))
@@ -1563,7 +1430,6 @@ mod tests {
         );
     }
 
-    // cm:guard `--scope` places NOTHING here and the source must not drift back to it: `tmux` daemonizes, so the tracked process exits, the scope is collected, and the server lands in the caller's cgroup. Measured 2026-09-11 — the scope form looked correct and left the server in `org.gnome.Shell@x11.service`.
     #[test]
     fn the_server_is_started_as_a_forking_service_and_never_as_a_scope() {
         let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
@@ -1574,7 +1440,6 @@ mod tests {
         );
     }
 
-    // cm:guard started WITH a session, never bare: a tmux server with no sessions exits immediately (`exit-empty` defaults on), so `start-server` alone leaves the unit inactive and no server at all.
     #[test]
     fn the_server_is_started_holding_a_session_rather_than_empty() {
         let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
@@ -1590,7 +1455,6 @@ mod tests {
         );
     }
     /// A sweep starts several panes at once; one placement is asked for, and no pane is lost.
-    // cm:guard cold-start is the whole setup: a warm server short-circuits every caller before the lock and the case cannot happen. Without the serialization, six callers issue six `systemd-run`s, five of them lose, and each loser races `new-session` against a socket nothing has bound yet.
     // cm:hack ISS-1044 until:one of these tests asks for a runtime flavour — `await_holding_lock` is allowed here because holding `ENV_TEST_LOCK` across the body IS the point: `XDG_CONFIG_HOME` is process-global, so a guard dropped before the first await protects nothing. What is traded is clippy's warning about starving a runtime, and it costs nothing while every test here is a bare `#[tokio::test]`, which is current-thread and has no other task to starve. `the_serialised_tests_stay_on_a_current_thread_runtime` is that condition as a gate rather than as a sentence.
     #[allow(clippy::await_holding_lock)]
     #[tokio::test]

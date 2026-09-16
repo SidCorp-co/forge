@@ -18,7 +18,6 @@ import type { ChatTool } from './providers/types.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset, CHAT_TOOL_ALLOWLIST } from './tools/registry.js';
 
-// cm:edge naming -> packages/core/src/assistant/context-budget.ts — the same chars/4 the budget elides on, deliberately, so a token figure here and a token figure there mean one thing; an estimator that disagreed with the elider would price a request the elider had already cut
 export const CHARS_PER_TOKEN = 4;
 
 /** Anthropic list price in US dollars per million tokens, and the two multipliers caching applies to the input rate. */
@@ -35,7 +34,6 @@ export const PRICING = {
   minimumCacheablePrefixTokens: 1024,
 } as const;
 
-// cm:edge contract -> packages/core/src/assistant/tools/mcp-adapter.ts — the marker `truncate` appends at `DESCRIPTION_CAP`. Change it there and this stops seeing which tools the chat door cut, silently: the count goes to zero rather than red, which is why the census-style shortfall lines exist beside it (ISS-983)
 const TRUNCATION_MARK = '[truncated]';
 
 export interface TokenFigure {
@@ -85,8 +83,6 @@ export function measureLiveCatalog(): CatalogMeasurement {
 }
 
 /** The chat door's own allowlist with `DESCRIPTION_CAP` not applied — the shape the 28,343 figure was taken in, which is NOT what `/mcp` serves. The count is not written down here: it moved from nine to ten when `forge_guide` joined the allowlist (ISS-1007), and a number in this sentence would have gone stale in silence. */
-// cm:guard this variant must be built from `CHAT_TOOL_ALLOWLIST`'s factories directly and NOT from `buildProjectToolset`, whose `buildToolset` has already truncated at `DESCRIPTION_CAP` — measuring the capped output and calling it the uncapped one is the substitution this whole module exists to refuse (ISS-983)
-// cm:guard this is NOT the `/mcp` door and must never be labelled one: `mcp/server.ts`'s ListToolsRequestSchema handler serves a different and much larger tool list and spells the key `inputSchema`, where the provider wire this measures spells it `input_schema` (ISS-983)
 export function uncappedCatalogChars(ctx: Parameters<typeof buildProjectToolset>[0]): number {
   const whole = CHAT_TOOL_ALLOWLIST.map((spec) => {
     const tool = spec.factory(ctx);
@@ -146,8 +142,6 @@ export interface CountOptions {
   fetchImpl?: typeof fetch;
 }
 
-// cm:guard the base is `ANTHROPIC_API_URL` and never the vendor's own host — that variable is what points a deployment at a proxy, so a fixed host would send this deployment's key somewhere it was not issued for and count a path chat does not use (ISS-983)
-// cm:edge naming -> packages/core/src/config/env.ts — the same variable and the same default that file declares, read off `process.env` rather than through it: importing the validated `env` would make this script refuse to run without a DATABASE_URL, and a measurement that needs a database to size a constant is not one
 async function countRequest(
   tools: unknown[] | undefined,
   apiKey: string,
@@ -178,7 +172,6 @@ async function countRequest(
   return typeof json.input_tokens === 'number' ? json.input_tokens : null;
 }
 
-// cm:guard `/v1/messages/count_tokens` prices the WHOLE request, framing and the carrier message included, so the catalog is the DIFFERENCE between two counts and never the count with tools in it — quoting the larger number attributes the request's own overhead to the prefix, which is the confusion this whole module exists to undo
 export async function countCatalogTokens(
   wire: unknown[],
   opts: CountOptions = {},
@@ -270,7 +263,6 @@ export interface CensusRow {
   lastAt: string | null;
 }
 
-// cm:guard `chat_logs` records `model` and no provider column (`schema.ts:chatLogs`), so the census ISS-983 asked for — grouped by provider AND model — is not producible from this table, and the shortfall is printed rather than quietly narrowed; two backends reachable under one model name land in one row here
 export const CENSUS_GROUPING_SHORTFALL =
   'chat_logs carries no provider column, only `model` — this census groups by model alone. Two backends reachable under one model name are indistinguishable in it.';
 
@@ -321,7 +313,6 @@ function describe(f: TokenFigure): string {
   return f.provenance === 'measured' ? 'measured' : `estimated, chars/${f.divisor}`;
 }
 
-// cm:guard every token figure this module prints carries one of these four words, and a new figure printed without one breaks ISS-983's criterion 3 — `measured` is the provider's own count and nothing else earns it, `estimated` names the divisor that produced it, `chosen` is an input this run picked, `declared` is a constant the provider states; `derived from the catalog figure` inherits whatever the catalog's own label was, which is why the figure and not the number is threaded down
 const CHOSEN = 'chosen — an input of this run, not a measurement of anything';
 const DECLARED = 'declared by the provider, not measured here';
 
@@ -353,7 +344,6 @@ function printCatalog(catalog: CatalogMeasurement, tokens: TokenFigure, why: str
       `  ${tool.name ?? '(unnamed)'}: ${count(JSON.stringify(tool).length)} chars = ${count(description.length)} description${truncated ? ' (CUT by the chat cap)' : ''} + ${count(JSON.stringify(tool.input_schema).length)} schema`,
     );
   }
-  // cm:guard the three buckets must SUM to `catalog.chars` and the third is not schema — tool names, the JSON punctuation, the array framing and the `cache_control` marker live there. Reporting `chars - described` as schema overstated it by the framing and is the misclassification ISS-983 was reviewed for; a bucket that cannot be trimmed by either lever still has to be named as itself.
   const framing = catalog.chars - described - schema;
   console.log(
     `\ndescription served to chat: ${count(described)} chars, ${cut} of ${catalog.toolCount} tools cut at the cap.`,
@@ -397,7 +387,6 @@ function printCosts(catalog: TokenFigure, historyLengths: number[]): void {
   }
 }
 
-// cm:guard the census prints FIRST and its failure never takes the rest of the run with it — whether anything caches is the question every figure below it is conditional on (ISS-983), and an optional refinement that aborts before the primary answer is how a run reports nothing at all
 async function printCensus(url: string | undefined): Promise<boolean> {
   console.log('\n## Fleet cache census');
   if (!url) {

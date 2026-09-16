@@ -86,7 +86,6 @@ describe('GET /api/projects/:id/project-facts — the always-inject guarantee (I
     expect(body.maxAlwaysInjectChars).toBe(6000);
   });
 
-  // cm:guard the PATCH answer lands in the same query cache key as the GET's, so a field on only one of them leaves the screen on the owner's first save. Assert BOTH routes or the tab silently loses the sentence.
   it('serves it from the PATCH answer too, which replaces the GET in the browser cache', async () => {
     const user = await createTestUser(harness.db);
     await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);

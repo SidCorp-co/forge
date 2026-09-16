@@ -31,7 +31,6 @@ const STYLE_MEANING: Record<AnswerStyle, string | null> = {
 /**
  * What the turn is told about the speaker, or null when there is nothing to say.
  */
-// cm:guard an UNLINKED speaker gets a sentence and never a silent default: the turn would otherwise answer a stranger in the voice of whoever's preferences were nearest, and the tools bound to the speaker would have nobody to refuse for. The label is quoted for the reader and decides nothing (ISS-1034 criteria 19, 20).
 export function speakerSection(input: SpeakerInput): string | null {
   if (!input.speakerUserId) {
     if (!input.speakerLabel) return null;

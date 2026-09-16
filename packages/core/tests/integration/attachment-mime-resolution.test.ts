@@ -134,7 +134,6 @@ async function storedMime(issueId: string, name: string) {
   return rows[0] ? (rows[0] as { mime: string }).mime : null;
 }
 
-// cm:guard scope every blob assertion to THIS issue's directory — `uploadsDir` is made once in beforeAll and `truncateAll` clears the DB but never the filesystem, so a bare read of `issues/` counts directories every earlier test in the file left behind
 function blobsFor(issueId: string): string[] {
   try {
     return readdirSync(join(uploadsDir, 'issues', issueId));
@@ -239,7 +238,6 @@ describe('attachment type resolution — a refusal names the set it enforces', (
   });
 });
 
-// cm:guard decode THEN persist, exactly as `issues/create-service.ts` does — the base64 batch has no single production entrypoint, so a test that invents one is judging a function nothing calls (ISS-957)
 function persistBatch(
   issueId: string,
   items: Parameters<typeof decodeAndValidateAttachments>[0],
@@ -295,7 +293,6 @@ describe('attachment batches land whole or not at all', () => {
     expect(result.errors).toHaveLength(1);
     expect(result.errors[0]?.index).toBe(1);
     expect(result.errors[0]?.code).toBe('ATTACHMENT_NAME_TAKEN');
-    // cm:guard this is the load-bearing assertion, not the count: without the pre-flight the batch still ends empty, but member 2 collides with member 1, the rollback deletes it, and the refusal cites an `existing` row id that no longer resolves (ISS-957)
     expect(result.errors[0]?.details).toEqual({ duplicateWithinBatch: 'gate.log' });
     expect(await countAttachments(issueId)).toBe(0);
     expect(blobsFor(issueId)).toEqual([]);
@@ -320,7 +317,6 @@ describe('attachment batches land whole or not at all', () => {
   });
 });
 
-// cm:guard both twins are exercised through the function their production caller actually calls — `persistDecodedIssueAttachments` for the issue side (from `issues/create-service.ts`, over `decodeAndValidateAttachments` output) and `persistDecodedCommentAttachments` for the comment side (from `mcp/tools/forge-comments.ts`); a convenience wrapper judged instead leaves the live path of both halves untested (ISS-957)
 describe('the comment twin refuses a batch on the same terms as the issue twin', () => {
   async function seedComment(issueId: string, authorId: string): Promise<string> {
     const rows = await harness.db.execute<{ id: string }>(sql`

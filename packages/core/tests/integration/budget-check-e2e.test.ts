@@ -32,7 +32,6 @@ type Mods = {
 };
 
 /** Take as a master would, with a fresh session id each time. */
-// cm:guard the budget is checked in the PREPARE act, so this stops at prepare deliberately. Composing a start here would assert the cap through a path the cap does not sit on, and a budget check that moved to `startJobForMaster` would still pass this file green.
 async function claim(jobId: string) {
   return mods.prepareJobForMaster({ jobId, deviceId: seededDeviceId, sessionId: randomUUID() });
 }
@@ -44,7 +43,6 @@ async function claimRefusedForBudget(jobId: string): Promise<void> {
   expect(result.ok === false && result.reason).toBe('budget_exhausted');
 }
 
-// cm:guard the runner must be bound to THIS device — the claim prepares the job on it, and `prepareClaimedJob` refuses by name otherwise, which would mask the budget outcome behind a setup error.
 let seededDeviceId = '';
 
 let mods: Mods;
@@ -384,7 +382,6 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     expect(commentRows[0]?.author_id).toBeTruthy();
   });
 
-  // cm:guard this test IS the ISS-823 case, re-pointed by RFC 0002 — a budget breach is the pipeline waiting on a MACHINE, so the assertions that the issue stayed at `approved` and the run stayed `running` are the invariant (INV-1/INV-4), not incidental. A future change that parks the issue here passes every other budget test in this file.
   it('ISS-823 — holds the job and leaves the issue and its run alone', async () => {
     const { project } = await seedProjectWithBudget({ perMonthUsd: 1.0, action: 'pause' });
     const issueId = await insertIssue(project.id);

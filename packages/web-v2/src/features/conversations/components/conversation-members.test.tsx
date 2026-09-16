@@ -111,11 +111,9 @@ describe("the roster", () => {
 
   it("gives an agent's row a different glyph from a person's", () => {
     mount();
-    // cm:guard the marks are compared and not the whole row, because the remove control carries an icon of its own: a count over the row would be a test about the button beside the glyph.
     const agentMark = screen.getByTestId("member-mark-agent");
     const personMark = screen.getByTestId("member-mark-person");
     expect(agentMark.querySelectorAll("svg").length).toBeGreaterThan(0);
-    // cm:guard the person's mark is an AVATAR — initials in a tinted pill, not an icon — so the two are different shapes and not one icon set with two names in it.
     expect(personMark.querySelectorAll("svg").length).toBe(0);
     expect(personMark).toHaveTextContent("A");
   });
@@ -222,7 +220,6 @@ describe("the add-an-agent dialogue", () => {
 /**
  * The outline an agent's row is given, measured rather than described.
  */
-// cm:guard read out of the token FILE and not out of jsdom, which resolves no custom property and would report every one of them as the empty string — a test asserting on that computes a contrast of 1 and passes whatever the palette says. The bar is the 3:1 non-text one, which is what makes "at a glance" a number rather than an opinion (ISS-1011 criterion 3).
 describe("the agent outline, measured", () => {
   const tokens = readFileSync(
     join(process.cwd(), "src/styles/tokens.css"),
@@ -252,7 +249,6 @@ describe("the agent outline, measured", () => {
   });
 });
 
-// cm:guard the unminted candidate is the case core deliberately answers with a null id: a project nobody has talked to yet has no agent account, and the add mints one. A dialogue that sent the null through would hit the route's strict schema and the advertised path would be dead (ISS-1011, review F2).
 describe("adding an agent for a project that has never been talked to", () => {
   it("offers it, and asks for it without an agent id", async () => {
     candidates.mockResolvedValue({

@@ -57,8 +57,6 @@ export interface UpdatePipelineConfigResult {
  * `{intakeGate:{enabled:true}}` are each individually legal and together are
  * the state the schema exists to make unrepresentable.
  */
-// cm:guard refuse only what THIS write creates. If the stored config already fails the schema, the patch did not cause it and blocking here would answer an operator's unrelated edit with a rule they did not break — and leave them no way to edit their way out. A merge that fails while the current document parses clean is the write's own doing, and that is the only case refused.
-// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — every `superRefine` there reaches a two-write ordering ONLY through this call; a cross-field rule added there with no merged-doc check is enforceable on a single PATCH and bypassable by two.
 function assertMergedConfigValid(
   currentPipeline: Record<string, unknown>,
   nextPipeline: Record<string, unknown>,
@@ -142,7 +140,6 @@ export async function updatePipelineConfig(
           }
         }
 
-        // cm:why validated at WRITE time because the runtime failure is invisible: a pool naming a device with no runner on this project produces an unplaceable job that sits `queued` while the fleet reads healthy — rejecting the patch is the only place an operator learns about the typo
         const pooledStages = (
           Object.entries(patchStates) as Array<[string, { deviceIds?: string[] } | undefined]>
         ).filter((entry): entry is [string, { deviceIds: string[] }] =>

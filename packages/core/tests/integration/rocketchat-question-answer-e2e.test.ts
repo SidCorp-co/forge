@@ -180,7 +180,6 @@ describe('a reply that names an option', () => {
   });
 
   it('crosses the same authority gate the HTTP surface does', async () => {
-    // cm:guard an ADMIN-authority option chosen by a project member must be refused here exactly as `POST /questions/:id/answer` refuses it — the handler calling `answerQuestion` directly would pass this option and fail nothing else (ISS-978 criterion 11).
     await linkSpeaker('rc-member', memberId);
     const q = await ask();
     await inbound.handleQuestionThreadReply({
@@ -287,7 +286,6 @@ describe('the four refusals, each by name and none of them guessing', () => {
     expect(said).toHaveLength(1);
     expect(said[0]).toContain('1. Take the safe path');
     expect(said[0]).toContain('2. Drop the column');
-    // cm:guard the re-post must not carry the recommendation: a person who typed prose gets the list back, not a nudge toward one answer (ISS-978 criterion 18).
     expect(said[0]).not.toContain('recommended');
   });
 
@@ -359,7 +357,6 @@ describe('every path consumes the message', () => {
         m: message({ text: c.text }),
         transport,
       });
-      // cm:guard something was said on EVERY path — a path that returns silently is one the connection manager would have to fall through from, and the person who was asked to pick an option gets a chat reply about something else (ISS-978 criterion 20).
       expect(said.length, `nothing was said for reply "${c.text}"`).toBeGreaterThan(0);
     }
   });
@@ -374,7 +371,6 @@ describe('every path consumes the message', () => {
       m: message({ text: '1' }),
     });
     await new Promise((r) => setImmediate(r));
-    // cm:guard no socket means no answer AND no throw: the message is still consumed, so the caller must not fall through to the conversation handler on it (ISS-978 criterion 20).
     expect(said).toEqual([]);
     expect(answerOn(await reload(q.id))).toEqual([null]);
   });

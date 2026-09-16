@@ -21,7 +21,6 @@ import type { Actor } from './activity.js';
 export interface IssueSnapshot {
   title: string;
   description: string | null;
-  // cm:edge contract -> packages/core/src/memory/indexer.ts — the indexer projects `description` through the body registry and needs the format to pick a path. OPTIONAL because absent degrades to the raw body rather than throwing; `body/doors.test.ts` is what asserts the two real producers set it.
   descriptionFormat?: string;
   priority: string;
   category: string | null;
@@ -35,7 +34,6 @@ export interface HookPayloads {
     issueId: string;
     projectId: string;
     actor: Actor;
-    // cm:guard ISS-130 — the orchestrator's issueCreated subscriber forwards this to considerEnqueue, which is what keeps an issue created at `on_hold` or `draft` from auto-dispatching forge-triage; drop it and every insert triages
     status: IssueStatus;
     snapshot: IssueSnapshot;
   };
@@ -65,7 +63,6 @@ export interface HookPayloads {
      */
     outboxId?: string;
   };
-  // cm:edge ordering -> packages/core/src/jobs/lifecycle-routes.ts — emitted there AFTER `scheduleRetry` has written the classification onto the row, and PM subscribers branch on `failureKind` (ISS-450: code/infra/transient-cc/timeout); emitting before that write hands every subscriber the pre-classification value and each one reacts as though the class were unknown
   jobFailed: {
     jobId: string;
     projectId: string;
@@ -93,14 +90,11 @@ export interface HookPayloads {
     issueId: string;
     projectId: string;
     actor: Actor;
-    // cm:guard REQUIRED, and the only field on this payload that answers "was a person at the keyboard". `actor.type` answers who OWNS the write and `actor.agency` comes from the PAT owner's `users.kind`, so both read `user`/`human` for an agent running on a human's token — `pipeline/answer-resume.ts` resumed a parked run on the run's own comment twice before this existed (ISS-978 2026-09-13, ISS-962 2026-09-08). A new emit site must decide this rather than inherit it.
     authored: 'human' | 'agent';
     commentId: string;
     body: string;
-    // cm:guard undefined and null both mean TOP-LEVEL and must stay interchangeable — the emit sites that pre-date threading send neither, and the activity logger records this only when it is set.
     parentId?: string | null;
   };
-  // cm:guard `body` is what a parked session is handed, and it is built where the SHAPE is known: a choice answer renders as its option's label and a free-text one as the words themselves. A subscriber that rebuilt it would have to re-read the row and re-learn the shape, and the two renderings would drift.
   questionAnswered: {
     questionId: string;
     projectId: string;
@@ -166,7 +160,6 @@ export interface HookPayloads {
     deviceId: string;
     runnerId: string;
   };
-  // cm:guard nothing in core subscribes to this any more, and that is deliberate: a box coming online no longer pulls work toward it, because the master on that box decides what it takes. Kept as an announcement other surfaces read; wiring it back to something that starts work would put routing in the kernel again.
   runnerOnline: {
     projectId: string;
     runnerId: string;
@@ -395,8 +388,6 @@ export class HooksBus {
   }
 
   // cm:flow dispatch/emit after:outbox — fans the re-emitted transition out to every subscriber; the one that matters here schedules the per-project sweep
-  // cm:guard emit MUST NOT throw on a subscriber error — ~48 call sites fire it after their primary mutation already committed; a rethrow here turns a successful write into a 500
-  // cm:edge contract -> packages/core/src/pipeline/outbox-worker.ts — drainOutboxOnce keys its processed-vs-failed decision on EmitResult.failures; changing this shape breaks the outbox retry path
   async emit<T extends HookTopic>(topic: T, payload: HookPayloads[T]): Promise<EmitResult> {
     const set = this.handlers.get(topic);
     if (!set || set.size === 0) return { topic, delivered: 0, failures: [] };

@@ -43,7 +43,6 @@ export interface RocketChatFrame {
   shape?: RoomShape | undefined;
 }
 
-// cm:guard the SERVER is part of the key and not decoration: a Rocket.Chat room id is unique within one installation only — the same guard `assistant_speaker_links.external_namespace` and `room-shape.ts`'s own cache carry — so a venue keyed on the rid alone puts two installations' rooms of that id into one conversation, which is a stranger reading somebody else's transcript. The separator is a space, which no Rocket.Chat id contains.
 export function rocketChatVenueId(namespace: string, rid: string, tmid?: string | null): string {
   return tmid ? `${namespace} ${rid} ${tmid}` : `${namespace} ${rid}`;
 }
@@ -62,10 +61,6 @@ export function parseRocketChatVenueId(externalId: string): RocketChatVenueParts
   return { namespace, rid, tmid: tmid ?? null };
 }
 
-// cm:guard the ROOM decides the credential, not the server: one installation can be served by two Forge connections under two bot accounts, and the first-match answer posts as a bot the room may not hold and reads history under the wrong bot id — which silently relabels that bot's own messages as a person's. A connection with no binding naming this room is not this room's connection.
-// cm:guard the binding must also name THIS venue's project, with no single-connection shortcut: a conversation outlives the binding that opened it, so a room rebound from project A to project B still has A's durable venue pointing at it — right credential, somebody else's content.
-// cm:why having only one candidate connection on the server says nothing about which project owns the room today, which is why the old shortcut past the bindings is gone (ISS-1001 invariant 2).
-// cm:guard the choice among several candidates is ORDERED by connection id and never left to the row order the database happens to return: two connections can legitimately bind one room under one project, and an unordered pick makes the bot a conversation speaks as change between two consecutive replies for no reason a reader could find (ISS-1002).
 async function authForVenue(
   namespace: string,
   rid: string,
@@ -148,11 +143,9 @@ function toHistory(
 export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFrame> = {
   adapter: 'rocketchat',
 
-  // cm:guard a room whose type cannot be read returns NULL and the caller refuses the message by name; there is no default shape, because `group` makes a direct room need a mention it never gets and `direct` answers unmentioned channel chatter under whoever spoke (ISS-987).
   async resolveVenue(frame: RocketChatFrame): Promise<ConversationVenue | null> {
     const namespace = namespaceFromServerUrl(frame.auth.serverUrl);
     if (!namespace) return null;
-    // cm:guard the caller's shape is taken where it has one and NOT re-resolved: `route()` already refused the message by name when the room's type could not be read, so a second resolve here can only disagree with the decision that admitted the message.
     const shape = frame.shape ?? (await resolveRoomShape(frame.auth, frame.m.rid));
     if (!shape) return null;
     return {
@@ -182,7 +175,6 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
     });
   },
 
-  // cm:guard routes through `sendFixedReply` like every other reply path — `outbound.ts` is the ONE door to a room and `outbound.test.ts` fails CI on a second one. The screened value's own `problems` become the proof, so the verdict and the exact string that was screened travel together.
   async deliver(venue: ConversationVenue, message: ScreenedMessage): Promise<DeliveryReceipt> {
     const parts = parseRocketChatVenueId(venue.externalId);
     if (!parts) {

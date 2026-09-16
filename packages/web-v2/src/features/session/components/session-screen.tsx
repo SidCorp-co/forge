@@ -139,7 +139,6 @@ export function SessionScreen({
   }, [turnsQ.data, session?.messages]);
   const fromMessages =
     (turnsQ.data?.turns?.length ?? 0) === 0 && items.length > 0;
-  // cm:guard route on `metadata.type`, never on "does it have turn rows": a pipeline session that has been replied to grows turn rows, and the layout would silently fall back to the chat thread on the runs that got the most attention.
   const isRun = session?.metadata?.type === "pipeline" || session?.metadata?.type === "pm";
   // Task-count indicator (ISS-391) — surfaces "this session ran N agents/skills"
   // in the header without opening the context rail. Same derivation the rail uses.

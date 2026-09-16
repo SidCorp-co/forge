@@ -23,7 +23,6 @@ import {
 
 const idParamSchema = z.object({ id: z.uuid() });
 
-// cm:edge contract -> packages/core/src/pipeline/runs-control.ts — omitting `parkIssue` must reach `cancelPipelineRun` as absent, not as `false`; the default lives there and sending `false` here silently flips every existing caller to the no-park intent
 const cancelBodySchema = z.object({ parkIssue: z.boolean().optional() });
 
 const badRequest = (details: unknown) =>

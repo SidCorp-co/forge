@@ -45,7 +45,6 @@ const conflict = (message: string, code: string) =>
 
 const jobIdParamSchema = z.object({ id: z.uuid() });
 
-// cm:why skillsRanWith is optional — absent for pre-0.7.0 runners and jobs with no skills seeded (ISS-798).
 const ackBodySchema = z
   .object({
     skillsRanWith: z.record(z.string(), z.string().max(128)).optional(),
@@ -70,8 +69,6 @@ const cancelBodySchema = z
   })
   .strict();
 
-// cm:why outcome:'not_found' is the only way to confirm-without-waiting-out-the-heartbeat-window that a job no runner claimed is safe to fail-and-retry
-// cm:edge protocol -> packages/core/src/jobs/kill-gate.ts — runner's answer to the job.cancel frame requestJobKill publishes
 const killAckBodySchema = z
   .object({
     outcome: z.enum(['killed', 'not_found']),
@@ -80,7 +77,6 @@ const killAckBodySchema = z
 
 const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 
-// cm:guard these markers are written by SERVER-side reapers only — the orphan reconcilers and the stale-detector — never by a real runner `/fail` (ISS-378). That is what makes a late successful `/complete` on a job carrying one reconcilable rather than a conflict: the runner did finish, its report was lost (a core outage), and a sweep reaped the row first. Add a marker a runner CAN write and this list starts forgiving a genuine contradiction.
 
 async function loadJob(jobId: string) {
   const row = await readJobGate(jobId);
@@ -89,7 +85,6 @@ async function loadJob(jobId: string) {
 }
 
 export const jobLifecycleDeviceRoutes = new Hono<{ Variables: DeviceVars }>();
-// cm:guard mounted HERE and not in index.ts — the turn verdict is a device lifecycle read, and index.ts is at its size baseline: a second mount line there costs an amnesty for a route that already has a router.
 jobLifecycleDeviceRoutes.route('/', jobTurnVerdictRoutes);
 
 // ISS-449 (ISS-442 C3 / I3) — explicit runner ACK for the dispatch→ack hop.
@@ -127,7 +122,6 @@ jobLifecycleDeviceRoutes.post(
 
     const now = new Date();
     const skillsRanWith = body.skillsRanWith ?? null;
-    // cm:why read outside the tx (mirrors recordPrunedSkill) — the UPDATE's isNull(ackedAt) WHERE is what prevents a double-emit, not this read.
     const skillLookups =
       skillsRanWith && Object.keys(skillsRanWith).length > 0
         ? await Promise.all(
@@ -153,8 +147,6 @@ jobLifecycleDeviceRoutes.post(
     const updated = await db.transaction(async (tx) => {
       const [row] = await tx
         .update(jobs)
-        // cm:guard the FIRST ack ends any open kill episode — a kill requested before the runner claimed the job was answered about a process that did not exist yet, and keeping that answer would let a later reap read it as proof this now-running agent is dead (ISS-785)
-        // cm:edge lockstep -> packages/core/src/jobs/events-routes.ts — the first-event fallback ack must clear the same columns
         .set({
           ackedAt: now,
           killRequestedAt: null,
@@ -331,10 +323,8 @@ jobLifecycleDeviceRoutes.post(
     // ISS-439 — materialize the usage_records row from the stored job_events.
     void materializeJobUsage(updated);
 
-    // cm:guard the step-handoff is best-effort CONTEXT, never a completion gate — a `done` job stays `done` whether or not the agent wrote its handoff row. Two knobs said otherwise (`requireHandoffWrite`, `missingMarkerPolicy`) and were removed on 2026-09-02 with 0 projects setting either; re-adding one re-opens that decision.
 
     if (status === 'failed') {
-      // cm:why a tagged resume failure is reclassified but still retried — the retry dispatches without the parent's session id, which is the whole remedy. The `abort` half of this branch went with `onResumeFail` (ISS-897), whose only reader keyed on a `sessionGroup` nothing has produced since the config key was removed.
       let precomputedRetry: RetryOutcome | undefined;
       if (isResumeFailedError(input.error)) {
         updated = await reclassifyAbortedResume(updated);
@@ -359,7 +349,6 @@ jobLifecycleDeviceRoutes.post(
     // /pipeline + issue detail tab reflect completion. Best-effort.
     await syncAgentSessionLifecycle(updated, status);
 
-    // cm:edge sideeffect -> packages/core/src/skills/reconcile-service.ts — a reconcile/verify_skill job self-reporting done/cancelled without recording its verdict/vote needs a terminal path too (BLOCKER M half 2, ISS-801 review) — finalizeFailedJob only covers the runner-reported `failed` branch above.
     await failReconcileRunIfNoVerdictRecorded(updated).catch((err) =>
       logger.warn(
         { err, jobId: updated.id, type: updated.type },
@@ -485,7 +474,6 @@ jobLifecycleDeviceRoutes.post(
     const job = await loadJob(id);
     if (job.deviceId !== device.id) throw forbidden('job is not dispatched to this device');
 
-    // cm:guard only an ack answering a LIVE kill request may stamp — an unsolicited one (stale frame, runner replay) would leave a confirmation on a job nobody asked to kill, which a later reap would read as proof of death and retry
     const recorded = job.killRequestedAt !== null;
     const now = new Date();
     await db.transaction(async (tx) => {
@@ -547,8 +535,6 @@ jobLifecycleUserRoutes.post(
 
     const job = await loadJob(id);
     const access = await loadProjectAccess(job.projectId, userId);
-    // cm:edge contract -> packages/web-v2/src/features/operator/components/alert-feed.tsx — the A2 reap button posts here for a job in ANY tenant, so a platform admin who is a member of nothing still has to pass; a second `/api/admin/jobs/:id/reap` would be a duplicate cancel path, and `cancelJob` is the one that writes the audited `job_events` row
-    // cm:guard the fallback belongs on THIS route and not on `/:id/resume` — reap is the only action the Operator Ops Console ships, and a widening nothing calls is one nobody notices going wrong
     if (!projectRoleAtLeast(access.role, 'member')) await assertPlatformAdmin(c);
 
     // Optional `{ reason }` body; tolerate an empty/absent body (the cancel
@@ -575,7 +561,6 @@ jobLifecycleUserRoutes.post(
   },
 );
 
-// cm:guard `member`, the same role cancel asks for — a resume is strictly less destructive than the cancel that was previously the only way out of a hold, so a stricter gate here would leave the operator with the bigger hammer and not the smaller one
 jobLifecycleUserRoutes.post(
   '/:id/resume',
   requireAuth(),

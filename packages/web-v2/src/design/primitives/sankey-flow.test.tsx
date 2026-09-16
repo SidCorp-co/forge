@@ -28,14 +28,12 @@ describe("SankeyFlow", () => {
     expect(container.firstChild).toBeNull();
   });
 
-  // cm:guard `fix` is work re-entering the pipeline, so it is drawn on its own path back and NOT as one more forward bar — laying it inline claims the pipeline has a stage it does not (ISS-988 criterion 38)
   it("draws the loop node apart from the forward chain", () => {
     const { container } = draw();
     expect(container.querySelectorAll("rect").length).toBe(2);
     expect(container.querySelectorAll("path[stroke-dasharray]").length).toBe(1);
   });
 
-  // cm:guard the figures are carried in a TABLE beside the drawing, not a tooltip: criterion 38 asks for them in text for a reader who cannot see it (ISS-988)
   it("carries every node's figures in text, the loop included", () => {
     draw();
     for (const n of nodes) {

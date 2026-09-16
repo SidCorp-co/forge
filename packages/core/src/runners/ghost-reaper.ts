@@ -31,9 +31,6 @@ export interface GhostRunnerReapResult {
 
 type GhostRow = { id: string; project_id: string; name: string };
 
-// cm:guard flag, never DELETE. `jobs.runner_id` is ON DELETE SET NULL and `runner_events.runner_id` is ON DELETE CASCADE, so deleting the row erases which box ran every job it ever ran AND the whole uptime timeline that would justify the deletion — silently, since neither FK errors. `heartbeat-ws.ts` sets `status='online'` on any heartbeat, so a box that comes back re-registers itself; disabling is the reversible half of "de-register".
-// cm:guard NEVER flag a runner that still holds a `dispatched`/`running` job or a live session on its device — a busy box whose heartbeat lapsed is a dispatch problem, not a ghost, and disabling it is how a real in-flight job loses the runner it is reporting to.
-// cm:edge contract -> packages/core/src/runners/stale-detector.ts — that sweep owns the `online` → `offline` hop on a 30-second heartbeat window; this one owns `offline` → `disabled` on a multi-day window. Neither writes the other's transition, and the day threshold must stay far above the second threshold or a single missed heartbeat disables a healthy box.
 async function selectGhosts(offlineDays: number): Promise<GhostRow[]> {
   return db.execute<GhostRow>(sql`
     SELECT r.id, r.project_id, r.name
@@ -93,7 +90,6 @@ export async function reapGhostRunners(): Promise<GhostRunnerReapResult> {
 
 let registered = false;
 
-// cm:edge ordering -> packages/core/src/runners/stale-detector.ts — that sweep runs every minute and owns `online` -> `offline`; this one is hourly and owns `offline` -> `disabled`, so a box has at minimum `ghostRunnerOfflineDays` between the two writes.
 export async function registerGhostRunnerReaper(): Promise<void> {
   if (registered) return;
   await boss.createQueue(GHOST_RUNNER_REAPER_QUEUE);

@@ -23,7 +23,6 @@ vi.mock('../db/schema.js', () => ({ agentSessions, issues, jobs, kernelTransitio
 
 vi.mock('../db/client.js', () => {
   const dbStub: Record<string, unknown> = {
-    // cm:why applyKernelTransition reaches its write through `exec.transaction`, and stamps `forge.kernel_txn` through `exec.execute`, so a double without both never runs the body under test
     transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub),
     execute: async () => undefined,
     select: () => ({
@@ -182,7 +181,6 @@ describe('jobs/agent-session-link', () => {
       expect(meta.retryOfJobId).toBe('job-prev');
       expect(meta.retryOfSessionId).toBeUndefined();
       expect(meta.rootSessionId).toBeUndefined();
-      // cm:guard a NULL-session retry clone must mint a fresh queued row, never inherit a terminal one — don't resurrect ISS-434's reuse+reset
       expect(insertCalls[0]?.values.status).toBe('queued');
     });
 
@@ -282,7 +280,6 @@ describe('jobs/agent-session-link', () => {
       expect(closeRunIfOneShotMock).toHaveBeenCalledWith('run-1', 'completed');
     });
 
-    // cm:why ISS-759 — the I1 trigger stamps failure_reason on an active session when its run goes terminal and a late report then lands here; asserting only `status` let 6 rows sit `completed` WITH `orphan_under_terminal_run` for a week
     it('ISS-759: a completed session clears any failureReason the I1 trigger left behind', async () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'done');
       expect(updateCalls[0]?.set.status).toBe('completed');
@@ -369,7 +366,6 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
     expect(updateCalls[0]?.set.failureDetail).toBe('a shape no rule has ever seen');
   });
 
-  // cm:why the sweeper's phrase is the only thing in this pair that names a cause — the error text is generic. It is NOT that `failureReason` wins by being that column: the two are joined and `CAUSE_RULES` order decides, so an error text carrying a more specific marker outranks it.
   it('ISS-877: reads the sweeper\u2019s precise failureReason when the error text names nothing', async () => {
     await syncAgentSessionLifecycle(
       {
@@ -402,7 +398,6 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
   });
 
   describe('syncAgentSessionLifecycle — which writer owns the reason', () => {
-    // cm:guard first writer wins on the failed branch: a session a sweeper already failed keeps ITS reason. Measured on epodsystem 2026-09-05 — 61 sessions read `session_lost` while `kernel_transitions` showed the real cause was `queue_timeout` 90s earlier, because this mirror re-failed an already-failed row and overwrote the diagnosis with its own consequence.
     const guarded = (i: number) => {
       const w = updateCalls[i]?.where as { parts?: Array<{ _sql: string; value?: unknown }> };
       return Boolean(w?.parts?.some((p) => p._sql === 'ne' && p.value === 'failed'));
@@ -419,7 +414,6 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
       },
     );
 
-    // cm:guard the counterpart the guard must NOT catch: ISS-877 recovers a real cause from the job row, and those still have to land on a session a sweeper already failed. A test that only pins the synthetic side passes just as well on a guard widened to every failed sync.
     it.each(['provider_spend_cap', '[SIGNAL_KILLED]', null])(
       'a real diagnosis (%s) still lands on an already-failed session',
       async (error) => {
@@ -431,7 +425,6 @@ describe('jobs/agent-session-link — ISS-877 failure cause', () => {
       },
     );
 
-    // cm:guard the completed branch must stay UNguarded — a job reporting `done` proves the agent finished, so a session row still reading `failed` is the lie ISS-759 fixed. Guarding both branches symmetrically re-opens it.
     it('still lets a done job clear a stamped session (ISS-759)', async () => {
       await syncAgentSessionLifecycle({ ...baseJob, agentSessionId: 'sess-1' } as never, 'done');
       const w = updateCalls[0]?.where as { parts?: unknown[] };

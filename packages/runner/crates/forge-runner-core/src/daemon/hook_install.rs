@@ -13,11 +13,9 @@ use crate::daemon::agent_activity::Event;
 use crate::error::{Error, Result};
 
 /// The settings file this writes, relative to the pane's working directory.
-// cm:guard `.local` is load-bearing: `.claude/settings.json` is a file repositories COMMIT, and writing generated content there would put this daemon's exe path into somebody's diff on every box. The local twin is gitignored wholesale, which is also why nothing here needs to be pretty.
 const SETTINGS: &str = ".claude/settings.local.json";
 
 /// How a managed command is recognised on a later pass.
-// cm:guard identity is the VERB, never the exe path: the path changes under an update and a marker keyed on it would leave the old entry behind, so every restart would add one more copy of every hook and a pane would report each boundary as many times as this daemon had ever been installed.
 const MANAGED_MARKER: &str = "hook --event";
 
 fn command_for(exe: &str, event: Event) -> String {
@@ -39,8 +37,6 @@ fn is_managed(entry: &Value) -> bool {
 }
 
 /// The settings text a pane should start with, given whatever is there now.
-// cm:guard MERGES and never replaces: a user's own hooks in this file are theirs, and an install that wrote a fresh document would delete them silently on every pane spawn. Only entries this daemon recognises as its own are removed, and only to be replaced.
-// cm:guard unparseable existing content is REFUSED by name rather than overwritten. A corrupt or hand-edited file is somebody's work in an unknown state; the honest outcome is a pane that starts unhooked and says so, not a file this daemon quietly truncated.
 pub fn merged(existing: Option<&str>, exe: &str) -> Result<String> {
     let mut root: Map<String, Value> = match existing.map(str::trim) {
         None | Some("") => Map::new(),
@@ -120,7 +116,6 @@ mod tests {
         assert_eq!(hooks.len(), Event::ALL.len());
     }
 
-    // cm:guard the failure this prevents is silent and cumulative: a marker keyed on the exe path would not match after an update, so every daemon restart would append one more copy of every hook and each boundary would be reported many times over.
     #[test]
     fn installing_twice_does_not_leave_two_copies() {
         let once = merged(None, "/bin/fr").unwrap();
@@ -129,7 +124,6 @@ mod tests {
         assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
     }
 
-    // cm:guard the same, across the case the marker exists FOR: an update moves the exe, and an entry from the old path must be replaced rather than joined.
     #[test]
     fn an_entry_from_a_previous_exe_path_is_replaced_not_joined() {
         let old = merged(None, "/old/path/forge-runner").unwrap();
@@ -140,7 +134,6 @@ mod tests {
         assert!(cmd.starts_with("/new/path/"), "{cmd}");
     }
 
-    // cm:guard a user's own hooks are theirs. Without this, every pane spawn silently deletes whatever somebody configured on that checkout, and the only symptom is their hook stopping.
     #[test]
     fn a_users_own_hooks_survive_the_install() {
         let mine = serde_json::to_string(&json!({
@@ -164,7 +157,6 @@ mod tests {
         );
     }
 
-    // cm:guard refusing beats truncating: the file may be somebody's work in a state this code cannot read, and a pane that starts unhooked is recoverable where a deleted config is not.
     #[test]
     fn a_file_this_cannot_parse_is_refused_by_name_rather_than_overwritten() {
         let e = merged(Some("{ not json"), "/bin/fr").unwrap_err();

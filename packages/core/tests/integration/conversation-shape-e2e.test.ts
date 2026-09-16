@@ -151,7 +151,6 @@ describe('a Forge room’s shape follows who is in it', () => {
     );
   });
 
-  // cm:guard the control for the demotion: two HANDLES keep a room a group after a person leaves, so the rule is read off both counts and not off the person count alone (ISS-1034 criterion 44).
   it('stays group with two handles after a person leaves (criterion 44)', async () => {
     const second = await createTestProject(harness.db, ownerId, {
       orgId,
@@ -179,7 +178,6 @@ describe('a Forge room’s shape follows who is in it', () => {
     expect(await systemLines(id)).toEqual([]);
   });
 
-  // cm:guard the flip has to reach the READ fence the same request: a room turned back to direct is read by its live people alone, and a person just taken out of it is refused its transcript by name rather than shown it a while longer (ISS-1034 criterion 47).
   it('refuses a person no longer in a room that turned direct again (criterion 47)', async () => {
     const id = await openRoom();
     const joined = await addPerson(id, otherId);

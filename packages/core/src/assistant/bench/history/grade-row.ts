@@ -67,7 +67,6 @@ export function gradeRow(row: HistoryRow, opts: GradeRowOptions): RowGrade {
   const grade = gradeTurn(
     { message: row.query ?? '', checks: checksFor(opts) },
     {
-      // cm:why a trimmed-empty reply is no reply: the door sends a fallback for one (screened-reply.ts), and the benchmark's notFallback reads only null as unanswered
       delivered: row.reply?.trim() ? row.reply : null,
       attempts: [attempt],
       seconds: attempt.ms / 1000,

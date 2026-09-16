@@ -13,7 +13,6 @@ import type { IssueStatus } from "./types";
 
 export type StatusLabeller = (status: IssueStatus) => string;
 
-// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts — the kernel-to-label map; this hook only reaches it, never decides what a label says
 export function useStatusLabeller(): StatusLabeller {
   return useCallback((status: IssueStatus) => statusLabelFor(status), []);
 }

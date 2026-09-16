@@ -101,8 +101,6 @@ describe('ISS-940 draft placement (real Postgres)', () => {
     expect(await countsFor(id)).toEqual({ jobs: 0, runs: 0 });
   });
 
-  // cm:guard this is the alternative the rung exists to replace, and it must keep dispatching — a `draft → open` that minted nothing would mean the promotion path had broken, not that the new rung was safe
-  // cm:guard the same draft moved to `open` must produce NO run and NO job since ISS-933 — it is offered to a master instead. The reconciler ran here on purpose: a pass that re-dispatched what dispatch itself stopped minting would be the second live path arriving through the backstop.
   it('mints nothing when the same draft is moved to the entry status', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const { runReconcilerOnce } = await import('../../src/pipeline/reconciler.js');
@@ -117,7 +115,6 @@ describe('ISS-940 draft placement (real Postgres)', () => {
     expect(counts.runs).toBe(0);
   });
 
-  // cm:guard the wedge pass is the one thing that could undo this rung: it rolls an in-flight status back to `open` and re-dispatches. It requires a prior `drive` job row and a running issue run, and a draft worked by hand has neither — if that ever stops being true, a live hand session gets an agent dropped into its worktree.
   it('is not rolled back by the autonomous wedge pass', async () => {
     const { applyStatusTransition } = await import('../../src/issues/apply-transition.js');
     const { resetAutonomousWedgesOnce } = await import('../../src/pipeline/reconciler.js');

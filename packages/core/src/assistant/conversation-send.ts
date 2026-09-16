@@ -50,18 +50,14 @@ export interface WebConversationRoom {
 /**
  * How often a core looks for web windows nobody finished.
  */
-// cm:guard this loop is the RECOVERY path and never the ordinary one: a send routes its own window inline, because a person who pressed enter is waiting on the answer and a settle delay they did not ask for is latency with nothing bought by it. What this reaches is only what a crash, a rollback or a lost socket left behind (ISS-1004 rule 1).
 const WEB_DRAIN_INTERVAL_MS = 15_000;
 
 /** How many stranded windows one tick takes. */
-// cm:guard a batch and not everything due, for the reason the first adapter's drain gives: each window costs a model turn, and a core coming back to a hundred of them would spend a hundred turns in one tick.
 const WEB_DRAIN_BATCH = 5;
 
 /**
  * What the Forge UI contributes to a turn: who the assistant is, and what it may read.
  */
-// cm:guard the toolset is NOT read-only, and this annotation said it was until ISS-1005 measured it: `CHAT_TOOL_ALLOWLIST` permits `forge_issues` create and update and `forge_comments` create. What fences it is `guardIssueWrites` — a created issue is forced to `draft` so it cannot auto-triage and spawn a run, `data.relations` is refused outright, and an update may only reach draft/waiting/needs_info/on_hold/closed. That fence is per-key and OPEN by default, which is how `data.relations` reached chat unclassified in ISS-868 and let a room retract a live `blocks` edge, so a key added to the allowlist is unfenced until somebody classifies it. It is the same set `/api/chat` builds, and widening it here widens it for every room this adapter serves.
-// cm:guard the door is `web-chat-reply` and NOT `chat-sync`: this reply's reader holds a role on the project by the route's own checks, and `chat-sync`'s `public:report` cell is written for a reader who holds none — its `no-developer-detail` rule refuses a file path, a fenced block and a raw status word, which are three of the things a person opens the Forge UI to ask for. The reason lives on the door's row in `messaging/doors.ts` (ISS-1005).
 export function webConversationTurn(args: {
   project: { id: string; slug: string; name: string };
   handleName: string;
@@ -97,7 +93,6 @@ export interface WebSendResult {
 /**
  * Take one typed message and answer it.
  */
-// cm:guard the window is claimed with a settle of ZERO and scoped to THIS room's venue id, never by adapter alone: the settle exists so two messages typed seconds apart in a chat room become one turn, and a person pressing enter in the Forge UI has already told us the message is finished. Claiming by adapter alone would take other rooms' windows into a request that is about one of them.
 export async function sendWebConversationMessage(args: {
   room: WebConversationRoom;
   projectId: string;
@@ -137,7 +132,6 @@ export async function sendWebConversationMessage(args: {
  * Everything routing one web window needs, read once: the project it is about
  * and the handle that answers in it.
  */
-// cm:guard the handle is RESOLVED rather than named from the slug: `handleNameForProject` composes a name and this returns the row, so the same call gives the fallbacks their voice and gives a group-shaped room a principal to run as. A web room is `direct` today and takes its principal from the speaker, which is why the handle is the honest value for the other branch rather than a placeholder nothing reads.
 async function webWindowSubject(
   window: ConversationWindowRow,
   claim: WindowClaim,
@@ -170,7 +164,6 @@ async function routeWebWindow(
         askedBy: messages.filter((m) => m.role === 'user').at(-1)?.authorLabel ?? null,
       }),
   });
-  // cm:guard published AFTER `routeWindow` has recorded the reply and closed the window, which is the whole point of it being a second event: the delivery event goes out before the row commits, so a tab that refetched on that alone could read the room back without the answer in it. Every decision publishes, not only `answered`, because a silence is equally something a second tab is sitting and waiting for (ISS-1004 step 5, review F2).
   await publishToConversationReaders(window.conversationId, {
     event: WEB_CONVERSATION_SETTLED_EVENT,
     data: {
@@ -194,7 +187,6 @@ async function routeWebWindow(
 /**
  * Claim and route whatever this venue owes, and say what was decided.
  */
-// cm:guard a window this core claimed and cannot place is RELEASED and not closed, the same rule the first adapter's drain follows: the project it was opened under can be gone by the time this runs, and closing it would record a decision nobody took (ISS-1004 rule 4).
 async function routeOneWebWindow(
   venueExternalId: string,
   claimant: string,
@@ -218,7 +210,6 @@ async function routeOneWebWindow(
 /**
  * Route every web window a stopped core left behind.
  */
-// cm:guard claimed by ADAPTER here and with the ordinary settle, which is the opposite of the send path above and deliberately so: this tick knows nothing about which room it is serving, and the settle is what keeps it off a window a live request is about to route inline.
 export async function drainWebConversationWindows(): Promise<void> {
   const windows = await claimDueWindows({
     adapter: 'web',
@@ -240,13 +231,9 @@ export async function drainWebConversationWindows(): Promise<void> {
 /**
  * Make the Forge UI an adapter the store can reach, and start its recovery drain.
  */
-// cm:guard the registration lives HERE and not in `index.ts`, and the reason is a gate rather than a taste: `index.ts` already coordinates 48 modules against an `.arch.json` limit of 6, frozen at that set by the archmap baseline, so a direct `conversations/ports.js` import there is a 49th module and a new violation of a rule the file is already amnestied for. One call from the module that owns the adapter costs the coordinator nothing it was not already paying (ISS-1004 step 5).
-// cm:guard the transport is registered BEFORE the drain starts, never after: a stranded window claimed by a tick that ran first would find no `web` transport in the registry and close `unreachable` a question somebody is still owed.
-// cm:guard NOT gated on the `chatProvider` flag — that flag gates the SSE `/api/chat` surface, while `/api/conversations` is mounted unconditionally, so gating this would leave a send endpoint whose reply had nowhere to be delivered.
 export function registerWebConversationAdapter(): () => void {
   registerConversationTransport(webConversationPorts);
   const stopDrain = startWebConversationDrain();
-  // cm:guard the heartbeat starts HERE for the reason the registration itself does — `index.ts` is at its coordinator limit and may not reach one more module — and it is not the web adapter's: the tick opens windows in every adapter's rooms and each adapter's own drain routes them (ISS-1034 criteria 36-38).
   const stopHeartbeat = startConversationHeartbeat();
   return () => {
     stopDrain();
@@ -257,7 +244,6 @@ export function registerWebConversationAdapter(): () => void {
 /**
  * Start the recovery drain. Returns the stop.
  */
-// cm:guard a tick still running is never overlapped by the next, which is the first adapter's rule and holds for the same reason: two drains at once each claim a batch, and the loser's windows sit under a live lease while the winner pays for its turns.
 export function startWebConversationDrain(): () => void {
   let running = false;
   const tick = (): void => {

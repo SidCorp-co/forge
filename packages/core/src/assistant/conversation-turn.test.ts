@@ -60,8 +60,6 @@ describe('toProviderMessages', () => {
     ]);
   });
 
-  // cm:guard a silence is a ROW and never a prompt: replaying it as an empty assistant turn teaches
-  // the model that an empty answer is a shape it may produce.
   it('leaves a recorded silence out of the prompt', () => {
     const out = toProviderMessages(
       turn([
@@ -72,8 +70,6 @@ describe('toProviderMessages', () => {
     expect(out).toEqual([{ role: 'user', content: 'asked' }]);
   });
 
-  // cm:guard an image with NO caption is the commonest way a person asks about a screenshot, and a
-  // length test on the text alone drops it — the model is asked about a picture it was never shown.
   it('sends a captionless image as its own content part', () => {
     const out = toProviderMessages(
       turn([], [stored({ content: '', images: [IMAGE] })]),
@@ -115,8 +111,6 @@ describe('toProviderMessages', () => {
   });
 });
 
-// cm:guard a silence is a handle DECLINING to speak, so it is by that handle: an unattributed one
-// cannot say which of a room's two handles went quiet, which is the distinction the row exists for.
 describe('a silence names the handle that stayed quiet', () => {
   it('is authored by the room handle, exactly as an answer would have been', () => {
     const t = turn([], [], 'handle-1');
@@ -141,8 +135,6 @@ describe('a silence names the handle that stayed quiet', () => {
   });
 });
 
-// cm:guard a persisted turn names the authority it runs as — structural, because the call sites are
-// what regress: `connection-manager.ts` omitted it and every mocked suite stayed green (ISS-1001)
 describe('every persisted turn names its authority', () => {
   it('passes a userId wherever it passes a conversation or a venue', () => {
     const root = fileURLToPath(new URL('../', import.meta.url));

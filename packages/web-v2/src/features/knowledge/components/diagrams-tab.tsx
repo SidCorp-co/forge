@@ -28,7 +28,6 @@ const WHAT_IT_READS: Record<ModuleDiagramKind, string> = {
   swimlane: "The same steps, in lanes taken from each node’s actor.",
 };
 
-// cm:guard a refusal is an EmptyState and a failure is an ErrorState, and they must not merge — `NO_MODULES` tells the reader to go and create a module, while a 500 tells them to retry, and a single "couldn't load" box gives whichever reader is wrong no way to find that out.
 const REFUSALS = new Set(["NO_MODULES", "NO_MODULE_FLOWS", "UNPARSABLE_MODULE_FLOW"]);
 
 interface DiagramsTabProps {

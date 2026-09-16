@@ -1,6 +1,4 @@
 #!/usr/bin/env node
-// cm:edge contract -> docs/flows/index.html — this script owns that file's map half; only the block between the RULES markers is hand-written, and a map edited by hand rots the way docs/system.graph.json did (5 months, 2 of 9 modules missing)
-// cm:guard the data is INLINED, never fetched — the folder must open from disk and `fetch()` is refused on a file:// origin, so a sibling .json leaves the map blank locally
 import { readdirSync, readFileSync, writeFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
@@ -173,7 +171,6 @@ const data = {
       {
         parent: parentOf.get(id) ?? 'forge',
         purpose: graph.nodes.find((n) => n.id === id)?.purpose ?? '',
-        // cm:guard nothing derived from a flow file's PROSE may reach this map — a word count, or a sort keyed on one, made every cut to any flow file dirty the generated index and fail this script's own gate.
         flows: fs
           .sort((a, b) => a.file.localeCompare(b.file))
           .map(({ file, answers, figures }) => ({ file, answers, figures })),

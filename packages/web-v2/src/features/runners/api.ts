@@ -140,7 +140,6 @@ export const runnersApi = {
 	getRunnerActivity: (runnerId: string, limit = 15) =>
 		apiClient<RunnerActivity>(`/runners/${runnerId}/activity?limit=${limit}`),
 
-	// cm:edge contract -> packages/core/src/runners/routes.ts — `runners.status` is writable ONLY here: this route hands it to `setRunnerStatus`, which audits the transition into `runner_events`. The project-scoped PATCH next to it takes repoPath/branch/labels under a `.strict()` schema that REJECTS `status` with a 400, so admission sent there fails for every credential (it did, silently behind a toast, until 2026-09-06). Session-only by design — a PAT gets 403 and cannot withdraw a box.
 	patchRunnerStatus: (
 		runnerId: string,
 		status: "online" | "offline" | "draining" | "disabled",

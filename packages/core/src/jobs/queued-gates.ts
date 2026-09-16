@@ -17,7 +17,6 @@
  * no writes from either reader.
  *
  */
-// cm:guard `stale_trigger` and the sweep that ended the jobs it held must not come back. ISS-789 scoped both to the job types that HAVE a trigger status; ISS-895 left one type, `drive`, which never had one — and re-adding the arm would stamp the driver stale the moment its own agent moves the issue, with nothing re-enqueuing at any status but the entry one.
 
 import { eq, type SQL, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
@@ -34,7 +33,6 @@ export type GateSkipReason =
   | 'pipeline_run_not_running'
   | 'retry_cooldown'
   | 'issue_busy'
-  // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. A name that outlives its arm is the failure mode: `release_decompose_pending` sat here for months naming an arm that never existed, and `blocked_by`/`project_cap` outlived their arms in the `forge_jobs.list` tool description and in `alarmStalledQueuedJobs`'s own guard until ISS-765 read them back against this CASE.
   | 'runner_too_old'
   | 'runner_stale';
 
@@ -72,8 +70,6 @@ export function runnerSupportsJobType(runnerType: RunnerType, jobType: JobType):
  * 2026-05-27 stall). The cascade in `runs.ts` is the primary defence; this
  * filter is the safety net for state drift.
  */
-// cm:guard every dispatch gate must require pr.status IN ('running','paused') or a terminal-parent orphan wedges the runner cap
-// cm:edge sideeffect -> packages/core/drizzle/migrations/0113_i1_orphan_trigger.sql — a DB trigger also cancels active jobs under terminal runs
 export async function countInFlightForRunner(runnerId: string): Promise<number> {
   return countInFlightForOneRunner(runnerId);
 }
@@ -116,14 +112,12 @@ export interface BarrierFragments {
  * without extending the other will flip a recorded scenario from
  * `ok:false` ⇔ "picker would not pick".
  */
-// cm:edge contract -> packages/core/src/admin/alert-queries.ts — A3 (alertRunnerStarved) replays BOTH halves of this builder per project: the predicates, so a job held by issue-busy / retry-cooldown / a stale trigger is not miscounted as runner starvation, AND `fresh_capable_runners`, whose clauses are the definition of a usable runner. A3 inverts only the runner EXISTS; a gate added here and not replayed there turns a correctly-held queue into a false alert, and a runner clause added here alone makes a genuinely starved queue report ok.
 export function buildBarrierFragments(args: {
   projectIdRef: SQL;
   livenessSeconds: number;
 }): BarrierFragments {
   const { projectIdRef, livenessSeconds } = args;
 
-  // cm:guard this CTE answers "is a usable box ALIVE", never "does it have room". Core stopped deciding how many jobs a box may hold when the master began claiming from the pool (`devices/claim.ts`), and the real ceiling — `duplex_max_sessions`, RAM, the repo lock — lives on the runner where core cannot see it. So a capacity arm here could only report a hold nothing enforces, which is worse than reporting none: `runner_full` named exactly that from 2026-09-05 back.
   const ctes = sql`    fresh_capable_runners AS (
       SELECT r.id,
              -- cm:guard carried as a COLUMN and not a WHERE clause, so the reason arms can tell "no box at all" from "a box too old to claim". Every reader asking "is there a usable runner" MUST therefore say WHERE claim_capable; one that forgets counts a box the claim refuses outright ("runner_too_old") and re-opens the picker-offers/selector-rejects deadlock this CTE carries three other guards about.
@@ -162,8 +156,6 @@ export function buildBarrierFragments(args: {
         AND (s.metadata->>'issueId') = j.issue_id::text
         AND (j.agent_session_id IS NULL OR s.id <> j.agent_session_id)
     )`,
-    // cm:guard `held` belongs HERE and NOT in the pool's claimable set — the asymmetry is the whole design (RFC 0002): invisible to the pool it occupies no box and may wait indefinitely, present here it stops a second job being enqueued for the same issue while the first waits
-    // cm:edge lockstep -> packages/core/src/db/schema.ts — the `jobs_active_unique` partial index is the DB-level twin of this predicate; a status listed in one must be listed in the other or `enqueue` inserts the duplicate this gate refuses to dispatch
     issueBusyJob: sql`EXISTS (
       SELECT 1 FROM jobs other
       WHERE other.issue_id = j.issue_id
@@ -192,7 +184,6 @@ export function buildBarrierFragments(args: {
  * {@link gateReasonsForQueuedJobs}. Expects `j`, `r` and
  * `fresh_capable_runners` in scope.
  */
-// cm:guard both readers MUST take the CASE from here — the arm order IS the answer (issue_busy before the two runner arms), so a second copy reports a different "most specific reason" for the same job and the two surfaces start contradicting each other.
 function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
   return sql`
       CASE
@@ -251,7 +242,6 @@ export interface RunnerAvailability {
  * Reads the picker's OWN `fresh_capable_runners` CTE, so no caller has to
  * restate the six-clause availability rule.
  */
-// cm:guard take this from `buildBarrierFragments`, never a hand-copied WHERE — the availability rule is six clauses deep (online, heartbeat window, rate_limited_until, disabled device, …) and a second copy silently disagrees with the gate, which is how pipelineHealth came to report NO reason at all for jobs the picker was refusing (11 jobs, queued 6-22 days, measured 2026-08-14).
 export async function freshRunnerAvailability(projectId: string): Promise<RunnerAvailability> {
   const { ctes } = buildBarrierFragments({
     projectIdRef: sql`${projectId}`,
@@ -270,7 +260,6 @@ export async function freshRunnerAvailability(projectId: string): Promise<Runner
  *
  * Read-only, one query. Jobs absent from the map are dispatchable right now.
  */
-// cm:why `queued` alone cannot distinguish "about to run" from "will never run" — the gates are stateless by design (nothing is persisted on the row), so a job blocked forever is byte-identical to a healthy one. Measured 2026-08-14: 11 jobs had been queued 6-22 days across 5 projects and no surface anywhere could say why, which is why finding out took a hand-written script against production.
 export async function gateReasonsForQueuedJobs(
   projectId: string,
 ): Promise<Map<string, GateSkipReason>> {

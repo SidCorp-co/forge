@@ -18,7 +18,6 @@ const attemptsQueue: SelectQueue = [];
 
 let nextSelectKind: 'steps' | 'cost' | 'runRow' | 'bulkCost' = 'steps';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('../issues/issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -34,12 +33,10 @@ vi.mock('drizzle-orm', () => ({
       const obj = { _sql: strings.join('?'), values };
       return Object.assign(obj, { mapWith: () => obj });
     },
-    // cm:why `sql.join` is stubbed rather than left off: ISS-998's liveness statement builds its status lists from the shared constants through it, and a missing member here fails the whole suite with `sql.join is not a function` — a message about the mock, not about the code under test.
     { join: (parts: unknown[], sep: unknown) => ({ _join: parts, sep }) },
   ) as never,
 }));
 
-// cm:why ISS-411 — runs-rollup now imports the pure retry-state helpers; mock them so the suite does not transitively pull in the dispatch/queue graph (env-gated).
 vi.mock('../jobs/retry.js', () => ({
   RETRY_MAX_ROUNDS: 10,
   readAutoRetryPayload: (payload: unknown) => {
@@ -71,7 +68,6 @@ vi.mock('../db/schema.js', () => ({
     failureDetail: 'agent_sessions.failure_detail',
     lastHeartbeatAt: 'agent_sessions.last_heartbeat_at',
   },
-  // cm:edge contract -> packages/core/src/db/schema.ts#terminalAgentSessionStatuses — the same five, and `jobStatuses` the same seven, copied because this suite mocks the whole schema module; a status added there and not here leaves this file asserting the rollup against lists production no longer uses, and nothing goes red (ISS-998).
   jobStatuses: ['queued', 'dispatched', 'running', 'held', 'done', 'failed', 'cancelled'],
   terminalAgentSessionStatuses: [
     'completed',
@@ -120,9 +116,7 @@ vi.mock('../db/schema.js', () => ({
 
 vi.mock('../db/client.js', () => ({
   db: {
-    // cm:guard the ISS-998 liveness pair is raw `db.execute` and is queued SEPARATELY from every `select`: it is one statement by design — two would be two snapshots — and routing it through the projection discriminator above would make the mock's shape disagree with the code's.
     execute: () => Promise.resolve(livenessQueue.shift() ?? []),
-    // cm:why the queues are keyed on the TABLE each select reads and never on call order: the loaders run from one `Promise.all`, and an order-based queue silently mis-feeds them the day a loader joins that array. The ISS-998 liveness pair needs no key at all — it is raw `execute`, above.
     select: () => ({
       from: (table: unknown) => {
         const tableKey = typeof table === 'object' && table !== null ? Object.values(table)[0] : '';
@@ -236,7 +230,6 @@ describe('loadPipelineRunSummary', () => {
     expect(result?.steps).toHaveLength(1);
     const step = result!.steps[0]!;
     expect(step.status).toBe('running');
-    // cm:guard both nulls are asserted because a step that is still running has neither: a build stamping `finishedAt` at the moment a step starts would give every live run a duration and read as finished.
     expect(step.finishedAt).toBeNull();
     expect(step.durationMs).toBeNull();
     expect(step.agentSessionId).toBe(SESS_A);
@@ -297,7 +290,6 @@ describe('loadPipelineRunSummary', () => {
     expect(result?.cost.sampleCount).toBe(0);
   });
 
-  // cm:guard assert a NON-ZERO count here, never just "the field is present" — the bug this covers was a spread whose `liveJobs: 0` default was never overridden, so every assertion that only checked for 0 passed against the broken build for the whole of ISS-789's first half
   it('ISS-789: reports the run live-job count, not the rowToListItem zero default', async () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
@@ -308,7 +300,6 @@ describe('loadPipelineRunSummary', () => {
     expect(result?.liveJobs).toBe(2);
   });
 
-  // cm:guard assert a REAL stamp here, never just "the field is present": the failure this covers is a spread whose `lastSessionBeatAt: null` default is never overridden, which reads as "no session on this run" for every run there is and puts every live master-lane run into the stalled count (ISS-998).
   it('ISS-998: carries the run session heartbeat, not the rowToListItem null default', async () => {
     const beat = new Date('2026-09-13T11:59:00.000Z');
     runRowQueue.push([runRow]);
@@ -320,7 +311,6 @@ describe('loadPipelineRunSummary', () => {
     expect(result?.lastSessionBeatAt).toBe('2026-09-13T11:59:00.000Z');
   });
 
-  // cm:guard the pair: a run with no non-terminal session reads `null`, and `null` must not be confused with the loader not having run — both halves are asserted because a build returning `null` always passes the second alone.
   it('ISS-998: a run with no live session reads null rather than a stale stamp', async () => {
     runRowQueue.push([runRow]);
     stepsQueue.push([]);
@@ -351,7 +341,6 @@ describe('listItemsFromRows', () => {
 
   it('falls back to zero cost for runs missing from the cost map', async () => {
     nextSelectKind = 'bulkCost';
-    // cm:guard an EMPTY cost read is the case, not a zero-valued row: a run with no usage records must fall back to `EMPTY_COST` rather than come back with the field missing, which would render as a blank where a reader expects nothing spent.
     bulkCostQueue.push([]);
 
     const items = await listItemsFromRows([runRow]);
@@ -373,7 +362,6 @@ describe('listItemsFromRows', () => {
 
   it('ISS-460: maps cost (via agent_sessions rollup) and resolves issueRef/issueTitle', async () => {
     nextSelectKind = 'bulkCost';
-    // cm:guard the cost rows are keyed on the RUN and reached through `agent_sessions`, because `usage_records.session_id` is a session id and not a job id: a fixture keyed any other way passes against a build that reads the wrong column (ISS-460).
     bulkCostQueue.push([
       {
         runId: RUN_ID,
@@ -410,7 +398,6 @@ describe('listItemsFromRows', () => {
   });
 });
 
-// cm:guard these two assert the agent_sessions JOIN, not the projection — drop the join and `failureCause`/`failureDetail` go null while every other assertion in this file stays green, which is exactly the ISS-885 defect (every failed attempt rendering one free-text sentence) reaching the UI unnoticed
 describe('ISS-885: the attempt timeline carries the classified cause', () => {
   it('joins the session cause + detail onto the attempt, not just the job free text', async () => {
     runRowQueue.push([runRow]);

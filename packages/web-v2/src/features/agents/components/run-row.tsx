@@ -38,7 +38,6 @@ function StateChip({ row }: { row: RunSessionRow }) {
 }
 
 /** The three marks, rendered as three. */
-// cm:guard each mark gets its own element with its own text, and there is no "closed" rollup: a session that reached terminal while its worktree is still on disk is a recoverable diff, and the same pair with the tree gone is not — one badge for the pair loses exactly that (ISS-964 criterion 52).
 function Marks({ row }: { row: RunSessionRow }) {
   const m = closeMarks(row);
   const items: Array<{ on: boolean; label: string }> = [
@@ -66,12 +65,10 @@ function Marks({ row }: { row: RunSessionRow }) {
 }
 
 /** What core's own heartbeat says, where it disagrees with the chip beside it. */
-// cm:guard this line is rendered from `lastActivityAt`, `sessionStatus` and `sessionFailureReason`, all three of which the route has always sent and this row used to discard. A run the box calls `live x runnable` whose heartbeat is four hours old drew the same "Working" chip as one mid-turn, which is what made a pane stopped on a prompt invisible for 25 hours (ISS-205, ISS-998).
 function CoreReading({ row, now }: { row: RunSessionRow; now: number }) {
   const silence = silenceText(row, now);
   const split = disagreement(row);
   const ended = endReasonText(row);
-  // cm:guard a reason core holds is rendered whichever side of terminal the session is on, and only the WORDING differs: an ending is stated as one, and a note on a session still running is stated as a note. Rendering neither is the silence this row exists to end (ISS-998).
   const note = pendingReasonText(row);
   const lines = [silence, split && disagreementText(split), ended, note].filter(
     Boolean,
@@ -109,7 +106,6 @@ export function RunRow({ row, now }: RunRowProps) {
         )}
       </span>
       {waiting &&
-        // cm:guard `waitingOn` IS the question's id, so the link carries it and the Questions tab opens on THAT card. A link to the tab alone leaves a reader with several open decisions unable to tell which one this run is parked on, which is the whole of what the row was supposed to answer (ISS-998).
         (row.waitingOn ? (
           <Link
             href={`${pathname}?tab=questions&q=${encodeURIComponent(row.waitingOn)}`}

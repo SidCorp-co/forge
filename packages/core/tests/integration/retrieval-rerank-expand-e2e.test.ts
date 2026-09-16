@@ -61,7 +61,6 @@ beforeAll(async () => {
   process.env.LITELLM_FAST_MODEL = 'stub-fast';
   delete process.env.RERANK_MODEL;
 
-  // cm:guard the mocked module is imported and settled BEFORE anything that imports it — resolved concurrently inside one Promise.all, search-service received the real rerank.js while this file held the mock (two instances, measured 2026-09-04), and the holdout assertion failed on a service that drew at random
   const rerank = await import('../../src/memory/rerank.js');
   const [svc, routesMod, errMod, ridMod, jwtMod, emb] = await Promise.all([
     import('../../src/memory/search-service.js'),

@@ -36,7 +36,6 @@ describe('list_registrations reports mode only where it gates (ISS-994)', () => 
     await truncateAll(harness.db);
 
     const user = await createTestUser(harness.db);
-    // cm:why the fixture names `mode` at three stages because that is what sidpeak and forge-dev stored when ISS-994 was filed; a fixture with only `open.mode` could not tell the fix from the old default
     const project = await createTestProject(harness.db, user.id, {
       agentConfig: {
         pipelineConfig: {
@@ -80,7 +79,6 @@ describe('list_registrations reports mode only where it gates (ISS-994)', () => 
     expect(rows.find((r) => r.stage === 'awaiting_release')?.mode).toBeNull();
   });
 
-  // cm:guard `enabled` is NOT inert off the entry status — `buildLadder` filters the rendered status ladder by it — so narrowing `mode` must leave this reading the stored value at every stage.
   it('keeps reporting enabled at every stage', async () => {
     const rows = await mods.listSkillRegistrations(projectId);
     expect(rows.find((r) => r.stage === 'awaiting_release')?.enabled).toBe(false);

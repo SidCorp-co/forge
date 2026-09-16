@@ -110,7 +110,6 @@ describe('room-delivery marker queries', () => {
     });
   }
 
-  // cm:why only a real database answers the null branch: `->> 'tmid'` yields SQL NULL for a room's own messages and `= NULL` is NULL rather than true, so an equality predicate stops deduping the main channel entirely and a mocked db cannot see it (ISS-987 criteria 18, 19, 20)
   it('does not dedup a thread against a different thread in the same room', async () => {
     await seedSession('running', { agentChat: marker('room-1', { tmid: 'thread-a' }) });
 

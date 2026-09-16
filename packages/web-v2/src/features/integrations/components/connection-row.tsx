@@ -160,7 +160,6 @@ function RemoveButton({ connection }: { connection: ConnectionDirectoryItem }) {
   );
 }
 
-// cm:guard show the provider pill only when the TITLE is not already the provider label — `displayName` falls back to that label, so printing both rendered "Coolify deploy Coolify deploy" on every one of the 17 unnamed rows on forge-beta 2026-09-06
 export function ConnectionRow({
   connection,
   ownerLabel,
@@ -189,7 +188,6 @@ export function ConnectionRow({
   const providerLabel = PROVIDER_LABEL[connection.provider] ?? connection.provider;
 
   return (
-    // cm:guard the element that opens the drawer is a REAL <button> holding only what it describes, and the Disable/Enable/Remove buttons are its SIBLINGS — the card this row replaced wrapped them all in a role="button" div (ISS-429), which exposes one control containing four others: a nested-interactive structure that flattens the inner controls' semantics for assistive technology. What it costs is that the gap between the text and the status pill no longer opens the drawer; what it buys is a native keyboard path and no hand-written Enter/Space handler.
     <div className="flex flex-wrap items-center gap-x-3 gap-y-1 border-t border-line-subtle px-3 py-2">
       <button
         type="button"
@@ -275,7 +273,6 @@ export function ConnectionRow({
             <RemoveButton connection={connection} />
           </>
         ) : (
-          // cm:guard say WHY the actions are absent rather than rendering buttons that 403 — a plain org member can see this credential and cannot change it, and a disabled button with no reason reads as a bug
           <span className="fg-body-sm text-subtle">
             Read-only — only an admin of {ownerLabel} can change this credential.
           </span>

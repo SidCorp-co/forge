@@ -46,7 +46,6 @@ describe('ISS-888 — drive can produce the completion signal the finalizer read
     expect(stepHandoffSchema.safeParse(DRIVE_PAYLOAD).success).toBe(true);
   });
 
-  // cm:guard the finalizer probes `issue_step_contexts.step = jobs.type`, so the discriminator the agent sends MUST be the literal job type — a handoff written under any other name is a row the rescue cannot find, and the job retries with the work already done.
   it('rejects a drive payload sent under another step name', () => {
     const wrong = { ...DRIVE_PAYLOAD, step: 'code' };
     expect(stepHandoffSchema.safeParse(wrong).success).toBe(false);

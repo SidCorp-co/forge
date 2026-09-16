@@ -39,7 +39,6 @@ export interface BuildSystemPromptInput {
   progressFacts?: string | null | undefined;
 }
 
-// cm:guard soul and greeting render BEFORE the persona and instructions AFTER it, verbatim, under headings the model reads as its own: the persona says where it is speaking and how the door works, and a self that came after that would read as a footnote to the channel rather than the identity the channel is a venue for (ISS-1034 criterion 3).
 function renderWho(self: SelfSummary): string | null {
   const lines: string[] = [];
   const soul = self.soul?.trim();

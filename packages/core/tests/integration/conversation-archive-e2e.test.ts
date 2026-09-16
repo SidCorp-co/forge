@@ -40,7 +40,6 @@ beforeAll(async () => {
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
-  // cm:edge lockstep -> packages/core/src/index.ts — the mount is `/api/conversations`; this file builds its own app, so the two can disagree about where the router sits and every URL below is absolute.
   app.route('/api/conversations', conversationRoutes);
   app.onError(errorHandler);
 }, 120_000);
@@ -108,9 +107,6 @@ describe('an archived room leaves the default list', () => {
 
     const after = await list('');
     expect(after.items.map((r) => r.id)).toEqual([kept.id]);
-    // cm:guard the total is asserted SEPARATELY from the items because it is computed separately:
-    // the route counts what survived the scope filter, so a list filtered and a count that was not
-    // would print one row over "2 conversations" and page somebody into an empty second page.
     expect(after.total).toBe(1);
   });
 
@@ -138,9 +134,6 @@ describe('an archived room leaves the default list', () => {
     expect((await list('&archived=1')).items).toEqual([]);
   });
 
-  // cm:guard `archived=false` is asserted as a LIVE list rather than an archived one: with
-  // `z.coerce.boolean()` in the route this case is the one that goes red, because the string
-  // "false" coerces to true and the caller asking for live rooms gets the archived ones.
   it('reads archived=false as the live side and not as the archived one', async () => {
     const kept = await room('kept');
     const filed = await room('filed away');
@@ -214,8 +207,6 @@ describe('the PATCH body is refused by name rather than answered with a no-op', 
     const res = await patch(filed.id, { title: 'after', archived: true });
     expect(res.status).toBe(200);
     const body = (await res.json()) as { title: string | null; archivedAt: string | null };
-    // cm:guard BOTH are asserted on the one answer: the handler runs two writes, and returning the
-    // rename's row would hand back `archivedAt: null` for a room it had just archived.
     expect(body.title).toBe('after');
     expect(body.archivedAt).not.toBeNull();
   });

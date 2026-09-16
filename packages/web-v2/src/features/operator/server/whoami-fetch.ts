@@ -14,7 +14,6 @@ function resolveApiBase(): string {
   return base.replace(/\/+$/, "");
 }
 
-// cm:edge contract -> packages/core/src/admin/routes.ts — GET /api/admin/whoami answers {isAdmin,email} instead of 403ing, and its 403s carry `code` (EMAIL_NOT_VERIFIED from assertEmailVerified vs ADMIN_ONLY)
 export async function fetchOperatorWhoami(
   token: string | undefined,
 ): Promise<OperatorWhoamiResult> {

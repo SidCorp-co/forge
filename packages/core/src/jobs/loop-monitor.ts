@@ -37,7 +37,6 @@ import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
 
-// cm:guard resolve `schedules/dispatch.js` at first USE, never as a static import — it pulls a prompt-builder chain and through it the env-validating embeddings module, which every consumer of the loop monitor would then load, breaking hermetic suites that do not stub env (ISS-584 B).
 type RedispatchFn = (
   sessionId: string,
 ) => Promise<{ ok: boolean; status: string; sessionId?: string; deviceId?: string }>;
@@ -52,7 +51,6 @@ async function getRedispatchScheduleFn(): Promise<RedispatchFn> {
   return _redispatchScheduleFn;
 }
 
-// cm:guard every hop threshold is FLOORED at MIN_TIMEOUT_MS and the floor is the rule: a low env override would otherwise reap healthy rows faster than a live agent can report. The env names are `getLoopThresholds`' own and must keep the values the demoted sweepers used (ISS-232, ISS-378) — a deploy already carries them, so renaming one silently restores the default on every box that set it.
 const QUEUE_TIMEOUT_MS_DEFAULT = 120_000;
 const HEARTBEAT_TIMEOUT_MS_DEFAULT = 3 * 60_000;
 const ACK_TIMEOUT_MS_DEFAULT = 3 * 60_000;
@@ -68,7 +66,6 @@ const ACK_FAST_MS_DEFAULT = 90_000;
  *  bumped 5→60 min because legit forge-release/forge-code merges run >5min
  *  between event emissions). Exported so the demoted stale-detector alarm can
  *  derive its margin from the same number. */
-// cm:guard never lower RESULT_QUIET_MINUTES — legitimate release/code merges run long and get reaped as orphans
 export const RESULT_QUIET_MINUTES = 60;
 
 function readTimeoutEnv(name: string, fallback: number): number {
@@ -161,7 +158,6 @@ type KillGateCandidateRow = {
   failure_reason: string | null;
 };
 
-// cm:guard the kill gate's own columns, and `j.` qualified because the candidate query joins `agent_sessions` — an unqualified `id` there is ambiguous at the DB, not at the type checker.
 const KILL_GATE_CANDIDATE_COLUMNS = sql`j.id, j.project_id, j.issue_id, j.device_id, j.runner_id,
            j.kill_requested_at, j.kill_confirmed_at, j.kill_outcome`;
 
@@ -232,19 +228,15 @@ async function resolveKillGateDecision(
 
   const requestedAt = ref.killRequestedAt;
   if (!requestedAt || !isKillEpisodeLive(ref)) {
-    // cm:guard no wedge here — nothing is actionable until the kill is confirmed or times out; a wedge now would occupy the per-entity dedupe slot (wedge.ts) and swallow the actionable phase-2 wedge below
-    // cm:guard an aged-out request opens a NEW episode (requestJobKill clears the old answer) — reading it as "phase 1 already done" would fail+retry a job whose runner was never told to stop this time round
     await requestJobKill(ref, cfg.error);
     return { phase: 'kill_requested' };
   }
 
   if (Date.now() - requestedAt.getTime() < killGraceMs()) {
-    // cm:why re-publish job.cancel on every tick while awaiting confirmation — a WS blip that drops the first publish must not park a job whose runner reconnects before the grace elapses; idempotent, the runner answers not_found
     await requestJobKill(ref, cfg.error);
     return { phase: 'awaiting_kill' };
   }
 
-  // cm:guard record never_claimed, NOT not_found — no runner answered, and an audit column that invents an answer is the state-never-lies violation (`VISION: state-never-lies`) this gate exists to prevent
   const { confirmed, outcome } = cfg.forceConfirmAfterGrace
     ? { confirmed: true, outcome: ref.killOutcome ?? ('never_claimed' as const) }
     : await resolveKillConfirmation(ref);
@@ -274,7 +266,6 @@ async function resolveKillGateDecision(
   return { phase: 'reaped', updated, confirmed };
 }
 
-// cm:guard the unconfirmed park is the ONE reap outcome with no retry and a possibly-live agent — its wedge must never reuse the confirmed branch's "routed to retry" text, or the operator reads "handled" and leaves the process writing git (`VISION: state-never-lies`)
 const UNCONFIRMED_WEDGE_ACTION =
   'NO retry was scheduled and the issue is parked at `waiting`. Before resuming it, check the assigned device and kill any agent process still running for this job — resuming while it lives puts two agents on the same worktree.';
 
@@ -392,11 +383,9 @@ export async function reapZombieSessions(
   const { queueMs, heartbeatMs, ackFastMs } = getLoopThresholds();
   const queueCutoff = new Date(now.getTime() - queueMs);
   const heartbeatCutoff = new Date(now.getTime() - heartbeatMs);
-  // cm:guard an ISO string, NEVER a Date — this one cutoff is bound inside a raw `sql` COALESCE template below, where drizzle has no column type to serialise a Date against and postgres-js throws on bind, taking down the sweep's first pass and (pre per-pass isolation) every reaper after it. The `lt()` cutoffs above are column-based and fine; only the template needs this.
   const ackFastCutoffIso = new Date(now.getTime() - ackFastMs).toISOString();
   const projectFilter = scope.projectId ? eq(agentSessions.projectId, scope.projectId) : undefined;
 
-  // cm:guard the CAS on `status='queued'` is what keeps a worker claiming concurrently from being stomped, and `dispatchedAt` falls back to `createdAt` because rows predating that column have none — without the fallback every one of them reads as queued since the epoch and is failed on the first tick.
   const queuedFailed = await applyKernelTransition(db, {
     entity: 'session',
     returning: SWEEP_SESSION_COLUMNS,
@@ -431,8 +420,6 @@ export async function reapZombieSessions(
     });
   }
 
-  // cm:guard keep the startedAt → updatedAt → createdAt fallback chain — a rolling deploy leaves workers on older code that stamp fewer of these columns, and reading only the first one over-sweeps every session they own.
-  // cm:guard escalation and agent-chat sessions (ISS-675, ISS-727) MUST match here even though they carry no `metadata.type`: they ride the same runner heartbeat, and an attached-then-hung runner has `claudeSessionId` set, so the no-client hop below can never claim it — dropping them from this hop leaves the session `running` forever, no completion bridge, silence in the room, and the per-rid dedup never clears.
   const heartbeatFailed = await applyKernelTransition(db, {
     entity: 'session',
     returning: SWEEP_SESSION_COLUMNS,
@@ -440,7 +427,6 @@ export async function reapZombieSessions(
     set: { failureReason: 'heartbeat_timeout', updatedAt: now },
     where: and(
       eq(agentSessions.status, 'running'),
-      // cm:guard the ONLY exemption from this hop, and it is an exemption from the QUIET CLOCK alone — the park is bounded elsewhere: by residency where it holds a process, and by the asker's own deadline where it released one (`park-deadline.ts`, both clocks). Written as IS DISTINCT FROM so a NULL still gets reaped: print-mode sessions never report a state, and reading NULL as "maybe parked" would exempt every job on the old path from the heartbeat hop.
       sql`${agentSessions.runtimeState} IS DISTINCT FROM 'awaiting_input'`,
       or(
         and(
@@ -501,7 +487,6 @@ export async function reapZombieSessions(
       sql`${agentSessions.claudeSessionId} IS NULL`,
       sql`COALESCE(${agentSessions.metadata}->>'type','') NOT IN ${NON_CLIENT_METADATA_TYPES}`,
       or(
-        // cm:why the short window is safe HERE and nowhere else in this hop: the ack is positive evidence that a live client received the turn, so a NULL `claudeSessionId` past `ackFastMs` means claude died on startup rather than that the runner is old. A runner that does not ack matches none of this and falls through to the conservative heartbeat branches below (ISS-584 C).
         and(
           sql`${agentSessions.metadata}->>'acked' = 'true'`,
           sql`COALESCE(${agentSessions.dispatchedAt}, ${agentSessions.createdAt}) < ${ackFastCutoffIso}`,
@@ -608,7 +593,6 @@ export async function reapSessionLostJobs(
   const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
   for (const row of candidates) {
     try {
-      // cm:guard the cause comes from the SESSION's own `failure_reason`, never one literal for every way a session can die: `infra` derives `retry`, and retrying a job whose park went unanswered puts a second agent on a question still nobody has answered (ISS-964 criterion 26).
       const cfg: KillGateReapConfig = {
         hop: 'heartbeat',
         where: and(eq(jobs.id, row.id), inArray(jobs.status, ['dispatched', 'running'])),
@@ -705,15 +689,12 @@ export async function runLoopMonitor(
 ): Promise<LoopMonitorResult> {
   const ackMisses = await reapAckMisses(now, scope);
   const sessions = await reapZombieSessions(now, scope);
-  // cm:guard BEFORE reapSessionLostJobs, same same-tick propagation as ISS-280 — a park closed this tick must free its job on this tick too, or the runner slot it was holding stays held for a full extra minute for no reason.
-  // cm:guard TWO clocks, and both are needed: the residency clause exempts a human park, so the deadline reap is the only clock left over it — drop either call and a park sits under none at all (ISS-964 criteria 24, 34).
   const parkClocks = {
     expiredParks: await reapExpiredParks(now, scope),
     unansweredParks: await reapUnansweredParks(now, scope),
   };
   const sessionLostJobs = await reapSessionLostJobs(now, scope);
   const resultMisses = await reapResultMisses(now, scope);
-  // cm:guard AFTER the park reap, and that order is the hop's only path out of `unknown`: a park closed this tick is a terminal session, which is what makes `resolveSessionSend` say `gone` rather than keep waiting. Running it first would defer every fallback by a full tick for no reason.
   const lapsedAnswers = await resumeLapsedAnswers(now, scope);
   return { ackMisses, sessions, ...parkClocks, sessionLostJobs, resultMisses, lapsedAnswers };
 }

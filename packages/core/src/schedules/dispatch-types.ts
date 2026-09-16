@@ -39,7 +39,6 @@ export interface DispatchScheduleInput {
 }
 
 export type DispatchScheduleResult =
-  // cm:why 'running' (interactive session path, decided later by the session's own lifecycle -> writeBackScheduleLastStatus) vs 'success' (script path, already ran synchronously in dispatchScheduleScriptRun) — the caller never re-derives which
   | { ok: true; sessionId: string; status: 'running' | 'success'; resolvedProjectId: string }
   | {
       ok: false;

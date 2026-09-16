@@ -19,7 +19,6 @@ export interface OpenConversationArgs {
   projectId: string;
   title?: string | null;
   people?: string[];
-  // cm:guard the agent id is optional for the same reason it is on `addHandle`: a room may be opened about a project whose agent has never been minted, and the server mints it inside the same transaction that opens the room (ISS-1011).
   handles?: Array<{ userId?: string | null; projectId: string }>;
 }
 
@@ -32,9 +31,6 @@ export interface SendResult extends Pick<ConversationDetail, "messages" | "windo
 }
 
 export const conversationsApi = {
-  // cm:guard `archived` is sent as the string "1" or "0" and never as `String(boolean)`: the route
-  // takes a four-value literal by name rather than coercing, and "false" coerced would have asked
-  // for the archived side while meaning the live one (ISS-1028).
   /** `GET /api/conversations?projectId=` — the rooms this project's handle speaks in. */
   list: (projectId: string, pageSize = 50, archived = false) =>
     apiClientList<ConversationRow>(
@@ -78,7 +74,6 @@ export const conversationsApi = {
       `/conversations/candidates?${new URLSearchParams({ projectId })}`,
     ),
 
-  // cm:guard two calls and not one taking a kind, because adding a person and adding an agent are two acts with different blast radius: one changes who reads the room, the other changes what the room can see. A single call would make the screen's separation a convention rather than a shape (ISS-1011 criterion 14).
   /** `POST /api/conversations/:id/people` — add a colleague. */
   addPerson: (id: string, userId: string) =>
     apiClient<ConversationMembership>(`/conversations/${id}/people`, {
@@ -87,7 +82,6 @@ export const conversationsApi = {
     }),
 
   /** `POST /api/conversations/:id/handles` — add an agent, for one of its projects. */
-  // cm:guard the agent id is OMITTED and not sent as null when the project has no handle yet: the route's schema is `.strict()` with `userId` optional, so a literal null is a refused body rather than the mint-on-add path (ISS-1011).
   addHandle: (id: string, userId: string | null, projectId: string) =>
     apiClient<ConversationMembership>(`/conversations/${id}/handles`, {
       method: "POST",
@@ -100,7 +94,6 @@ export const conversationsApi = {
       method: "DELETE",
     }),
 
-  // cm:guard this call RUNS the turn and returns what the room then holds, so it takes as long as an answer takes: a caller that treats it as a fire-and-forget would show the question and never the reply, because there is no second request that fetches one.
   /** `POST /api/conversations/:id/messages` — say something, and get the room back. */
   send: (id: string, content: string) =>
     apiClient<SendResult>(`/conversations/${id}/messages`, {

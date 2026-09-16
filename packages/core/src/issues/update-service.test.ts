@@ -11,7 +11,6 @@ const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
 
 const txSelectLimit = vi.fn();
 let existingLabels: { labelId: string }[] = [];
-// cm:why the read-back is awaited directly with no `.limit()`; `txSelectLimit` exists only so a reintroduced cap shows up as a call this test can assert on, rather than as a TypeError on a promise
 const txSelectWhere = vi.fn(() => {
   const rows = existingLabels;
   return {

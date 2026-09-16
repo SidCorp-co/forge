@@ -16,7 +16,6 @@ import { type Device, devices } from '../db/schema.js';
 import { verifyPat } from './pat.js';
 import { isPatLike } from './pat-format.js';
 
-// cm:guard deliberately NOT routed through `authenticatePat`, so a box's traffic does not charge the per-token REST bucket. Device surfaces carried no rate limit at all before ISS-932 (the argon2 device token had none), the pool is polled once per binding per tick, and `/ws` authenticates once for a connection that then lives for hours — metering any of those through the `RULES.patRead`/`RULES.patWrite` knobs would throttle a fleet on numbers an operator tuned for people sharing one credential. The token's own `rate_limit_max` is still pinned at mint (`devices/credential.ts`) for the surfaces that DO meter.
 export async function verifyDeviceCredential(plaintext: unknown): Promise<Device | null> {
   if (typeof plaintext !== 'string' || !isPatLike(plaintext)) return null;
 
@@ -25,7 +24,6 @@ export async function verifyDeviceCredential(plaintext: unknown): Promise<Device
   if (!deviceId) return null;
 
   const [device] = await db.select().from(devices).where(eq(devices.id, deviceId)).limit(1);
-  // cm:guard revoking a box and revoking its token are two writes, and this is the one that fails closed if the other did not land. Trusting the token alone leaves an unpaired machine authenticated for as long as its credential outlives the revoke.
   if (!device || device.status === 'revoked') return null;
   return device;
 }

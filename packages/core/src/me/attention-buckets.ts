@@ -102,19 +102,15 @@ import { visibleProjectsWhere } from '../lib/authz.js';
  *   row with no bookkeeping. Nothing here writes state.
  */
 export const NEEDS_REVIEW_STATUSES = ['developed', 'reopen'] as const;
-// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts#KERNEL_TO_LABEL — these are exactly the statuses that axis labels `needs_human`, hand-copied because core may not value-import contracts (boot crash; contracts-runtime-boundary.test.ts). Parity is asserted in me/attention-parity.test.ts; a status whose label moves must move here in the same change or one of the two surfaces lies.
 export const AWAITING_INPUT_STATUSES = ['waiting', 'needs_info'] as const;
 const FAILED_JOB_RESOLVED_ISSUE_STATUSES = ['closed', 'awaiting_release'] as const;
 const PER_BUCKET = 5;
 const PENDING_SKILL_UPDATES_CAP = 20;
 
-// cm:why 20, not PER_BUCKET: the cap must still return the draft this bucket was built to surface. Measured on forge-beta 2026-08-30 against the CALLER's full cross-project set (428 drafts, 16 projects — not the 22 in forge-dev alone), ISS-871 ranks 17th under this bucket's priority-then-recency order, so every cap at or below 16 renders the bucket unable to show its own reason for existing. Under plain recency it ranked 28th, which is why the order is not `desc(updatedAt)` like its neighbours.
 export const UNSEEN_DRAFTS_CAP = 20;
 
-// cm:why 20, on the `UNSEEN_DRAFTS_CAP` precedent and measured the same way: 56 issues sat at `waiting`/`needs_info` across 17 of 33 projects fleet-wide on 2026-09-08, so `PER_BUCKET` reaches 9% of the population. It is 20 rather than 56 because the ordering below is what makes a cap defensible — every question holding a claim sorts above every question holding none, so the rows this bucket exists for are inside any cap by construction, which is the guarantee plain recency could not give at any size (ISS-964 criterion 23).
 export const AWAITING_INPUT_CAP = 20;
 
-// cm:why drizzle cannot reference one table twice in a statement, and the retry-chain exclusion compares a job against its own retry row.
 const retryJobs = alias(jobs, 'retry_jobs');
 
 export interface AttentionIssueRow {
@@ -167,8 +163,6 @@ export interface AttentionReconcileRow {
   projectName: string;
 }
 
-// cm:edge contract -> packages/core/src/notifications/notify-transitions.ts — a park notifies `assigneeId ?? createdById`, so the bucket that carries the same park must resolve ownership the same way. Notifying the creator and then bucketing by assignee is how a question reaches a human's inbox and no list they can act on: an agent-filed issue has no assignee, and MCP `forge_issues` cannot set one.
-// cm:why `needsReview` deliberately keeps assignee-only. A question parked on an issue you filed is addressed to you; a `developed` issue with no assignee is not yours to review merely because you opened it.
 export function ownedForAnswer(userId: string) {
   return or(
     eq(issues.assigneeId, userId),
@@ -197,18 +191,12 @@ export function selectNeedsReview(userId: string): Promise<AttentionIssueRow[]> 
     .limit(PER_BUCKET) as Promise<AttentionIssueRow[]>;
 }
 
-// cm:guard the identifiers are written LITERALLY and the subquery is CORRELATED on purpose. Drizzle renders a column reference inside a raw `sql` template unqualified, which here would bind `issue_id` to the outer row and cost every issue the whole table's total; and a grouped subquery would need `groupBy`/`as`, which `attention-routes.test.ts`'s mock chain does not implement, so the unit lane would fail on a shape rather than on a claim.
-// cm:guard only `status='open'` costs anything: an answered or voided question holds no claim and no worktree, so counting it would rank a settled decision above a live one for as long as the row exists (ISS-964 criterion 19).
-// cm:guard `q.project_id = issues.project_id` as well as the issue, in BOTH this helper and `openQuestionColumn`: the two columns are independent, so a question row naming another project would otherwise supply this row's cost and — through the sibling helper — the `id` the screen opens (ISS-989).
-// cm:guard the `::int` is load-bearing now that this is SELECTED and not only ordered by: postgres `sum()` is numeric and this driver hands numerics back as STRINGS, so without the cast the reader gets "2" where it typed `number` — and `"10" < "9"` is true, so any client-side sort over these would rank ten below nine while every server-side order stayed correct.
 function openQuestionCost(column: string): SQL<number> {
   return sql<number>`coalesce((select sum(q.${sql.raw(column)}) from agent_questions q
     where q.issue_id = issues.id and q.project_id = issues.project_id
       and q.status = 'open'), 0)::int`;
 }
 
-// cm:guard cost FIRST and age only as the tie-break, in this order: `claims_held` denies a runner slot to every other issue, `workspaces_pinned` denies a checkout, `dependents` denies progress to issues that are merely waiting. Ordering by recency instead is what put a question costing nothing above one holding two claims since yesterday (ISS-964 criterion 19).
-// cm:guard the tie-break is ASCENDING — longest-waiting first — where every neighbouring bucket is `desc(updatedAt)`. This is a queue of answers a human OWES, so the row that has waited longest is the one to show; newest-first buries it exactly as the cost ordering above exists to prevent. `updatedAt` stays in `issueFields` because the reader is told how long it has waited.
 const AWAITING_COST_ORDER = [
   desc(openQuestionCost('claims_held')),
   desc(openQuestionCost('workspaces_pinned')),
@@ -216,11 +204,6 @@ const AWAITING_COST_ORDER = [
   issues.updatedAt,
 ] as const;
 
-// cm:guard this bucket's row is WIDER than `issueFields` and the widening stops here: cost is meaningful only where somebody is waiting, so putting these on the shared shape would have every other bucket carry three zeros and a null. The same correlated-subquery form as the ordering, for the reason its own guard gives — a grouped subquery needs `groupBy`/`as`, which `attention-routes.test.ts`' mock chain does not implement, so the unit lane would fail on a shape rather than on a claim.
-// cm:guard the numbers are the ones the ORDER is computed from, read through the same `openQuestionCost` helper rather than restated: a reader shown a cost that does not match the rank is worse off than one shown no cost, because the queue then looks wrong rather than unexplained (ISS-964 criteria 19, 53).
-// cm:guard `ownedForAnswer` answers "is this yours to answer" and never "may you see this project", so the project predicate is a SECOND conjunct and not a substitute for it. Without it a person removed from the project AND from its org kept receiving that project's rows — title, status, wait cost, blocker kind — for as long as their user row existed (ISS-989).
-// cm:edge contract -> packages/core/src/lib/authz.ts#visibleProjectsWhere — the joins exist to feed that predicate and must stay keyed on the CALLER, or its `project_members.user_id IS NOT NULL` term reads as "this project has any member" and admits everything. Both tables are composite-PK'd on exactly these columns, which is what makes a LEFT JOIN here incapable of multiplying a row.
-// cm:guard a WHERE term and never a filter over the returned rows: `AWAITING_INPUT_CAP` is applied by the database, so a post-filter would hand a permitted caller a page shortened by other people's rows instead of a fenced one.
 export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRow[]> {
   return db
     .select({
@@ -252,9 +235,6 @@ export function selectAwaitingInput(userId: string): Promise<AttentionAwaitingRo
     .limit(AWAITING_INPUT_CAP) as Promise<AttentionAwaitingRow[]>;
 }
 
-// cm:guard `status='open'` here too, matching `openQuestionCost` exactly: a settled question names no blocker anybody still has to act on, and showing one would put a resolver's name against a wait that has ended. NULL is the honest answer for an issue a person blocked by hand, which has no question row at all.
-// cm:guard the `q.id` tie-break is what lets the two callers below read two columns off the SAME row: ordered by `created_at` alone, an issue whose open questions share a timestamp could report one question's kind under another's id (ISS-980 criterion 25).
-// cm:guard the identifiers are written LITERALLY and the subquery is CORRELATED, for the reason `openQuestionCost`'s own guard gives — drizzle renders a column reference inside a raw `sql` template unqualified, and a grouped subquery needs `groupBy`/`as`, which `attention-routes.test.ts`'s mock chain does not implement.
 function openQuestionColumn(column: string): SQL<string | null> {
   return sql<string | null>`(select q.${sql.raw(column)} from agent_questions q
     where q.issue_id = issues.id and q.project_id = issues.project_id
@@ -291,8 +271,6 @@ function adminsProject(userId: string) {
   );
 }
 
-// cm:guard assignment still wins: an assigned draft reaches ONLY its assignee. The creator-or-admin fallback applies while nobody owns it, so widening it past `assigneeId IS NULL` puts one proposal in two lists and each reader assumes the other triaged it.
-// cm:why the creator alone reaches NOBODY on a real deployment, which is the defect this rule exists to fix rather than a refinement of it. MCP `forge_issues create` stamps `createdById: device.ownerId` — the account that paired the runner — while the person who opens the UI signs in as a different org admin. Measured on forge-beta 2026-08-30: creator-only returned 428 drafts to the paired account nobody signs into and exactly 0 to the org admin who does, so `draft` had a bucket and still reached no human. Project admin is the same resolver `pendingSkillUpdates` already uses for a triage gate.
 function unseenDraftOwner(userId: string): SQL {
   return or(
     eq(issues.assigneeId, userId),
@@ -300,7 +278,6 @@ function unseenDraftOwner(userId: string): SQL {
   ) as SQL;
 }
 
-// cm:guard both reads of this bucket MUST go through this one predicate, and both MUST join `projects` — `adminsProject` resolves against `projects.id`/`projects.orgId`. A list built from a wider rule than the count (or the reverse) shows 20 rows under a total of 3, and the surface would then be lying in the same breath it was added to stop a surface from lying.
 function unseenDraftCondition(userId: string): SQL {
   return and(
     eq(issues.status, 'draft'),
@@ -315,7 +292,6 @@ function unseenDraftCondition(userId: string): SQL {
   ) as SQL;
 }
 
-// cm:why priority before recency, unlike every neighbouring bucket: those are capped at 5 over a caller's own handful, this one sits in front of a 428-deep cross-project backlog where pure recency means one busy project owns all 20 rows and a `high` proposal from last week is never seen.
 const PRIORITY_RANK = sql`case ${issues.priority} when 'critical' then 0 when 'high' then 1 when 'medium' then 2 when 'low' then 3 else 4 end`;
 
 export function selectUnseenDrafts(userId: string): Promise<AttentionIssueRow[]> {
@@ -328,7 +304,6 @@ export function selectUnseenDrafts(userId: string): Promise<AttentionIssueRow[]>
     .limit(UNSEEN_DRAFTS_CAP) as Promise<AttentionIssueRow[]>;
 }
 
-// cm:guard every function here returns the drizzle query UNAWAITED. Awaiting inside one makes it subscribe the moment it is called rather than when `Promise.all` subscribes, which reorders the reads against each other — and the unit lane's mock chain resolves POSITIONALLY, so an early subscriber silently serves itself another bucket's rows.
 export function selectUnseenDraftCount(userId: string): Promise<{ total: number | null }[]> {
   return db
     .select({ total: sql<number>`count(*)::int` })
@@ -363,7 +338,6 @@ export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
     .where(
       and(
         eq(commentMentions.userId, userId),
-        // cm:why the NULL branch is deliberate, not a missing join: a mention predating the notify-mentions subscriber has no notification row at all, and dropping it would silence the oldest mentions forever.
         sql`(${notifications.read} IS NULL OR ${notifications.read} = false)`,
       ),
     )
@@ -392,9 +366,7 @@ export function selectFailedJobs(userId: string): Promise<AttentionFailedJobRow[
         eq(jobs.createdBy, userId),
         eq(jobs.status, 'failed'),
         sql`${jobs.createdAt} >= now() - interval '7 days'`,
-        // cm:why every retry is inserted as a NEW row and the original stays `failed` forever, so without this a failure a retry already resolved keeps reporting itself for 7 days.
         notExists(db.select({ one: sql`1` }).from(retryJobs).where(eq(retryJobs.retryOf, jobs.id))),
-        // cm:why a job whose issue reached closed/awaiting_release was resolved by hand even though the row stays `failed`; a null-issue job (PM/system/deploy) carries no such signal, which is why the isNull branch KEEPS it.
         or(isNull(issues.id), notInArray(issues.status, [...FAILED_JOB_RESOLVED_ISSUE_STATUSES])),
       ),
     )

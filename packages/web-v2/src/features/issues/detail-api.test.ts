@@ -41,7 +41,6 @@ describe("issueDetailApi.listComments", () => {
     const res = await issueDetailApi.listComments("i1");
 
     expect(res.items).toEqual([node]);
-    // cm:why 7 rather than the 1 node returned — core's `total` counts every comment on the issue including replies, and a page carries only its roots, so it is the one count that means the same thing on page one as on the last page
     expect(res.totalCount).toBe(7);
   });
 
@@ -60,7 +59,6 @@ describe("issueDetailApi.listComments", () => {
     });
   });
 
-  // cm:guard ISS-893's bare-array case is GONE from this route on purpose, and its replacement must be a throw. A bare array carries no cursor, so a walk that tolerated it would stop after page one having pushed nothing and hand the screen an empty thread — the same silent truncation ISS-893 was about, arriving through the fix for it.
   it("refuses a shape it cannot page rather than answering an empty thread", async () => {
     fetchMock.mockResolvedValueOnce(json([node], { "X-Total-Count": "1" }));
 

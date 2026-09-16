@@ -26,7 +26,6 @@ describe('contentDisposition', () => {
     );
   });
 
-  // cm:guard the quoted parameter must never carry a raw quote, backslash or newline — the name is uploaded content, and a header value that closes its own quoting is a response-splitting vector
   it('neutralises the characters that would break out of the quoted parameter', () => {
     const header = contentDisposition('attachment', 'a"b\\c\r\nX-Evil: 1.md');
     const quoted = /filename="(.*)"/.exec(header)?.[1];

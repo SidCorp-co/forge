@@ -62,7 +62,6 @@ describe('runner quarantine backoff E2E', () => {
     if (harness) await harness.cleanup();
   });
 
-  // cm:guard every terminal row needs a DISTINCT finished_at — the streak walk orders by finished_at DESC, so two rows sharing a timestamp make which of them is "leading" a coin flip, and the `done` row deciding that flip is what would flake the reset case
   let tick = 0;
   const stamp = () => new Date(Date.UTC(2026, 7, 14) + ++tick * 60_000);
 
@@ -125,7 +124,6 @@ describe('runner quarantine backoff E2E', () => {
     const [row] = await harness.db.execute<{ quarantined_until: string }>(
       sql`SELECT quarantined_until FROM runners WHERE id = ${runnerId}`,
     );
-    // cm:why finalizing the trip's own job is what makes the NEXT call a re-trip rather than a repeat of the first — maybeQuarantineRunner excludes currentJobId, so an unfinalized row is invisible to the streak walk
     await harness.db.execute(sql`
       UPDATE jobs SET status = 'failed', error = ${ERROR},
                       finished_at = ${stamp().toISOString()}
@@ -138,7 +136,6 @@ describe('runner quarantine backoff E2E', () => {
     for (let i = 0; i < mods.RUNNER_QUARANTINE_STREAK - 1; i++) await addTerminal('failed');
   }
 
-  // cm:guard the SECOND trip must buy strictly MORE quiet than the first — this is the entire fix. A test that only asserts quarantine was set passes on the flat TTL that produced the 8-hour ubuntu1 loop.
   it('escalates on each consecutive re-trip of the same check', async () => {
     await seedStreakToTheEdgeOfTripping();
     const base = mods.RUNNER_QUARANTINE_TTL_MS;
@@ -154,7 +151,6 @@ describe('runner quarantine backoff E2E', () => {
     expect(third).toBeGreaterThanOrEqual(base * 4 * 0.9);
   });
 
-  // cm:guard one SUCCESS must reset the rung — the job history is the only strike counter, which is what keeps `clearRunnerQuarantine` from having to know the ladder exists. A counter column would go stale here instead.
   it('drops back to the first rung after a single success', async () => {
     await seedStreakToTheEdgeOfTripping();
     await tripAndMeasure();
@@ -167,7 +163,6 @@ describe('runner quarantine backoff E2E', () => {
     expect(afterSuccess).toBeLessThan(mods.RUNNER_QUARANTINE_TTL_MS * 1.5);
   });
 
-  // cm:guard the ladder must FLATTEN, never keep doubling — an unbounded ladder eventually parks a repaired box for weeks, which is a wedge dressed as a brake
   it('holds at the top rung instead of doubling forever', async () => {
     expect(mods.quarantineTtlMs(99)).toBe(mods.quarantineTtlMs(4));
     expect(mods.quarantineTtlMs(4)).toBe(mods.RUNNER_QUARANTINE_TTL_MS * 24);

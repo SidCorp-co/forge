@@ -24,7 +24,6 @@ export interface McpTool {
  * `projectSlug` is the optional `X-Forge-Project-Slug` header — tools that
  * scope by project resolve it via {@link resolveProjectIdFromSlug}.
  */
-// cm:guard there is NO device on this context and a new tool may not reintroduce one. Until ISS-931 it carried a `device` that `mcp/handler.ts` fabricated for every PAT — a row with a token id in its `id` column and `__pat_synthetic__` for a name — and the membership helpers it fed read only `ownerId`, so the 14 tools taking it never consulted the PAT `projectIds` allowlist. Gate through `assertPrincipalIsMember`/`assertPrincipalIsWriter`, which read the principal and DO consult it.
 /** The room a chat turn answers in and who it answers, for the speaker-bound tools (ISS-1034). */
 export interface ChatTurnFacts {
   conversationId: string | null;
@@ -51,7 +50,6 @@ export type McpContext = {
    * behalf. Absent on every `/mcp` transport request: a PAT holder speaks for
    * itself, and `handler.ts` never sets it.
    */
-  // cm:guard `speakerUserId` here is the LINKED author of the newest person message and never the principal: in a room the principal is the org agent, and a tool that fell back to `principal.userId` would set the agent account's preferences and file notes under its name (ISS-1034 criteria 22, 26).
   turn?: ChatTurnFacts;
   /** ISS-150 audit-log fields, threaded through for `writeMcpAudit`. */
   requestId?: string;
@@ -164,8 +162,6 @@ export function principalUserId(principal: McpPrincipal): string {
  * and covers an agent, and `publishIssueStatusChange` names a user id that
  * exists.
  */
-// cm:guard branch on `agency === 'agent'` — the POSITIVE test — and on nothing else. Since ISS-931 every `/mcp` principal is a PAT, so a `kind`-shaped test would read every caller as a human and hand all of them the ISS-812 exemption. The positive form matters since ISS-1003 made the field three-valued: `!== 'human'` would now sweep a person's own token into the device branch and attribute their write to a machine, while `=== 'human'` would never be true at all. Ownership follows the token's owner either way; what the `null` carries into the user branch is that nothing was established, which `actorAgency` reads.
-// cm:why the agent branch's `id` is the TOKEN id, which matches no `devices` row. That is not new and is not a thing this function can fix: it is the exact value `mcp/handler.ts` used to fabricate (`stubDeviceForPat(userId, tokenId)` set `id: tokenId`), kept identical when ISS-931 deleted the stub so no attribution moved with it. Whether an agent MCP write should be `{type:'user', agency:'agent'}` instead is a live question about `actor-resolution.ts:isAgent` and `outbox-worker.ts`, not a rename.
 export function principalActor(principal: McpPrincipal): TransitionActor {
   return principal.agency === 'agent'
     ? { type: 'device', id: principal.tokenId, ownerId: principal.userId }
@@ -194,7 +190,6 @@ export function principalAgency(principal: McpPrincipal): ActorAgency {
  * What this credential ESTABLISHED about who is speaking, or `null` for a
  * person's own token, which establishes nothing (ISS-1003).
  */
-// cm:guard for storing a claim about authorship and nothing else — the gate's question is {@link principalAgency}, which resolves the null to `agent`. Two readers coalescing this null in two directions is the disagreement the split exists to prevent.
 export function principalEstablishedAgency(principal: McpPrincipal): ActorAgency | null {
   return principal.agency;
 }
@@ -202,7 +197,6 @@ export function principalEstablishedAgency(principal: McpPrincipal): ActorAgency
 /** The same decision, in the shape the hooks bus and `activity_log` take. */
 export function principalHookActor(principal: McpPrincipal): Actor {
   const actor = principalActor(principal);
-  // cm:guard derive through `actorAgency`, not by re-testing `type === 'device'` here — that spelling is right ONLY because `principalActor` above already routes an agent-held PAT into the device branch. Loosen that mapping so an agent keeps `type:'user'` and a local test silently starts recording every agent write as a human, whereas this call follows it.
   return { type: actor.type, id: actor.id, agency: actorAgency(actor) };
 }
 

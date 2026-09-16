@@ -121,7 +121,6 @@ describe('a runner limit reaches every binding of its device', () => {
     expect((await healthOf(s.stranger)).limit_reason).toBeNull();
   });
 
-  // cm:guard the lastError mirror must NOT travel: attributeFailureToRunner and the adapter-failure path write that column with per-BINDING faults (a missing repo path on one project), so copying this text sideways would overwrite a real fault with a guess
   it('mirrors the detail into lastError only on the binding that failed', async () => {
     const s = await seedTwoBindings();
 
@@ -135,7 +134,6 @@ describe('a runner limit reaches every binding of its device', () => {
     expect((await healthOf(s.b)).last_error).toBeNull();
   });
 
-  // cm:guard seed the sibling's limit with SQL, never by calling the stamp: routed through the stamp this assertion passes when NEITHER half travels, which is the exact state it exists to catch
   it('clears the sibling too, so one success un-sticks the whole box', async () => {
     const s = await seedTwoBindings();
     await harness.db.execute(sql`

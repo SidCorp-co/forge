@@ -117,7 +117,6 @@ describe('redeemPairingCode', () => {
     expect(txUpdate).toHaveBeenCalledOnce();
   });
 
-  // cm:guard the ORDER is the assertion, not just that both ran. `registerDevice` and `issueDeviceCredential` write on the ambient `db`, outside this transaction, so a failure between marking the code used and minting must leave a spent code and no credential. Reversed, a crash after the mint leaves a pairing code that still redeems and a token already in the wild.
   it('marks the code used BEFORE it issues the credential', async () => {
     txExecute.mockResolvedValueOnce([
       {

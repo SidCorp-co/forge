@@ -156,11 +156,9 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — what it reports', () =
     expect(w.reason).toContain('missing_skill:open');
     expect(w.summary).toContain(`ISS-${issue.seq}`);
     expect(w.summary).toContain('triage');
-    // cm:guard the copy must name WHEN the pause started — 38 days and 38 minutes need the same wedge to read differently, and the row carries no duration, only this timestamp
     expect(w.summary).toMatch(/paused since \d{4}-\d{2}-\d{2} /);
   });
 
-  // cm:guard the specimen that must stay SILENT — the 2026-08-11 comment on ISS-765 (human-authored) rejected an age-based reaper precisely because a job legitimately queued behind the project cap is byte-identical to an orphan. This pass never looks at a `running` run, and this assertion is what proves it rather than asserting it in prose.
   it('stays silent on a healthy job queued under a running run, however old', async () => {
     const issue = await insertIssue();
     const runId = await insertRun({ issueId: issue.id, status: 'running', ageHours: 900 });
@@ -172,7 +170,6 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — what it reports', () =
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard assert the RESOLVE, not just the silence — `alerted === 0` is equally true of an inner JOIN, which never returns a zero-queue run at all, so silence alone cannot tell "cleared its own claim" from "never looked". This assertion is the only thing holding the LEFT JOIN in place.
   it('clears its own notification once the queue behind the pause has emptied', async () => {
     const issue = await insertIssue();
     const runId = await insertRun({
@@ -206,7 +203,6 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — what it reports', () =
 });
 
 describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — the scan cap cannot starve the alarm', () => {
-  // cm:guard the row cap is only safe because frozen-work rows sort FIRST — this pass writes no run state, so a processed row never leaves the candidate set, and a bare `updated_at ASC` cap lets zero-queue runs (which need nothing, and are older) consume the whole budget every minute, forever. Reproduced at exactly this shape: 200 zero-queue paused runs + one run with a queued step gave alerted=0 and the one run that needed a human was never alarmed.
   it('alarms the run with frozen work even when the cap is filled with older runs that need nothing', async () => {
     const filler = Array.from({ length: mods.PAUSED_RUN_SCAN_LIMIT }, (_, n) => n);
     for (const n of filler) {
@@ -254,7 +250,6 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — when it stays quiet an
     expect(wedgeAt().summary).toContain('3 steps');
   });
 
-  // cm:guard the copy must come from `pauseResumesItself`, never from the pass's own opinion, and since ISS-895 emptied `MACHINE_RESUMED_PAUSE_KINDS` the honest answer for EVERY kind is "a person must act". `missing_skill` is the case that changed: its resume path went with the staged lane, so the reassuring copy it used to earn is now the 23-day lie this guard exists against (the same failure `alarmAgedHolds` carries a guard for).
   it.each(['missing_skill:open', 'stage_stalled:released'])(
     'tells the operator the truth about %s — no pause clears by itself now',
     async (pauseReason) => {
@@ -273,7 +268,6 @@ describe('alarmPausedRunsWithQueuedWork E2E (ISS-879) — when it stays quiet an
     },
   );
 
-  // cm:guard the operator cancel path must reach `pipelineRunStatusChanged` — `cancelPipelineRun` only WS-broadcast for its whole life, so the wedge's ONLY clearer never fired and the notification the alarm had just written stayed unresolved forever. That is the 721-row bell the wedge module's own guard is about, and the wedge copy tells the operator to cancel, so this is the path it steers them onto.
   it('clears the notification when the operator cancels the paused run', async () => {
     const issue = await insertIssue();
     const runId = await insertRun({

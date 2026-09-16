@@ -24,7 +24,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard assert the constraint NAME through the cause, never a regex over the message — drizzle wraps the driver error, so `.message` carries only the failed SQL and a regex over it matches nothing, leaving the case red whether or not the constraint exists and carrying no signal either way.
 async function violatedConstraint(p: Promise<unknown>): Promise<string | undefined> {
   try {
     await p;
@@ -178,7 +177,6 @@ describe('ISS-947 · slug derivation', () => {
     expect(mod.slug).toBe('module');
   });
 
-  // cm:guard the two names are DISTINCT, so `labels_project_id_name_uq` does not refuse them and the collision reaches the slug — which is the whole case: name-uniqueness does not imply slug-uniqueness, and the epic's locked Q2 needs the slug unique per project.
   it('suffixes rather than refusing when two distinct names derive one base', async () => {
     const first = await createModule('API/v2');
     const second = await createModule('API v2');
@@ -254,7 +252,6 @@ describe('ISS-947 · the database refuses what the service refuses', () => {
     expect(constraint).toBe('labels_project_id_slug_uq');
   });
 
-  // cm:guard the same slug in a DIFFERENT project must be legal — the registry is per-project, and a unique index on `slug` alone rather than on `(project_id, slug)` would make the first project to name a module own that name everywhere.
   it('allows the same slug in another project', async () => {
     await createModule('Runs');
     const other = await createTestProject(harness.db, user.id);
@@ -468,8 +465,6 @@ describe('ISS-947 · the issue-detail projection', () => {
 });
 
 describe('ISS-947 · migration 0216 backfill', () => {
-  // cm:edge lockstep -> packages/core/drizzle/migrations/0216_module_slug_and_knowledge_node.sql — this case REPLAYS that file rather than restating it. A copy of the backfill pasted here would prove the copy and go green on a migration that had since been edited, which is the one failure the case exists to catch.
-  // cm:guard the columns are DROPPED and re-added by the migration itself rather than the modules being inserted with a slug — the point is to reproduce the pre-migration table, where a module row exists and the column does not, which is the only state the backfill has to survive and the one a fresh test database never reaches on its own.
   it('assigns every pre-existing module a slug, and disambiguates a collision', async () => {
     for (const stmt of [
       sql`ALTER TABLE labels DROP CONSTRAINT labels_slug_chk`,

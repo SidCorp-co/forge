@@ -97,7 +97,6 @@ function assistantBlocks(m: ChatMessage): Block[] {
   return out;
 }
 
-// cm:guard consecutive same-role turns are merged, a `role:'tool'` reply becomes a `tool_result` block in the user turn that follows its `tool_use`, and leading assistant turns are dropped — the Messages API takes strictly alternating turns starting with `user`, and a `tool_use` whose result is not in the very next user turn is a 400, not a degraded answer; the OpenAI wire accepts all three shapes, which is why the budget module may hand this adapter a history that starts mid-exchange
 export function toAnthropicMessages(messages: readonly ChatMessage[]): {
   system: string;
   messages: AnthropicMessage[];
@@ -126,15 +125,12 @@ export function toAnthropicMessages(messages: readonly ChatMessage[]): {
   return { system: system.join('\n\n'), messages: out };
 }
 
-// cm:why the Messages API has no `response_format`; the instruction is a separate, uncached system block so the cached prefix stays byte-identical whether or not a round asks for JSON
 function jsonInstruction(format: ChatResponseFormat): string {
   return format.type === 'json_schema'
     ? `Respond with a single JSON document and nothing else, valid against this JSON Schema:\n${JSON.stringify(format.json_schema.schema)}`
     : 'Respond with a single JSON object and nothing else.';
 }
 
-// cm:guard the system block and the LAST tool carry `cache_control: ephemeral` and nothing else does — Anthropic caches only to an explicit breakpoint, one marker on the last tool covers every tool before it, and a third on a per-turn block would cache what never repeats; `tools` is byte-stable across rounds AND turns, the system block is byte-stable across rounds ONLY, because `buildSystemPrompt` appends counters recomputed every turn, so the tools breakpoint survives the invalidation the system one takes (ISS-983)
-// cm:edge contract -> packages/core/src/assistant/system-prompt.ts — what the marked system block holds is composed there, and text that moves per turn put inside it costs this breakpoint, which is why `jsonInstruction` rides in a second unmarked block
 export function toRequestBody(
   req: ChatStreamRequest,
   maxTokens: number,
@@ -189,7 +185,6 @@ function mergeUsage(into: WireUsage, from: WireUsage | undefined): void {
   }
 }
 
-// cm:why Anthropic's `input_tokens` EXCLUDES cached tokens where OpenAI's `prompt_tokens` includes them — summed here so `chat_logs.usage.promptTokens` means the same thing under both adapters and `cachedPromptTokens / promptTokens` is a ratio
 function toUsage(u: WireUsage): ChatStreamUsage {
   const out: ChatStreamUsage = {};
   const read = u.cache_read_input_tokens ?? 0;

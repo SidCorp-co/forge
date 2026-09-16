@@ -99,8 +99,6 @@ export function SlashSkillsMenu({
     placement: "above",
   });
 
-  // cm:guard feature-test scrollIntoView instead of calling it blind — keeping the cursor in view is a nicety, and an environment without the method (jsdom) must still get a working menu rather than a crash inside an effect
-  // cm:guard index the row off `highlight` rather than querying a `[data-active]` attribute, so the dependency is genuinely read in the effect — otherwise a lint fix drops it from the deps and the panel silently stops following the cursor
   useEffect(() => {
     if (!open) return;
     const rows = panelRef.current?.querySelectorAll<HTMLElement>('[role="option"]');
@@ -129,14 +127,12 @@ export function SlashSkillsMenu({
           onLeave(true);
         }
       }}
-      // cm:guard focus leaving the panel closes it, with ONE exception: the textarea, which is where a Retry press hands focus back. Exempting the whole anchor row instead would exempt the send button — the next tab stop — and leave the panel mounted over the conversation, which is the stranded tab stop this closes. Exempting nothing would hide the retry's outcome the moment the user can act on it.
       onBlur={(e) => {
         const rt = e.relatedTarget as Node | null;
         if (panelRef.current?.contains(rt)) return;
         if (rt && rt === homeRef.current) return;
         onLeave();
       }}
-      // cm:guard preventDefault on the PANEL's mousedown, not just on each row — mousedown's default action moves focus, which blurs the textarea, which closes the menu, which detaches the target before its `click` is dispatched. That is what made the error state's Retry unpressable, and it is why a press on the header or an empty line dismissed the panel. Safari clears focus to the body here, so `relatedTarget` alone cannot cover it.
       onMouseDown={(e) => e.preventDefault()}
     >
       <div className="px-2 pb-1 pt-1 text-[11px] font-medium uppercase tracking-wide text-subtle">
@@ -161,7 +157,6 @@ export function SlashSkillsMenu({
           <button
             type="button"
             disabled={fetching}
-            // cm:guard hand focus back BEFORE retrying — a successful retry unmounts this button, and React fires no blur for a node removed while focused, so focus would be stranded on <body> with the panel still up and its keys (which live on the textarea) unreachable
             onClick={() => {
               onReturnFocus();
               retry();
@@ -194,9 +189,7 @@ export function SlashSkillsMenu({
             type="button"
             role="option"
             aria-selected={i === highlight}
-            // cm:why the textarea keeps focus while the menu drives off its keydown, so hover — not focus — is what moves the cursor here
             onMouseEnter={() => onHighlight(i)}
-            // cm:guard pick on mousedown, not click — the panel-level preventDefault above keeps focus in the textarea, but picking here (before any competing close can run) is what guarantees the token the insert edits still exists
             onMouseDown={() => onPick(skill)}
             className={`flex w-full items-start gap-2 rounded-md px-2 py-1.5 text-left transition-colors ${
               i === highlight ? "bg-hover" : ""

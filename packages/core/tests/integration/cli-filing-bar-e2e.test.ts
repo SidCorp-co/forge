@@ -68,7 +68,6 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   process.env.APP_BASE_URL ??= 'http://localhost:3000';
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-  // cm:guard every core import here is DYNAMIC and happens after the env above is set — `db/client.ts` binds its pool at module load, so a static import resolves the wrong database before a case runs.
   ({ fileIssueThroughCli } = await import('../../src/cli/file-issue.js'));
   ({ forgeIssuesTool } = await import('../../src/mcp/tools/forge-issues.js'));
   ({ signUserToken } = await import('../../src/auth/jwt.js'));
@@ -77,10 +76,8 @@ beforeAll(async () => {
   const { issueProjectRoutes } = await import('../../src/issues/routes.js');
   app = new Hono();
   app.route('/api/projects', issueProjectRoutes);
-  // cm:why 300s rather than the 60s most suites take: this hook imports the REST issue router AND the `forge_issues` tool, which between them pull most of core's graph, and the pairing this file exists for needs both doors in one process. No `onError` mount: `middleware/error.js` costs another whole graph to import and every case here asserts a status, never a rendered message.
 }, 300_000);
 
-// cm:why the same budget the hook above needs, for the same reason: `harness.cleanup()` drains through `quiesceBackgroundWork`, which imports the outbox worker and the queue, and those are two more whole graphs to load before a single connection is closed. A hook budget is a ceiling and not a wait — a box that loads them in a second still finishes in a second.
 afterAll(async () => {
   if (harness) await harness.cleanup();
 }, 300_000);
@@ -212,7 +209,6 @@ describe('a filing naming no category', () => {
     expect(res.status).toBe(201);
   });
 
-  // cm:guard the stored category must be NULL, not a default. A default filled in beneath the CLI layer is the API moving, which is the one thing ISS-985 says must not happen.
   it('leaves an issue row behind it at REST, carrying no category', async () => {
     await postToRest({ title: TITLE, description: WHOLE });
     const rows = await rowsTitled(TITLE);

@@ -42,8 +42,6 @@ export interface ReleaseRunState {
 /**
  * The whole of one release run, or `null` when the run is not one.
  */
-// cm:guard the live reading is taken HERE, on every call, and is never served from `release_attempts`. The ledger says what production looked like at each attempt; this question is what it looks like now, and answering it from the newest row would hand a resuming agent a reading from before the outage it was woken up for.
-// cm:guard `live` is `null` ONLY for a project that declares no probes, and that is a state `createReleaseBatch` now refuses to create. It is kept representable because a run cut before that refusal reaches this read, and collapsing it into a `down` reading would report an outage over a project that never told anyone where to look.
 export async function readReleaseRunState(runId: string): Promise<ReleaseRunState | null> {
   const [run] = await db
     .select({
@@ -92,8 +90,6 @@ export class ReleaseRunHoldingError extends Error {
 /**
  * Refuse a further attempt on a run that is already past a bound.
  */
-// cm:guard the bounds are re-read from the LEDGER here and not taken from a cached state: a run crosses a bound by time passing, so a verdict computed at the last request would let a run that went quiet an hour ago record one more attempt because nothing had asked since.
-// cm:guard this refuses the ATTEMPT and never the account. An agent that is already mid-act must still be able to say what happened — refusing that would make a holding run's last act the one nothing is recorded about, which is the act worth reading.
 export async function assertRunNotHolding(runId: string): Promise<void> {
   const bounds = readBounds(await listAttempts(runId));
   if (bounds.holding) throw new ReleaseRunHoldingError(bounds.crossedNames);

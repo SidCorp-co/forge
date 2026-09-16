@@ -52,7 +52,6 @@ export interface RecoverStrandedReleasingResult {
  * landed, and reading an unsettled promotion as "nothing happened" is how a
  * roster gets walked back over code that is serving.
  */
-// cm:edge lockstep -> packages/core/src/release-batch/ledger.ts — `openAttempt` writes the intent BEFORE the act, and this read depends on that order. Move the write after the act and this answers "no promotion" for every release killed mid-promote, which is the case it exists for.
 export async function runRecordedPromotion(runId: string): Promise<boolean> {
   const [row] = await db
     .select({ id: releaseAttempts.id })
@@ -77,7 +76,6 @@ export interface RecoverStrandedReleasingOptions {
  * Ordered recover-then-clear: the claim column is the only index onto the
  * batch's issues, so clearing first leaves nothing to read them back by.
  */
-// cm:guard the ONE writer of this recovery, and both halves are the contract: it reads each issue's ACTUAL status and moves only the ones at `releasing`, because an issue at any other status was not put there by this batch and a hardcoded `from` would record a hop that never happened. Callers must not clear `release_batch_run_id` themselves — that column is how these rows are found, and a caller that clears it first hands this pass an empty set (measured as the shape that stranded rows at `releasing` with no run to read).
 export async function recoverStrandedReleasing(
   runId: string,
   options: RecoverStrandedReleasingOptions,
@@ -94,10 +92,6 @@ export async function recoverStrandedReleasing(
     .innerJoin(projects, eq(projects.id, issues.projectId))
     .where(eq(issues.releaseBatchRunId, runId));
 
-  // cm:guard a run that PROMOTED moves nothing and clears nothing. The roster is at `releasing`
-  // over code that is on production, and both the status and the claim have to stay: the status
-  // because no other one is true, and the claim because `release_batch_run_id` is the only index
-  // onto these rows and an issue at `releasing` with no claim is unreachable by anything.
   const promoted = await runRecordedPromotion(runId);
   if (promoted) {
     logger.warn(
@@ -113,10 +107,6 @@ export async function recoverStrandedReleasing(
     };
   }
 
-  // cm:guard the destination is the project's OWN gate status and never a hardcoded one. An issue
-  // this batch never promoted is still merged, still verified and still waiting for production —
-  // which is what the gate status means — and `reopen` would say it had come back from a release
-  // that did not happen. `reopen` remains for a project with no gate to go back to.
   const gateStatus = claimed[0] ? await resolveReleaseGate(claimed[0].projectId) : null;
   const destination: IssueStatus = gateStatus ?? 'reopen';
 
@@ -137,7 +127,6 @@ export async function recoverStrandedReleasing(
       }
     }
 
-    // cm:guard a synthesized DEVICE actor and not the project owner as a user: this hop is a machine noticing a dead batch, and recording it as the owner would put a transition they never made into the interventions-per-issue metric that counts user-actor writes. Same fallback shape as `parkIssueOnCancel` (pipeline/runs-control.ts) and for the same reason.
     const fallbackId = issue.projectCreatedBy ?? issue.projectId;
     const actor: TransitionActor = options.actorUserId
       ? { type: 'user', id: options.actorUserId }
@@ -192,7 +181,6 @@ const PROMOTED_NOTE =
 /**
  * Say on each issue what happened, without moving it.
  */
-// cm:guard SILENCE here is the failure this replaces. A roster left at `releasing` with nothing on it reads as a release still running, which is the state ISS-923 measured 98 times; the comment is the only thing that makes it a situation somebody can find.
 async function noteOnRoster(
   claimed: Array<{ id: string; status: string }>,
   options: RecoverStrandedReleasingOptions,

@@ -57,13 +57,11 @@ export type HealthReading = { healthy: true } | { healthy: false; reason: string
 /**
  * One reading of the running application.
  */
-// cm:guard a transport failure is a READING, not a missing one. The pg-boss crash-loop produced no HTTP response at all — connection refused, DNS failure and abort are the shape the incident actually had, so `unreachable` must count against the deadline exactly as a 503 does. Returning null here and skipping the tick would make the only failure this gate exists to catch invisible to it.
 export async function probeHealth(
   url: string,
   fetchImpl: typeof fetch = fetch,
 ): Promise<HealthReading> {
   const target = new URL(url);
-  // cm:why the cache-buster and the no-cache header both matter — the probe reads through whatever proxy fronts the app, and a cached 200 from the build that WAS healthy is the reading that would clear a dead deploy
   target.searchParams.set('_forge_cb', String(Date.now()));
   const controller = new AbortController();
   const timer = setTimeout(() => controller.abort(), HEALTH_PROBE_TIMEOUT_MS);
@@ -116,7 +114,6 @@ export async function enqueueCoolifyHealthGate(
     retryLimit: 3,
     retryBackoff: true,
     startAfter: opts.startAfterSeconds ?? HEALTH_POLL_INTERVAL_SECONDS,
-    // cm:guard the dedup key must move with every re-poll, for the same reason `enqueueCoolifyConfirm`'s does — pg-boss drops a `send` whose singletonKey is already in flight, so a fixed key makes the first poll the only one and every gate resolves at its deadline.
     singletonKey: `health:${job.deploymentUuid}:${Date.now()}`,
   });
 }
@@ -129,7 +126,6 @@ export function findTarget(config: CoolifyConfig | null, targetId: string): Cool
 /**
  * Whether this deployment gets a health gate, and when it does not, why.
  */
-// cm:guard `window-too-short` must NOT silently become a gate. Below the floor the gate degrades to a single probe taken after its own deadline, which fails a deploy whose container simply had not finished booting — the caller settles on the build verdict and says out loud that nothing was proven, because an unproven deploy is the pre-gate state and a rolled-back healthy one is a new outage.
 export type HealthGateDecision =
   | { kind: 'gate'; job: CoolifyHealthGateJob }
   | { kind: 'not-declared' }
@@ -155,7 +151,6 @@ export function healthGateFor(args: {
   notAfter?: string;
   now?: number;
 }): HealthGateDecision {
-  // cm:guard `targetId` wins where the caller has one. The label is the fallback because a `coolify.confirm` job carries only that, and it names one target only while `provider-schemas.ts` refuses a duplicate — a binding STORED with duplicates predates that rule, and there this reads the first match's health URL while stamping its id.
   const targets = args.config?.targets ?? [];
   const target = args.targetId
     ? targets.find((t) => t.id === args.targetId)
@@ -163,10 +158,8 @@ export function healthGateFor(args: {
   const healthUrl = target?.healthUrl;
   if (!target || !healthUrl) return { kind: 'not-declared' };
   const now = args.now ?? Date.now();
-  // cm:guard the gate is SCHEDULED entirely inside the confirmation hold's own deadline, so `resolveDeployGate` cannot read the hold as failed-unconfirmed while this gate is still polling. It bounds the schedule and not the settle, and what keeps the run's outcome single-writer there is `closeRun`'s own `status IN ('running','paused')` predicate, not this line.
   const limit = args.notAfter ? Date.parse(args.notAfter) : Number.POSITIVE_INFINITY;
   const remainingMs = limit - now;
-  // cm:guard test the FLOOR with NaN in mind — `remainingMs < floor` is false for NaN, so an unparseable `notAfter` would slip past and throw a RangeError out of `toISOString()` instead of refusing
   if (Number.isNaN(remainingMs) || remainingMs < HEALTH_MIN_WINDOW_MS) {
     return { kind: 'window-too-short', remainingMs };
   }
@@ -232,8 +225,6 @@ export async function runCoolifyHealthGate(
  * The window closed with no healthy reading: record which deploy failed and on
  * what signal, page, and fail the hold.
  */
-// cm:guard NOTHING is dispatched from here. Until ISS-1042 this restored the previous image through `runCoolifyRollback`, and the reason it does not any more is that from inside this gate a build that came up dead and an outage that predates it are the same reading — so the automatic answer to both was to delete a reviewed build while the outage survived it. The deploy hold still FAILS, loudly and by name, which is what makes the operator's own `runCoolifyRollback` on `integrations/coolify-routes.ts` a decision somebody takes rather than one they discover was taken.
-// cm:guard the hold must be settled on EVERY path out of this function. It is the only thing that ends the deploy's confirmation, and a gate that pages and returns without settling leaves the run pending until the sweeper's quiet window — which reads to an operator as a deploy still in flight.
 async function failGate(
   data: CoolifyHealthGateJob,
   reason: string,
@@ -259,7 +250,6 @@ async function failGate(
 /**
  * The inbound row saying this gate's window closed unhealthy.
  */
-// cm:guard a SECOND write of this row must not end the job. Its `requestId` is deterministic and `integration_deliveries_binding_request_id_uq` is unique on (binding_id, request_id), so a re-run after a transient failure downstream would die here — before the rollback marker that is supposed to make `failGate` idempotent is ever read, and before the hold is settled. Swallowing the collision is what makes that marker the live mechanism rather than a guard describing something the code cannot reach.
 async function recordGateFailure(
   data: CoolifyHealthGateJob,
   eventName: 'deploy.unhealthy',

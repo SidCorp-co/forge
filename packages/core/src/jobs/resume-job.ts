@@ -65,8 +65,6 @@ export interface ResumeJobResult {
  * @throws {JobResumeError} `NOT_FOUND` if the job does not exist; `NOT_HELD` if
  *   it is in any other status (or the CAS lost a race).
  */
-// cm:guard resume must go through `buildRequeueUpdate`, never its own UPDATE — the row a resumed job produces has to be byte-identical to a self-released one, or `releaseHeldJobs`' once-per-lineage bound applies to one path and not the other and a resumed job quietly earns extra auto-releases
-// cm:guard the CAS on `status='held'` is the whole concurrency story — two operators pressing resume, or a resume racing `releaseHeldJobs`, must not both enqueue. The second UPDATE matches no row and this throws NOT_HELD, which is the honest answer.
 export async function resumeHeldJob(
   jobId: string,
   opts: ResumeJobOptions,
@@ -99,7 +97,6 @@ export async function resumeHeldJob(
 
   logger.info({ jobId, issueId: updated.issueId, heldReason }, 'resume: held job re-queued');
 
-  // cm:guard dispatch AFTER the commit — `dispatchRequeuedJob` enqueues, and an enqueue inside the transaction can hand the dispatcher a job id that a rollback then makes nonexistent
   await dispatchRequeuedJob(updated);
 
   roomManager.publish(projectRoom(job.projectId), {

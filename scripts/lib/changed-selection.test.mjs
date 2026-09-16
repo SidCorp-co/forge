@@ -37,7 +37,6 @@ describe('the two lanes are unioned, not preferred', () => {
 });
 
 describe('past the share the selection has stopped being a saving', () => {
-  // cm:guard the whole-suite hand-off is `files: []` because that is what vitest runs with no filter — returning the union instead would run the same files and report a full run, which reads as a saving that was not taken
   it('hands vitest no filter once the union passes the share', () => {
     const out = select({ selected: ['a.test.ts', 'b.test.ts', 'c.test.ts'], always: [] });
     expect(out.full).toBe(true);

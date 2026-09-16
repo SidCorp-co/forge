@@ -12,7 +12,6 @@ import type { ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
 
 export const ASSISTANT_INSTRUCTIONS_MAX = 2000;
 
-// cm:guard the schema declares NO user argument and is `.strict()`, so a call carrying `userId`, `email` or any other name for a person is refused whole before the handler runs: the only person this tool may write for is the one core says spoke, and an argument naming another would be the model choosing whose preferences change (ISS-1034 criterion 23).
 const input = z
   .object({
     answerStyle: z
@@ -48,7 +47,6 @@ export const forgePreferencesTool: ContextScopedMcpToolFactory = (ctx) => ({
   handler: async (raw: Record<string, unknown>) => {
     const patch = input.parse(raw);
     const turn = ctx.turn;
-    // cm:guard the refusal names the reason and the way out rather than writing for the principal: in a room the principal is the org agent, and an unlinked speaker is a person Forge cannot identify — link the account, or ask them to set it on their account page (ISS-1034 criterion 22).
     if (!turn?.speakerUserId) {
       throw new Error(
         'forge_preferences writes the preferences of the linked person who spoke, and the newest message is from nobody Forge knows — nothing may be set on their behalf. They can link their account or set it on their account page.',

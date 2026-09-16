@@ -21,7 +21,6 @@ export interface ConnectState {
   orgId?: string;
 }
 
-// cm:guard the state carries the USER and is checked against the session on the way back — without that, the callback is a CSRF hole: an attacker who gets a signed state for their own App can have a victim's browser convert it and bind the attacker's App to the victim's project.
 export function signConnectState(secret: string, state: ConnectState, nowMs = Date.now()): string {
   const body = Buffer.from(JSON.stringify({ ...state, exp: nowMs + STATE_TTL_MS })).toString(
     'base64url',
@@ -49,7 +48,6 @@ export function verifyConnectState(
   }
   if (typeof parsed.exp !== 'number' || parsed.exp < nowMs) return null;
   if (!parsed.projectId || !parsed.userId) return null;
-  // cm:guard this return is a WHITELIST, not a pass-through — a field added to ConnectState and not named here is signed, survives the round trip, and is then silently dropped on the way back. `orgId` decides who owns the credential, so losing it would quietly make every org-owned App personal.
   return {
     projectId: parsed.projectId,
     userId: parsed.userId,
@@ -61,8 +59,6 @@ export function verifyConnectState(
  * The manifest GitHub renders as the App it is about to create. `redirect_url`
  * receives the conversion code; `hook_attributes.url` is where deliveries land.
  */
-// cm:edge contract -> packages/core/src/webhooks/inbound-routes.ts — `hook_attributes.url` must be the `/api/webhooks/in/:slug` this core actually serves. GitHub stores it ON THE APP at creation time, so a path changed here after an App exists does not move that App's deliveries and they keep arriving at the old URL until someone edits the App by hand.
-// cm:guard three of these four URLs are served by CORE and take `apiBaseUrl`; only `url` is the web app. Building them all from APP_BASE_URL is what shipped on 2026-09-06 and it 404s every one of them on a split-origin deploy — the redirect visibly, at the moment the operator has already created the App, and `hook_attributes` SILENTLY forever after.
 export function buildAppManifest(args: {
   appName: string;
   webBaseUrl: string;
@@ -129,7 +125,6 @@ export async function convertManifestCode(args: {
     slug?: string;
     html_url?: string;
   };
-  // cm:guard all three or none — a connection holding an appId with no key, or a key with no webhook secret, is an authorization that half-happened. It would pass every schema and then fail at the first call with a message about the wrong thing, so refuse it here where the cause is still visible.
   if (!body.id || !body.pem || !body.webhook_secret) {
     throw new Error('github: the manifest conversion returned an incomplete credential');
   }

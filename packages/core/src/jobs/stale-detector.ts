@@ -63,7 +63,6 @@ export function staleAlarmQuery(now: Date = new Date()): SQL {
   return quietJobCandidateQuery({
     columns: sql`j.id, j.project_id, j.issue_id`,
     quietMinutes: RESULT_QUIET_MINUTES + ALARM_MARGIN_MINUTES,
-    // cm:edge lockstep -> packages/core/src/pipeline/sweeper.ts — the same term `alarmOrphanedJobs` and `alarmNeverClaimedDispatches` carry: a gated row deliberately survives the loop until killGraceMs() elapses, so reporting it is reporting the gate working.
     killGateCutoffIso: new Date(now.getTime() - killGraceMs()).toISOString(),
   });
 }

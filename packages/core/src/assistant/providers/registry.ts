@@ -50,7 +50,6 @@ export interface ResolveOptions {
   kind?: ChatTurnKind | undefined;
 }
 
-// cm:guard tolerate any shape in the jsonb (non-object, non-string entry) by returning undefined — an operator can PUT this map by hand and a throw here would 503 every chat turn on the project instead of falling to `chat_model`
 function modelForKind(byKind: unknown, kind: ChatTurnKind): string | undefined {
   if (!byKind || typeof byKind !== 'object') return undefined;
   const value = (byKind as Record<string, unknown>)[kind];

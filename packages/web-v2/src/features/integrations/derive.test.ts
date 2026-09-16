@@ -67,7 +67,6 @@ describe("deriveDirectoryStatus", () => {
         card({ status: "connected", meta: { lastHealthStatus: "needs_reauth" } }),
       ),
     ).toBe("needs_reauth");
-    // cm:guard a credential verdict outranks an open breaker — the breaker is a symptom of the refusals and showing Degraded hides the one thing the operator can act on
     expect(
       deriveDirectoryStatus(
         card({ status: "connected", meta: { breakerOpen: true, lastHealthStatus: "needs_reauth" } }),

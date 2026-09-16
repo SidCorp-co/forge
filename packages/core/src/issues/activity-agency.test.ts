@@ -69,7 +69,6 @@ describe('the agent marker reads the row, not just the actor type', () => {
     expect(out?.actor?.isAgent).toBe(false);
   });
 
-  // cm:guard THE case the owner's deferral was protecting, and the reason the read path is an OR rather than a column read. Every row written before migration 0193 carries `'human'` by DEFAULT — including the runner writes `actor_type: 'device'` correctly calls agents. Replace the `||` with `row.actorAgency === 'agent'` and this goes red, which is the whole of what "no historical row changes" means.
   it('keeps the marker on a pre-column device row carrying the human default', async () => {
     resolvesTo(true, 'device');
     const [out] = await __testing.attachActors([
@@ -78,7 +77,6 @@ describe('the agent marker reads the row, not just the actor type', () => {
     expect(out?.actor?.isAgent).toBe(true);
   });
 
-  // cm:guard agency is per ROW, not per actor, and this is the case that proves the decision was not folded into `resolveActors`' `(type, id)`-keyed map. One person legitimately appears as both: a comment they typed and a transition their session token made, in the same response. A map-level fold would give the whole batch whichever answer the last row carried.
   it('gives the same user id different answers on different rows', async () => {
     resolveActors.mockResolvedValueOnce(
       new Map([[`user:${USER}`, { type: 'user', id: USER, displayName: 'x', isAgent: false }]]),

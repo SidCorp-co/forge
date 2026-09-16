@@ -10,7 +10,6 @@ import type { OperatorWhoami, OperatorWindow, OperatorWorkspaceSort } from "./ty
 /** Weeks of signup history the adoption curve draws. */
 export const ADOPTION_WEEKS = 12;
 
-// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts — routeEvent invalidates the ["admin","ops"] PREFIX on pipeline_run.status_changed and every job.* event; a key that does not start with these two segments is one the live updates silently no-op on
 const opsKey = (...rest: (string | number)[]) => ["admin", "ops", ...rest] as const;
 
 /** `initialData` is the verdict the RSC gate already resolved for this render
@@ -78,7 +77,6 @@ export function useReapJob() {
  * to subscribe to instead, and ISS-649 chose to reuse the event rather than add
  * one.
  */
-// cm:edge contract -> packages/core/src/ws/server.ts — canSubscribe admits a `project:` room on project role OR the ADMIN_EMAILS allow-list; without that second arm every room here beyond the operator's own memberships answers subscribe.denied and this hook goes quiet without saying so
 export function useOperatorLiveRooms(projectIds: readonly string[]): void {
   const rooms = useMemo(() => projectIds.map(projectRoom).sort(), [projectIds]);
   useRooms(rooms);

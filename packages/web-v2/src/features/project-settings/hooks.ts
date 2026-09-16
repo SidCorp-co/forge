@@ -92,7 +92,6 @@ export function usePipelineConfig(id: string | undefined) {
 		queryKey: ["project", id, "pipeline-config"],
 		queryFn: () => projectSettingsApi.getPipelineConfig(id as string),
 		enabled: !!id,
-		// cm:why FEATURE_OFF and FORBIDDEN are both terminal, so a retry only delays the empty-state the caller branches on
 		retry: false,
 	});
 }
@@ -350,7 +349,6 @@ export function useUpdateLabel(id: string | undefined) {
 		onSuccess: () => {
 			qc.invalidateQueries({ queryKey: ["project", id, "labels"] });
 			qc.invalidateQueries({ queryKey: ["project", id] });
-			// cm:why the issues caches hold the module NAME on every row and in the filter's options, so a rename that skipped them would leave the old name on screen until the next refetch
 			qc.invalidateQueries({ queryKey: ["issues"] });
 			toast({ title: "Saved", tone: "success" });
 		},
@@ -429,7 +427,6 @@ export function useApplyUxPreset(id: string | undefined) {
 	});
 }
 
-// cm:why the inbox deliberately exposes NO edit-text action (decided 2026-08-12) — `text` stays in the schema for the API, not for a UI affordance
 /** PATCH a rule: severity toggle, or approve a proposal via status→active. */
 export function usePatchUxRule(id: string | undefined) {
 	const qc = useQueryClient();
@@ -510,7 +507,6 @@ export function isReindexLiveError(err: unknown): boolean {
 	return err instanceof ApiError && (err.status === 409 || err.code === "REINDEX_LIVE");
 }
 
-// cm:guard a 409 is the screen's own sentence, never the generic toast — the tab shows "A reindex is already running" and refetches, and nothing here re-sends the POST; the invalidation is what brings the live state onto the screen
 export function useSetMemoryModel(id: string | undefined) {
 	const qc = useQueryClient();
 	const { toast } = useToast();

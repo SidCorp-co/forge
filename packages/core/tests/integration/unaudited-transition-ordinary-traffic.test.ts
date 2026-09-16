@@ -47,7 +47,6 @@ describe('unaudited transitions: ordinary code paths (ISS-943)', () => {
     expect(Number((audit as unknown as Array<{ n: number }>)[0]?.n)).toBe(1);
   });
 
-  // cm:guard drive the real `startJobForMaster`, never a raw-SQL imitation of it. This assertion was such an imitation until ISS-943, and once the detector counts any status change a raw-SQL imitation of ordinary traffic IS the intervention — so the imitation asserted the opposite of what it claimed.
   it('records nothing for the ordinary queued to dispatched stamp', async () => {
     const device = await createTestDevice(fx.harness.db, fx.ids.ownerId);
     const runnerId = randomUUID();

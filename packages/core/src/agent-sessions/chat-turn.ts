@@ -33,7 +33,6 @@ import {
 import { readSessionModel } from './session-model.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
-// cm:guard the SINGLE publisher of `agent:start` / `agent:send`, and every entry point funnels here — POST /start, POST /send, schedule.run, escalation, RocketChat agent-chat, schedule failover. That is what lets device selection, turn persistence and the ISS-927 token mint each exist in exactly one place; a caller that publishes its own frame gets none of them and drifts silently, which is the bug this module replaced.
 
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
@@ -139,7 +138,6 @@ export async function resolveChatDevice(
   const pinned =
     ((session.metadata ?? {}) as { deviceId?: string }).deviceId ?? session.deviceId ?? null;
   if (overrideDeviceId) {
-    // cm:why honour the explicit pick regardless of health — an unhealthy pick fails the turn, then the agent-chat failover retries onto a healthy runner, rather than silently overriding the user's choice
     const picked = await findChatCapableDeviceForProject(session.projectId, overrideDeviceId, {
       allowLimited: true,
     });
@@ -147,10 +145,8 @@ export async function resolveChatDevice(
     return { deviceId: picked, isLocal: false, migrated: !!pinned && picked !== pinned };
   }
   if (pinned) {
-    // cm:why try the chat-capable (runners table) gate before devices.status — a live CLI runner can have devices.status stale offline, which would otherwise self-heal away from a just-picked runner
     const capable = await findChatCapableDeviceForProject(session.projectId, pinned);
     if (capable) return { deviceId: capable, isLocal: false, migrated: false };
-    // cm:why distinguish "limited but live" (migrate to a healthy runner below) from "offline runner row" (the existing devices.status self-heal, which only re-grabs the pin while its device row is still online)
     const liveButLimited = await findChatCapableDeviceForProject(session.projectId, pinned, {
       allowLimited: true,
     });
@@ -233,7 +229,6 @@ export async function createChatSessionRow(args: CreateChatSessionArgs): Promise
     kind: args.runKind ?? 'interactive',
     ...(args.runMetadata ? { metadata: args.runMetadata } : {}),
   });
-  // cm:guard stamped HERE, from the `runKind` the caller already passes, and not read back off `pipeline_runs.kind` at dispatch time — the dispatcher would need a join it otherwise never makes, and a marker every unattended caller must remember to set itself is a marker one of them eventually forgets. `runKind: 'system'` is already what every unattended entry point passes (schedule.run, escalation, RocketChat agent-chat, schedule failover) and nothing else does.
   const metadata =
     args.runKind === 'system' ? { ...(args.metadata ?? {}), unattended: true } : args.metadata;
   const [row] = await db
@@ -341,7 +336,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     ? `${formatPageContextLine(args.pageContext as PageContext)}\n${args.message}`
     : args.message;
 
-  // cm:guard repoPath must be re-resolved whenever this turn's device differs from the one it was resolved for, else claude spawns in a nonexistent cwd and hangs the session
   const deviceChanged = !!deviceId && (migrated || deviceId !== (session.deviceId ?? null));
   let repoPath = session.repoPath ?? null;
   if (!repoPath || deviceChanged) {
@@ -369,10 +363,8 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   // the remote branch only ever publishes a WS event, it never writes the DB.
   const claudeSessionId = args.claudeSessionId ?? session.claudeSessionId ?? null;
   const resumable = !!claudeSessionId && !migrated;
-  // cm:guard an explicit Default must emit `--model default` on resume, because omission inherits the prior Claude session model instead of the configured default
   const model =
     args.model === undefined ? readSessionModel(session.metadata) : (args.model ?? 'default');
-  // cm:guard validate BEFORE any write, never inside the cold-start publish branch below — a bad `skillName` caught after the transaction leaves the user turn and `status='running'` committed with nothing that will ever dispatch them, and the session sits live with no listener.
   if (args.skillName && !isSlashCommandSkillName(args.skillName)) {
     throw new Error(`dispatchChatTurn: invalid skillName '${args.skillName}'`);
   }
@@ -391,7 +383,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   if (migrated) updates.claudeSessionId = null;
   const nextMeta = { ...prevMeta };
   if (deviceId) nextMeta.deviceId = deviceId;
-  // cm:why `default` must remain in jsonb — omission means inherit the existing selection, while an explicit null asks Claude Code to clear its restored model
   if (args.model !== undefined) nextMeta.model = args.model ?? 'default';
   if (args.pageContext) nextMeta.pageContext = args.pageContext;
   // ISS-733 fix — mark this turn as "invoked a skill on cold start" so the
@@ -451,7 +442,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   if (isLocal) {
-    // cm:guard a local turn is run by the CALLER, not by us — we only mirror it to web viewers. The resolved `model` deliberately does not travel here (ISS-718 AC#6): the only client that ever set origin='desktop' was packages/dev, deleted 2026-08-23. `metadata.model` is still persisted above, so a future local client inherits the pick — but it has to read that marker itself, because nothing on this branch hands it over.
     roomManager.publish(projectRoom(project.id), {
       event: 'agent:user-message',
       data: {
@@ -465,7 +455,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
   }
 
   const target = deviceId as string;
-  // cm:why resolved on EVERY turn, not just cold start — each turn re-spawns `claude` with a fresh `--mcp-config`, so a follow-up that skipped this would silently lose every MCP server mid-conversation
   const {
     mcpServers: mcpServersOverride,
     resolvedNames,
@@ -491,7 +480,6 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
           resolved: resolvedNames,
           dropped: droppedNames,
         });
-        // cm:edge lockstep -> packages/core/src/agent-sessions/lifecycle-routes.ts — POST /:id/runner drops claudeSessionId at pin time, so this must rehydrate on any cold start with history, not just `migrated`
         const history = buildRehydrationBlock(prevMessages);
         prompt = preamble + history + decoratedMessage;
       } catch {

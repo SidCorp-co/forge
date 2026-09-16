@@ -91,7 +91,6 @@ export function pulseSeeders(h: PulseHarness) {
     return id;
   };
 
-  // cm:guard `pipeline_runs_issue_kind_chk` refuses an `issue`-kind run with no issue, so one is seeded here rather than the kind being quietly relaxed to 'system' — which would move the row into the scheduler lane and quietly weaken every liveness case built on it.
   const openRun = async (
     projectId: string,
     kind = 'issue',
@@ -132,7 +131,6 @@ export function pulseSeeders(h: PulseHarness) {
    * An `issue.statusChanged` row, optionally stamped at the issue's own
    * `merged_at` the way a real close writes the pair.
    */
-  // cm:guard `stampedAtMergedAt` writes created_at = issues.merged_at in ONE statement because that timestamp identity IS how the shipped-evidence predicate spots the auto-stamp — seeding the two separately gives them different microseconds and the case silently stops testing anything (ISS-817).
   const addTransition = async (args: {
     issueId: string;
     userId: string;

@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('../issues/issue-prefix-read.js', async () => {
   const { canonicalIssueKey, formatIssueRef } = await import('../lib/issue-ref.js');
   return {
@@ -64,7 +63,6 @@ vi.mock('./feedback-service.js', () => ({
   runMemoryFeedback: (input: unknown) => runMemoryFeedbackMock(input),
 }));
 
-// cm:guard the stub is ORDER-sensitive, not shape-sensitive: each select() consumes the next queued result whether the chain ends at .limit() or is awaited at .where(). Adding a query without queueing a row for it steals the next test's row rather than failing where the gap is.
 const selectResults: unknown[][] = [];
 const updateSetMock = vi.fn();
 const archiveUpdateMock = vi.fn();
@@ -308,7 +306,6 @@ describe('runConsolidationForProject', () => {
 });
 
 describe('consolidation does not re-mint what is already recorded', () => {
-  // cm:why the assertion is that indexMemory was NOT called — the old code ran the near-duplicate probe, threw the answer away, wrote anyway and counted it a create, so asserting on the count alone passes against the defect
   it('skips a create the CURATED knowledge store already covers, and names it', async () => {
     queueSignal();
     llmResponds({
@@ -364,7 +361,6 @@ describe('consolidation does not re-mint what is already recorded', () => {
 });
 
 describe('a receipt names what it touched, never only how much', () => {
-  // cm:why these assert on the TEXT and the metadata refs, not the counts — a receipt that counts is what shipped for months, and a count identifies no row, so nothing it claims can be checked or undone by a later reader
   it('reconcile names the contradicted and stale-stamped refs', async () => {
     queueIssueLookup();
     queueIdempotency();
@@ -496,7 +492,6 @@ describe('reconcileForReleasedIssue', () => {
         evidence: expect.stringContaining('superseded by ISS-708'),
       }),
     );
-    // cm:guard the archive path reuses `runMemoryFeedback` and must never grow a direct `db.update` for contradicted rows — a second writer of that column is how the two disagree about what archived means.
     expect(updateSetMock).not.toHaveBeenCalled();
     expect(indexMemoryBestEffortMock).toHaveBeenCalledWith(
       expect.objectContaining({ source: 'decision', sourceRef: 'reconcile:ISS-708' }),

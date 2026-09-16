@@ -34,7 +34,6 @@ describe("aggregateStepCosts — the job types that actually ran (ISS-999)", () 
 	});
 
 	it("keeps a job type outside the seven staged names under its own name", () => {
-		// cm:why the predecessor folded every step through jobTypeToStage, whose `default` was `triage`, so a `drive` row drew a triage row for work that never happened (ISS-999)
 		const rows = aggregateStepCosts([step({ step: "drive", durationSeconds: 9 })]);
 		expect(rows.map((r) => r.step)).toEqual(["drive"]);
 		expect(rows[0].medianSec).toBe(9);

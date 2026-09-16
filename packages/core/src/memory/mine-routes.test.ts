@@ -60,7 +60,6 @@ describe('GET /api/memory/mine', () => {
     expect((await app().request('/api/memory/mine')).status).toBe(401);
   });
 
-  // cm:guard the caller's id is what reaches the service and the query names no user: the ONLY way to pick whose notes are listed is to be them (ISS-1034 criterion 28).
   it('lists the caller’s own notes, by the caller’s id', async () => {
     listMine.mockResolvedValue([
       { id: NOTE_ID, projectId: 'p1', textContent: 'deploys on Thursdays' },
@@ -75,7 +74,6 @@ describe('GET /api/memory/mine', () => {
     });
   });
 
-  // cm:guard the fence is asserted by a row LEFT OUT: a token bound to project p1 lists the caller's p1 notes and not the p2 ones the same account wrote, which is what `effectiveProjectRole` answers when it reads the token's fence (check-pat-surface).
   it('leaves out a note in a project the caller’s credential may not read', async () => {
     listMine.mockResolvedValue([
       { id: NOTE_ID, projectId: 'p1', textContent: 'mine, readable' },

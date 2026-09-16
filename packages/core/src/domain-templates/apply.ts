@@ -154,7 +154,6 @@ export async function applyTemplate(input: ApplyTemplateInput): Promise<ApplyTem
   const registeredSkillNames: string[] = [];
   const skippedSkillNames: string[] = [];
   for (const reg of manifest.skillRegistrations ?? []) {
-    // cm:guard a global is NEVER registered directly — only a project-owned clone is, so go through resolveOrAdoptProjectSkill and never insert reg.skillName's global id
     const skillId = await resolveOrAdoptProjectSkill(projectId, reg.skillName);
     if (!skillId) {
       logger.warn(

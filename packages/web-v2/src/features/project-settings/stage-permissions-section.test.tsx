@@ -81,7 +81,6 @@ describe("StagePermissionsSection · read", () => {
     expect(screen.getByTitle("CronCreate")).toHaveTextContent("Cron create");
   });
 
-  // cm:guard the baseline is the MODAL denylist across the states, so `open` and `needs_info` (which carry it verbatim) must NOT be flagged and the two that drop a tool must. A test that only counted flags would pass on a component that flagged everything.
   it("flags exactly the stages that drift from the modal baseline", () => {
     renderReadOnly();
     expect(screen.getAllByText("Differs from the other stages")).toHaveLength(2);
@@ -107,7 +106,6 @@ describe("StagePermissionsSection · read", () => {
     ).toBeInTheDocument();
   });
 
-  // cm:guard the whole point of `canEdit=false` is see-everything-change-nothing, so this asserts the chips are STILL THERE and only the write controls are gone — a component that rendered nothing would also pass an assertion that only counted buttons.
   it("shows every value and no write control when canEdit is false", () => {
     renderReadOnly();
     expandRow("open");
@@ -125,7 +123,6 @@ describe("StagePermissionsSection · edit", () => {
     }
   });
 
-  // cm:guard ISS-1000 — the editor used to append a row for any OTHER stored status, and the row it drew was editable and unsaveable: core's `statesConfigSchema` is a `strictObject`, so `states.clarified` makes the whole document unparseable and the save it offers is a 400. Deleting that fall-through is what this asserts, and it goes red the moment one comes back.
   it("offers no row for a status core would refuse to store", () => {
     renderEditable({ states: { clarified: { disallowedTools: DENYLIST_FULL } } });
     expect(screen.queryByText("clarified")).toBeNull();
@@ -173,7 +170,6 @@ describe("StagePermissionsSection · edit", () => {
     expect(states.in_progress.mcpServers).toEqual({ playwright: true });
   });
 
-  // cm:guard an emptied list must go back as `undefined`, not `[]` — `[]` stores a deliberate empty denylist, which reads on every later screen as an override the operator chose rather than a stage with none.
   it("emptying a list clears the key instead of storing an empty array", () => {
     renderEditable({ states: { open: { disallowedTools: ["CronCreate"] } } });
     expandRow("open");

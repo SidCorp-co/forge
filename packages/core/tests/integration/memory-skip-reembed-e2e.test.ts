@@ -31,7 +31,6 @@ vi.mock('../../src/queue/boss.js', () => ({
 
 const MARKER = 'zanzibar';
 const DIM = 1536;
-// cm:guard HEAD_CHARS must exceed CHUNK_MAX_CHARS plus the longest context prefix and stay well below the long body's marker offset (~5,900) — a passage that holds the marker must embed hot while the whole document embeds cold, or the flip proves nothing
 const HEAD_CHARS = 2000;
 
 /** Outage switch and call counter for the fake embeddings client. */
@@ -63,7 +62,6 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  // cm:guard the mocked boss module is imported and settled BEFORE the modules that import it — concurrent imports inside one Promise.all hand a consumer the real module (measured 2026-09-04 on rerank.js in the sibling e2e)
   await import('../../src/queue/boss.js');
   const emb = await import('../../src/embeddings/index.js');
   EmbeddingUnavailableError = emb.EmbeddingUnavailableError;
@@ -241,7 +239,6 @@ describe('a write that changes nothing is not re-embedded or re-chunked', () => 
     expect((await rowState(projectId, ref)).chunk_generation).toBe(stateBefore.chunk_generation);
   });
 
-  // cm:guard the chunk vectors embed `context_prefix + newline + passage`, and the prefix reads metadata — so a write that moves only the metadata moves what those vectors SHOULD say. A skip deciding on `memories.text_content` alone would leave every passage embedding a prefix the row no longer carries, and no search would go red about it.
   it('a chunked re-write whose metadata moves the context prefix rebuilds the set', async () => {
     const { projectId } = await project();
     const ref = randomUUID();
@@ -311,7 +308,6 @@ describe('a write that changes nothing is not re-embedded or re-chunked', () => 
     expect((await chunkRows(projectId, ref)).rows.every((r) => r.has_vector)).toBe(true);
   });
 
-  // cm:guard the passages are compared, not the parent's text — so a chunker whose output moved (a changed target size, a changed overlap) is a set that must be rebuilt even though the document did not change a character
   it('a chunked set whose stored passages are not what chunkText produces now is rebuilt', async () => {
     const { projectId } = await project();
     const ref = randomUUID();
@@ -330,13 +326,11 @@ describe('a write that changes nothing is not re-embedded or re-chunked', () => 
     expect(fake.calls).toBeGreaterThan(0);
     const after = await chunkRows(projectId, ref);
     expect(after.rows[0]?.text_content).not.toContain('older chunker');
-    // cm:guard no chunk row disagreeing with the parent's landed text survives the write — the comparison runs inside the parent upsert's own transaction, against the row it returned, so a set another writer replaced under this one is seen replaced here (ISS-1024, criterion 13)
     expect(after.rows.map((r) => r.text_content)).toEqual(chunkerMod.chunkText(body.trim()));
     expect(after.rows.every((r) => r.has_vector)).toBe(true);
   });
 });
 
-// cm:guard this is the clause the skip's compare-and-swap rests on, and it is measured here rather than argued: `CASE WHEN memories.text_content = excluded.text_content THEN memories.embedding ELSE excluded.embedding END`, with `excluded.embedding` null. The skip path sends the SAME clause — `indexer.test.ts` renders both and compares them — so what this proves about a write that offers no vector holds for a skip whose text moved under it. What must never happen is the row keeping a vector for text it no longer says: nothing downstream goes red about a stale vector, it just ranks every later search wrong. Its other branch — keep the stored vector when the text IS the row's own — is what 'a flat re-write of identical text ... keeps the vector it had' above measures, since a skip is exactly a write that offers no vector against equal text.
 describe('the preserve clause refuses a vector for text the row did not keep', () => {
   const rowOf = (projectId: string, ref: string) =>
     harness.db
@@ -350,7 +344,6 @@ describe('the preserve clause refuses a vector for text the row did not keep', (
     const { projectId } = await project();
     const ref = randomUUID();
     await indexMemory({ projectId, source: 'note', sourceRef: ref, text: `first ${MARKER}` });
-    // cm:why somebody else's text is what the upsert will find, which IS the state a lost race leaves the row in — that is what makes this the same branch the skip's swap takes.
     await harness.db.execute(
       sql`UPDATE memories SET text_content = 'somebody else entirely'
            WHERE project_id = ${projectId} AND source_ref = ${ref}`,

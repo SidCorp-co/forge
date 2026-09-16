@@ -49,7 +49,6 @@ vi.mock('./outbound.js', () => ({
 }));
 
 const resolveRoomPostAuth = vi.fn();
-// cm:why spread the original so the real `hasInFlightRoomSession` runs against this file's `db` mock — that query IS what the dedup assertions below exercise, so stubbing it would make them vacuous
 vi.mock('./room-delivery.js', async (orig) => ({
   ...(await orig<typeof import('./room-delivery.js')>()),
   resolveRoomPostAuth: (...args: unknown[]) => resolveRoomPostAuth(...args),

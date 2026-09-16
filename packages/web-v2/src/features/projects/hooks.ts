@@ -1,6 +1,5 @@
 'use client';
 
-// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts — `useProjects` is keyed `['projects']` because that is exactly the key `replayOnReconnect()` invalidates on every WS reconnect (ISS-288). The two halves are a pair: rename the key here without renaming it there and the project console stops refreshing on reconnect, silently. It is also the template every later web-v2 feature follows — pick a key the event-router already touches, or live updates no-op.
 import { useMutation, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useActiveOrg } from '@/features/orgs/active-org';
@@ -74,8 +73,6 @@ export function useProjectsIncludingArchived() {
  * Per-project pipeline-health rollup. Keyed `['projects', 'health']`, a child
  * of `['projects']` — so the same reconnect replay invalidates it too.
  */
-// cm:guard the five minutes are about ROUTE CHANGES and not about liveness: the rail mounts this query on every workspace route, so at the library's 60 s default a user moving around the app re-read the whole ten-aggregate rollup once a minute for a badge.
-// Every WebSocket invalidation of this key still fires and still refetches — `invalidateQueries` does not consult staleTime — so what this number changes is the UNPROMPTED refetch and nothing about how fast a real change reaches the screen (ISS-1018).
 export const PROJECT_HEALTH_STALE_MS = 300_000;
 
 export function useProjectHealth() {
@@ -116,7 +113,6 @@ export function useProjectsConsole(): ProjectsConsole {
   return {
     items,
     totals,
-    // cm:guard `isLoading` follows the LIST alone, never the health rollup: the cards and rows render from list fields, and gating them on health too would blank the console for the beat the metrics take to arrive.
     isLoading: projects.isLoading,
     isError: projects.isError,
     error: projects.error,
@@ -152,7 +148,6 @@ export function useCreateProject() {
  * surface through the mutation — the trigger UI owns the failure state (error +
  * retry), not a toast here.
  */
-// cm:guard the key is the `agent-sessions` PREFIX, and it used to be `['agent-sessions','chat',projectId]`: React Query matches an invalidation by prefix, the chat session list that key named was deleted with the runner-backed chat path, and no query in this app has been keyed under it since — so the invalidation matched nothing and the new session did not appear until something unrelated refetched. The list this has to reach is keyed `['agent-sessions','list',opts]` (ISS-1005, extra fix).
 export function useOnboardProject(projectId: string | undefined) {
   const qc = useQueryClient();
   return useMutation<OnboardResult, unknown, void>({

@@ -30,7 +30,6 @@ const { reapGhostRunners } = await import('./ghost-reaper.js');
 
 const ghost = (id: string) => ({ id, project_id: 'proj-1', name: `runner-${id}` });
 
-// cm:edge contract -> packages/core/tests/integration/ghost-runner-reap-e2e.test.ts — this suite proves the per-row behaviour and the error isolation; the WHERE clause that PICKS the rows is SQL and a mocked db.execute is no evidence about it, so that file is where the predicate is judged.
 describe('reapGhostRunners (ISS-654)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -52,7 +51,6 @@ describe('reapGhostRunners (ISS-654)', () => {
     });
   });
 
-  // cm:guard count only rows whose status actually MOVED — `setRunnerStatus` is change-gated and writes no audit row for a no-op, so counting the call instead of the change reports flags that left no trace anywhere.
   it('does not count a row whose status did not change', async () => {
     dbExecute.mockResolvedValue([ghost('r1')]);
     setRunnerStatusMock.mockResolvedValue({ found: true, changed: false, oldStatus: 'disabled' });
@@ -70,7 +68,6 @@ describe('reapGhostRunners (ISS-654)', () => {
     expect(loggerError).toHaveBeenCalledOnce();
   });
 
-  // cm:guard never throws — it runs from a pg-boss worker beside the other runner-axis sweeps, and a rejection there retries the whole tick rather than losing one pass.
   it('returns zero rather than throwing when the query fails', async () => {
     dbExecute.mockRejectedValue(new Error('db down'));
 

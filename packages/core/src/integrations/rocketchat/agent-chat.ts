@@ -6,7 +6,6 @@
  * and dedup marker.
  */
 // cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` lint pragma; deleting one to pay the drain would break the language gate instead of cleaning prose.
-// cm:guard this module never posts to the room itself — the bridge is the only path its output reaches a channel
 
 import { eq } from 'drizzle-orm';
 import {
@@ -28,7 +27,6 @@ type SessionRow = typeof agentSessions.$inferSelect;
 
 const AGENT_CHAT_TITLE_MAX = 80;
 
-// cm:guard under this delay the room sees NO ack at all — the bridge delivers the real answer first, which is the common case; only a genuinely slow turn ever shows one
 export const AGENT_CHAT_ACK_DELAY_MS = 2 * 60 * 1000;
 
 export const AGENT_CHAT_ACK = (botName: string): string =>
@@ -40,7 +38,6 @@ export const AGENT_CHAT_DEDUP_REPLY = (botName: string): string =>
 export const AGENT_CHAT_NO_DEVICE_REPLY = (botName: string): string =>
   `Xin lỗi, hiện không có runner nào sẵn sàng để ${botName} trả lời đầy đủ câu hỏi này — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
-// cm:why ISS-818 — states WHY (figures unreconciled), not a bare "couldn't verify" that reads as "didn't understand you" and sends the user off to rephrase
 export const AGENT_CHAT_FALLBACK_REPLY = (botName: string): string =>
   `Xin lỗi, ${botName} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
 
@@ -53,7 +50,6 @@ export interface StartAgentChatArgs {
   botName: string;
   message: string;
   askedByUsername?: string | undefined;
-  // cm:guard the persona is passed IN, never built here — importing connection-manager.ts for it would create a dependency back on this module's own caller
   persona: string;
   conversationContext?: string | null | undefined;
 }
@@ -70,13 +66,11 @@ export function hasInFlightAgentChat(
   return hasInFlightRoomSession(projectId, rid, 'agentChat', tmid);
 }
 
-// cm:guard the prompt must keep telling the session its reply is delivered VERBATIM — there is no synthesis turn downstream to reshape it, unlike escalation
 export function buildAgentChatPrompt(args: {
   persona: string;
   conversationContext?: string | null | undefined;
   message: string;
   askedByUsername?: string | undefined;
-  // cm:why agent mode does not go through buildSystemPrompt, so the progress block every other external turn gets has to be injected here by hand
   progressFacts?: string | null | undefined;
 }): string {
   const lines = [args.persona];
@@ -97,7 +91,6 @@ export function buildAgentChatPrompt(args: {
   return lines.join('\n\n');
 }
 
-// cm:guard on a dispatch throw the session MUST be marked failed via applyKernelTransition — that fires the completion bridge like any other terminal writer, which is the only reason the room still gets one honest fallback
 export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAgentChatResult> {
   if (await hasInFlightAgentChat(args.projectId, args.rid, args.tmid)) {
     return { started: false, reason: 'deduped' };
@@ -111,7 +104,6 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
     return { started: false, reason: 'no-device' };
   }
 
-  // cm:why store the snapshot NUMBERS on metadata (not just the rendered prompt block) so agent-chat-bridge.ts screens the reply against what this session was actually told, not a fresh re-query that could skew if an issue closes mid-session
   const progress = await computeProjectProgress(args.projectId);
   const progressFacts: ProgressFacts | null = progress
     ? {
@@ -195,7 +187,6 @@ export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAge
   return { started: true, sessionId: session.id };
 }
 
-// cm:why mirrors redispatchScheduleSessionOnFailover (schedules/dispatch.ts) — that machinery is hard-gated to metadata.source==='schedule.run', so agent-chat needs its own copy
 const MAX_AGENT_CHAT_FAILOVERS = 2;
 
 interface AgentChatFailoverState {
@@ -207,7 +198,6 @@ export type AgentChatFailoverResult =
   | { ok: true; status: 'redispatched'; sessionId: string; deviceId: string }
   | { ok: false; status: 'not-agent-chat' | 'exhausted' | 'no-device' | 'no-prompt' | 'error' };
 
-// cm:guard reuse the STORED prompt, never rebuild it — the stored text is exactly what buildAgentChatPrompt produced for the first attempt, and the caller has already CAS-claimed deliveredAt so this cannot race a second failover for the same turn
 export async function redispatchAgentChatSessionOnFailover(
   session: SessionRow,
 ): Promise<AgentChatFailoverResult> {
@@ -321,8 +311,6 @@ export async function redispatchAgentChatSessionOnFailover(
       },
       'agent-chat failover: re-dispatch failed',
     );
-    // cm:edge lockstep -> packages/core/src/integrations/rocketchat/agent-chat-bridge.ts — dispatchChatTurn commits status:'running' before its throwable work, so a throw here must terminate the retry row itself (mirrors startAgentChat's catch above) or hasInFlightAgentChat wedges the room on a phantom in-flight session
-    // cm:why pre-stamp deliveredAt in the same write so the row applyKernelTransition returns to fireAgentChatBridge already has a non-null deliveredAt — without this the bridge CAS-claims the retry row and posts a second fallback while the original caller also posts one
     const retryMeta = (retrySession.metadata as Record<string, unknown>) ?? {};
     const retryAgentChat = (retryMeta.agentChat as Record<string, unknown>) ?? {};
     try {
@@ -352,7 +340,6 @@ export async function redispatchAgentChatSessionOnFailover(
   }
 }
 
-// cm:guard best-effort by design: the timer is unref()-ed and a core restart inside the window simply drops the ack, because the answer still arrives via the bridge and a hung session is still reaped by the loop monitor — an undelivered ack must never surface as a failure
 export function scheduleDelayedAck(args: {
   sessionId: string;
   connectionId: string;
@@ -386,7 +373,6 @@ async function postDelayedAck(args: {
       ?.agentChat?.deliveredAt;
     if (deliveredAt) return;
 
-    // cm:why the interim ack alone does NOT re-read the binding, where the two bridges and the live path all do: it carries no project content — it is this bot saying it is working — and its window is one unref'd timer.
     const auth = await resolveRoomPostAuth(args.connectionId, { sessionId: args.sessionId });
     if (!auth) return;
     await sendFixedReply(

@@ -29,7 +29,6 @@ describe('handleNameForProject', () => {
   it('falls back to the project id when the slug can produce no legal handle', () => {
     expect(handleNameForProject('***', PROJECT_ID)).toBe('agent-da368b0a');
     expect(handleNameForProject('', PROJECT_ID)).toBe('agent-da368b0a');
-    // cm:why one legal character is below `isAgentHandle`'s floor of three
     expect(handleNameForProject('x', PROJECT_ID)).toBe('agent-da368b0a');
   });
 
@@ -39,7 +38,6 @@ describe('handleNameForProject', () => {
     }
   });
 
-  // cm:why the address stopped being where the handle is READ from in ISS-1003 — that is `organization_members.handle` now — but `0242_agent_handle_and_display_name.sql` backfills the column with `split_part(email, '.', 1)`, so the local part still has to be exactly the handle or every agent that predates the column is named wrong, once, permanently.
   it('is recoverable from the address by the expression the backfill uses', () => {
     for (const slug of ['forge-dev', 'Forge Dev', '***', '', 'x', 'a'.repeat(80), '\u4f60\u597d']) {
       const handle = handleNameForProject(slug, PROJECT_ID);

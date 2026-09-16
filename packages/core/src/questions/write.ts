@@ -21,7 +21,6 @@ import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
 import { screenRound } from './screen.js';
 
-// cm:guard the shape is DECLARED by the asker, never derived from which field arrived. A caller that sends an option list and a needed-text line has asked two questions in one round, and deriving would silently pick one of them for the person to answer (ISS-996).
 /** The pool, or a caller's open transaction — a park writes its question inside the transition's. */
 type QuestionExecutor = IssueDependencyExecutor;
 
@@ -43,7 +42,6 @@ export type AskInput = {
   parkDeadlineAt?: Date;
 };
 
-// cm:guard the `code` is the machine-readable half a surface acts on and it must stay distinct per refusal — web-v2's `formatApiError` replaces a generic `FORBIDDEN` with "You do not have access to this resource", so a stale round or an already-answered question routed through that code reaches the person as a sentence about permissions.
 export class QuestionRefused extends Error {
   readonly code: QuestionRefusalCode;
   constructor(message: string, code: QuestionRefusalCode = 'QUESTION_REFUSED') {
@@ -72,16 +70,12 @@ export const questionRefusalCodes = [
 ] as const;
 export type QuestionRefusalCode = (typeof questionRefusalCodes)[number];
 
-// cm:guard test what the role IS, never what it is not. `effectiveProjectRole` answers `{ role: null }` — not `null` — for a signed-in caller who belongs to neither the project nor the org that owns it, so the earlier "anything but viewer" form let a stranger choose every `authority: 'writer'` option in the fleet (ISS-980).
-// cm:guard this is the ONE implementation of choosability; `questions/read.ts` imports it for the `locked` flag rather than restating the rule, because two authorities disagreeing is how a lock becomes decorative (ISS-964 criterion 15).
 export function mayChoose(option: QuestionOption, role: ProjectMemberRole | null): boolean {
   if (role === 'admin') return true;
   if (role === 'member') return option.authority === 'writer';
   return false;
 }
 
-// cm:guard these three refusals carry codes of their OWN and must keep them: they are malformed BODIES, and the generic `QUESTION_REFUSED` is mapped to 403 in `routes.ts`, which tells a caller whose options array is empty to go and ask somebody for access.
-// cm:guard `binds_to: this_call` REQUIRES a fingerprint, and that pair is the whole of the permission shape — there is no `kind` column saying an option is a permission. An option that binds to one call without naming it is a standing allowance wearing the label of a single decision (ISS-964 criteria 13, 16).
 function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
   if (options.length === 0) {
     throw new QuestionRefused(
@@ -89,7 +83,6 @@ function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
       'QUESTION_OPTIONS_REQUIRED',
     );
   }
-  // cm:guard option ids are UNIQUE within a round, because every reader resolves one by `find` and takes the first: two options sharing an id leave `chosenOptionId` naming a decision nobody can recover, and `checkPermission` reads the authority and fingerprint of whichever was listed first rather than the one the person picked.
   if (new Set(options.map((o) => o.id)).size !== options.length) {
     throw new QuestionRefused(
       'two options on this round carry the same id — an answer names an option by id, so a repeated one records a choice nobody can read back',
@@ -111,7 +104,6 @@ function checkOptions(options: QuestionOption[], recommendedOptionId: string) {
   }
 }
 
-// cm:guard every refusal a shape can raise is thrown HERE, at the ask, and none of them is re-checked when the answer arrives: a round already put to a person cannot be withdrawn for being malformed, so a shape that reaches the room has already been accepted (ISS-996).
 export function checkAnswer(answer: AskAnswer): void {
   if (answer.shape === 'choice') {
     checkOptions(answer.options, answer.recommendedOptionId);
@@ -125,7 +117,6 @@ export function checkAnswer(answer: AskAnswer): void {
   }
 }
 
-// cm:guard EVERY round this file mints is built here and screened here — the first one and every follow-up — because the cell does not care which round it is: round three is put to the same person, in the same room, by the same agent. Screening only the first would let a follow-up carry the option list inline that the first was refused for.
 function step(round: number, prompt: string, answer: AskAnswer): QuestionStep {
   const built = buildStep(round, prompt, answer);
   screenRound(built, (message, code) => {
@@ -148,8 +139,6 @@ function buildStep(round: number, prompt: string, answer: AskAnswer): QuestionSt
     : { round, prompt, askedAt, answerShape: 'free_text', needed: answer.needed };
 }
 
-// cm:guard the issue must belong to the project the question names, and the refusal is here because a row whose two columns disagree is unreachable by every reader downstream: the issue-scoped list, the attention bucket's cost subqueries and `answerReachesAParkedRun` all reach a question through one column or the other, and each narrowing that excludes the crossed row silently excludes it from something a person or a parked run needed (ISS-989). Refused by name rather than absorbed, because no reader can tell which of the two columns the caller meant.
-// cm:guard ONE code for both faults on purpose, against the per-refusal rule above: a missing issue and an issue of another project are the same fault to the caller — the `issueId` you sent is not an issue of this project — and the caller's remedy is identical. The messages differentiate for a person reading them; the code is what a box branches on, and it has one branch. (The missing-issue case used to raise a foreign-key 500.)
 async function checkIssueBelongsToProject(
   issueId: string | undefined,
   projectId: string,
@@ -180,8 +169,6 @@ export async function askQuestion(input: AskInput) {
 /**
  * The question a park mints, written inside the transition's own transaction.
  */
-// cm:guard core ALLOCATES the id here, and that does not weaken the rule on the pool route that it must not: a box asking through `POST /me/questions` has already written its own half of the park in a local transaction, and this door has no such half — the park and its question are one commit or neither (ISS-996).
-// cm:guard no `checkIssueBelongsToProject` call: the caller is mid-transition on that very issue and holds its `projectId`, so the crossed row this guards against is not representable here, and the read would be a `issues` SELECT inside the highest-volume transaction in the product (ISS-863's rule).
 export async function askParkQuestion(
   executor: QuestionExecutor,
   input: { id: string; projectId: string; issueId: string; prompt: string; needed: string },
@@ -233,7 +220,6 @@ export async function openQuestionCount(projectId: string) {
   return row?.n ?? 0;
 }
 
-// cm:guard the answer names its own shape, and a mismatch is refused rather than coerced: text handed to a choice round must never be resolved to the nearest option, and an option id handed to a free-text round must never be stored as its text. Guessing which option somebody meant is the one failure a locked option and a fingerprint exist to prevent (ISS-978 criterion 18), and it does not become acceptable because the guess would be easy.
 export type GivenAnswer = { kind: 'option'; optionId: string } | { kind: 'text'; text: string };
 
 export type AnswerInput = {
@@ -245,7 +231,6 @@ export type AnswerInput = {
   role: ProjectMemberRole | null;
 };
 
-// cm:guard ANY role on the project may answer in words, viewer included — the owner's call on 2026-09-13, and it is not the same question `mayChoose` answers. An OPTION declares its own authority because choosing one exercises it; writing an answer supplies information the run asked for, and gating that on a role only means the person who has it gets asked to relay what the person who does not already typed. A `null` role is still refused, by `answerAs` reading the question at all.
 export function mayAnswerFreeText(role: ProjectMemberRole | null): boolean {
   return role !== null;
 }
@@ -253,9 +238,6 @@ export function mayAnswerFreeText(role: ProjectMemberRole | null): boolean {
 /**
  * Record one answer, or refuse and leave the row exactly as it was.
  */
-// cm:guard ONE transaction and the row taken `FOR UPDATE` before any check, because a status check performed before an unconditional update is not a check: the pre-ISS-980 form read, validated and then wrote `status: 'answered'` with `where(eq(id))` alone, so it overwrote an existing answer and resurrected a `void` or `expired` row. Every predicate below must read the LOCKED row, and the write must go through `tx`.
-// cm:guard the clock is sampled AFTER the lock is granted, never before: a caller that waited on the lock while the park deadline passed must be refused by the deadline it actually crossed, not by the one it saw when it queued.
-// cm:guard nothing here mutates `row.steps` in place — the answered step is a copy — so a refusal thrown below leaves the caller's loaded row as untouched as the database row (criterion 35).
 export async function answerQuestion(args: AnswerInput) {
   const committed = await db.transaction(async (tx) => {
     const [row] = await tx
@@ -319,7 +301,6 @@ export async function answerQuestion(args: AnswerInput) {
       };
     } else if (!isChoiceStep(current) && args.answer.kind === 'text') {
       const text = args.answer.text.trim();
-      // cm:guard an empty answer is refused as a SHAPE fault and never written as one: a round marked answered carrying nothing tells the parked run its question was settled and hands it the empty string as the settlement (ISS-996).
       if (!text) {
         throw new QuestionRefused(
           `round ${current.round} asks for text and this answer carries none`,
@@ -351,9 +332,6 @@ export async function answerQuestion(args: AnswerInput) {
       .where(eq(agentQuestions.id, args.questionId));
     return { ...row, steps, status: 'answered' as const };
   });
-  // cm:guard emitted after the transaction RESOLVES, for the same reason the wake below is: a subscriber that resumes the issue on an answer a rejected commit never left would dispatch against a question still open (ISS-996).
-  // cm:guard AWAITED, unlike the wake below, and the difference is what each one does. The wake only decides whether a box reads the answer now or on its next sweep; this one IS the resume, and firing it unawaited both hides its failure from the caller and races the answer's own transaction — measured as a deadlock between the subscriber's read and the transition it goes on to make. `comments/routes.ts` awaits `commentCreated` for the same reason.
-  // cm:edge contract -> packages/core/src/pipeline/answer-resume.ts — that subscriber is what makes a core-minted park question resumable at all. A question the runner minted registers a waiter and the box comes back for it; a park's question has no box on the other end, so the answer reaches the work through this event or not at all.
   await hooks.emit('questionAnswered', {
     questionId: args.questionId,
     projectId: committed.projectId,
@@ -361,17 +339,14 @@ export async function answerQuestion(args: AnswerInput) {
     answeredBy: args.by,
     body: answeredBody(committed.steps.at(-1)),
   });
-  // cm:guard published after the transaction RESOLVES — not merely after the statement inside it — and never awaited for its result, because the answer is already on the record: the box reads it back through `GET /me/questions/:id`, so this wake only decides whether that read happens now or on the next 30s sweep. A wake published from inside the transaction sends a box to read an answer a rejected commit never left (ISS-964 criteria 12, 44).
   void wakeMastersForAnswer({ projectId: committed.projectId, questionId: args.questionId });
   return view(committed);
 }
 
-// cm:guard a follow-up is a STEP on the same row, never a second row. Two rows for one chain is two entries in a queue ordered by the cost of blocking, and the cost is a property of the decision rather than of how many times the agent had to come back (ISS-964 criterion 20).
 export async function askFollowUp(args: { questionId: string; prompt: string; answer: AskAnswer }) {
   const row = await load(args.questionId);
   checkAnswer(args.answer);
   if (row.steps.length >= row.maxRounds) {
-    // cm:guard the thread becomes the record and the round is NOT asked. A fourth question is the same conversation wearing a new row, and the human who could not settle it in three is owed the whole thread rather than one more prompt (ISS-964 criterion 21).
     await db
       .update(agentQuestions)
       .set({ status: 'needs_info', updatedAt: new Date() })
@@ -404,10 +379,8 @@ export async function voidQuestion(args: { questionId: string; reason: string })
 /**
  * Does the answer on this question cover the call about to be made?
  */
-// cm:guard REFUSE by name on a mismatch rather than answering false. A `false` here reads to the caller as "not allowed yet" and sends it back to ask again; the fault is that a permission for one call was presented for another, and only a named refusal says so (ISS-964 criterion 16).
 export async function checkPermission(args: { questionId: string; fingerprint: string }) {
   const row = await load(args.questionId);
-  // cm:guard a permission is a CHOSEN OPTION and a free-text round can never carry one, so this walks the choice rounds alone: reading the latest answered round of any shape would hand a text answer to a fingerprint comparison that no text can pass, and refuse the call with a message about a mismatch that never happened (ISS-996).
   const answered = row.steps.filter((s) => isChoiceStep(s) && s.chosenOptionId).at(-1) as
     | ChoiceStep
     | undefined;
@@ -428,7 +401,6 @@ async function load(id: string) {
   return row;
 }
 
-// cm:guard the option's LABEL and not its id: this string is handed to a parked agent as the human's answer, and an id it never printed tells it nothing about what was chosen.
 function answeredBody(step: QuestionStep | undefined): string {
   if (!step) return '';
   if (!isChoiceStep(step)) return step.answerText ?? '';

@@ -22,7 +22,6 @@ use crate::error::{Error, Result};
 use crate::mcp;
 
 /// One `--input-format stream-json` user message, newline-terminated.
-// cm:guard the CLI accepts exactly this envelope and rejects a bare string — verified on claude 2.1.251, 2026-08-29. A malformed line is not an error: the process stays alive with nothing to answer, so the turn hangs until the job timeout with no diagnosis anywhere.
 fn user_message_line(text: &str) -> String {
     let msg = serde_json::json!({
         "type": "user",
@@ -45,7 +44,6 @@ struct Session {
     /// `(agent-session id, seq)` of the inbox message the CURRENT turn is
     /// consuming, if this turn came from one. Reported back as `applied` when
     /// the turn completes — RFC 0003's commit point.
-    // cm:guard the SESSION id, carried from the frame, never the map key: a pipeline session is keyed by `job_id` here, and the applied route is session-keyed, so reporting the key would 404 and leave core waiting on a commit that already happened.
     pending_inbox: Option<(String, u64)>,
     /// Completed turns, so an `applied` report can name the one that consumed
     /// the message.
@@ -61,11 +59,9 @@ struct Session {
     /// session can serve the next turn as-is.
     model: Option<String>,
     head_sha: Option<String>,
-    // cm:guard the permit is held by the SESSION, not by the turn — that is invariant 3 of ISS-873. A turn-scoped permit bounds turns, and once a process outlives its turn the same count bounds nothing: three abandoned resident sessions would sit at zero held permits while three processes ran.
     permit: Option<tokio::sync::OwnedSemaphorePermit>,
     /// Which project this session is spent on, for naming the holders when the
     /// box's permits run out.
-    // cm:guard read together with `permit` and never alone — a chat session sits in this map holding NO permit (`counts_against_session_cap: false`), so a holder list built from the slug alone names projects that are not on the ceiling and hides the one that is (ISS-920 B4).
     project_slug: Option<String>,
 }
 
@@ -78,22 +74,18 @@ type Sessions = Arc<Mutex<HashMap<String, Session>>>;
 /// Grace period after the definitive `{type:result}` marker for the CLI to
 /// exit on its own before we kill it + report terminal. Guards the
 /// hang-after-result bug (anthropics/claude-code#25629).
-// cm:guard PRINT ONLY. On the duplex path a `{type:result}` ends the TURN and the process is expected to stay alive, so applying this grace there would kill every resident session five seconds after its first answer — the exact behaviour residency exists to remove.
 const RESULT_EXIT_GRACE: Duration = Duration::from_secs(5);
 
 /// How long a session may sit between turns before it is closed, when the
 /// project named no residency of its own.
-// cm:guard a resident session with nobody talking to it is a leaked process holding a permit, and nothing else reaps it: the daemon's drain counter tracks TURNS (`InflightGuard` is scoped to the frame task), so an idle session reads as idle and a restart would exit(0) leaving a setsid-detached survivor. This ceiling is the only thing that closes it. It is now the FALLBACK rather than the whole rule — `resolve_residency` prefers a project's `sessionResidencySeconds` and lands here for absent and 0 alike.
 const SESSION_IDLE_TIMEOUT: Duration = Duration::from_secs(10 * 60);
 
 /// Whether this spawn must hold one of the box's session permits.
-// cm:guard NO caller opts in today — chat builds the only `JobSpec` on the box and sets this false — so the ceiling currently bounds nothing and `duplex_max_sessions` sizes a pool nobody draws from. Keep the field rather than capping every spawn: the reason chat opts out is the SWEEPER, not the shape of the wait — core kills a chat turn that has not acked in 90s while `SESSION_PERMIT_WAIT` is 600s, so a chat turn queued behind a parked session dies before it ever spawns (session 1af837da, 2026-09-04). A future caller that spawns processes worth bounding opts in here.
 fn takes_session_permit(spec: &JobSpec) -> bool {
     spec.counts_against_session_cap
 }
 
 /// How long a spawn may wait for one of the box's session permits.
-// cm:guard equal to `SESSION_IDLE_TIMEOUT` on purpose: a permit is released by a session ending or by its residency deadline, so a wait shorter than a residency window fails jobs a parked session was about to release, and a longer one learns nothing.
 // cm:hack ISS-920 until:`sessionResidencySeconds` is set above 600 on any project — that value is per-project and `pipeline-config-schema.ts` allows up to 3600, so this bound is only the DEFAULT residency window, not every one. Priced: a project that raises the key gets jobs failing `session_permit_saturated` after 600s that would have got a permit at 900s. Nothing sets the key today; the first project that does moves this number or derives it from the resolved value.
 pub const SESSION_PERMIT_WAIT: Duration = SESSION_IDLE_TIMEOUT;
 
@@ -103,8 +95,6 @@ pub const SESSION_PERMIT_WAIT: Duration = SESSION_IDLE_TIMEOUT;
 /// `claude`: the wait is the whole behaviour, and the only way to exercise it
 /// through `start` is to hold real sessions. What that seam does NOT pin is the
 /// wiring — that `start` passes `SESSION_PERMIT_WAIT` and not something else.
-// cm:guard the failure text is the ONLY routing lever this has. `session_permit_saturated` is matched by `packages/core/src/pipeline/failure-patterns.ts`, which names the cause `box_session_saturated`; rewording the prefix silently returns it to `unclassified` and the session's death is recorded as nothing in particular.
-// cm:guard `holders` is a SNAPSHOT taken by the caller BEFORE the wait, never re-read from inside, and both halves are deliberate: reading `self.sessions` while parked on `self.session_sem` would order the two locks against every path that takes them the other way. The rendered text says `at wait start` for the same reason — ten minutes later the set can be entirely different, and an operator reading it as "now" would go looking for the wrong jobs.
 async fn acquire_session_permit(
     sem: Arc<tokio::sync::Semaphore>,
     cap: usize,
@@ -115,7 +105,6 @@ async fn acquire_session_permit(
     if let Ok(permit) = sem.clone().try_acquire_owned() {
         return Ok(permit);
     }
-    // cm:guard a parked `awaiting_input` session keeps its permit until its residency deadline, so "no permit" here usually means the ceiling is spent on sessions doing nothing — say so, or the job's silence reads as a hang.
     tracing::warn!(
         "[job {job_id}] waiting for a session slot — all {cap} permits held by {} (parked awaiting_input sessions keep theirs until residency ends)",
         describe_holders(&holders)
@@ -132,8 +121,6 @@ async fn acquire_session_permit(
 }
 
 /// The holder list as it goes into a log line and into the failure text.
-// cm:guard one renderer for both, because the failure string is asserted byte-for-byte by core's classifier tests and the log line is what an operator greps. Two formatters is two things to keep in step.
-// cm:guard holders go LAST and that costs something: core's `reasonExcerpt` cuts at 200 chars, so on a box raised to `duplex_max_sessions: 10` the tail of the slug list is dropped from `agent_sessions.failureDetail`. Priced rather than reordered — the prefix is what every rule in `failure-patterns.ts` keys on and it has to survive the same cut, `jobs.error` keeps the full text either way, and the log line above is uncut. Moving holders to the front to save them would put untrusted project slugs where the classifier reads its token.
 fn describe_holders(holders: &[String]) -> String {
     if holders.is_empty() {
         return "no session this runner still tracks".to_string();
@@ -142,8 +129,6 @@ fn describe_holders(holders: &[String]) -> String {
 }
 
 /// How long this session may sit parked between turns.
-// cm:edge lockstep -> packages/core/src/jobs/park-deadline.ts — core's backstop resolves the SAME field with a COALESCE onto the same default, and fires at that value plus a grace. Resolving `0` differently here is what would make the two race: core reaping a park this side still considers live, with `residency_expired` no longer meaning "the runner is gone".
-// cm:guard `Some(0)` means "use the default", NOT "no residency". The config key defaults to 0 and no project has set it, so reading 0 literally would turn residency off for the entire fleet the moment this reader shipped — a regression against the phase 1b const it replaces, and exactly why ISS-873 moved this reader out of phase 3.
 fn resolve_residency(configured: Option<u64>) -> Duration {
     match configured {
         Some(secs) if secs > 0 => Duration::from_secs(secs),
@@ -181,7 +166,6 @@ struct Outcome {
 
 impl Outcome {
     /// Clear what belongs to ONE turn, keeping what belongs to the process.
-    // cm:guard `mcp_failed` and `exit` are process-scoped and must survive the reset — an MCP server that failed at `system/init` is still failed on turn 4, and clearing it would let a session that never reached its tools report every later turn as healthy.
     fn reset_turn(&mut self) {
         self.succeeded = None;
         self.usage_limit = None;
@@ -195,7 +179,6 @@ impl Outcome {
 /// Drive a resident session turn-by-turn until the process ends or the idle
 /// ceiling closes it. Returns whether the LAST turn already got a terminal
 /// event, so the process-level path does not report the same turn twice.
-// cm:guard the idle ceiling applies only BETWEEN turns. Arming it during a turn would reap a long one — a 15-minute build is silent on this channel and indistinguishable from an abandoned session by clock alone, which is the same mistake the 25s beat exists to paper over on the print path.
 struct TurnLoop<'a> {
     sessions: &'a Sessions,
     job_id: &'a str,
@@ -212,7 +195,6 @@ struct TurnLoop<'a> {
 }
 
 /// Await the stdout reader for at most `within`, unless it has already finished.
-// cm:guard the `is_finished` check is the whole function. A `JoinHandle` yields its output ONCE; polling it after that panics `JoinHandle polled after completion`, which aborts the process rather than the task. Measured on dev1: 8 core-dumps in the 17 hours after duplex shipped, first 2026-08-29 23:55 and none before, each killing the pipeline job in flight — ISS-880 and ISS-886 both died `session_lost` this way. The path was `duplex_turns` returning through its reader arm (a cancel or the idle ceiling ends the CLI), which spends the handle, and then the caller awaiting it again.
 async fn join_reader(reader: &mut tokio::task::JoinHandle<()>, within: Duration) {
     if reader.is_finished() {
         return;
@@ -221,7 +203,6 @@ async fn join_reader(reader: &mut tokio::task::JoinHandle<()>, within: Duration)
 }
 
 /// Tell core the idle ceiling ended this session.
-// cm:guard the two paths report by DIFFERENT doors and neither one serves both: an issue job's session key is a `job_id`, which the session-keyed PATCH 404s on, and chat has no job to post an event against. Sending an issue job's state over the PATCH is the bug that left `runtime_state` NULL for every duplex pipeline session while three hops read the column — the quiet-clock exemption, the residency deadline and the result guard.
 async fn report_session_closed(
     is_issue_job: bool,
     turn_tx: &TurnTx,
@@ -259,7 +240,6 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                     o.reset_turn();
                     ev
                 };
-                // cm:guard RFC 0003's commit point, and it is reported HERE rather than at the write because those are different claims: a message on the CLI's stdin whose session then dies was never read by the model. Core stands its durable path down on this report alone.
                 let consumed = {
                     let mut map = sessions.lock().await;
                     map.get_mut(job_id).and_then(|s| {
@@ -271,27 +251,21 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                 if let (Some((sid, seq, turn)), Some(client)) = (consumed, core) {
                     crate::transport::inbox::applied(client, &sid, seq, turn).await;
                 }
-                // cm:guard ISS-873 phase 3 — a turn ending is not a JOB ending, and the runner cannot tell the two apart: the park is an issue-status move the driver made over MCP DURING the turn, so core holds the answer. `is_issue_job` is the discriminator and `core` is NOT — `core_for_state` is Some for every duplex spawn including chat, so keying on it would put a 404 on the hot path of every chat turn.
                 let job_ended = match (is_issue_job, core) {
                     (true, Some(client)) => {
                         crate::transport::lifecycle::turn_is_job_end(client, job_id).await
                     }
-                    // cm:guard chat's every turn end IS its park — there is no job to finish, and residency between turns is the whole feature.
                     _ => true,
                 };
                 {
                     let tx = turn_tx.lock().await;
-                    // cm:guard the park is announced whether or not the job ended, and BEFORE the terminal event — core reads it to exempt the session from the quiet clock, and a state sent after the consumer breaks lands in a receiver nobody is reading.
                     let _ = tx.send(RunnerEvent::StateChanged("awaiting_input")).await;
                     if job_ended {
                         let _ = tx.send(ev).await;
                     }
                 }
-                // cm:guard raised AFTER the verdict is on the channel, so a caller woken by it sees a turn that is fully reported. Raising it before would let `checkpoint_and_close` drop stdin between the turn ending and its result being sent, losing the very checkpoint it waited for.
                 turn_done.notify_waiters();
-                // cm:guard `reported` stays FALSE for a turn that did not end the job — the process exit path reads it to decide whether to classify, and marking a parked turn reported would leave a session that later dies with no terminal event at all.
                 reported = job_ended;
-                // cm:guard a FINISHED issue job must not sit resident to the idle ceiling: core has its terminal event, and every second after it holds one of the box's job slots (per-device now, `devices.max_concurrent`) for a job nobody will send another turn to. Chat does the opposite on purpose — its residency between turns is the feature, and since 2026-09-04 chat holds no slot at all.
                 if is_issue_job && job_ended {
                     if let Some(s) = sessions.lock().await.get_mut(job_id) {
                         s.stdin = None;
@@ -299,7 +273,6 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                     return reported;
                 }
             }
-            // cm:guard returning through THIS arm consumes the handle's output, so `reader` is spent for every caller after it — which is why the process-level select in `consume`'s spawn is guarded by `is_finished()` and its grace waits go through `join_reader`. Polling it again panics `JoinHandle polled after completion` and aborts the daemon, not the turn.
             _ = &mut *reader => return reported,
         }
         tokio::select! {
@@ -309,7 +282,6 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
                 tracing::info!("[claude] job={job_id} idle past the session ceiling — closing");
                 // Dropping stdin is EOF, which ends the CLI session; the
                 // process-level path below then reaps and cleans up.
-                // cm:guard announced BEFORE stdin is dropped, while `consume` is still reading this channel — a parked turn sent no terminal event, so the consumer is alive until EOF reaps the process. After the drop it is a race against that reap.
                 report_session_closed(is_issue_job, turn_tx, core, job_id).await;
                 if let Some(s) = sessions.lock().await.get_mut(job_id) {
                     s.stdin = None;
@@ -321,7 +293,6 @@ async fn duplex_turns(r: TurnLoop<'_>, reader: &mut tokio::task::JoinHandle<()>)
 }
 
 /// The verdict for ONE duplex turn, from the `{type:result}` event alone.
-// cm:guard exit code, signal and stderr are deliberately NOT read here: on a resident session none of them exist yet at turn end, and a classifier that reads them would report every healthy turn as `[NO_RESULT]`. A process that dies WITHOUT a result still goes through the full classification path — that is a session failure, not a turn.
 fn turn_verdict(o: &Outcome, is_issue_job: bool) -> RunnerEvent {
     if let Some(msg) = o.usage_limit.clone() {
         return RunnerEvent::Failed {
@@ -522,10 +493,8 @@ pub struct ClaudeCodeRunner {
     core_url: String,
     device_token: String,
     sessions: Sessions,
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/config.rs — sized from `duplex_max_sessions`, and it counts only spawns that opt in with `counts_against_session_cap`. Nothing opts in now that jobs no longer reach this box, so it bounds the box's claude processes not at all: a resident master and an abandoned chat session are each reaped by a residency ceiling and by nothing else.
     session_sem: Arc<tokio::sync::Semaphore>,
     session_cap: usize,
-    // cm:guard a permit is taken well before its `Session` row lands — `mcp::config::write`, `cmd.spawn` and the first stdin write all sit between them — so `self.sessions` ALONE under-reports the ceiling exactly when it matters. On 2026-09-05 three jobs were claimed within 24 seconds of each other; every one of them would have been invisible here, and the loser would have been told `holders at wait start: no session this runner still tracks` while the box was full. This map is the other half, and `permit_holders` reads both.
     pending_permits: Arc<std::sync::Mutex<HashMap<String, String>>>,
 }
 
@@ -556,7 +525,6 @@ impl PendingPermit {
 }
 
 impl Drop for PendingPermit {
-    // cm:guard `std::sync::Mutex` and not tokio's, precisely so this can run in `Drop`. Nothing awaits while it is held, so it cannot block the runtime, and a tokio mutex would need a detached task here — which is a cleanup that can be dropped on shutdown, i.e. a leak in the one place that exists to prevent one.
     fn drop(&mut self) {
         if let Ok(mut m) = self.map.lock() {
             m.remove(&self.job_id);
@@ -627,7 +595,6 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
     ];
     args.push("--input-format".into());
     args.push("stream-json".into());
-    // cm:guard the replay comes back as `type:"user"` with `isReplay:true`, and chat's `parse_assistant_message` keys on `type=="assistant"`, so it is inert there. Any future consumer that reads user turns off this stream MUST skip replays or it will persist the prompt twice.
     args.push("--replay-user-messages".into());
     if let Some(sp) = spec.system_prompt.as_deref().filter(|s| !s.is_empty()) {
         args.push("--append-system-prompt".into());
@@ -695,7 +662,6 @@ impl ClaudeCodeRunner {
     pub async fn resident(&self, id: &SessionId) -> Option<Resident> {
         let map = self.sessions.lock().await;
         let s = map.get(id)?;
-        // cm:guard a session with no stdin is not resident whatever its status says — the print path and a session already closed by the idle ceiling both leave the entry behind until the completion task reaps it, and sending into either writes into a process that will never answer.
         s.stdin.as_ref()?;
         Some(Resident {
             model: s.model.clone(),
@@ -704,8 +670,6 @@ impl ClaudeCodeRunner {
     }
 
     /// Push a message into a session that is already parked, and start a turn.
-    // cm:guard reuses the STORED channel rather than taking a new one. A parked pipeline session's events are still being read by `daemon/dispatch.rs#consume` — a parked turn sends no terminal event, so that loop never broke — and installing a fresh channel here would send the whole turn's output into a receiver nobody holds.
-    // cm:guard `resident` is the gate, not the map entry: the print path and a session already closed by the idle ceiling both leave an entry behind, and writing into either goes to a process that will never answer, which core would then be told was `delivered`.
     pub async fn send_resident(
         &self,
         id: &SessionId,
@@ -743,7 +707,6 @@ impl ClaudeCodeRunner {
     }
 
     /// What `checkpoint` asks a session for before anything ends it.
-    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/inbox.rs — the `checkpoint` kind sends this same text. Two wordings for one kind would make a restart checkpoint and an operator checkpoint different acts under one name.
     pub const CHECKPOINT_PROMPT: &'static str = "Write down where you are before this session ends: \
         what you have changed so far, what you were about to do next, and anything you know that is \
         not already in the repository. Do not start new work.";
@@ -752,8 +715,6 @@ impl ClaudeCodeRunner {
     /// then end it — the checkpoint half of RFC 0003's checkpoint-then-close.
     ///
     /// Returns the ids that were closed.
-    // cm:guard the wait is what makes this a checkpoint rather than a wasted write. Dropping stdin is EOF: closing straight after the write ends the session before the turn it just asked for can run, which spends a turn to produce nothing and is strictly worse than closing outright.
-    // cm:guard `budget` bounds the WHOLE session, and a timeout still closes. A restart that hangs on an agent which will not answer is worse than a lost checkpoint — the daemon is exiting either way, and a session left open past it is a `setsid`-detached child writing a worktree the relaunched daemon is about to hand to a second agent.
     pub async fn checkpoint_and_close(&self, budget: std::time::Duration) -> Vec<SessionId> {
         let resident: Vec<SessionId> = {
             let map = self.sessions.lock().await;
@@ -797,7 +758,6 @@ impl ClaudeCodeRunner {
     }
 
     /// End every live duplex session, returning the ids that were closed.
-    // cm:guard the EOF half of what ends a parked session before the daemon exits — `checkpoint_and_close` is the caller, and calling this directly on the restart path is what skips the checkpoint. A park is not in-flight (`InflightGuard` is scoped to the frame task), so `drain_to_idle` reads an idle daemon and would exit(0) leaving a `setsid`-detached child holding the worktree, which is the second-agent-on-one-checkout hazard invariant 4 exists to prevent. Never call it while a turn is generating: EOF mid-turn is survivable (measured, claude 2.1.251) but the turn's result would land in a receiver the exiting daemon no longer reads.
     pub async fn close_all_resident(&self) -> Vec<SessionId> {
         let mut map = self.sessions.lock().await;
         let mut closed = Vec::new();
@@ -819,10 +779,6 @@ impl Runner for ClaudeCodeRunner {
     async fn start(&self, spec: JobSpec, tx: mpsc::Sender<RunnerEvent>) -> Result<SessionId> {
         let job_id = spec.job_id.clone();
 
-        // cm:guard NOTHING here may touch the repo ROOT. `worktree::create` used to run at this
-        // point and it was the only caller that did; the dispatcher holds the root lock across
-        // this whole call, so every root read left here re-nests that lock around the permit wait
-        // below (ISS-920). `spec.repo_path` arrives already resolved by the caller.
         let effective_repo = spec.repo_path.to_string_lossy().to_string();
 
         // No skill seeding at job start: the job consumes whatever is already
@@ -848,8 +804,6 @@ impl Runner for ClaudeCodeRunner {
             .filter(|s| *s > 0)
             .map(Duration::from_secs);
 
-        // cm:guard acquired BEFORE the spawn and held by the session, so the ceiling counts processes. Acquiring after would let every caller spawn first and queue second, which bounds nothing.
-        // cm:guard and acquired with NO repo lock held — that is the other half, and it lives in `daemon/dispatch.rs`, which now releases the root before it calls this (ISS-920). The wait below is bounded, but a bound is not what makes this safe: for the whole of a bound the lock would still be held and the siblings would still die, just sooner.
         let session_permit = if takes_session_permit(&spec) {
             Some(
                 acquire_session_permit(
@@ -873,7 +827,6 @@ impl Runner for ClaudeCodeRunner {
             )
         });
 
-        // cm:guard written AFTER the permit. The sibling-unlink hazard that first moved it here is gone — `mcp/config.rs` gives each JOB its own path — but the ordering still earns its place: a spawn that dies at `session_permit_saturated` leaves no token-bearing 0600 file on disk at all, and there is nothing to unlink on a path that was never written.
         let slug = spec.project_slug.as_deref().unwrap_or("");
         let mcp_path = mcp::config::write(
             &self.core_url,
@@ -887,7 +840,6 @@ impl Runner for ClaudeCodeRunner {
         let residency_secs = spec.session_residency_seconds;
 
         let mut cmd = build_command(&args, &effective_repo);
-        // cm:guard export the BOX's credential, read from the store rather than from the frame — core mints no per-job token since ISS-932 wave 4. Leaving it unset would send `forge-runner api` and the `forge` CLI inside the session looking for a credential the daemon already holds.
         if let Ok(Some(tok)) = crate::auth::cred_store::load_pat() {
             cmd.env("FORGE_PAT", tok);
         }
@@ -911,7 +863,6 @@ impl Runner for ClaudeCodeRunner {
         })?;
         tracing::info!("[claude] spawned job={job_id}");
 
-        // cm:guard stdin is HELD, not dropped — dropping it is EOF, and EOF is how a session ends. Everything downstream (the turn loop, `send`, the idle ceiling) exists because this handle stays open; closing it here restores one-shot behaviour with none of the reaping the deleted print path had.
         let session_stdin = {
             let mut stdin = child
                 .stdin
@@ -934,7 +885,6 @@ impl Runner for ClaudeCodeRunner {
             .take()
             .ok_or_else(|| Error::Other("no stderr".into()))?;
 
-        // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/runner/inflight.rs — every path that inserts into `sessions` must record, and every path that removes must forget, or a `job.cancel` after a daemon restart answers `not_found` for a child that is still writing git
         if let Some(pid) = child.id() {
             inflight::record(&job_id, pid);
         }
@@ -1047,7 +997,6 @@ impl Runner for ClaudeCodeRunner {
                         // Definitive done marker — wake the completion task.
                         result_notify.notify_one();
                     }
-                    // cm:guard a send error is EXPECTED and must never break this loop — chat's `consume` drops its receiver at every turn end and the next `send` installs a fresh one, so breaking would stop reading stdout for a process that is still alive and about to be asked another question. Under print a send error was fatal (the one consumer was gone for good); there is no such consumer any more.
                     let _ = turn_tx.lock().await.send(RunnerEvent::Stdout(json)).await;
                 }
             })
@@ -1058,7 +1007,6 @@ impl Runner for ClaudeCodeRunner {
         // reap, classify, and emit Done/Failed.
         let sessions = self.sessions.clone();
         let job_id_task = job_id.clone();
-        // cm:guard built for EVERY spawn, and the two paths use it differently on purpose: chat's key IS its agent-session id, so it may PATCH the session directly, while a pipeline job's key is a `job_id` and every session-keyed PATCH with it 404s. The pipeline path therefore reports state as a job EVENT (core writes the column in `jobs/events-routes.ts`) and uses this client only for the job-keyed turn verdict.
         let core_for_state = Some(crate::transport::CoreClient::new(
             self.core_url.clone(),
             self.device_token.clone(),
@@ -1125,7 +1073,6 @@ impl Runner for ClaudeCodeRunner {
                 async move { result_notify.notified().await }
             };
 
-            // cm:guard skipped ENTIRELY when the reader is spent, because `duplex_turns` returns through its own reader arm and that consumes the output — the `_ = &mut reader` branch here would then panic on its first poll. The grace waits inside the other two arms go through `join_reader` for the same reason, one level down.
             if !reader.is_finished() {
                 match timeout {
                     Some(d) => tokio::select! {
@@ -1224,13 +1171,11 @@ impl Runner for ClaudeCodeRunner {
             }
             let _ = std::fs::remove_file(&mcp_path);
 
-            // cm:guard a duplex turn that already reported must NOT be reported again here. `already_reported` is the whole reason the turn loop returns a bool: the process ends AFTER its last turn's verdict, and re-classifying at exit would emit a second terminal event for work core already recorded as finished.
             let emit = turn_tx.lock().await.clone();
             if !already_reported {
                 if succeeded {
                     let _ = emit.send(RunnerEvent::Done { exit_code: 0 }).await;
                 } else if let Some(msg) = usage_limit {
-                    // cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — an unrecognized token degrades to infra + needsReview
                     let _ = tx
                         .send(RunnerEvent::Failed {
                             error: format!("[USAGE_LIMIT] {msg}"),
@@ -1294,7 +1239,6 @@ impl Runner for ClaudeCodeRunner {
         message: String,
         tx: mpsc::Sender<RunnerEvent>,
     ) -> Result<()> {
-        // cm:guard the tx is installed and `turn_started` raised only AFTER the write succeeded. Raising first stops the idle clock for a turn that never reached the CLI, and the session would then sit resident until the job timeout with no turn in it.
         let mut map = self.sessions.lock().await;
         let sess = map
             .get_mut(session)
@@ -1317,8 +1261,6 @@ impl Runner for ClaudeCodeRunner {
         Ok(())
     }
 
-    // cm:guard the SIGNAL path stays, and `cancel` is why: core's two-phase kill gate (ISS-785) waits on a `killed` ack and a turn that is generating stops for nothing else. ISS-873 phase 4 reads as though this becomes checkpoint-then-close — it must not, on this path: a cancel that waited out a checkpoint budget would leave the gate holding a runner slot for a stop the operator asked for now. Checkpoint-then-close is the RESTART path (`checkpoint_and_close`) and the `cancel` inbox kind, both of which act between turns.
-    // cm:guard stdin is dropped WITH the child, or the killed session stays `resident`: `resident()` reads stdin alone, so a `send_resident` into a corpse would write to a broken pipe and ack `delivered` for a message no model will ever see, and `checkpoint_and_close` would spend its budget waiting on a turn that cannot start.
     async fn abort(&self, session: &SessionId) -> Result<()> {
         let mut s = self.sessions.lock().await;
         if let Some(sess) = s.get_mut(session) {
@@ -1342,8 +1284,6 @@ impl Runner for ClaudeCodeRunner {
     }
 }
 
-// cm:guard the PAT alone does not let the agent reach REST — every project-scoped route takes the project UUID as a PATH segment, and until 2026-09-02 the agent was handed a credential with nothing to name the project it may speak for. `X-Forge-Project-Slug` does not close this: only `/mcp` resolves that header, REST does not.
-// cm:edge contract -> packages/core/src/pipeline/autonomous-dispatch.ts — `buildDrivePrompt` spells `$FORGE_PROJECT_ID` into a `forge-runner api projects/<id>/...` path the agent is told to run; renaming either side makes that call resolve to `projects//...` and 404 with nothing saying why.
 fn project_env(spec: &JobSpec) -> Vec<(&'static str, String)> {
     let mut out = Vec::new();
     if !spec.project_id.is_empty() {
@@ -1448,8 +1388,6 @@ mod tests {
         );
     }
 
-    // cm:guard the assertion that `print` is UNREACHABLE, and it is the inverse of the one it replaced: there is no longer any spec, from any caller, whose args carry `-p` or omit `--input-format`. `counts_against_session_cap` is the one axis a spawn still varies on and it must not reach the args at all — reintroducing a mode means making one of these two loops fail, which is the point of iterating rather than asserting one spec.
-    // cm:guard every assertion is on the FLAG/VALUE pair, never the bare string `stream-json`: that value is also `--output-format`'s, so a bare-string check passes on a spawn that lost its input format entirely.
     #[test]
     fn no_spawn_can_reach_the_deleted_print_lane() {
         for cap in [true, false] {
@@ -1505,11 +1443,6 @@ mod tests {
         let _held = sem.clone().acquire_many_owned(2).await.unwrap();
 
         let started = tokio::time::Instant::now();
-        // cm:guard the OUTER timeout is what makes this test falsifiable. Delete the
-        // bound inside `acquire_session_permit` — the exact regression named above —
-        // and the inner future has no timer left, so under `start_paused` the clock
-        // stops advancing and the test HANGS rather than failing. This timer keeps
-        // advancing, so the removal comes back as a red naming its own rule.
         let err = tokio::time::timeout(
             SESSION_PERMIT_WAIT + Duration::from_secs(60),
             acquire_session_permit(
@@ -1524,18 +1457,11 @@ mod tests {
         .expect("the permit wait must be bounded — an unbounded wait is the whole defect")
         .expect_err("a fully held semaphore must not hand out a permit");
 
-        // cm:guard both directions, and the upper one is the test. `>=` alone passes on a
-        // wait of a day, which is the pre-fix shape this exists to catch; the paused clock
-        // makes the equality exact.
         assert_eq!(
             started.elapsed(),
             SESSION_PERMIT_WAIT,
             "the wait must be the bound — no longer, and not a fail-fast either"
         );
-        // cm:guard assert the WHOLE rendered string, not the prefix. It is the input
-        // `packages/core/src/pipeline/failure-patterns.ts` classifies, and a digit run
-        // like `503` in it would match `provider_overloaded` before the saturation
-        // bucket is ever consulted.
         assert_eq!(
             err.to_string(),
             "session_permit_saturated: all 2 permits on this box held after 600s; \
@@ -1620,7 +1546,6 @@ mod tests {
         h
     }
 
-    // cm:guard this reproduces the PRODUCTION sequence in order, and the order is the defect: the turn loop returns through its reader arm — which is what a cancel or the idle ceiling does to a live duplex session — and only THEN does the caller await the same handle. Split into two tests and each half passes on the broken code, because neither poll is wrong on its own; it is the second one that aborts the daemon. 8 core-dumps on dev1 in the 17 hours after duplex shipped, first 2026-08-29 23:55 and none before.
     #[tokio::test]
     async fn the_caller_may_not_await_a_reader_the_turn_loop_already_consumed() {
         let Harness {
@@ -1712,7 +1637,6 @@ mod tests {
             .await
             .expect("a finished turn must report")
             .expect("channel open");
-        // cm:guard the park MUST arrive before the terminal event — the consumer breaks its loop on Done/Failed, so a state sent afterwards lands in a receiver nobody reads and the session stays recorded as working while it waits on a human.
         assert!(
             matches!(first, RunnerEvent::StateChanged("awaiting_input")),
             "{first:?}"
@@ -1729,7 +1653,6 @@ mod tests {
         loop_handle.abort();
     }
 
-    // cm:guard this is the discriminating test for the idle ceiling: arming it DURING a turn reaps a long one, and a 15-minute build is silent on this channel and indistinguishable from an abandoned session by clock alone.
     #[tokio::test(start_paused = true)]
     async fn the_idle_ceiling_does_not_arm_while_a_turn_is_running() {
         let Harness {
@@ -1860,7 +1783,6 @@ mod tests {
         (runner, rx, turn_done)
     }
 
-    // cm:guard an aborted session must stop being `resident`. `resident()` reads stdin alone, so a session whose child was killed but whose stdin stayed in the map still answers "send to me" — the write goes to a broken pipe and the runner acks `delivered` for a message no model will ever see, which is the one ack core acts on by standing its durable path down.
     #[tokio::test]
     async fn an_aborted_session_is_no_longer_resident() {
         let (runner, _rx, _done) = parked_runner().await;
@@ -1874,7 +1796,6 @@ mod tests {
         );
     }
 
-    // cm:guard an aborted session must not cost the restart its checkpoint budget either — there is no turn left to wait for.
     #[tokio::test]
     async fn an_aborted_session_is_not_checkpointed() {
         let (runner, _rx, _done) = parked_runner().await;
@@ -1889,7 +1810,6 @@ mod tests {
         assert!(started.elapsed() < std::time::Duration::from_secs(5));
     }
 
-    // cm:guard the WAIT is what makes this a checkpoint rather than a wasted write. Dropping stdin is EOF: a close that does not wait ends the session before the turn it just asked for can run, spending a turn to produce nothing — which is strictly worse than closing outright, and indistinguishable from it in any test that only asserts the session ended.
     #[tokio::test]
     async fn a_checkpoint_waits_for_the_turn_it_asked_for() {
         let (runner, _rx, _done) = parked_runner().await;
@@ -1923,7 +1843,6 @@ mod tests {
         );
     }
 
-    // cm:guard the close must survive an agent that never answers. The daemon is exiting either way, and a session left open past the budget is a `setsid`-detached child on the worktree the relaunched daemon is about to hand to a second agent.
     #[tokio::test]
     async fn a_session_that_never_answers_is_still_closed() {
         let (runner, _rx, _done) = parked_runner().await;
@@ -1936,7 +1855,6 @@ mod tests {
         );
     }
 
-    // cm:guard `Some(0)` resolves to the DEFAULT, never to zero. The config key defaults to 0 and no project has set it, so a literal reading turns residency off for the whole fleet the moment this reader ships — the arithmetic that moved this out of ISS-873 phase 3 in the first place. Core's `park-deadline.ts` COALESCEs onto the same default and fires at that value plus a grace, so the two must agree or core reaps a park this side still considers live.
     #[test]
     fn a_zero_or_absent_residency_is_the_default_and_not_no_residency() {
         assert_eq!(resolve_residency(None), SESSION_IDLE_TIMEOUT);
@@ -1945,7 +1863,6 @@ mod tests {
         assert_eq!(resolve_residency(Some(1)), Duration::from_secs(1));
     }
 
-    // cm:guard the discriminating pair for the door choice. An issue job's `runtime_state` reaches core ONLY as a job event; sending it over the session-keyed PATCH silently 404s, which is how the column stayed NULL for every duplex pipeline session with three hops reading it.
     #[tokio::test]
     async fn an_issue_job_reports_its_close_on_the_job_channel() {
         let (tx, mut rx) = mpsc::channel(4);
@@ -2004,7 +1921,6 @@ mod tests {
         assert!(matches!(turn_verdict(&o, false), RunnerEvent::Done { .. }));
     }
 
-    // cm:guard an MCP server that failed at `system/init` is still failed on turn 4 — clearing it per turn would let a session that never reached its tools report every later turn as healthy.
     #[test]
     fn resetting_a_turn_keeps_what_belongs_to_the_process() {
         let mut o = Outcome {

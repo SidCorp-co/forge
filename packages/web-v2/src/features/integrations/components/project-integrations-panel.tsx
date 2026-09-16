@@ -42,7 +42,6 @@ function externalRepoUrl(card: StatusCard): string | null {
   return null;
 }
 
-// cm:guard Manage must render whenever the card is drillable, even beside a repo link — GitHub became drillable and its card carries `remoteUrl`, so an either/or leaves the only affordance shown navigating AWAY from the one screen that can connect the App
 function IntegrationCard({ card, onOpen }: { card: StatusCard; onOpen?: () => void }) {
   const lastSync = formatRelativeTime(card.lastSyncAt);
   const repoUrl = externalRepoUrl(card);

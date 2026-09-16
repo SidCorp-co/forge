@@ -33,7 +33,6 @@ let harness: TestDatabase;
 let projectId: string;
 let reapZombieSessions: typeof import('../../src/jobs/loop-monitor.js').reapZombieSessions;
 
-// cm:guard an ISO string, NOT a Date. Bound inside a raw `sql` template postgres-js has no column type to serialise a Date against and throws ERR_INVALID_ARG_TYPE on bind — the same trap `loop-monitor.ts` records on its own ackFast cutoff.
 const STALE = new Date(Date.now() - 60 * 60_000).toISOString();
 
 beforeAll(async () => {
@@ -42,7 +41,6 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  // cm:guard the broadcast and wedge paths are stubbed, not the predicate. Mocking the reaper itself would leave this file asserting that a mock was called, which is exactly the evidence the unit lane already fails to provide.
   ({ reapZombieSessions } = await import('../../src/jobs/loop-monitor.js'));
 }, 60_000);
 
@@ -91,7 +89,6 @@ describe('the quiet clock and the park', () => {
     expect(await statusOf(id)).toEqual({ status: 'running', reason: null });
   });
 
-  // cm:guard the discriminating half. A print-mode session reports NO state, and reading NULL as "maybe parked" would exempt every job still on the old path from the heartbeat hop — the exemption would quietly become fleet-wide on the day it shipped.
   it('still reaps a session that reports no state at all', async () => {
     const id = await runningSession(null);
     const after = await statusOf(id);

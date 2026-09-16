@@ -37,10 +37,8 @@ import { triggerTerminalDispatch } from './transition.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
-// cm:guard the body takes NO `stage`. It used to name one rung of the staged ladder, and ISS-897 left one job type — accepting the field and ignoring it (which is what `dispatchDriveManual` did for the whole of 2026-09-02) is an API that reports success for a request it did not honour.
 const runPipelineStepBodySchema = z.object({}).strict();
 
-// cm:edge contract -> packages/web-v2/src/features/issues/components/bulk-action-bar.tsx — `complexity` is omitted from this body ON PURPOSE, because that bar exposes no complexity selector; accepting it here would be a server surface no client can reach. A bulk-complexity affordance has to land on both sides in one change. The name this note used to give the web-side type, `BatchPatchData`, exists nowhere in the repo — the file is the anchor that can be checked.
 const batchPatchBodySchema = z
   .object({
     ids: z.array(z.uuid()).min(1).max(100),
@@ -76,7 +74,6 @@ const forbidden = (message: string) =>
 export const issueExtrasRoutes = new Hono<{ Variables: AuthVars }>();
 issueExtrasRoutes.use('*', requireAuth(), assertEmailVerified());
 
-// cm:guard `satisfies Record<TransitionErrorCode, string>` is what makes a new transition code a COMPILE error here rather than a runtime `undefined` reason on a skipped issue — and the union below is DERIVED from this map on purpose: it used to restate all eight snake_case names, so the two could disagree and only the map was checked
 const BATCH_SKIP_BY_CODE = {
   NO_OP: 'no_op',
   ILLEGAL_TRANSITION: 'illegal_transition',
@@ -101,7 +98,6 @@ type BatchResult = {
   failed: Array<{ id: string; error: string }>;
 };
 
-// cm:guard ordering -> this route must stay registered ahead of `/:id`, whose param is a uuid — `/batch` is not one, so a later registration makes every batch call a 400 on the id validator instead of reaching here
 issueExtrasRoutes.patch(
   '/batch',
   zValidator('json', batchPatchBodySchema, (r) => {
@@ -133,7 +129,6 @@ issueExtrasRoutes.patch(
       if (!foundIds.has(id)) result.skipped.push({ id, reason: 'not_found' });
     }
 
-    // cm:guard resolve access per PROJECT before the row loop, and map a 404 from `loadProjectAccess` to a `not_found` skip rather than letting it bubble — a project deleted between the issue read and the access read would otherwise fail the whole batch on one row.
     const distinctProjects = [...new Set(rows.map((r) => r.projectId))];
     type ProjectAccessState = { allowed: boolean; missing?: boolean };
     const accessMap = new Map<string, ProjectAccessState>();
@@ -143,7 +138,6 @@ issueExtrasRoutes.patch(
           const access = await loadProjectAccess(projectId, userId);
           return [
             projectId,
-            // cm:why Batch patch mutates issues — viewer (read-only) is not allowed.
             { allowed: projectRoleAtLeast(access.role, 'member') },
           ];
         } catch (err) {
@@ -158,7 +152,6 @@ issueExtrasRoutes.patch(
       accessMap.set(projectId, state);
     }
 
-    // cm:guard one prefix per PROJECT, resolved with the access map and not once for the batch — a batch may span projects, and a single prefix would render one project's issues under another's name, which is the confusion ISS-992 removed rather than one to introduce here
     const prefixMap = new Map<string, string | null>(
       await Promise.all(
         distinctProjects.map(
@@ -170,8 +163,6 @@ issueExtrasRoutes.patch(
       ),
     );
 
-    // cm:why collected across the whole batch and fanned out ONCE at the end — the children read is a single inArray, so the cost stays flat in N rather than one query per transitioned issue
-    // cm:guard derive this from the fan-out's own parameter type, never restate it — a local copy is how the batch path silently stops carrying a field the single-issue path added
     const terminalTransitions: Parameters<typeof triggerTerminalDispatch>[0] = [];
 
     for (const row of rows) {
@@ -193,7 +184,6 @@ issueExtrasRoutes.patch(
           const fromStatus = row.status as IssueStatus;
           const toStatus = data.status;
           try {
-            // cm:why Same core as single-issue `/transition` — guard semantics, conditional UPDATE, merged_at stamp, WS publish and run close are shared. No `override` in batch — bulk bar has no UI for owner-bypass. Terminal fan-out is collected below so the Layer-2 dispatch tick fires once per request, not per issue.
             const transitioned = await transitionIssueStatus(
               {
                 id: row.id,
@@ -291,7 +281,6 @@ issueExtrasRoutes.patch(
   },
 );
 
-// cm:guard enrichment is ENQUEUED and never run in-process: the desktop device-runner is what calls the model, so a handler that awaited it here would hold a request open for the length of an LLM call
 issueExtrasRoutes.post(
   '/:id/enrich',
   zValidator('param', idParamSchema, (r) => {
@@ -350,7 +339,6 @@ issueExtrasRoutes.post(
   },
 );
 
-// cm:guard this endpoint is the ONLY way out of a gated entry stage, so it must keep bypassing `states.open.mode === 'manual'` — that gate says "a human decides", and this IS the human deciding. Refusing here would make the gate a dead end with no exit but editing the config.
 issueExtrasRoutes.post(
   '/:id/run-pipeline-step',
   zValidator('param', idParamSchema, (r) => {
@@ -381,7 +369,6 @@ issueExtrasRoutes.post(
         actor: restActor(c),
         reason: { manual: true },
       });
-      // cm:guard `awaiting_release`, not `queued`, and no `jobId` — since ISS-933 core mints nothing for an autonomous issue. Answering `queued` with a fabricated id would tell the UI work started that no box has yet decided to take.
       return c.json({ issueId: issue.id, status: 'awaiting_release' }, 202);
     } catch (err) {
       if (err instanceof ActiveJobConflictError) {

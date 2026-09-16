@@ -24,7 +24,6 @@ const SHIPPED: readonly AudienceSpec[] = [
 
 const registry = new Map<Audience, AudienceSpec>(SHIPPED.map((a) => [a.id, a]));
 
-// cm:guard registration is the whole of adding an audience, and no code in `screen.ts` branches on an audience value — that is what makes a third one configuration. A `switch` on an id anywhere under this directory undoes it.
 export function registerAudience(spec: AudienceSpec): void {
   registry.set(spec.id, spec);
 }

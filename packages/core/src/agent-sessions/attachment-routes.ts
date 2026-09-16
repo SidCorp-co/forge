@@ -99,7 +99,6 @@ agentSessionAttachmentRoutes.post(
     const { sessionId } = c.req.valid('param');
     await authorizeSession(c, sessionId);
 
-    // cm:guard refuse a device principal HERE, before the insert: `session_attachments.uploader_id` is NOT NULL and a device has no userId, so letting one through turns an authorization decision into a constraint violation at write time. Upload is the web composer's action alone; runners only ever GET.
     if (c.get('principal') === 'device') {
       throw forbidden('device principals cannot upload chat attachments');
     }

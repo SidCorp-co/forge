@@ -1,4 +1,3 @@
-// cm:edge contract -> packages/core/src/skills/crud-routes.ts — these shapes are hand-verified against that router and its sibling `routes.ts`; nothing type-checks the pair, so a field renamed there reads as `undefined` here.
 export type SkillScope = "global" | "project";
 
 /** Runtime context a skill targets — mirrors core `skillTargets`. */

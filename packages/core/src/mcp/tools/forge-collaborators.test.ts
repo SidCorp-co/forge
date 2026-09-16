@@ -54,7 +54,6 @@ function buildPatCtx(scopes: readonly string[], projectIds: string[] | null = nu
   };
 }
 
-// cm:guard the mock mirrors `loadVisibleProjectIdsForPrincipal`'s exact chain — selectDistinct({id}).from.leftJoin.where — and a chain that no longer matches resolves to undefined rather than throwing, so every case below would pass on an empty visible set.
 function mockVisible(ids: string[]) {
   selectDistinctImpl.mockImplementationOnce(() => ({
     from: () => ({

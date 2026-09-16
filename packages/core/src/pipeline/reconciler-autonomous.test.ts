@@ -188,7 +188,6 @@ describe('the rescue cap on the open path (ISS-890 extra fix)', () => {
     expect(recordRescueMock).toHaveBeenCalledWith('run-o1');
   });
 
-  // cm:guard the charge follows the OUTCOME, and since ISS-933 the outcome is a box bound to serve the project rather than a job appearing. A project nothing serves spends no allowance — the issue is not being retried, it is waiting for an operator.
   it('charges nothing when no box is bound to serve the project', async () => {
     seedAutonomousStuck();
     wakeMastersForProject.mockResolvedValueOnce({ boxes: 0, delivered: 0 });

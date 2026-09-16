@@ -69,7 +69,6 @@ describe("ProjectFactsTab — what the always-inject flag promises", () => {
 		expect(onScreen).toContain("to splice its full body into every agent prompt.");
 	});
 
-	// cm:guard the sentence is SERVED, so an older API answer has none — the paragraph must not render empty rather than not render at all.
 	it("renders no empty paragraph when the server sent no sentence", () => {
 		withFacts({ alwaysInjectGuarantee: "" });
 		const { container } = render(

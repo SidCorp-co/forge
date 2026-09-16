@@ -140,7 +140,6 @@ describe('GET /api/skills/invokable', () => {
     expect(resolveRegisteredEffectiveSkills).not.toHaveBeenCalled();
   });
 
-  // cm:why registered after `GET /:id`, the literal path parses as an id and that route's uuid validator answers 400 before this handler ever runs
   it('is not swallowed by the sibling GET /:id uuid route', async () => {
     authVerified();
     accessAsMember();

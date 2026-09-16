@@ -44,7 +44,6 @@ describe('assertNotAgent', () => {
     expect(() => assertNotAgent('human', 'user-1')).not.toThrow();
   });
 
-  // cm:guard the positive form is the assertion. Under `kind !== 'human'` an unrecognised value from a future migration locks every real person out, while the positive form fails open only for a kind that does not exist yet — and the row that must never pass is the one that does.
   it('lets an unknown future kind through rather than locking everyone out', () => {
     expect(() => assertNotAgent('service', 'user-1')).not.toThrow();
     expect(() => assertNotAgent(null, 'user-1')).not.toThrow();
@@ -62,7 +61,6 @@ describe('every entrance that mints a user JWT refuses an agent first', () => {
     (f) => !f.endsWith('jwt.ts') && /\bsignUserToken\s*\(/.test(readFileSync(f, 'utf8')),
   );
 
-  // cm:guard a caller list that goes EMPTY is a failure, not a pass. The scan is a regex over the tree, so a rename of `signUserToken` would silently match nothing and this whole describe would report three green zeros — the exact shape of a test that cannot fail.
   it('finds the entrances at all', () => {
     expect(callers.length).toBeGreaterThanOrEqual(3);
   });

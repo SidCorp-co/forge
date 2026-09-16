@@ -14,6 +14,4 @@ export type Executor = Pool | Tx;
  * A handle that is definitely INSIDE a transaction, for the operations whose
  * correctness is a lock held across two statements.
  */
-// cm:guard `Executor` is deliberately NOT this: it accepts the POOL, where `FOR UPDATE` drops its
-// lock at the end of its own statement — a param named `tx` taking a pool is the defect (ISS-1001)
 export type TxOnly = Tx;

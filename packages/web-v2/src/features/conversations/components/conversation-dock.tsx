@@ -38,7 +38,6 @@ export function ConversationDock({
   onWidthChange: (w: number) => void;
   onClose: () => void;
 }) {
-  // cm:guard the live width is LOCAL during a drag and committed once on pointer-up: a pointer move that set the persisted value would re-render the whole memo-heavy workspace layout on every frame, and the prop is adopted only when no drag is in flight so a hydrate cannot fight the hand
   const [w, setW] = useState(width);
   const draggingRef = useRef(false);
   useEffect(() => {
@@ -53,7 +52,6 @@ export function ConversationDock({
 
   const onPointerMove = useCallback((e: React.PointerEvent) => {
     if (!draggingRef.current) return;
-    // cm:why right-anchored, so the panel widens as the pointer travels LEFT and the arithmetic is the viewport minus the clientX
     const next = window.innerWidth - e.clientX;
     setW(Math.min(MAX_W, Math.max(MIN_W, next)));
   }, []);
@@ -65,7 +63,6 @@ export function ConversationDock({
       try {
         (e.target as HTMLElement).releasePointerCapture(e.pointerId);
       } catch {
-        // cm:why a pointer already released throws here and is not a failure: the capture is released by the browser on some cancel paths before this runs
       }
       const committed = Math.min(MAX_W, Math.max(MIN_W, window.innerWidth - e.clientX));
       onWidthChange(committed);
@@ -73,7 +70,6 @@ export function ConversationDock({
     [onWidthChange],
   );
 
-  // cm:guard the keyboard step COMMITS on every press rather than on a key-up: there is no pointer-up to commit on, so a width moved by the arrow keys and never persisted would snap back on the next render that adopted the prop.
   const onKeyDown = useCallback(
     (e: React.KeyboardEvent) => {
       const step = e.shiftKey ? 64 : 16;

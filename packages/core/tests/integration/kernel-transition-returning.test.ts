@@ -209,7 +209,6 @@ describe('ISS-1014 · a bulk sweep never touches the transcript', () => {
     expect(rows.map((r) => r.status)).toEqual(['completed', 'completed', 'completed']);
     expect(rows.map((r) => r.id).sort()).toEqual([...ids].sort());
     expect(await auditRows()).toBe(3);
-    // cm:why one publish per session, not two: these rows carry no device, so the device room is skipped.
     const statusPublishes = publish.mock.calls.filter(
       (c) => (c[1] as { event?: string } | undefined)?.event === 'agent-session.status',
     );
@@ -232,7 +231,6 @@ describe('ISS-1014 · a bridge-marked session still gets its whole row', () => {
       status?: string;
       failureReason?: unknown;
     };
-    // cm:guard the WHOLE row, not the five-column projection — the bridge reads all three of these.
     expect(row.messages).toBeDefined();
     expect(row.status).toBe('completed');
     expect(row).toHaveProperty('failureReason');

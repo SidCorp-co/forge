@@ -66,7 +66,6 @@ function healthToStatus(lastHealthStatus: string | null, active: boolean): CardS
   const s = lastHealthStatus.toLowerCase();
   if (s === 'ok' || s === 'healthy' || s === 'success') return 'connected';
   if (s === 'degraded' || s === 'pending' || s === 'unknown') return 'attention';
-  // cm:guard both credential verdicts bucket to `attention`, never `error` — they are things an operator can fix (re-enter it, or widen it) and `error` reads as the provider's problem; the raw lastHealthStatus is what the chip reads to tell the two apart (ISS-409, ISS-924)
   if (s === 'needs_reauth' || s === 'needs_scope') return 'attention';
   return 'error';
 }

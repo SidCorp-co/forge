@@ -40,7 +40,6 @@ describe('readRunnerLoad', () => {
   });
 
   async function insertRunner(projectId: string, name: string, type = 'claude-code') {
-    // cm:guard `runners.device_id` is NOT NULL since 2026-09-04 — seed a real device instead of the `host='remote'`/NULL shape this fixture used, which now fails the insert rather than producing a row.
     const ownerRows = (await harness.db.execute(
       sql`SELECT created_by AS id FROM projects WHERE id = ${projectId}`,
     )) as unknown as Array<{ id: string }>;
@@ -110,7 +109,6 @@ describe('readRunnerLoad', () => {
     for (const r of load) expect(r).not.toHaveProperty('capacity');
   });
 
-  // cm:guard the count must not leak across runners. A GROUP BY dropped from the query returns ONE row for the whole fleet, and the map lookup then hands that single total to whichever runner id happens to be on it — every other runner reads as idle, and the PM dispatches onto a full box.
   it('does not hand one runner another runner load', async () => {
     const project = await seedProject();
     const a = await insertRunner(project.id, 'a');
@@ -136,8 +134,6 @@ describe('readRunnerLoad', () => {
     expect(load.map((r) => r.id)).toEqual([ours]);
   });
 
-  // cm:guard ISS-258 — an orphan under a terminal run holds no cap slot, and `countInFlightForRunner` (the gate that actually allocates one) has excluded it since the 2026-05-27 stall. Drop this filter from the reporting side and the PM reads a runner as full that the dispatcher will happily fill, then routes work away from a healthy box on the strength of a job nobody is running.
-  // cm:guard the I1 trigger (migration 0113) is DISABLED for this case on purpose, and re-enabled after. It cancels an active job the moment its run goes terminal, so with it on the orphan cannot be written at all and the assertion below passes whether the WHERE filter is there or not — measured 2026-08-31: removing the filter left the test green. The filter is the safety net for drift the trigger normally prevents, and this is the only way to witness it doing its job.
   it('does not count a job whose pipeline run has already gone terminal', async () => {
     const project = await seedProject();
     const runner = await insertRunner(project.id, 'r');

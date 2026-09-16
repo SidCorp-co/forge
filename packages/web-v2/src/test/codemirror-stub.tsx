@@ -22,7 +22,6 @@ export interface Transaction {
   selection?: { anchor: number; head: number };
 }
 
-// cm:guard the stand-in APPLIES the transaction to its document rather than only recording it: a spy that records would let a change with the wrong offsets pass, and offsets are the whole of what the toolbar's actions compute.
 export class FakeView {
   doc: string;
   sel: { from: number; to: number };

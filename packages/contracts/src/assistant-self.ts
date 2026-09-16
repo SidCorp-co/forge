@@ -6,10 +6,8 @@
  * and imports nothing from here at runtime.
  */
 
-// cm:edge contract -> packages/core/src/db/schema.ts — `answerStyles` is the runtime tuple this union mirrors; a style added there and not here compiles on the server and is unknown to every screen.
 export type AnswerStyle = "default" | "concise" | "detailed" | "bullets";
 
-// cm:edge contract -> packages/core/src/db/schema-agent-selves.ts — `answerInGroupModes`, `PresenceConfig`, and the two `preference_changes` tuples below are that module's; `conversations/presence.ts` holds the bounds and the defaults.
 export type AnswerInGroupMode = "window" | "mention";
 
 /** What an admin may set about when an agent speaks; every key optional, unset folds to the default. */

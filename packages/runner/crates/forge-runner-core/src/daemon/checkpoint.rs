@@ -25,11 +25,6 @@ use tokio::process::Command;
 use crate::runner::ledger::Run;
 
 /// How long the whole reconstruction may take.
-// cm:guard the budget is on the WHOLE reconstruction and not per command, because what it protects
-// is the sweep that calls this: a run that ended is not urgent, but a sweep that blocks is, and a
-// worktree on a dead mount makes every `git` below hang rather than fail. A partial checkpoint is
-// worth having and says which fields it could not read; a stalled sweep gives back no run's issues
-// at all.
 pub const RECONSTRUCT_BUDGET: Duration = Duration::from_secs(20);
 
 /// The branch a run's worktree is on and what is on it, as the box sees it.
@@ -48,19 +43,11 @@ pub struct Reconstructed {
     pub ended_by: Option<String>,
     pub ended_reason: Option<String>,
     /// Which fields could not be read, and why, in the reader's words.
-    // cm:guard an unreadable field is NAMED here and left `None`, never defaulted to something
-    // that reads as a fact. `files_touched: []` means the run touched nothing; a `git` that could
-    // not run must not be able to say that, because "the run changed nothing" is the one
-    // reconstruction that would make a master throw the work away.
     pub unread: Vec<String>,
 }
 
 impl Reconstructed {
     /// The block as core receives it, labelled as reconstruction at the wire.
-    // cm:guard the `source` field is part of the payload and not decoration. Core writes these two
-    // blocks onto an issue under separate headings and must never be able to print a box-derived
-    // field under the run's own testimony; the label travels with the data so the two cannot be
-    // confused by a later reader either.
     pub fn to_json(&self) -> serde_json::Value {
         serde_json::json!({
             "source": "reconstructed_from_box",
@@ -118,17 +105,6 @@ async fn git_lines(dir: &Path, args: &[&str]) -> Option<Vec<String>> {
 }
 
 /// The commit this branch grew from, preferring the branch's own upstream.
-// cm:guard the upstream is tried FIRST and the repo-wide defaults are the fallback, never the other
-// way round: a run cut from a release branch has a merge base with `origin/HEAD` that is hundreds
-// of commits behind its actual base, and every file changed in between would be reported as a file
-// this run touched. A wrong base here does not fail loudly — it inflates the evidence.
-// cm:guard `origin/main` and `origin/master` are tried after `origin/HEAD` because that ref is NOT
-// always there: a repo built by `git init` plus `git remote add` plus a push has no
-// `refs/remotes/origin/HEAD` at all — only `git clone` writes it — and this module's own test
-// builds one that way, which is how the gap was found. Naming the two conventional defaults is a
-// guess about naming and is priced as one: the base that was chosen is reported in the payload, so
-// a master reading `base` beside `branch` can see which it got. It is never inferred silently, and
-// when none of the four resolve the answer is "unknown" rather than a base.
 async fn base_of(dir: &Path, branch: &str) -> Option<String> {
     let mut candidates: Vec<String> = Vec::new();
     if let Some(u) = git_line(
@@ -151,11 +127,6 @@ async fn base_of(dir: &Path, branch: &str) -> Option<String> {
 }
 
 /// `git rev-list --count` over already-split arguments.
-// cm:guard the caller passes SEPARATE arguments and never one space-joined string. `Command::args`
-// hands each element to git as one argv entry, so `"HEAD --not --remotes"` arrives as a single
-// revision named that, git fails, and this returns `None` — which reads as "could not count"
-// rather than as the wrong count, but silently loses the unpushed number that step 16 reports to a
-// human as work at risk. Caught by this module's own test, not by the typechecker.
 async fn count(dir: &Path, rev_args: &[&str]) -> Option<u32> {
     let mut args: Vec<&str> = vec!["rev-list", "--count"];
     args.extend_from_slice(rev_args);
@@ -173,13 +144,6 @@ pub async fn reconstruct(run: &Run) -> Reconstructed {
         ..Default::default()
     };
 
-    // cm:guard a RELATIVE path is refused by name and nothing is read, because every `git` below
-    // runs with `current_dir(dir)` and a relative path resolves against the daemon's own cwd — so a
-    // run whose worktree path is empty or relative would be reported with the branch, head and base
-    // of whatever checkout the daemon happens to be standing in. Measured: a fixture whose run
-    // carried a bare path came back claiming branch `ISS-957` off the live forge-dev repo. That is
-    // not a missing field, it is a confident wrong answer about some other run's work, and it is
-    // the one failure mode a reconstruction must not have.
     if !dir.is_absolute() {
         out.unread.push(format!(
             "the worktree path `{}` is not absolute, so nothing was read: a relative path resolves against the daemon's own directory and would describe some other checkout",
@@ -214,11 +178,6 @@ pub async fn reconstruct(run: &Run) -> Reconstructed {
     match &out.base {
         Some(base) => {
             out.commits_ahead = count(dir, &[&format!("{base}..HEAD")]).await;
-            // cm:guard the UNION of tracked changes and untracked files, because `git diff` cannot
-            // see a file git has never been told about — and a new file nobody added is exactly the
-            // work `workspace/salvage.rs` exists to save. Measured by this module's own test: a
-            // committed file and an uncommitted new one, and the diff alone reported only the
-            // first, so the evidence would have understated what the dead run left.
             match git_lines(dir, &["diff", "--name-only", base]).await {
                 Some(files) => out.files_touched = files,
                 None => out
@@ -244,10 +203,6 @@ pub async fn reconstruct(run: &Run) -> Reconstructed {
         ),
     }
 
-    // cm:guard counted against EVERY remote ref, not against the branch's upstream, because a run
-    // that pushed to a differently-named remote branch has pushed its work and a count against the
-    // upstream would report it as unpushed — and an unpushed count is what step 16 reports to a
-    // human as work at risk. `--remotes` with no argument is every ref under `refs/remotes/`.
     out.commits_unpushed = count(dir, &["HEAD", "--not", "--remotes"]).await;
 
     out.working_tree_dirty = match git_lines(dir, &["status", "--porcelain"]).await {
@@ -406,8 +361,6 @@ mod tests {
         );
     }
 
-    // cm:guard the count is what step 16 reports to a human as work at risk, so it must not report
-    // pushed work. A run that pushed is a run whose commits some remote ref has.
     #[tokio::test]
     async fn counts_as_unpushed_only_what_no_remote_has() {
         let (root, work) = a_repo_with_a_remote("unpushed");
@@ -430,9 +383,6 @@ mod tests {
         );
     }
 
-    // cm:guard `files_touched: []` must be unreachable when the read failed. "The run changed
-    // nothing" is the one reconstruction that would make a master throw the work away, so a reader
-    // that could not run may never produce it.
     #[tokio::test]
     async fn names_what_it_could_not_read_instead_of_reporting_nothing_touched() {
         let dir = temp_path("gone");
@@ -481,9 +431,6 @@ mod tests {
         );
     }
 
-    // cm:guard the label travels WITH the data. Core prints this block and the run's own testimony
-    // under separate headings, and a box-derived field printed under the run's testimony is the
-    // kernel inventing a statement nobody made (ISS-1050).
     #[test]
     fn the_payload_labels_itself_as_reconstruction() {
         let got = Reconstructed {

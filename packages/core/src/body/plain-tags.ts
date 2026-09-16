@@ -8,7 +8,6 @@
  * renderer could not already produce. Widening it widens the render surface.
  */
 
-// cm:edge contract -> packages/web-v2/src/design/patterns/markdown.tsx — this set is the tags GFM already produces there. A tag added here that the markdown renderer never emits is a NEW render surface, and P2's component renderer inherits it.
 export const PLAIN_TAGS = new Set([
   'p',
   'br',
@@ -51,7 +50,6 @@ export const VOID_TAGS = new Set(['br', 'hr', 'img']);
  * reports as sanitized while still delivering the attacker's string to every
  * reader. Decision 2 names the same list.
  */
-// cm:guard drop the subtree, never unwrap it — unwrapping a <script> leaves its source as prose and reads as if sanitizing worked
 export const DROPPED_ELEMENTS = new Set(['script', 'style', 'iframe', 'object', 'embed']);
 
 /** Per-tag attribute allowlist. A tag absent from this map takes no attributes. */

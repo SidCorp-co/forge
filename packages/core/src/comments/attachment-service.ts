@@ -26,8 +26,6 @@ export type AttachmentErrorCode =
 
 export class AttachmentError extends Error {
   readonly code: AttachmentErrorCode;
-  // cm:guard every route that maps this class must forward `details` — an ATTACHMENT_NAME_TAKEN whose body drops it names a collision without naming what it collided with, and a MIME_NOT_ALLOWED whose body drops it names a type without naming the set (ISS-957, ISS-963)
-  // cm:guard this rides to the client as `body.details`, so it must stay free of storage paths, uploader ids and anything else the refusal does not need
   readonly details: unknown;
   constructor(code: AttachmentErrorCode, message: string, details?: unknown) {
     super(message);
@@ -48,7 +46,6 @@ export function validateCommentAttachment(input: {
   bytes: Buffer;
 }): string {
   if (!input.name) throw new AttachmentError('INVALID_NAME', 'name is empty after sanitisation');
-  // cm:guard refuse an over-budget name, never trim it to fit — the name is the identity the collision rule compares, so a trim maps every name sharing its first 180 bytes onto one row, and it is the storage key's `<epoch>-` prefix plus ext4's 255-byte component that sets the number (ISS-963)
   if (nameExceedsByteBudget(input.name))
     throw new AttachmentError(
       'INVALID_NAME',
@@ -73,7 +70,6 @@ export function validateCommentAttachment(input: {
   return resolved.mime;
 }
 
-// cm:guard this message must NOT offer "delete it" the way the issue twin does — there is no DELETE for a comment attachment (comments/routes.ts publishes only POST /:commentId/attachments and GET /attachments/:id, and the issue route's DELETE joins issue_attachments), so the divergence from the issue wording is the correct half of the pair (ISS-963)
 function nameTakenError(existing: ExistingAttachmentRef, scope: string): AttachmentError {
   return new AttachmentError(
     'ATTACHMENT_NAME_TAKEN',
@@ -135,11 +131,9 @@ export async function persistCommentAttachment(
   const name = safeName(input.name || 'file');
   const mime = validateCommentAttachment({ name, mime: input.mime, bytes });
 
-  // cm:guard the check, the storage write and the insert are ONE transaction under a name lock — the check alone is decorative because `getStorage().put` sits inside the read-to-write window (ISS-963)
   const inserted = await db.transaction(async (tx) => {
     await lockAttachmentName(tx, 'comment', commentId, name);
 
-    // cm:guard decide the collision on the SANITISED name, never `input.name` — that is what the row stores and what a record cites, and `a b.md`/`a_b.md` both sanitise to `a_b.md`, so checking the input would admit the pairs that actually collide and refuse the pairs that do not (ISS-963)
     const taken = await findCommentAttachmentByName(commentId, name, tx);
     if (taken) throw nameTakenError(taken, 'comment');
 
@@ -194,7 +188,6 @@ function toErrorEntry(index: number, name: string, err: unknown): CommentAttachm
       };
 }
 
-// cm:edge protocol -> packages/core/src/issues/attachment-service.ts — the issue twin of this function; the two must refuse a batch on the same terms, because one client sends the same evidence to an issue or to a comment and cannot be told the rules differ by parent
 /** Remove attachments this process wrote and no longer stands behind (storage and rows). */
 export async function discardCommentAttachments(ids: readonly string[]): Promise<void> {
   if (ids.length === 0) return;
@@ -206,7 +199,6 @@ export async function discardCommentAttachments(ids: readonly string[]): Promise
     try {
       await getStorage().delete(row.path);
     } catch {
-      // cm:why swallowed on purpose, and the row is deleted below regardless: the two failures are not symmetrical — an orphan blob costs storage and is recoverable by a sweep, while a row surviving a refused batch is the half-landed attachment this whole path promises cannot exist, under a name the caller can no longer re-send.
     }
   }
   await db.delete(commentAttachments).where(inArray(commentAttachments.id, [...ids]));
@@ -225,7 +217,6 @@ export async function persistDecodedCommentAttachments(
   uploaderDeviceId: string | null,
 ): Promise<{ persisted: PersistedCommentAttachment[]; errors: CommentAttachmentErrorEntry[] }> {
   const errors: CommentAttachmentErrorEntry[] = [];
-  // cm:guard the issue twin's rule, and load-bearing for the same reason: a batch carrying one name twice would otherwise land member 1, collide on member 2, roll member 1 back, and refuse with the id of a row it had just deleted (ISS-957)
   const seen = new Set<string>();
   for (const [i, d] of decoded.entries()) {
     const name = safeName(d.name || 'file');

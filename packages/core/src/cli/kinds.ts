@@ -54,7 +54,6 @@ export const RULES = section({
   heading: /\b(?:rules?|invariants?|acceptance|behaviours?)\b/iu,
 });
 
-// cm:guard the one section a sentence may carry INSTEAD of a heading, which is what `spoken` is for and why `substantial` is false here — refusing "nothing is out of scope" would teach a filer to add an empty heading, and an empty heading is what every other section's floor exists to refuse
 export const SCOPE = section({
   title: 'Out of scope',
   reads: 'the out-of-scope',
@@ -202,7 +201,6 @@ export function didYouMean(what: string, given: string, candidates: readonly str
   return `No ${what} named ${given}.${nearest} The set is ${listed(candidates)}.`;
 }
 
-// cm:guard the route past the set is NOT "pick the nearest and carry on" — a kind this layer does not define is a section list nobody has decided, so the way out is an issue against the plugin that owns the table, never a filing fixed by guessing
 const KIND_ROUTE =
   'a filing needing another category, or another section under one, files an issue against' +
   ' the plugin rather than inventing the value';

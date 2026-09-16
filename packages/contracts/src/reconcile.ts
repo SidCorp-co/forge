@@ -51,7 +51,6 @@ export const reconcileRunSchema = z.object({
 });
 export type ReconcileRun = z.infer<typeof reconcileRunSchema>;
 
-// cm:guard story must be present before a reconcile can be triggered (C1/C2 — passed in via packetId or directly)
 export const triggerReconcileInputSchema = z.object({
   projectId: z.string().uuid(),
   /** The update packet driving this reconcile run. At least one of packetId or direct fields required (C1). */

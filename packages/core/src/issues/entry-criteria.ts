@@ -48,8 +48,6 @@ type Criterion = (
 
 const isBlank = (v: string | null): boolean => v == null || v.trim().length === 0;
 
-// cm:guard a criterion reads the TRACKER RECORD and never a working tree. `forge guide contract earning-and-unearning` states the constraint and the reason: "a check that read the working tree would answer differently on every machine that ran it", so anything the repository knows is written onto the issue at the step that knew it and read back from there. `work_evidence` is the shape of that rule, not an exception to it — it reads the handoff a step wrote, not git.
-// cm:guard each detail names ONE record and how to write it. A refusal that says "criteria unmet" sends the reader to the config to find out what it means, and the config is the one place they cannot fix it from — the shortfall has to be actionable from the issue.
 const CRITERIA: Record<EntryCriterionKey, Criterion> = {
   plan: (_id, record) =>
     isBlank(record.plan)
@@ -78,7 +76,6 @@ const CRITERIA: Record<EntryCriterionKey, Criterion> = {
  * SELECT inside every status transition's transaction is what ISS-863 removed
  * from `merged-at.ts`, and re-adding one here would put it back.
  */
-// cm:guard an unreadable config declares NOTHING, on purpose, and that covers a THROWN read as well as a `null` one. This gate refuses writes, so failing closed on a config nobody can see would freeze every status write on the project — the same direction `checkTransitionEvidence` fails, and the opposite of `assertIssueNeverEnteredPipeline`, whose failure mode is granting an exemption rather than blocking the tracker.
 export async function resolveDeclaredEntryCriteria(
   projectId: string,
   toStatus: IssueStatus,
@@ -96,7 +93,6 @@ export async function resolveDeclaredEntryCriteria(
  * Which of the declared criteria this issue does not meet, in declaration
  * order. `null` when it meets all of them, or when none were declared.
  */
-// cm:guard the shortfall names ONLY what is unmet. A list of every criterion the status declares reads as a list of failures, sends the writer to add what is already there, and is the shape `forge guide contract earning-and-unearning` calls out by name.
 export async function findUnmetEntryCriteria(args: {
   issueId: string;
   declared: readonly EntryCriterionKey[];

@@ -16,7 +16,6 @@
 
 export const DEFAULT_NO_PROGRESS_ROUNDS = 5;
 
-// cm:guard nothing in core may branch on this value (RFC 0002 INV-8) — the moment a dispatch gate or a transition reads it, the deleted cap is back under a new name, and it will park the same progressing issues the cap parked
 export function resolveNoProgressRounds(agentConfig: unknown): number {
   const cfg = agentConfig as
     | { pipelineConfig?: { reopenPolicy?: { noProgressRounds?: unknown } } }

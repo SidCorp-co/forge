@@ -40,7 +40,6 @@ describe('the door table', () => {
   it('declares no more than two repairs anywhere', () => {
     for (const d of DOORS) if (d.ending === 'fallback') expect(d.repairs).toBeLessThanOrEqual(2);
   });
-  // cm:guard this is the property the cell/door split exists for. If every door on a cell carried the same policy the split would be decoration and a later refactor would fold it back — `public:report` is read at three doors that repair 1, 1 and 0 times, and no single number on the cell could have been right for all three.
   it('gives the three public:report doors two different repair counts', () => {
     const reported = DOORS.filter((d) => d.cell === 'public:report');
     expect(reported).toHaveLength(3);
@@ -49,7 +48,6 @@ describe('the door table', () => {
     );
   });
 
-  // cm:guard the Forge UI reply is on a cell of its OWN and must not drift back onto `role:report`: ISS-1005's review caught that move dropping `only-verified-citations`, `no-empty-promise` and `progress-figures-match`, three rules that are about the turn rather than the reader, and the last of those cannot be added to `role:report` because `screenAgentComment` gathers no progress and the rule fails closed. This reds if somebody folds the two back together (ISS-1005).
   it('reads the browser reply at a cell no other door reads', () => {
     const chat = DOORS.filter((d) => d.cell === 'role:chat');
     expect(chat.map((d) => d.id)).toEqual(['web-chat-reply']);
@@ -63,16 +61,13 @@ describe('the door table', () => {
       'progress-figures-match',
       'no-redacted-secret',
     ]);
-    // cm:guard the ONE rule the move was for, asserted as absent by name rather than left to the list above to imply: `no-developer-detail` is why this cell exists, and a reader adding it back would be undoing ISS-1005 without meeting anything that says so.
     expect(spec?.rules.map((r) => r.id)).not.toContain('no-developer-detail');
   });
 
-  // cm:guard every door's reason is its OWN, across the whole table: a row copied from the nearest existing one is the failure the door table exists to prevent, and it reads identically to a row that was thought about (ISS-1005).
   it('gives every door a reason no other door states', () => {
     expect(new Set(DOORS.map((d) => d.why)).size).toBe(DOORS.length);
   });
 
-  // cm:guard the two `role:ask` doors end the same way for DIFFERENT reasons, and the reasons are what the door table carries: one has the agent still on the line, the other posts into a room with nobody left to ask. One `why` shared between them would be the first step back to a policy on the cell.
   it('gives the two role:ask doors the same ending and different reasons for it', () => {
     const asked = DOORS.filter((d) => d.cell === 'role:ask');
     expect(asked).toHaveLength(2);
@@ -145,7 +140,6 @@ describe('the pair a door screens at, read off its own row', () => {
     }
   });
 
-  // cm:guard an audience is an open string and nothing forbids a colon in one, so the cut is at the LAST colon: cutting at the first would hand `internal:operator:report` back as audience `internal` and intent `operator`, which names no cell, and that door would then refuse every message it screened while saying only that the pair is unknown.
   it('keeps an audience that carries a colon of its own whole', () => {
     const { audience, intent } = doorCell('chat-sync');
     expect(`${audience}:${intent}`).toBe('public:report');

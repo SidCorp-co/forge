@@ -9,7 +9,6 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// cm:guard `lib/authz.ts:effectiveProjectRole` chains TWO leftJoins before `where().limit(1)`, and the mock is declared with no default implementation so `mockResolvedValueOnce` accepts any value — a default here silently answers every call the cases did not queue.
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn();
 const selectWhere = vi.fn();
@@ -60,7 +59,6 @@ const ADMIN_TOKEN_ID = '44444444-4444-4444-8444-444444444444';
 const TOKEN_ID = '55555555-5555-4555-8555-555555555555';
 const SESSION_ID = '66666666-6666-4666-8666-666666666666';
 
-// cm:guard `admin` is in these scopes for the same reason `forge-runners.test.ts` says: `assertPrincipalIsAdmin` reads `principal.scopes`, a paired device carried none, and ISS-931 took the device off `/mcp`. The admin-action cases here assert what an ADMIN caller gets, so the principal has to be one.
 const fakePrincipal = makeFakePrincipal(ADMIN_TOKEN_ID, OWNER_ID, {
   scopes: ['read', 'write', 'admin'],
 });

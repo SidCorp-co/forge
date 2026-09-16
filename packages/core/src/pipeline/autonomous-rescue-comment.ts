@@ -35,8 +35,6 @@ export async function postCapReachedComment(args: {
       .select({ id: comments.id, body: comments.body })
       .from(comments)
       .where(eq(comments.issueId, args.issueId));
-    // cm:guard idempotent by BODY, not by a flag: the park transition can race a concurrent reconciler tick, and a second identical comment on an issue a human is being asked to read is how an operator-facing signal turns into noise they filter out.
-    // cm:guard which is why `driveSessions` is IN the body and must stay there. Every other input is stable across a run, so a body built without it is byte-identical at every park — and the SECOND park, after a human answered and the counter reset, silently posts nothing. The issue then flips to `needs_info` carrying only the previous cycle's explanation. The watermark is strictly increasing, so a later park always differs while a same-tick race still collides, which is the only collision this guard wants.
     if (existing.some((c) => c.body === body)) return;
 
     await db.insert(comments).values({

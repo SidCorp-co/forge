@@ -19,7 +19,6 @@ export interface LivenessBandProps {
 }
 
 /** Section 1 — is the control plane executing? */
-// cm:guard the heartbeat renders on series LENGTH, never on a value in it — an all-zero window is a flatline and the single most important thing this surface says; a `some(v > 0)` test here hides three silent days behind an empty frame (ISS-988 criteria 26, 48).
 export function LivenessBand({ liveness, thresholds }: LivenessBandProps) {
   const [panel, setPanel] = useState<"liveJobs" | "stuckRuns" | null>(null);
   const mark = silenceMark(liveness.silenceSeconds, thresholds);

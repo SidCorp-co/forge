@@ -9,7 +9,6 @@ vi.mock('../../config/env.js', () => ({
   },
 }));
 
-// cm:guard two chains share one `db.select` mock and they differ in shape: `effectiveProjectRole` is select().from().leftJoin().leftJoin().where().limit(), while count / ruleId / list are select().from().where()[.orderBy()].limit(). A mock that satisfies one and not the other resolves to undefined rather than failing.
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
@@ -54,7 +53,6 @@ const RULE_ID = '88888888-8888-4888-8888-888888888888';
 const ORG_ID = '99999999-9999-4999-8999-999999999999';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-// cm:guard the pipeline ctx must carry a MACHINE principal — since ISS-931 the job is resolved from the `job:<id>` name on the caller's own token, not from a device row, so a `makeFakePrincipal` here (a person's PAT, `machine: null`) makes every case below answer `not_pipeline_context` and the suite asserts the refusal path twice instead of once.
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, DEVICE_ID, PROJECT_ID);
 
@@ -176,7 +174,6 @@ describe('forge_ux_findings write', () => {
 
     selectLimit.mockResolvedValueOnce([{ id: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // cm:why the empty row set IS the nothing-running case — `resolvePipelineContext` selects a non-terminal session on this box for this project, so a finished one resolves to no row at all
     selectLimit.mockResolvedValueOnce([]);
 
     const result = await tool.handler({
@@ -232,11 +229,9 @@ describe('forge_ux_findings write', () => {
     expect(result).toMatchObject({ ok: true });
     const inserted = (insertValues.mock.calls[0] as unknown[])?.[0] as Record<string, unknown>;
     expect(inserted.issueId).toBe(ISSUE_ID);
-    // cm:guard runId MUST stay undefined on this path — the finding is not attributable to a run, and inventing one would misreport which pass found it
     expect(inserted.runId).toBeUndefined();
   });
 
-  // cm:guard assert the rendered SQL, not the refusal — the db mock returns whatever count the test queues, so a `rate_limited` assertion passes with `eq(runId, null)` in place of `isNull` and the cap it is meant to defend is gone. `eq(col, null)` renders ` = ` with a null param and is never true; `isNull` renders ` is null`. Do not add `not.toContain(' = null')` — the null is an ERASED param, so that text can never appear and the assertion is unfalsifiable.
   it('matches the null runId with IS NULL, so the escape hatch stays capped', async () => {
     const tool = forgeUxFindingsTool(makeCtx());
 
@@ -353,7 +348,6 @@ describe('forge_ux_findings list', () => {
     expect(result.findings[0]?.detail).toContain('UNTRUSTED_DATA');
   });
 
-  // cm:guard assert BOTH halves — limit+1 reaching `.limit()` AND the UN-inflated limit reaching the envelope. Pass overfetch() to both and a page bound by the caller's own limit reports hasMore:false, which is exactly the ISS-787 lie this surface was fixed for, and no other test in this file reads the envelope.
   it('over-fetches by one and reports the limit that bound the page', async () => {
     const tool = forgeUxFindingsTool(makeCtx());
 

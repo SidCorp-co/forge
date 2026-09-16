@@ -73,7 +73,6 @@ describe('embedQuery() and its cache', () => {
     expect(queryCacheSize()).toBe(QUERY_CACHE_MAX);
   });
 
-  // cm:guard recency is insertion order and a hit re-inserts: the entry evicted is the one not asked for longest, not the one inserted first.
   it('evicts the least recently used entry when full (criterion 5)', async () => {
     for (let i = 0; i < QUERY_CACHE_MAX; i++) await embedQuery(`text ${i}`);
     await embedQuery('text 0'); // a hit — text 0 is now the most recent
@@ -94,7 +93,6 @@ describe('embedQuery() and its cache', () => {
     expect(embedDetailed).toHaveBeenCalledTimes(2);
   });
 
-  // cm:guard the indexer's identical-text skip and the backfill count the client's calls; a cache on the write path would hide a re-embed the caller meant to make (criterion 45).
   it('leaves embed() and embedBatch() uncached — the same text twice reaches the client twice (criterion 45)', async () => {
     await embed('what broke');
     await embed('what broke');

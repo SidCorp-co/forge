@@ -24,13 +24,11 @@ import type {
 export const ISSUES_PAGE_SIZE = 25;
 
 /** One entry of a `labels` write. A bare string attaches by name or uuid, not primary. */
-// cm:edge contract -> packages/core/src/issues/label-service.ts#LabelAttachInput — the union arms and their meaning are that type's; `isPrimary` on a plain label is refused with PRIMARY_NOT_MODULE
 export type LabelAttach = string | { labelId: string; isPrimary?: boolean };
 
 export interface PatchIssueInput {
   priority?: IssuePriority;
   complexity?: IssueComplexity | null;
-  // cm:why `descriptionFormat` is deliberately NOT here: core's `resolveFormat` sniffs a body opening with `<forge-` as html and everything else as markdown, and that sniff is the same rule `bodyText`/`bodyNodes` read a stored row back with. Sending the format from the browser adds a second opinion that can disagree with the bytes.
   description?: string;
 }
 
@@ -52,7 +50,6 @@ export interface CreateIssueInput {
 /**
  * ISS-949 — the backlog counted by module. `GET /api/projects/:id/modules/rollup`.
  */
-// cm:edge contract -> packages/core/src/labels/module-rollup.ts — the response shape is that module's: `rollup` is `own + inherited` with each issue counted once per attribution kind, so a client that re-adds them double-counts
 export const modulesApi = {
   rollup: (projectId: string, activeWithinDays?: number) => {
     const params = new URLSearchParams();
@@ -87,26 +84,18 @@ export const issuesApi = {
     params.set("offset", String((page - 1) * pageSize));
     params.set("sort", opts.sort ?? "createdAt:desc");
     params.set("withAgentSessions", "1");
-    // cm:why one grouped query on this response replaced a per-row cost-summary N+1 (ISS-437) — dropping the flag brings the N+1 back rather than losing a column
     params.set("withCost", "1");
-    // cm:why ISS-700 — the same grouped-query pattern as `withCost`: it backs the Failed-badge tooltip, so dropping the flag reintroduces a per-row fetch on hover rather than losing the badge
     params.set("withFailureInfo", "1");
-    // cm:why carries the queued step + its gate, without which a queued-but-undispatched row renders as actively worked
     params.set("withPipelineHealth", "1");
-    // cm:why ISS-594 — the row's module attributions, and the only source for the list's Module cell: the search response carries no labels otherwise
     params.set("withModules", "1");
-    // cm:why ISS-1017 — the same grouped-query pattern as `withCost` above: it is the list's ONLY source of dependency edges, and dropping the flag reinstates the per-row `GET /issues/:id/dependencies` N+1 (25 a page) rather than losing the badges
     params.set("withDependencies", "1");
-    // cm:why the tab counts ride this response rather than an endpoint of their own: the figure on a tab and the rows beneath it are then one read of one narrowing, and cannot describe two different moments (ISS-1010)
     params.set("withBuckets", "1");
     if (opts.q) params.set("q", opts.q);
     if (opts.priority) params.set("priority", opts.priority);
     if (opts.createdBy) params.set("createdBy", opts.createdBy);
     if (opts.label) params.set("label", opts.label);
-    // cm:why ISS-594 — a SEPARATE param from `label`: core resolves `module` against `kind='module'` rows only, so sending a module id as `label` would match plain labels of the same name
     if (opts.module) params.set("module", opts.module);
     const { status, statusNot, origin } = filterToQueryParams(opts.filter ?? "all");
-    // cm:why an explicit `status` REPLACES the tab's set rather than intersecting it: a dashboard cell links to the bucket it counted, and intersecting with whatever tab the URL also carries would answer with a subset while the figure above it claimed the whole (ISS-988 criterion 47)
     for (const s of opts.status ?? status ?? []) params.append("status", s);
     for (const s of statusNot ?? []) params.append("statusNot", s);
     if (origin) params.set("origin", origin);
@@ -125,7 +114,6 @@ export const issuesApi = {
 
   /** `POST /api/issues/:id/transition` — state-machine guarded status change.
    *  Invalid transitions return 409 (ILLEGAL_TRANSITION). */
-  // cm:guard `reason` is REQUIRED entering reopen / waiting / needs_info, and `waitingKind` additionally for waiting (RFC 0002 INV-8) — the server answers 422 without them, so a caller that cannot collect one must not offer the action
   transition: (
     id: string,
     toStatus: IssueStatus,
@@ -159,7 +147,6 @@ export const issuesApi = {
    * `[]` clears them all. The object form designates the primary module; a bare string attaches a
    * label as non-primary.
    */
-  // cm:guard the caller must merge the issue's existing non-module labels into `labels` — sending only the modules DELETES every plain label on the issue, and the server cannot tell that from a deliberate clear
   setLabels: (id: string, labels: LabelAttach[]) =>
     apiClient<IssueRow>(`/issues/${id}`, {
       method: "PATCH",
@@ -180,7 +167,6 @@ export const issuesApi = {
    * the pipeline. `target` names where it landed and is required; `note` is free text kept on the
    * audit comment the server writes.
    */
-  // cm:edge contract -> packages/core/src/issues/merge-routes.ts — `target` required on mark, `note` optional, both `.strict()`; an extra key is a 400, and `merged_at` is the feature-branch barrier's release signal rather than a field edit
   markMerged: (id: string, body: { target: string; note?: string }) =>
     apiClient<{ id: string; action: "merged" | "unmarked" }>(`/issues/${id}/merge`, {
       method: "POST",
@@ -188,7 +174,6 @@ export const issuesApi = {
     }),
 
   /** `DELETE /api/issues/:id/merge` — retract the claim, which re-blocks every `blocks` dependent. */
-  // cm:guard the empty body is REQUIRED, not cosmetic — the route runs the same `zValidator('json')` on DELETE as on POST, and omitting it is a 400
   unmarkMerged: (id: string, body: { note?: string } = {}) =>
     apiClient<{ id: string; action: "merged" | "unmarked" }>(`/issues/${id}/merge`, {
       method: "DELETE",
@@ -196,7 +181,6 @@ export const issuesApi = {
     }),
 };
 
-// cm:edge contract -> packages/core/src/issues/search.ts#IssueBuckets — the raw per-status figures the tabs are built from. Deliberately NOT counts per tab: the status→tab mapping lives once, in the contracts label axis, and a second copy on the server is the drift that axis exists to prevent.
 export interface IssueBuckets {
   byStatus: Partial<Record<IssueStatus, number>>;
   detector: number;
@@ -223,7 +207,6 @@ export interface ReleaseRosterEntry {
 }
 
 /** What the project's release surface reads. `gateStatus: null` = no gate. */
-// cm:edge contract -> packages/core/src/release-batch/queries.ts — serialized straight onto this shape; a field renamed there and not here arrives as `undefined` and renders as a blank cell rather than an error
 export interface ReleaseRoster {
   gateStatus: string | null;
   channel: string | null;

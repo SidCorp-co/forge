@@ -84,7 +84,6 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
     return readAdmissibleIssues({ deviceId });
   }
 
-  // cm:guard the two issues differ ONLY in the evidence columns — same status, same project, same age ordering. That is the whole claim: before this change a master saw one row shape for both, and the backlog's job/run exclusions cannot separate them because neither has a job.
   it('separates a hand-built draft from an untouched one', async () => {
     await insertIssue(1);
     await insertIssue(2, { branch: 'ISS-2' });
@@ -105,7 +104,6 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
     expect(typeof row?.mergedAt).toBe('string');
   });
 
-  // cm:guard the mark must NOT hide the row. `merged_at` is caller-asserted, so excluding on it would take a decision away from the master and hide an issue whose stamp was wrong — the opposite of handing over raw facts.
   it('still offers a marked row rather than filtering it away', async () => {
     await insertIssue(4, { merged: true });
 

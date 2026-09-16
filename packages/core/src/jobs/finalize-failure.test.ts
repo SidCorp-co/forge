@@ -28,7 +28,6 @@ vi.mock('./retry.js', () => ({
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...args),
 }));
 
-// cm:why ISS-823 review blocker — pins the fix ordering: stampRunnerLimit must land BEFORE scheduleAutoRetryWithVerify runs, or the box that just hit the limit still reads as healthy when the retry engine checks all_devices_exhausted
 let callOrder: string[] = [];
 const stampRunnerLimitMock = vi.fn(async (..._args: unknown[]) => {
   callOrder.push('stampRunnerLimit');
@@ -37,7 +36,6 @@ vi.mock('../runners/apply-runner-limit.js', () => ({
   stampRunnerLimit: (...args: unknown[]) => stampRunnerLimitMock(...args),
 }));
 
-// cm:edge contract -> packages/core/src/skills/reconcile-service.ts — its static import chain reaches queue/boss.ts, whose top-level env import throws without DB env (BLOCKER AA).
 const failReconcileRunMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../skills/reconcile-service.js', () => ({
   failReconcileRunForFailedJob: (...args: unknown[]) => failReconcileRunMock(...args),
@@ -46,7 +44,6 @@ vi.mock('../skills/reconcile-service.js', () => ({
 const issueRowMock = vi.fn<() => unknown[]>(() => [
   { id: 'i1', projectId: 'p1', status: 'in_progress', reopenCount: 0, projectCreatedBy: 'owner1' },
 ]);
-// cm:guard the issue lookup INNER JOINs and the step-handoff probe does not, so `joined` is the only thing separating two reads that share this mock — a chain that answers both with the same rows makes `hasTerminalHandoffForAttempt` true for every job and silently disarms every retry assertion in this file.
 const handoffRowMock = vi.fn<() => unknown[]>(() => []);
 function selectChain() {
   let joined = false;
@@ -63,7 +60,6 @@ function selectChain() {
 }
 const updateSetMock = vi.fn((_values: unknown) => undefined);
 
-// cm:why the jsonb-merge value is a drizzle `sql` fragment holding its interpolation as a Param, and the object graph is circular — so the payload is probed by walking it rather than by JSON.stringify
 function _mentions(value: unknown, needle: string, seen = new Set<unknown>()): boolean {
   if (typeof value === 'string') return value.includes(needle);
   if (value === null || typeof value !== 'object' || seen.has(value)) return false;
@@ -92,7 +88,6 @@ vi.mock('../pipeline/runs.js', () => ({
   closeOpenRunForIssue: (...args: unknown[]) => closeRunMock(...args),
 }));
 
-// cm:edge contract -> packages/core/src/notifications/routes.ts — its static import chain validates env vars at load time (same pitfall as reconcile-service.ts above); mock the entry point instead.
 const emitWedgeMock = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../pipeline/wedge.js', () => ({
   emitPipelineWedge: (...args: unknown[]) => emitWedgeMock(...args),
@@ -144,7 +139,6 @@ vi.mock('../pipeline/hooks.js', () => ({
   hooks: { emit: (...args: unknown[]) => hooksEmitMock(...args) },
 }));
 
-// cm:edge contract -> packages/core/src/jobs/hold.ts — its import chain reaches queue/boss.ts via enqueue.js, whose top-level env import throws without DB env (same pitfall as reconcile-service.ts above); hold.test.ts covers the real thing
 const holdJobMock = vi.fn(async (..._args: unknown[]): Promise<string | null> => null);
 const holdAutoReleasesMock = vi.fn((..._args: unknown[]) => false);
 vi.mock('./hold.js', () => ({
@@ -171,7 +165,6 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// cm:why finalize-done.js is deliberately left UNMOCKED — it is one half of the seam these tests exist to join, and mocking it would assert the mock; only its three leaf side-effects are stubbed below.
 const kernelTransitionMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
 vi.mock('../lifecycle/transition.js', () => ({
   applyKernelTransition: (...args: unknown[]) => kernelTransitionMock(...args),
@@ -264,7 +257,6 @@ describe('finalizeFailedJob', () => {
     expect(closeRunMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard assert the LIST of statuses written, not a call count — the revert to entry-status is itself an applyStatusTransition call, so any assertion phrased as "called once" passes unchanged while the `waiting` park is restored alongside it, which is exactly what RFC 0002 INV-1 forbids
   it('holds the job and reverts the issue to entry-status when retry is NOT scheduled — never `waiting`', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'retry_rounds_exhausted' });
     holdJobMock.mockResolvedValueOnce('held-job-1');
@@ -287,7 +279,6 @@ describe('finalizeFailedJob', () => {
     expect(wedge.entityId).toBe('held-job-1');
   });
 
-  // cm:guard INV-4 — closing the run cascades over `held`, so a close here would cancel the successor this path just created and turn the hold into a silent dead end; that is the one way RFC 0002 lands strictly worse than the park it replaced
   it('does NOT close the run when a job was held', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
     holdJobMock.mockResolvedValueOnce('held-job-2');
@@ -382,7 +373,6 @@ describe('finalizeFailedJob', () => {
     expect(callOrder).toEqual(['scheduleAutoRetryWithVerify']);
   });
 
-  // cm:guard the copy must not tell the reader to clear anything — a hold that says "clear the park to resume" is the intervention RFC 0002 removed, re-introduced as a sentence
   it('wedge carries hold copy that says the step resumes itself, for all_devices_exhausted', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
     holdJobMock.mockResolvedValueOnce('held-job-3');
@@ -394,7 +384,6 @@ describe('finalizeFailedJob', () => {
     expect(call.nextStep).not.toMatch(/clear the park/);
   });
 
-  // cm:guard a hold that resumes itself must emit NOTHING here — `releaseHeldJobs` re-queues it the moment its condition clears, and `alarmAgedHolds` is the 6h escalation if it does not. Emitting at hold time is what filled the owner's bell with 721 unresolved rows whose own action text said "No action needed" (forge-beta 2026-08-14).
   it('emits NO wedge when the hold will release itself', async () => {
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: false, reason: 'all_devices_exhausted' });
     holdJobMock.mockResolvedValueOnce('held-job-4');
@@ -455,7 +444,6 @@ describe('ISS-888 — a completed drive turn is not retried', () => {
     );
   });
 
-  // cm:guard ISS-888 folds case (c) — died part-way, wrote something — into (b), NOT into (a): the handoff is the LAST thing a turn writes, so a turn killed mid-work has none and correctly retries, and a comment or a status move on its own is a side effect an agent killed mid-work leaves too. What this signal genuinely cannot see is the inverse — a turn that wrote its handoff and then died — which is recorded finished; recovery is the driver's next dispatch reading live issue status, and the amnesty ends when a turn-level completion receipt exists (ISS-873).
   it('a drive turn that died before writing its handoff still retries', async () => {
     handoffRowMock.mockReturnValue([]);
     scheduleRetryMock.mockResolvedValueOnce({ scheduled: true });

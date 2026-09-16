@@ -110,7 +110,6 @@ async function askingSession(opts: {
   return sessId;
 }
 
-// cm:guard the intent id is the QUESTION's, which is what `resumeLapsedAnswers` joins on since ISS-996 cut the comment lane. A helper that kept minting comment ids would leave every lapsed-answer assertion below green against a join that matches nothing in production.
 async function humanAnswers(body = 'yes, use postgres'): Promise<string> {
   const questionId = randomUUID();
   await harness.db.execute(sql`
@@ -159,7 +158,6 @@ async function ageEpisode(): Promise<void> {
 }
 
 describe('a human answer while the session is still parked', () => {
-  // cm:guard the issue must STAY at `needs_info`, and that is load-bearing rather than an omission: `turn-verdict-routes.ts` reads the same status to keep the session resident, so moving it here would end the session the answer is on its way to.
   it('sends the answer to the session and leaves the issue parked', async () => {
     await askingSession({ runtimeState: 'awaiting_input' });
     await humanAnswers();
@@ -167,7 +165,6 @@ describe('a human answer while the session is still parked', () => {
     expect(await inboxRows()).toEqual([{ kind: 'answer', body: 'yes, use postgres', seq: 1 }]);
   });
 
-  // cm:guard the driver's own resume must NOT chart as a manual intervention. Every `job_events kind='intervention'` row lands in `issue_intervention_events`, which is VISION §1 metric ②, and this path fires only when a session happens to be parked — so auditing it would make the north-star number measure duplex adoption rather than interventions, climbing on the path built to lower it.
   it('does not chart the answer as a manual intervention', async () => {
     await askingSession({ runtimeState: 'awaiting_input' });
     await humanAnswers();
@@ -183,7 +180,6 @@ describe('a human answer while the session is still parked', () => {
     expect(await inboxRows()).toEqual([]);
   });
 
-  // cm:guard a session MID-TURN has not asked anything yet — the park is what makes an answer the thing it is waiting for. Writing into one lands the reply as the next turn's prompt, answering a question the agent had already moved on from.
   it('falls back when the session is working rather than waiting', async () => {
     await askingSession({ runtimeState: 'working' });
     await humanAnswers();
@@ -197,14 +193,12 @@ describe('a human answer while the session is still parked', () => {
     expect(await issueStatus()).toBe('open');
   });
 
-  // cm:guard `published: false` is the ONE synchronous fallback. A session with no device has no runner to have consumed anything, so there is no race to lose — every other silence must go through `resolveSessionSend` instead.
   it('falls back at once when the parked session has no device to reach', async () => {
     await askingSession({ runtimeState: 'awaiting_input', onDevice: false });
     await humanAnswers();
     expect(await issueStatus()).toBe('open');
   });
 
-  // cm:guard the negative case is a project whose config cannot be PARSED, not one that chose another lane — ISS-897 left one lane and `isAutonomous` collapsed to `cfg !== null`. The fixture is deliberately invalid rather than merely unusual: that is the only remaining way to reach the `null` this branch exists for.
   it('leaves a park in a project whose config does not parse alone', async () => {
     await harness.db.execute(sql`
       UPDATE projects SET agent_config = ${JSON.stringify({
@@ -228,12 +222,10 @@ describe('the answer whose session turned out to be gone', () => {
     expect(await issueStatus()).toBe('open');
   });
 
-  // cm:guard the hop acts on `gone` ONLY. An `unknown` is a lapsed episode with the runner still online, and dispatching on it would put a second agent on a worktree whose session may have consumed the answer already.
   it('waits rather than dispatching while the session is still alive', async () => {
     await askingSession({ runtimeState: 'awaiting_input' });
     await humanAnswers();
     await ageEpisode();
-    // cm:guard the runner row is what makes this case `unknown` rather than `gone`. `resolveSessionSend` reads `runners.lastSeenAt` for the session's device, and a MISSING row is a fact about the box too — no runner, no liveness, `gone`. Seeding it is the only way to reach the branch this test owns.
     await harness.db.execute(sql`
       INSERT INTO runners (project_id, type, device_id, name, status, last_seen_at)
       VALUES (${projectId}, 'claude-code', ${deviceId}, 'r1', 'online', now())
@@ -250,7 +242,6 @@ describe('the answer whose session turned out to be gone', () => {
     expect(await issueStatus()).toBe('needs_info');
   });
 
-  // cm:guard an APPLIED message was read by the model, and re-dispatching it would answer the same question twice — once in the session that consumed it and once in a fresh job that has no idea it happened.
   it('never dispatches an answer a turn already consumed', async () => {
     await askingSession({ runtimeState: 'awaiting_input' });
     await humanAnswers();
@@ -263,7 +254,6 @@ describe('the answer whose session turned out to be gone', () => {
     expect(await issueStatus()).toBe('needs_info');
   });
 
-  // cm:guard the WHOLE of the hop's idempotency, and it has no marker column: the fallback moves the issue off `needs_info`, so a handled row stops matching the scan. A second dispatch for one answer is what this asserts cannot happen.
   it('does not dispatch the same answer twice', async () => {
     await askingSession({ runtimeState: 'awaiting_input' });
     await humanAnswers();

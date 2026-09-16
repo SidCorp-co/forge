@@ -54,10 +54,8 @@ interface AgedHoldRow extends Record<string, unknown> {
 /**
  * Holds older than `HOLD_AGE_ALARM_MS`, surfaced once each.
  */
-// cm:guard alarm ONLY — this pass must never write a status, cancel the job, or release the hold (RFC 0002 INV-7). An aged hold is honest: the step cannot run and nobody is pretending otherwise. Releasing it here would re-dispatch into the same failure the hold recorded, and cancelling it would delete the record of why the work stopped.
 export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmResult> {
   const cutoffIso = new Date(now.getTime() - HOLD_AGE_ALARM_MS).toISOString();
-  // cm:guard write `payload` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides with `issues` in the join and fails at parse time
   const rows = await db.execute<AgedHoldRow>(sql`
     SELECT j.id AS job_id,
            j.project_id,
@@ -77,7 +75,6 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
   for (const row of rows) {
     const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A step';
     const hours = Math.round(HOLD_AGE_ALARM_MS / 3_600_000);
-    // cm:guard ask `holdResumesItself`, never assume — three of the five hold reasons never self-release, and this wedge is the operator's ONLY notification for a hold. Telling them "it resumes on its own" about a permanent hold is how a step sat for weeks with everyone believing it was handled.
     const selfResuming = holdResumesItself(row.hold_reason);
     await emitPipelineWedge({
       projectId: row.project_id,
@@ -88,7 +85,6 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
       reason: `held_over_${hours}h:${row.hold_reason ?? 'unknown'}`,
       title: `${label} has been waiting on a machine for over ${hours}h`,
       summary: `The \`${row.job_type}\` step could not run (${row.hold_reason ?? 'unknown reason'}) and has been held since ${row.held_at ?? 'an unknown time'}. The issue itself was never moved — it is still at its stage, and no decision is being asked of anyone.`,
-      // cm:guard the order in this sentence is load-bearing — a held job occupies L1 `issueBusyJob` (and `jobs_active_unique` covers `held`), so moving the issue on FIRST cannot produce a replacement step. Cancel, then move.
       nextStep: selfResuming
         ? 'Fix the underlying condition (a runner, a quota, a budget) and the step resumes on its own. If the condition is permanent, cancel the step.'
         : 'This hold will NOT clear by itself. Fix the underlying cause, then cancel this step and move the issue on — in that order, because a held step blocks any replacement for the same issue.',
@@ -123,8 +119,6 @@ export const QUEUED_STALL_ALARM_MS = (() => {
 /**
  * Jobs the dispatcher says it could run, that have not run.
  */
-// cm:guard the test is ABSENCE from `gateReasonsForQueuedJobs` and nothing else — a job the map explains (`runner_stale`, `runner_too_old`, `retry_cooldown`, `issue_busy`) is queued for a reason and must stay silent, because an alarm on the normal state of a queue is one operators learn to ignore. Only picker-offers/selector-rejects has no innocent reading (measured 2026-08-14: 11 jobs queued 6-22 days across 5 projects, no surface able to say why).
-// cm:guard alarm ONLY (RFC 0002 INV-7) — never cancel, re-queue or re-dispatch here. A plain `queued` job holds NO capacity (`running_ids` counts it only while `retry_after_at > now()`, and `issueBusyJob` only counts dispatched/running/held), so nothing is freed by killing it and a wrong reap deletes real work.
 export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<Inv7AlarmResult> {
   const cutoffIso = new Date(now.getTime() - QUEUED_STALL_ALARM_MS).toISOString();
   const rows = await db.execute<StalledQueuedRow>(sql`
@@ -198,7 +192,6 @@ interface PausedRunRow extends Record<string, unknown> {
 /**
  * Rows one sweep will look at.
  */
-// cm:guard order frozen-work first, before the LIMIT — this pass writes no run state, so a processed row does NOT leave the candidate set. A bare `LIMIT 200` lets the cleanup arm eat the whole budget forever and the run that needs a human is never alarmed, with `alerted` reading 0 exactly as it does when all is well (measured: 200 zero-queue paused runs + 1 real gave alerted=0, resolves=200).
 export const PAUSED_RUN_SCAN_LIMIT = 200;
 
 /** How long a pause may hold work back before it is worth a human's attention. */
@@ -210,15 +203,10 @@ export const PAUSED_RUN_ALARM_MS = (() => {
 /**
  * Steps queued behind a pause nobody is being told about.
  */
-// cm:guard `paused` runs only, never widened to `running` — a queued job under a running run already has an owner (`detectStalledDependencies`, `alarmAgedHolds`, `alarmUnrunnableBlockedDependents`, `alarmStalledQueuedJobs`), so widening double-notifies every one of them and re-opens the age-based-reaper shape rejected on ISS-765: behind the project cap a legitimate job is byte-identical to an orphan. Under a pause the picker requires `r.status='running'`, so nothing can start whatever its age.
-// cm:guard alarm ONLY (RFC 0002 INV-7) — never resume the run, cancel the job or re-dispatch. `missing_skill` resumes itself the moment the skill is registered and `reEnqueueForIssue` re-fires the work, so cancelling here would destroy exactly what the resume exists to rescue; `stage_stalled` and an operator pause are decisions only a person can revisit.
-// cm:edge lockstep -> packages/core/src/pipeline/paused-run-wedge-resolve.ts — that subscriber clears what this emits; the pair is what stops the daily re-notify outliving the pause
 export async function alarmPausedRunsWithQueuedWork(
   now: Date = new Date(),
 ): Promise<Inv7AlarmResult> {
   const cutoffIso = new Date(now.getTime() - PAUSED_RUN_ALARM_MS).toISOString();
-  // cm:guard `updated_at` is a LOSSY proxy for "paused since" — `setCurrentStepForOpenIssueRun` restamps it at EVERY issue transition, so an operator repeatedly reopening a wedged issue defers this alarm indefinitely (ISS-576/652). The fix is a stored `pausedAt`; move the predicate onto it rather than tightening the delay.
-  // cm:guard write `metadata` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides across the joined tables and fails at parse time
   const rows = await db.execute<PausedRunRow>(sql`
     SELECT r.id AS run_id,
            r.project_id,
@@ -245,13 +233,11 @@ export async function alarmPausedRunsWithQueuedWork(
   for (const row of rows) {
     const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A pipeline run';
     const steps = Number(row.queued_jobs);
-    // cm:guard the LEFT JOIN returns paused runs with ZERO queued jobs on purpose, so this pass clears its own notification when the queue behind the pause empties — the run leaving `paused` is not the only way the condition ends (an operator can cancel the queued steps and leave the pause standing) and the subscriber only watches the run. Without this arm the bell asserts N frozen steps when there are none.
     if (steps === 0) {
       await resolvePipelineWedge(pausedRunWedgeEntityId(row.run_id));
       continue;
     }
     alerted++;
-    // cm:guard ask `pauseResumesItself`, never infer from the reason string — only `missing_skill` has a resume path (`missing-skill-resume.ts`); `stage_stalled` has none and an operator pause is a human's decision. This wedge is the operator's only recurring notification for a frozen queue, so telling them it resumes on its own when it never will repeats the aged-hold failure on the run axis.
     const selfResuming = pauseResumesItself(row.pause_reason);
     const cause = row.pause_reason ?? 'an operator pause (no machine reason recorded)';
     await emitPipelineWedge({
@@ -275,9 +261,6 @@ export async function alarmPausedRunsWithQueuedWork(
   if (alerted > 0) {
     logger.info({ alerted, paused: rows.length }, 'inv7: paused runs with frozen work surfaced');
   }
-  // cm:guard say it when the scan is truncated — a capped sweep and a quiet one both report `alerted: 0` for the rows they never read, and a silent alarm is the failure this pass exists to end
-  // cm:guard trigger on `alerted`, NEVER on `rows.length` — with frozen-work rows sorted first a full page proves nothing was missed, and the zero-queue population never shrinks, so a full page is the steady state on an old fleet. Warning on it fires every minute forever about a benign condition and is tuned out before a real truncation arrives.
-  // cm:why a log and not a wedge, which is a real weakness in a pass whose whole premise is that logs were not enough: the cap is GLOBAL and this query takes no project scope, so the unexamined tail belongs to projects the sweep never read and there is no owner to notify. If it ever fires in production the answer is a wedge about the cap itself, not a bigger number.
   if (alerted >= PAUSED_RUN_SCAN_LIMIT) {
     logger.warn(
       { limit: PAUSED_RUN_SCAN_LIMIT, alerted },
@@ -301,13 +284,7 @@ interface RejectionStreakRow extends Record<string, unknown> {
 /**
  * Runs whose review loop has gone round `noProgressRounds` times without landing.
  */
-// cm:guard scoped to a run still `running` — the alarm says a loop is going round RIGHT NOW, and `emitPipelineWedge` re-notifies every 24h on an unresolved key, so without this an issue parked after a streak would nag daily forever about a loop that ended. That shape put 721 unresolved wedges in the owner's bell on forge-beta 2026-08-14.
-// cm:guard the streak is TRAILING — only rejections after the run's last `approve` count, and one approve resets it to zero. A longest-streak-anywhere variant alarms about churn that already ended, and the sweeper runs every minute, so the trailing form still reaches the threshold while it is happening.
-// cm:guard `source = 'runner'` is what makes this a system record and is NOT an optimisation — the CHECK `phase_journal_verdict_is_runner_written` is the only thing stopping the driver authoring its own verdicts, so dropping this predicate would let the agent decide whether it is churning. `sessionContext.churn` is agent-written and is deliberately absent from the query; it is reading material for the human, named in the copy.
-// cm:guard alarm ONLY (RFC 0002 INV-7/INV-8) — never park, cancel or cap. Nothing limits how many rounds an issue may take, and the round count is advice the reader judges; the deleted reopen cap is exactly what a status write here would rebuild.
-// cm:edge contract -> packages/core/src/db/schema-journal.ts — reads `phase_journal.source`/`artifact->>'kind'`/`artifact->>'decision'` by name in raw SQL, so renaming a column or changing the verdict artifact shape silently empties this alarm instead of failing to compile
 export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
-  // cm:guard write `artifact` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides across the joined tables and fails at parse time
   const rows = await db.execute<RejectionStreakRow>(sql`
     WITH verdicts AS (
       SELECT pj.run_id, pj.issue_id, pj.started_at, pj.artifact ->> 'decision' AS decision
@@ -354,7 +331,6 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
       entityId: reviewRoundsWedgeEntityId(row.run_id),
       reason: `rejection_streak:${row.streak}/${row.threshold}`,
       title: `${label} has been sent back by review ${row.streak} times in a row`,
-      // cm:guard name the COUNT, not just the number — `noProgressRounds` is advice a reader must judge, and "5 rounds" alone cannot say whether five rejections repeated one failure or fixed five. Naming it stops a future second count silently inheriting this one's copy (ISS-895 deleted the last one).
       summary: `"${row.title ?? label}" has reached this project's \`noProgressRounds\` (${row.threshold}) counted as CONSECUTIVE review rejections — ${row.streak} rounds since the last approval, from the reviewer's own verdicts rather than anything the driver reported about itself. Rounds that each fix a different blocker are normal work, and an approval resets this to zero; ${row.streak} in a row without one is the stop signal the number exists for.`,
       nextStep:
         "Read the findings on the last few `request_changes` verdicts. If they keep naming the same defect, park the issue at `waiting` with what has been tried; if each round names something new, no action. The agent's own `sessionContext.churn` ledger says what it believes changed each round.",

@@ -44,7 +44,6 @@ describe('toToolCallContent', () => {
     expect(out.structuredContent).toEqual({ _mcpContent: 'oops' });
   });
 
-  // cm:guard the flag is STRIPPED from the text the model reads and from structuredContent — the model already reads the exit code; the flag is for the audit record alone (ISS-1009).
   it('flags `_mcpIsError: true` as isError and strips the key from what the model reads', () => {
     const out = toToolCallContent({
       exitCode: 1,

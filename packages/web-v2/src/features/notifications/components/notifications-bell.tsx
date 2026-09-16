@@ -40,8 +40,6 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
   const { toast } = useToast();
   const { data: projects } = useProjects();
 
-  // cm:guard the list and the unread count are scoped to the current user SERVER-side, and realtime is free because the WS event-router invalidates these exact query keys on `notification.created` — pick another key and the bell stops updating with nothing red to say so (ISS-504).
-  // cm:guard both list queries are gated on `open` because the menu they feed renders only under `open` — the component itself must stay MOUNTED while closed, which is what the header comment is about, and that is a different thing from fetching while closed (ISS-1019).
   const notificationsQuery = useNotifications(open);
   const { data: unread } = useUnreadCount();
   const markRead = useMarkRead();

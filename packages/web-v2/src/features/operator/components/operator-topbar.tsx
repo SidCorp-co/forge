@@ -6,7 +6,6 @@ import type { OperatorSectionKey } from "../types";
 
 const STATUS_PILLS = ["db", "queue", "ws"] as const;
 
-// cm:why the pill is focusable so its Tooltip is keyboard-reachable (Tooltip opens on focus), and the sr-only line repeats the note because a CSS tooltip is never announced
 function StatusPill({ pill }: { pill: string }) {
   const note = `${pill.toUpperCase()} health checks aren't wired up yet`;
   return (
@@ -23,7 +22,6 @@ function StatusPill({ pill }: { pill: string }) {
   );
 }
 
-// cm:why the NavRail account chip is desktop-only, so below md this menu is the only exit from /admin
 function AccountMenu({ onAccount, onSignOut }: { onAccount: () => void; onSignOut: () => void }) {
   return (
     <Menu

@@ -11,8 +11,6 @@ interface LedgerWs extends WebSocket {
   principal?: { type: 'user' | 'device'; deviceId?: string };
 }
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/session_ledger.rs — `RunEntry` serializes to exactly this shape; nothing type-checks the pair, so a field renamed on one side is dropped in silence on the other.
-// cm:guard `.strict()` on the run, so a field the box invents is a REFUSAL rather than a silent drop. This is a mirror of another process's state and the two versions drift on their own release clocks; a snapshot core half-understands is worse than one it rejects loudly.
 const runSchema = z
   .object({
     runId: z.string().min(1).max(120),
@@ -22,13 +20,10 @@ const runSchema = z
     pid: z.number().int().positive().nullish(),
     worktreePath: z.string().min(1).max(1024),
     bootId: z.string().min(1).max(120),
-    // cm:guard all THREE values `Incarnation::wire` can emit, and `starting` is the one that was missing: it is the window between a revival's CAS committing and the process registering, so it appears on any box mid-revival. The snapshot is validated WHOLE, so one unknown value here drops that box's entire registry and every run on it vanishes from `GET /api/projects/:id/run-sessions` behind nothing but a warn — the same failure mode `non_empty` in `session_ledger.rs` was written to avoid for `masterSessionId`.
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/ledger.rs — `Incarnation::wire`; a value added there must join this enum in the same change, and `packages/web-v2/src/features/agents/types.ts:Incarnation` is the third copy.
     incarnation: z.enum(['live', 'starting', 'exited']),
     work: z.enum(['runnable', 'blocked', 'done']),
     blockerKind: z.enum(['machine', 'master_or_peer', 'human', 'nobody']).nullish(),
     waitingOn: z.string().max(1024).nullish(),
-    // cm:guard EPOCH SECONDS, and non-negative rather than positive: zero is a legal stamp from a box whose clock has not been set, and `positive()` would drop the whole snapshot for it — one unset clock taking every other run on that box down with it.
     sessionTerminalAtEpochS: z.number().int().nonnegative().nullish(),
     worktreeGoneAtEpochS: z.number().int().nonnegative().nullish(),
     issues: z
@@ -47,7 +42,6 @@ const snapshotSchema = z
 /**
  * Store one box's snapshot, or drop it and say why.
  */
-// cm:guard a DEVICE principal only. A user socket carries its owner's account authority, so accepting this from one would let any signed-in person rewrite what a box is running — and the read surface below presents it as the box's own word.
 export async function handleRunnerSessions(ws: LedgerWs, msg: unknown): Promise<void> {
   const deviceId = ws.principal?.type === 'device' ? ws.principal.deviceId : undefined;
   if (!deviceId) {

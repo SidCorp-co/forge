@@ -65,9 +65,6 @@ export const PAT_STRING_PATTERN = /forge_pat_(?:dev|stg|prd)_[A-Fa-f0-9]+/g;
 export const PEM_PRIVATE_KEY_PATTERN =
   /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----[\s\S]*?-----END (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----/g;
 
-// cm:guard this second pattern is not redundant with the paired one above and must run after it: a log cut mid-key has a BEGIN marker and no END, which the paired pattern does not match at all — and an unmatched truncated key is a whole credential printed in the clear, because the truncation takes the tail and not the head.
-// cm:guard two things here are de-ambiguations and not behaviour changes, and both answer CodeQL `js/polynomial-redos` (high, PR 430) against input that is a build log, a runner's stdout, a Sentry body — text nobody controls. First, the label is BOUNDED: `[A-Z ]*` overlapped the literal `PRIVATE KEY` after it, so many `-----BEGIN ` markers made the engine walk the class back a character at a time at each one. Second, the separator between two base64 runs is REQUIRED (`+`, not `*`): written `(?:(?:\\n|\s)*[A-Za-z0-9+/=]{16,})*` it could match empty at a run boundary, giving one base64 line a partition for every way of cutting it into chunks of 16. Each rewrite accepts the same strings the loose form did for every label and key shape that exists, so NO unit test can fail on either and none pretends to — the case below defends the COVERAGE the bound must not lose, and the alert clearing is the evidence for the bound itself.
-// cm:guard the continuation is runs of at least 16 base64 characters, NOT `[A-Za-z0-9+/=\s]*`. The loose form also matches ordinary prose — every word after an unterminated BEGIN marker is letters and spaces — so a log with one truncated key came back with the rest of the build output redacted, which is the diagnostic loss ISS-277 spent a day on.
 export const PEM_PRIVATE_KEY_HEAD_PATTERN =
   /-----BEGIN (?:[A-Z]{1,12} ){0,3}PRIVATE KEY-----(?:\\n|\s)*(?:[A-Za-z0-9+/=]{16,}(?:(?:\\n|\s)+[A-Za-z0-9+/=]{16,})*)?/g;
 
@@ -207,7 +204,6 @@ function escapeRegExp(s: string): string {
  * shredding the log with spurious matches.
  */
 export function scrubLogText(text: string, extraSecrets: string[] = []): string {
-  // cm:why the header value is matched as the REST of the line, because scrubbing runs per line: a pattern stopping at the first space would redact the word `Bearer` and leave the credential behind it.
   const headerKeys = Array.from(SCRUB_HEADER_KEYS).map(escapeRegExp).join('|');
   const headerRe = new RegExp(`\\b(${headerKeys})(\\s*[:=]\\s*).+`, 'gi');
   // Value stops at whitespace, quote, comma, brace, or `&` — the `&` guard
@@ -216,7 +212,6 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
   const bodyRes = Array.from(SCRUB_BODY_KEYS).map(
     (k) => new RegExp(`(\\b${escapeRegExp(k)}\\b\\s*[:=]\\s*"?)([^\\s",}&]+)`, 'gi'),
   );
-  // cm:guard the PEM pass runs over the WHOLE text and before the split — a key with real newlines in it is several lines, and every per-line rule below is blind to it by construction
   return text
     .replace(PEM_PRIVATE_KEY_PATTERN, FILTERED)
     .replace(PEM_PRIVATE_KEY_HEAD_PATTERN, FILTERED)
@@ -228,7 +223,6 @@ export function scrubLogText(text: string, extraSecrets: string[] = []): string 
       for (const s of extraSecrets) {
         if (s && s.length >= 6) out = out.split(s).join(FILTERED);
       }
-      // cm:guard this env-assignment pass must stay LAST among the per-line rules: it runs after `extraSecrets` so an integration token echoed inside an env value is already scrubbed, and its suffix match is the strongest signal, so an earlier replacement moved below it would undo the redaction.
       out = out.replace(ENV_SECRET_ASSIGNMENT_PATTERN, `$1=${FILTERED}`);
       return out;
     })
@@ -285,8 +279,6 @@ interface SentryLikeEvent {
   breadcrumbs?: Array<{ message?: string; data?: unknown }>;
 }
 
-// cm:guard the one rule that decides whether a build knows its own commit, shared because every reporting surface must answer this question identically: `/version` is compared to a Sentry release by hand, and two parses that disagree make that comparison meaningless.
-// cm:why 7 to 40 hex digits and nothing else: a deploy platform hands a build whatever its own config holds, and Coolify's application row for this repo reads `git_commit_sha=HEAD`, so the literal `HEAD`, a tag and an unexpanded `${SOURCE_COMMIT}` are all values that really arrive. Reporting one of them as an identity is worse than reporting none, because a caller cannot tell it is not a commit.
 const SOURCE_COMMIT_PATTERN = /^[0-9a-f]{7,40}$/i;
 
 /** The commit a build was told it was made from, or `null` for anything that is not one. */

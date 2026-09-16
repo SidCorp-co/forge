@@ -5,15 +5,12 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
  * verbatim delivery of a runner's final reply through the output guard, and the
  * room-never-silent fallbacks.
  */
-// cm:why adjacent modules are mocked directly rather than by pulling in their real dependency graphs, as `escalation-bridge.test.ts` does for `connection-manager.js`: those graphs validate env eagerly at import.
 
-// cm:why the room-delivery mock below spreads the REAL module, whose graph validates env eagerly at import — without these two stubs the file fails to load rather than failing a test
 vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 vi.mock('../../db/client.js', () => ({ db: {} }));
 
-// cm:why `readRoomReplyMeta` is deliberately NOT stubbed — it is pure, and leaving it real keeps the "is this session ours" marker validation under test; only the DB/network helpers are faked
 const claimRoomReplyDelivery = vi.fn<(...args: unknown[]) => Promise<boolean>>();
 const resolveRoomPostAuth = vi.fn();
 const extractFinalAssistantText = vi.fn();
@@ -22,7 +19,6 @@ let roomBoundSequence: boolean[] = [true];
 const roomStillBoundToCalls = vi.fn();
 vi.mock('./room-delivery.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./room-delivery.js')>()),
-  // cm:why stubbed: this file's fake db answers only the subject's own queries, and the room-is-still-ours check has its cases in room-delivery.test.ts.
   roomStillBoundTo: async () => {
     const n = roomStillBoundToCalls.mock.calls.length;
     roomStillBoundToCalls();
@@ -78,7 +74,6 @@ function makeSession(overrides: Record<string, unknown> = {}) {
   } as never;
 }
 
-// cm:why the binding stub is reset at module level, not inside either describe: the describe below is at its frozen function budget, and two more lines in its `beforeEach` is what pushed it over (ISS-1001).
 beforeEach(() => {
   roomBoundSequence = [true];
   roomStillBoundToCalls.mockReset();
@@ -244,7 +239,6 @@ describe('deliverAgentChatReplyOnce: the room is read again before the post', ()
   /** What the room was shown this run — the empty list is a room that saw nothing. */
   const postedTexts = () => sendFixedReply.mock.calls.map((c) => c[1] as string);
 
-  // cm:guard the first read is before the claim, the second immediately before the post, and between them sit a failover redispatch and a screening turn — either of them minutes long, so without the second read the answer they produce is posted into a room that moved (ISS-1001).
   it('shows the room nothing when it is rebound during a failover redispatch', async () => {
     roomBoundSequence = [true, false];
 
@@ -265,7 +259,6 @@ describe('deliverAgentChatReplyOnce: the room is read again before the post', ()
     expect(postedTexts()).toEqual([]);
   });
 
-  // cm:guard the rebind is terminal for THIS delivery and the claim above is already spent, which is right: the project that would retry it is no longer the room's.
   it('leaves the claim spent rather than re-queueing the answer', async () => {
     roomBoundSequence = [true, false];
 
@@ -274,7 +267,6 @@ describe('deliverAgentChatReplyOnce: the room is read again before the post', ()
     expect(claimRoomReplyDelivery.mock.calls).toHaveLength(1);
   });
 
-  // cm:guard the first read still refuses before any work is spent: a rebound room costs no failover redispatch and no screening turn.
   it('spends no failover and no screening turn when the FIRST read refuses', async () => {
     roomBoundSequence = [false];
 
@@ -297,7 +289,6 @@ describe('deliverAgentChatReplyOnce: the room is read again before the post', ()
 });
 
 describe('deliverAgentChatReplyOnce: the repair budget this door declares', () => {
-  // cm:guard zero repairs is DECLARED at the `agent-chat-completion` door, not absent by omission: the runner session whose final message this carries has already ended, so there is nothing to ask again. If a repair ever appears here it means the door's row changed, and this reds first.
   it('asks the session for no rewrite, because that session has already ended', async () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);

@@ -2,7 +2,6 @@
 
 // web-v2 feature module: issues — detail React Query hooks (Part B).
 //
-// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts#routeEvent — these keys MUST match the
 //   ones that router invalidates; a key it does not name simply never refreshes on a WS event
 //   issue     → ['issue', id]                 (issue.* events)
 //   comments  → ['comments', id]              (comment.* events)

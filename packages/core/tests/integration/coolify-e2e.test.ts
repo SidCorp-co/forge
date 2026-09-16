@@ -30,7 +30,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:why the adapter enqueues a confirmation poll per target and pg-boss is not part of what this suite proves, so the send is a spy.
 vi.mock('../../src/integrations/coolify/confirm.js', () => ({
   enqueueCoolifyConfirm: vi.fn(),
 }));
@@ -290,7 +289,6 @@ describe('ISS-922 — the deploy a run has to prove before it may close', () => 
     });
     expect(mods.resolveDeployGate(after).verdict).toBe('clear');
 
-    // cm:guard the deferral marker and the holds are siblings under ONE jsonb column, so a write to either that rebuilds the whole map erases the other — this assertion is the only thing that catches it.
     expect(await mods.isCloseDeferred(seed.runId)).toBe(true);
     expect(Object.values(after)).toHaveLength(1);
   });

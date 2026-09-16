@@ -22,7 +22,6 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-// cm:guard `.orderBy()` must be awaitable AND `.limit()`-able, and LAZILY so — the reply query in `listIssueCommentPage` awaits at `orderBy` with no `limit` after it while the root query calls `.limit()` on the same object. Resolve eagerly and the root query's own `orderBy()` eats a `mockResolvedValueOnce` it never reads (ISS-956).
 const selectOrderByRows = vi.fn(async (): Promise<unknown[]> => []);
 const selectOrderBy = vi.fn(() => ({
   limit: selectLimit,
@@ -33,7 +32,6 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy })
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-// cm:guard `insertComment`'s stage read used to join `projects` and be told apart by that join; since the body mandate was removed (2026-09-14) it is a plain `from(issues).where().limit()` and is INDISTINGUISHABLE from an auth lookup by chain shape, so every create case below must queue a third `selectLimit` for it — one short and the insert resolves against an auth row.
 const selectFrom = vi.fn(() => ({
   where: selectWhere,
   innerJoin: selectInnerJoin,
@@ -116,7 +114,6 @@ describe('forge_comments html bodies', () => {
     expect(result.text).toContain('looks right');
   });
 
-  // cm:guard component markup is refused by NAME at the MCP door too, and writes nothing: `forge-plugin` skills reach this door over the wire and still carry the vocabulary removed on 2026-09-14, so a silent unwrap here would flatten a skill's structured record into prose behind a success.
   it('create refuses component markup, naming it, and writes nothing', async () => {
     selectLimit.mockResolvedValueOnce([{ projectId: PROJECT_ID }]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
@@ -156,7 +153,6 @@ describe('forge_comments html bodies', () => {
       { id: COMMENT_ID, issueId: ISSUE_ID, authorId: OWNER_ID, projectId: PROJECT_ID },
     ]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // cm:guard the EDIT door reads no stage: `stage` records when a comment was WRITTEN and an edit does not move it, and the mandate that used to read it here went with the component vocabulary (2026-09-14). A row queued for it leaks into the next case, which then resolves its auth lookup against a stage row.
     selectLimit.mockResolvedValueOnce([{ issueId: ISSUE_ID, authorDeviceId: null }]);
     updateReturning.mockResolvedValueOnce([
       { ...baseCommentRow, body: '<p>corrected</p>', format: 'html' },

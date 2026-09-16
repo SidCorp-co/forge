@@ -93,7 +93,6 @@ describe('resolveReleaseChannels', () => {
     expect(channels.map((c) => c.instructions)).toEqual(['deploy the app', 'publish the theme']);
   });
 
-  // cm:guard `integration_bindings.label` is the ISS-558 multi-store slug and sits inside a unique index; reading the pool out of it would make "which box releases" and "which store is this" the same field, and a second store would silently repoint the release
   it('never reads the pool out of the multi-store label column', async () => {
     listBindings.mockResolvedValue([binding({ label: 'aurelle' })]);
 
@@ -189,7 +188,6 @@ describe('resolveReleaseDeviceIds', () => {
     expect(await resolveReleaseDeviceIds(PROJECT_ID, 'epod-prod')).toEqual(['dev-a', 'dev-b']);
   });
 
-  // cm:guard an empty pool must reach the caller as an empty list, never as null: the service reads null as "no pool declared" and falls back to the whole fleet, which is the one thing a declared pool exists to prevent
   it('returns an empty list when no runner carries the label', async () => {
     expect(await resolveReleaseDeviceIds(PROJECT_ID, 'nobody-has-this')).toEqual([]);
   });

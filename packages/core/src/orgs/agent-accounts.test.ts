@@ -89,7 +89,6 @@ describe('createAgentAccount', () => {
     },
   );
 
-  // cm:guard the project's org is compared against the ROUTE's org, not merely looked up. Without it an org admin mints an agent into any project id they can guess, and the agent — a real member from that moment — carries the authority out of the org that approved it.
   it('refuses a project that belongs to another org, and mints nothing', async () => {
     selectLimit.mockResolvedValueOnce([{ id: PROJECT, orgId: 'some-other-org' }]);
     const err = await createAgentAccount(args).catch((e) => e);
@@ -134,7 +133,6 @@ describe('createAgentAccount', () => {
     expect(user.emailVerifiedAt).toBeInstanceOf(Date);
   });
 
-  // cm:guard org `member`, never `admin`. An agent holding org admin could reach `POST /api/orgs/:orgId/agents` and mint further agents with any project it liked — a scoped credential minting unscoped ones, which is the same hole `/api/pat`'s absence from `PAT_ALLOWED_PREFIXES` closes from the other side.
   it('joins the org as a plain member', async () => {
     selectLimit.mockResolvedValueOnce([{ id: PROJECT, orgId: ORG }]);
     await createAgentAccount(args);
@@ -156,7 +154,6 @@ describe('revokeAgentAccount', () => {
     expect(updated).toEqual([]);
   });
 
-  // cm:guard the `users` row SURVIVES, and this is the assertion that keeps it. `activity_log.actor_id`, `kernel_transitions.actor_id` and `jobs.created_by` all point at it, so deleting it either cascades away the record of what the agent did or fails on a restrict — and a real principal whose history vanishes on retirement answers "who made this write" with nothing, which is the whole thing the AAT exists to fix.
   it('revokes the tokens and both memberships, and never deletes the user row', async () => {
     selectLimit.mockResolvedValueOnce([{ id: 'agent-1' }]);
     expect(await revokeAgentAccount(ORG, 'agent-1')).toBe(true);

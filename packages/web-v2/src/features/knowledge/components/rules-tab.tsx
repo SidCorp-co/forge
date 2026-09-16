@@ -95,7 +95,6 @@ function RulesEditor({
 }) {
   const [editRows, setEditRows] = useState<EditRow[]>([]);
   const [nextRid, setNextRid] = useState(1);
-  // cm:guard keyed by `rid` and never by slug — every unsaved new row carries slug="", so a slug key makes one Remove confirmation arm all of them.
   const [confirmRid, setConfirmRid] = useState<number | null>(null);
   const [loadedBodies, setLoadedBodies] = useState<Map<string, string>>(new Map());
   const [loadedMeta, setLoadedMeta] = useState<Map<string, Record<string, unknown>>>(new Map());

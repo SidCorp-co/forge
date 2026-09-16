@@ -3,8 +3,6 @@
 import { Toggle } from "@/design";
 import { useSetRunnerAdmission } from "../hooks";
 
-// cm:edge contract -> packages/core/src/devices/pool-admission.ts — the OFF position writes `draining`, one of the statuses that predicate excludes. A third status added there needs reading here, or a box withdrawn some other way renders as admitted.
-// cm:guard the ON position must stay reachable at every withdrawn status this renders — locking it on `disabled` left the only control that returns a retired box refusing precisely when it was needed, and sent the operator to a re-registration the unique index refuses (ISS-990).
 /** Whether this runner may be offered jobs from the pool. */
 export function PoolAdmission({
 	projectId,

@@ -34,7 +34,6 @@ const schema = {
   ...unauditedTransitionsSchema,
 };
 
-// cm:guard both statement timeouts must stay bound — unbounded, a hung or leaked `db.transaction()` callback pins a stale MVCC snapshot on a POOLED connection indefinitely, so the damage outlives the request that caused it (ISS-663)
 const queryClient = postgres(env.DATABASE_URL, {
   max: 10,
   connection: {
@@ -43,7 +42,6 @@ const queryClient = postgres(env.DATABASE_URL, {
   },
 });
 
-// cm:guard OFF unless `DB_QUERY_LOG=1`, and it prints the statement rather than the params: this exists to count round trips per request and read their shape — measured 2026-09-15, one `GET /issues?limit=1` ran ~40 of them — and a logger that printed params would put row contents into the log on every query (ISS-1009).
 const queryLog =
   process.env.DB_QUERY_LOG === '1'
     ? {
@@ -64,7 +62,6 @@ export const db = drizzle(queryClient, { schema, ...queryLog });
 
 export type Db = typeof db;
 
-// cm:guard the transaction handle a write joins rather than the pool: a caller that has to commit two rows together passes this, and defaulting a parameter to `db` is what keeps the single-door writes single while letting one of them enlist (ISS-981).
 export type Tx = Db | Parameters<Parameters<Db['transaction']>[0]>[0];
 
 export async function closeDb(): Promise<void> {

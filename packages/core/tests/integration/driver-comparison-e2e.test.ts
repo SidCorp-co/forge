@@ -122,7 +122,6 @@ describe('driver comparison E2E', () => {
     });
   });
 
-  // cm:guard a project that closed nothing must report null, never 0 — 0 reads as a perfect score, and a driver can win the comparison by never finishing anything
   it('reports null rather than a perfect score when nothing closed', async () => {
     await closedIssue({ status: 'dropped', startedMinutesAgo: 110 });
 
@@ -133,8 +132,6 @@ describe('driver comparison E2E', () => {
     });
   });
 
-  // cm:guard the four percentiles and the born-under count come back from ONE `wait_stats` pass grouped by `(project_id, driver)` since ISS-1022, read out with `MAX(...)`, and the two null rules they carry are OPPOSITE: a percentile over no rows is NULL because there is no wait to report, while the born-under count over no rows is 0 because none were born. Swapping them makes a driver that started nothing look either instant or unused.
-  // cm:guard the born-under 0 is held in TWO places — `COALESCE(MAX(...), 0)` in the SQL and `Number(...)` in the mapping, which turns NULL into 0 as well — so removing either alone leaves this case green. The SQL coalesce is the one that states the rule; the mapping is incidental, and this comment is the only thing that says so.
   it('reports null percentiles and a zero born-under count for a driver with no wait rows', async () => {
     await closedIssue({
       status: 'dropped',
@@ -158,7 +155,6 @@ describe('driver comparison E2E', () => {
     expect(r.medianRequestToRunningSeconds).toBeCloseTo(600, -1);
   });
 
-  // cm:guard an issue nothing ever started must not become a zero wait — averaging it in would make a driver that ignores issues look instant
   it('leaves an issue that never started out of the wait, rather than scoring it zero', async () => {
     await closedIssue({ filedMinutesAgo: 120, startedMinutesAgo: 110 });
     await closedIssue({ filedMinutesAgo: 300, startedMinutesAgo: null, jobWithoutStart: true });
@@ -168,7 +164,6 @@ describe('driver comparison E2E', () => {
     expect(r.medianRequestToRunningSeconds).toBeCloseTo(600, -1);
   });
 
-  // cm:guard the driver comes from the JOBS, never from `pipelineConfig.mode` — reading the config means flipping a project relabels every issue it ever closed, and the flip is exactly when someone opens this report
   it('reports the driver that ran, not the mode the project now declares', async () => {
     await setMode('autonomous');
     await closedIssue({ startedMinutesAgo: 110, jobType: 'code' });
@@ -202,7 +197,6 @@ describe('driver comparison E2E', () => {
 
     expect(await row()).toMatchObject({ issuesClosed: 1, interventions: 0 });
   });
-  // cm:guard the backlog cohort is the whole reason this column exists: on getcontent 2026-08-21 the raw metric read 141.2h for autonomous against staged's 23m purely because the driver was switched on into a 52-issue backlog, and the split was 249.9h before the switch vs 0m after
   it('charges the autonomous driver only for the wait after it existed here', async () => {
     await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 500 });
     await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 200 });
@@ -221,7 +215,6 @@ describe('driver comparison E2E', () => {
     expect(await row()).toMatchObject({ issuesClosed: 2, issuesBornUnderDriver: 1 });
   });
 
-  // cm:guard the clamp must be asymmetric or it is not a fix: staged was present for the whole backlog, so an old issue it left sitting IS staged being slow and the two columns have to agree for it
   it('leaves the staged wait untouched in a project that later switched', async () => {
     await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 100, jobType: 'code' });
     await closedIssue({ filedMinutesAgo: 600, startedMinutesAgo: 500 });

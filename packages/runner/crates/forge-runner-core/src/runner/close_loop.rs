@@ -25,7 +25,6 @@ pub trait SessionReader: Send + Sync {
 
 /// Tells core WHY a run session ended, so its row does not have to be guessed
 /// at from silence.
-// cm:guard this port reports, it does not set a mark. `session_terminal` is still earned by `SessionReader::is_terminal` reading core's row back on a later sweep — a close that answered 200 and a close whose response was dropped must be indistinguishable here (ISS-933 criterion 13).
 #[async_trait::async_trait]
 pub trait RunCloser: Send + Sync {
     async fn close(
@@ -61,7 +60,6 @@ impl CloseState {
 }
 
 /// Read the three marks from the ledger alone.
-// cm:guard answers from the LEDGER and inspects no process (ISS-933 criterion 15). A reader that consults a pid cannot answer for a box whose master is gone, which is the case this exists for.
 pub fn state(ledger: &Ledger, run_id: &str) -> Result<CloseState> {
     let run = ledger.run(run_id)?;
     let issues = ledger.issues(run_id)?;
@@ -79,8 +77,6 @@ pub fn state(ledger: &Ledger, run_id: &str) -> Result<CloseState> {
 }
 
 /// Attempt every mark this run still owes. Safe to call again.
-// cm:guard takes NO argument by which a caller could assert a mark — that is what makes "a master's declaration sets none of the three" true by construction rather than by convention (ISS-933 criterion 13). Adding a `done: bool` here would reopen the exact hole.
-// cm:guard idempotent and partial by design: each mark is attempted independently, an error on one leaves the others free to land, and a mark already set is never revisited. A close that gives up on the first failure leaves a run stuck behind whichever check happened to be first.
 pub async fn close(
     ledger: &mut Ledger,
     run_id: &str,
@@ -91,7 +87,6 @@ pub async fn close(
         return state(ledger, run_id);
     };
 
-    // cm:guard a missing session id reads as "never started", and that was only ever true because the run's row was written BEFORE anything spawned. Any future writer that reverses that order makes this arm close the loop over a live agent core cannot name.
     let session_terminal = match run.session_id.as_deref() {
         Some(id) => matches!(sessions.is_terminal(id).await, Ok(true)),
         None => true,

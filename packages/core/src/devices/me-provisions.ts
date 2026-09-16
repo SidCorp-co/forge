@@ -31,7 +31,6 @@ deviceProvisionRoutes.route('/', deviceGitCredentialRoutes);
 const unauth = () =>
   new HTTPException(401, { message: 'device revoked', cause: { code: 'UNAUTHENTICATED' } });
 
-// cm:guard the SSH private key is delivered ONCE over TLS and never re-read in plaintext server-side (ISS-305) — a caller that logs this response, or a second route that returns the same field, turns a side-channel into a stored secret.
 deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
   const device = c.get('device');
   if (device.status === 'revoked') throw unauth();
@@ -64,7 +63,6 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
 
   const appProjects = await projectsWithGitHubAppCredential(rows.map((r) => r.projectId));
 
-  // cm:guard a decrypt failure (bad key, rotated master) degrades this ROW to "no key" and must never fail the pull — the device then falls back to whatever git auth it already had, and one unreadable project cannot stop every other project on the box from provisioning.
   const provisions = rows.map((r) => {
     let sshPrivateKey: string | null = null;
     if (r.sshPrivateKeyEnc) {
@@ -84,7 +82,6 @@ deviceProvisionRoutes.get('/me/provisions', requireDevice(), async (c) => {
       sshKeySource: sshPrivateKey ? r.sshSource : null,
       sshPublicKey: sshPrivateKey ? r.sshPublicKey : null,
       sshPrivateKey,
-      // cm:edge protocol -> packages/runner/crates/forge-runner-core/src/workspace/provision.rs — true means "ask core per git invocation", so this is the ONLY signal that turns the helper on; a project without it provisions exactly as it did before the App path existed.
       githubAppCredential: isHttpsGitUrl(r.repoUrl) && appProjects.has(r.projectId),
     };
   });

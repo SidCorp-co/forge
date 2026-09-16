@@ -211,7 +211,6 @@ const patchRunnerBodySchema = z
     repoPath: z.string().trim().max(500).nullable().optional(),
     branch: z.string().trim().max(100).nullable().optional(),
     capabilities: z.record(z.string(), z.unknown()).optional(),
-    // cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseDeviceIds` matches `runners.labels ? releaseRunnerLabel` with the exact string; this is the only PAT-reachable writer of that column (`/api/runners` is fenced), so a release pool is declared here or by nobody
     labels: z.array(z.string().trim().min(1).max(60)).max(20).optional(),
   })
   .strict();
@@ -288,7 +287,6 @@ projectRunnerRoutes.post(
     }
 
     const cleared = await clearRunnerFaultFlags(runnerId, id);
-    // cm:why the tick is the point of the button: a box excluded by rate_limited_until or quarantine holds queued jobs that nothing re-examines until the next dispatch trigger, so clearing alone would look like a no-op to the operator
     return c.json({ runnerId, cleared });
   },
 );

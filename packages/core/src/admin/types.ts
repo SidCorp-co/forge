@@ -15,7 +15,6 @@ export interface AdminGlanceMetric {
   spark: number[];
 }
 
-// cm:guard ISS-975 — the ONE list of what the console measures. `admin/metric-series.ts` keys its source registry by this union and `AdminOverview['glance']` is a record over it, so a name added to the glance without a source (or the reverse) is a type error. Widening this to `string` restores the drift the single list exists to prevent: a metric the series route serves that the glance cannot show means one of the two is lying about what the console measures.
 export const GLANCE_METRIC_NAMES = [
   'leadTimeMinutes',
   'interventionsPerClosed',
@@ -26,7 +25,6 @@ export const GLANCE_METRIC_NAMES = [
 
 export type AdminGlanceMetricName = (typeof GLANCE_METRIC_NAMES)[number];
 
-// cm:guard ISS-975 — the ONE window vocabulary, for the same reason as the names above: `/overview` and `/metrics/:metric/timeseries` both build their `z.enum` from this tuple and `WINDOW_SPECS` is a record over it, so neither route can come to offer a window the other does not. A second enum for the same idea is the drift this endpoint was split out to avoid.
 export const GLANCE_WINDOWS = ['24h', '7d', '30d'] as const;
 
 export type AdminMetricWindow = (typeof GLANCE_WINDOWS)[number];
@@ -134,7 +132,6 @@ export interface AdminThresholds {
   ghostRunnerOfflineDays: number;
 }
 
-// cm:edge lockstep -> packages/core/src/db/schema.ts — `adminThresholds` builds its column defaults from THIS object, so the empty table and the fallback below can never disagree; a value edited here moves both, and adding a field without a column makes the PUT silently drop it.
 export const ADMIN_THRESHOLD_DEFAULTS: AdminThresholds = {
   stuckJobSeconds: 600,
   runnerStarvedSeconds: 300,

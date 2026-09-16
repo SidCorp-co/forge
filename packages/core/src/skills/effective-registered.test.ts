@@ -70,7 +70,6 @@ beforeEach(() => {
 });
 
 describe('resolveRegisteredEffectiveSkills asks only for what it returns', () => {
-  // cm:guard the queue order IS part of the fixture: the resolver reads registrations, then the registered ids' names, then the bodies — reorder those three queries and these result sets feed the wrong call, silently
   it('names the registered skills and install_only in the WHERE, so an unregistered body is never read', async () => {
     results.push([{ skillId: 'reg-1' }], [{ name: 'forge-code' }], [bodyRow()]);
 
@@ -81,7 +80,6 @@ describe('resolveRegisteredEffectiveSkills asks only for what it returns', () =>
     expect(sql).toMatch(/"name" in/);
     expect(sql).toMatch(/"install_only"/);
     expect(params).toContain('forge-code');
-    // cm:guard the project's other skills are excluded by the DATABASE and not afterwards, which is the only difference a returned set cannot show
     expect(params).not.toContain('forge-unregistered');
   });
 

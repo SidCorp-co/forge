@@ -25,9 +25,7 @@ pub struct Args {
     pub operation: String,
 }
 
-// cm:guard STDOUT carries the protocol and nothing else — every diagnostic goes to stderr. A stray line on stdout is parsed by git as a credential field, and an unknown field is ignored silently, so the failure looks like a wrong password rather than like output in the wrong stream.
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
-    // cm:guard drain stdin BEFORE deciding not to answer — git writes the credential to this helper on `store`, so returning first closes the pipe mid-write and git prints a warning on every fetch that reads as a broken credential rather than as a no-op.
     let input = read_request()?;
     if args.operation != "get" {
         return Ok(());
@@ -43,7 +41,6 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
         .map(|(_, v)| v.clone())
         .unwrap_or_default();
 
-    // cm:guard refuse rather than answer when git sent no path — resolution is by repository, so a helper that guesses would hand this repository's token to whatever else lives on the host. The remedy is `credential.<url>.useHttpPath=true`, which `workspace::provision` sets; say so instead of failing anonymously.
     if path.is_empty() {
         eprintln!(
             "forge-runner git-credential: git sent no repository path for {host}; \
@@ -72,14 +69,12 @@ pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
             writeln!(out, "host={host}")?;
             writeln!(out, "username={}", grant.username)?;
             writeln!(out, "password={}", grant.password)?;
-            // cm:why git ≥2.34 drops a cached credential at this instant instead of retrying an expired one and reporting it as a rejected password
             if let Some(unix) = grant.expires_at.as_deref().and_then(parse_rfc3339_unix) {
                 writeln!(out, "password_expiry_utc={unix}")?;
             }
             out.flush()?;
             Ok(())
         }
-        // cm:guard exit 0 with NO credential on a refusal — git then tries the next helper and finally reports its own failure, whereas a non-zero exit aborts the whole fetch with this helper's name on it. The reason still has to reach the operator, so print it: an empty answer with no line on stderr is the silent substitution this path is meant to avoid.
         Err(e) => {
             eprintln!("forge-runner git-credential: {e}");
             Ok(())

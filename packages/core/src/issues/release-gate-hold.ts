@@ -31,7 +31,6 @@ export interface CloseTargetDecision {
  * actor, every project with no production and the release path itself pass
  * through.
  */
-// cm:guard the agency check is what keeps a human's close working: an operator closing an issue by hand is making the shipped claim deliberately and owns it, while an agent has no way to know whether anything was released. It asks `agency`, NOT `actor.type` — this rule is about who is at the keyboard, and a job token is an agent writing as the person who queued it, so a device-ness test would let exactly that caller close unheld.
 export async function resolveAgentCloseTarget(args: {
   projectId: string;
   requested: IssueStatus;

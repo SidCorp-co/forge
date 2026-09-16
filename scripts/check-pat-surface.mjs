@@ -35,7 +35,6 @@ function die(msg) {
   process.exit(2);
 }
 
-// cm:guard the funnel set is the FENCED entry points of lib/authz.ts and nothing else — every name here must reach `effectiveProjectRole`, which is the only function that reads `fencedProjectIds()`. Adding a helper that merely looks authorization-shaped (a role comparison, an org read) makes this gate pass routes the fence never sees, which is worse than no gate: it certifies them.
 const FUNNELS = [
   'effectiveProjectRole',
   'loadProjectAccess',
@@ -43,7 +42,6 @@ const FUNNELS = [
   'resolveProjectIdFromSlug',
 ];
 
-// cm:guard an exemption says "this route reads NO project-scoped data", which is a claim about the handler, not a waiver — and each entry must still match a live route or this gate fails, so the list cannot rot into permission for something that changed underneath it.
 const EXEMPT = [];
 
 /**
@@ -85,11 +83,9 @@ function permissionResources() {
       [...m[2].matchAll(/'([^']+)'/g)].map((p) => p[1]),
     );
   }
-  // cm:guard zero resources is exit 2, never a pass: a parser that has fallen behind the declaration reports an empty menu, and an empty menu walks no routes, which is the vacuous green this whole gate exists to refuse.
   if (out.size === 0) {
     die('PAT_PERMISSION_RESOURCES parsed as empty — refusing to pass vacuously');
   }
-  // cm:guard a PARTIAL parse is the dangerous one, because it neither dies nor walks the whole surface — it silently checks fewer prefixes and reports a green over the rest. So count the prefixes in the declaration independently of how they were attributed: any `/api/...` the resource regex did not claim means the parser has fallen behind the declaration's shape, which is a finding here and never a skip.
   const declared = [...body.matchAll(/'(\/api\/[^']*)'/g)].map((m) => m[1]);
   const attributed = [...out.values()].flat();
   if (declared.length !== attributed.length) {
@@ -165,7 +161,6 @@ function importsOf(rel) {
   return out;
 }
 
-// cm:guard the closure answers "does this MODULE reach the fence", never "is this module authorized" — it is one half of the test and useless alone. A route passes only when it CALLS a symbol that resolves into this set, so a module that merely sits in the same import graph proves nothing.
 const reaches = new Map();
 function moduleReachesFence(rel, seen = new Set()) {
   if (reaches.has(rel)) return reaches.get(rel);
@@ -288,7 +283,6 @@ let filesChecked = 0;
 
 const covered = (path) => prefixes.some((p) => path === p || path.startsWith(`${p}/`));
 
-// cm:guard the filter is per ROUTE and never per MOUNT, because a router mounted at an ANCESTOR of a covered prefix serves it just the same: three routers are mounted bare at `/api` today and declare paths under it, so a mount-level filter walks none of their routes. Measured on `questionRoutes`, then mounted bare at `/api`: the mount-level filter reported a green over `/api/questions` the moment that prefix joined the menu, with an unfenced handler planted under it (ISS-993). That router is mounted at its own prefix now; the other three are why this stays per route.
 const relevant = mounts.filter(
   (m) => covered(m.mount) || prefixes.some((p) => p.startsWith(`${m.mount}/`) || m.mount === '/'),
 );

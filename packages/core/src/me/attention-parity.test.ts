@@ -29,7 +29,6 @@ describe('the bucket and the label axis', () => {
     expect([...AWAITING_INPUT_STATUSES]).toEqual(statusesForLabels('needs_human'));
   });
 
-  // cm:guard the assertion above is a comparison against ANOTHER package's answer, never against this module's own constant — a test that reads the implementation it is checking cannot fail. This case fixes the value the axis is expected to hold, so an edit that moves BOTH sides together still has to say so here.
   it('agree that a deliberate pause is not a question', () => {
     expect(AWAITING_INPUT_STATUSES).not.toContain('on_hold');
     expect(statusesForLabels('needs_human')).not.toContain('on_hold');

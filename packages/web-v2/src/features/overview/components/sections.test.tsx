@@ -81,7 +81,6 @@ const pulse = (over: Partial<PulseResponse["work"]> = {}): PulseResponse => ({
 });
 
 describe("LivenessBand", () => {
-  // cm:guard an all-zero heartbeat must still render the trace: the whole point of the section is that "nothing ran for three days" is visible, and a falsy guard on the values renders the fallback text instead (ISS-988 criteria 26, 48)
   it("draws the heartbeat when every day in the window is zero", () => {
     render(
       <LivenessBand
@@ -97,7 +96,6 @@ describe("LivenessBand", () => {
     expect(screen.getByRole("img", { name: /Nothing ran on any of them/ })).toBeTruthy();
   });
 
-  // cm:guard a section whose series the response omits renders the figures it DOES hold, never an empty frame (ISS-988 criterion 49)
   it("falls back to the figures it holds when the series is absent", () => {
     render(
       <LivenessBand
@@ -133,7 +131,6 @@ describe("LivenessBand", () => {
     expect(screen.getByText(/past the alarm mark/)).toBeTruthy();
   });
 
-  // cm:guard the panel says shown-of-total whenever the response capped its list: presenting two of forty-two as the whole is the truncation-as-truth defect (ISS-988 criterion 46)
   it("opens the stuck runs and says how many of the total it shows", () => {
     render(
       <LivenessBand
@@ -194,7 +191,6 @@ describe("WorkSitting", () => {
     );
   });
 
-  // cm:guard a never-ran project is named as such rather than shown as the longest silence, and it sorts first (ISS-988 criteria 29-30)
   it("orders by silence and names a project that never ran", () => {
     render(
       <WorkSitting
@@ -265,7 +261,6 @@ describe("FlowSection", () => {
     expect(screen.getByText(/No weekly series in this response/)).toBeTruthy();
   });
 
-  // cm:guard the drift must span the WHOLE window: this plants a first week that creates 100 and closes none, so reading `flow[0].backlog` as the start reports "down 50" over a window in which the backlog rose by 50 (ISS-988 criterion 36)
   it("counts the first week's movement into the window it claims to cover", () => {
     render(
       <FlowSection
@@ -302,7 +297,6 @@ describe("QualitySection", () => {
     expect(screen.getByText(/66% unclassified/)).toBeTruthy();
   });
 
-  // cm:guard `pm` and `interactive` runs belong to `other` and must be drawn as their own lane rather than folded into the scheduler's (ISS-988 criterion 20)
   it("draws the third run lane apart from the two named ones", () => {
     render(<QualitySection quality={QUALITY} />);
     expect(screen.getByText("Everything else failed")).toBeTruthy();

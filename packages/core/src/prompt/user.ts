@@ -326,7 +326,6 @@ function formatIssueSnapshot(
     lines.push(
       '',
       'Description:',
-      // cm:guard ISS-898 — project BEFORE truncate, or the cap is spent on tag names. An `html` component description is ~25-40% heavier than the markdown it replaced, so a raw body would let the 8,000-char cap hold materially fewer requirements than it did before component bodies existed.
       markUntrusted(
         truncate(
           bodyText(snapshot.description, snapshot.descriptionFormat),
@@ -349,7 +348,6 @@ function formatIssueSnapshot(
       }),
     );
   }
-  // cm:guard the pointer must name the lane's OWN transport, and `drive` is why this is a fork rather than one sentence: the autonomous driver is told everywhere else to reach Forge through `forge-runner api`, so the staged text made this the third name for one read. Its MCP client works — the 2026-09-02 commit that first said otherwise overclaimed — measured on the audit log as 4,806 `forge_step_start` calls from agents, every one on an autonomous project, against a driver skill that names no MCP tool at all.
   lines.push(
     '',
     jobType === 'drive'
@@ -368,7 +366,6 @@ function formatSessionContext(
   const { policy, depth } = resolveSessionPolicy(jobType, policyOverride);
   const lines: string[] = ['## Previous Session Context'];
 
-  // cm:guard the staleness banner goes ABOVE the narrative, not below it. The footer already carried `last updated`, and on ISS-698 a release step read the FAIL verdict at the top and acted on it — a timestamp printed after the thing it qualifies is read too late to change a decision.
   if (supersededBy && supersededBy.count > 0) {
     const plural = supersededBy.count === 1 ? 'step has' : 'steps have';
     lines.push(
@@ -566,8 +563,6 @@ export function buildJobPromptString(args: {
     lines.push('', formatPriorHandoffs(handoffsToRender));
   }
 
-  // cm:guard append this LAST, after every body block — an agent reads top-down and acts on what it read most recently, so a termination contract placed above the work is one it has stopped holding by the time it finishes.
-  // cm:guard fork on `drive`, and `jobType` is a sound proxy for the lane because `autonomousStepFor` is the ONLY producer of that type and `POST /:id/run-pipeline-step` takes no stage at all — a drive job cannot be enqueued outside the autonomous lane. The staged block sends the agent to "the next state in the Pipeline Rules ladder", which this mode does not have, and offers `waiting` and `reopen`, which `issues/autonomous-park.ts` then rewrites on every session.
   if (handoffsEnabled && isHandoffStep(args.jobType) && args.handoffScope) {
     lines.push(
       '',

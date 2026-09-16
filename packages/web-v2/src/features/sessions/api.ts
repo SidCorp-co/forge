@@ -1,4 +1,3 @@
-// cm:edge contract -> packages/core/src/agent-sessions/routes.ts — every path below is one of that router's, and a route renamed there arrives here as a 404 the caller renders as its ordinary error state.
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type { QueueStats, SessionCost, SessionRow } from "./types";
 

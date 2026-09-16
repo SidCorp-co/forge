@@ -14,7 +14,6 @@ export type {
 	UxToggleSettings,
 } from "@forge/contracts";
 
-// cm:edge contract -> packages/core/src/projects/project-facts.ts — the project-facts shapes below are hand-mirrored from `projectFactsPatchSchema`; the always-inject tier is injected verbatim into every agent prompt, so a key added there and not here is silently undisplayable
 /** Per-key config map; `alwaysInject` flags a fact for verbatim injection. */
 export type ProjectFactsConfig = Record<string, { alwaysInject?: boolean }>;
 
@@ -25,7 +24,6 @@ export interface ProjectFactsResponse {
 	projectFactsConfig: ProjectFactsConfig;
 	/** Char budget for the SUM of always-inject bodies (warn-on-overflow). */
 	maxAlwaysInjectChars: number;
-	// cm:edge contract -> packages/core/src/projects/project-facts.ts — `ALWAYS_INJECT_GUARANTEE_NOTE`, served rather than copied: core may not value-import `@forge/contracts` and web-v2 cannot import core, so a string both sides must agree on otherwise lives twice behind a parity test
 	/** What the always-inject flag does and does not promise, for the owner setting it. */
 	alwaysInjectGuarantee: string;
 }
@@ -136,11 +134,9 @@ export interface ProjectInvitationRow {
 }
 
 /** A label's taxonomy role — a module IS a label carrying `kind: 'module'`. */
-// cm:edge contract -> packages/core/src/db/schema.ts#labelKinds — a third kind added there and not here is a row the Modules tab shows as a plain label and the Labels tab shows as a module
 export type LabelKind = "label" | "module";
 
 /** A project label (`GET /api/projects/:id/labels`), modules included. */
-// cm:edge contract -> packages/core/src/labels/routes.ts#labelColumns — every route in that file projects exactly this set; `color` is NOT NULL in the schema and every projection carries it, so there is no null arm
 export interface ProjectLabel {
 	id: string;
 	name: string;
@@ -157,7 +153,6 @@ export interface ProjectLabel {
 
 /** Body for creating a label or a module. `color` may be omitted for a module — the server
  *  derives a stable one from the name; it is REQUIRED for a plain label. */
-// cm:guard `slug` is deliberately absent — the server derives it and refuses to accept one, so a field here would be silently dropped rather than honoured (ISS-947).
 export interface LabelCreateInput {
 	name: string;
 	color?: string;
@@ -257,7 +252,6 @@ export interface ProjectAgentConfig {
 	[key: string]: unknown;
 }
 
-// cm:edge contract -> packages/core/src/projects/ux-contract-presets.ts — the UxStackProfile union and the rule/finding enums are hand-mirrored here; a value added on one side typechecks and then fails at the column or renders as an unknown badge
 
 export const UX_RULE_GROUPS = [
 	"designSystem",
@@ -412,7 +406,6 @@ export const MCP_CATALOG: Record<
 
 export const MCP_CATALOG_NAMES = Object.keys(MCP_CATALOG);
 
-// cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — the same four STAGE_NAMES keys, same order; a stage added there needs a row here or the screen renders its raw status
 export const PIPELINE_STATUS_ROWS: ReadonlyArray<{ status: string; label: string }> = [
 	{ status: "open", label: "Queued" },
 	{ status: "in_progress", label: "Running" },
@@ -500,15 +493,12 @@ function stageHasOverride(sc: PipelineStateConfig): boolean {
 		(sc.allowedTools?.length ?? 0) > 0 ||
 		(sc.disallowedTools?.length ?? 0) > 0 ||
 		Object.keys(sc.mcpServers ?? {}).length > 0 ||
-		// cm:why a stage whose ONLY override is its runner pool must still render — otherwise pinning a stage to a box makes that stage vanish from the one screen an operator checks it on
 		(sc.deviceIds?.length ?? 0) > 0
 	);
 }
 
 /** Every `states[status]` that carries a permission-relevant override, in
  *  ladder order. */
-// cm:guard the rows are `PIPELINE_STATUS_ROWS` and nothing else. Both readers here used to append a row for any OTHER stored status, labelled with its raw key — but core's `statesConfigSchema` has been a `strictObject` since ISS-994, so such a key fails the whole document parse and no such row could ever render; what it could do, if one somehow arrived, was offer an editable row whose save 400s (ISS-1000). A new stage is added HERE, next to core's `STAGE_NAMES`.
-// cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — `STAGE_NAMES`; a stage added there and not here is a stage no operator can see or edit
 export function summarizeStageConfig(cfg: PipelineConfig): StagePermissionRow[] {
 	const states = (cfg.states ?? {}) as Record<string, PipelineStateConfig>;
 	const rows: StagePermissionRow[] = [];
@@ -556,7 +546,6 @@ export function denylistBaseline(rows: StagePermissionRow[]): DenylistDiff[] {
 	});
 }
 
-// cm:guard the ONLY writer of a single stage. `statesConfigSchema` has no passthrough and the PATCH replaces `states` wholesale, so anything building a `states` map from less than the fetched one DELETES the stages it left out — spread cfg, spread cfg.states, spread the stage, override nothing else.
 export function withStagePatch(
 	cfg: PipelineConfig,
 	status: string,
@@ -628,7 +617,6 @@ export const API_ONLY_KEYS: ApiOnlyKey[] = [
 	},
 ];
 
-// cm:edge contract -> packages/core/src/app-config/memory-model-routes.ts — the five states, the counters and the estimate keys are decided there and by memory/chunk-reindex.ts; this screen only draws them
 
 export type MemoryModel = "flat" | "chunked";
 

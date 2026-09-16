@@ -21,7 +21,6 @@ export interface AutonomousFact {
   required: boolean;
 }
 
-// cm:guard required means "a phase cannot finish without it", never "nice to have" — every required key blocks the switch to autonomous mode, so adding one here locks out every project that has been running fine without it
 export const AUTONOMOUS_FACT_CONTRACT: readonly AutonomousFact[] = [
   {
     key: 'build-commands',

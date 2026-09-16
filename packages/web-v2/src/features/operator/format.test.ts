@@ -10,7 +10,6 @@ import {
   formatUsd,
 } from "./format";
 
-// cm:guard the four endpoints send `null` for a ratio whose denominator was zero, so rendering it as "0" tells an operator the metric was measured and came out at nothing — the opposite of what the endpoint said
 describe("null is not zero", () => {
   it.each([
     ["formatCount", formatCount],
@@ -67,7 +66,6 @@ describe("formatSince", () => {
     expect(formatSince(null, NOW)).toBeNull();
   });
 
-  // cm:why a clock skew between core and the browser is ordinary; "in -3 minutes" on screen is not
   it("answers null rather than a negative age for a future instant", () => {
     expect(formatSince("2026-09-06T12:05:00.000Z", NOW)).toBeNull();
   });

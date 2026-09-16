@@ -43,7 +43,6 @@ describe('clearRunnerFaultFlags', () => {
     expect(broadcastRunnerChanged).toHaveBeenCalledWith(PROJECT_A, RUNNER_A);
   });
 
-  // cm:why an operator who repairs the box by hand must not be left holding the alarm it raised — the wedge re-notifies at most daily, so a stale one also hides the next real trip
   it('clears the alarm the quarantine raised', async () => {
     returning.mockResolvedValueOnce([{ id: RUNNER_A }]);
     await clearRunnerFaultFlags(RUNNER_A, PROJECT_A);

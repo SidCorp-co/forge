@@ -81,7 +81,6 @@ describe('ISS-817 computeProjectProgress shipped-evidence', () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
 
-    // cm:why merged_at EQUALS the close instant — the auto-stamp signature; this issue's code never merged
     const i1 = await insertIssue(
       project.id,
       owner.id,
@@ -105,7 +104,6 @@ describe('ISS-817 computeProjectProgress shipped-evidence', () => {
 
     await insertIssue(project.id, owner.id, 'in-flight', 'in_progress', null);
 
-    // cm:why the case ISS-817's option 3 would have lost — merged by hand a day EARLIER than the close, so merged_at is real evidence and must still count
     const i5 = await insertIssue(
       project.id,
       owner.id,
@@ -116,7 +114,6 @@ describe('ISS-817 computeProjectProgress shipped-evidence', () => {
     await logTransition(i5, owner.id, 'developed', new Date('2026-07-30T08:00:00Z'));
     await logTransition(i5, owner.id, 'closed', CLOSED_AT);
 
-    // cm:why imported here, not at module scope — src/issues/progress.ts pulls in db/client.js, which validates env at load time and would throw before beforeAll sets DATABASE_URL
     const { computeProjectProgress } = await import('../../src/issues/progress.js');
     const progress = await computeProjectProgress(project.id, harness.db as never);
 
@@ -128,7 +125,6 @@ describe('ISS-817 computeProjectProgress shipped-evidence', () => {
     expect(progress?.total).toBe(5);
   });
 
-  // cm:why ISS-791 — work driven entirely by hand never logs a transition into developed/testing/tested/released, so the predicate's old `reachedPostCode` conjunct discarded the ONE audited claim that the work shipped and reported it as "closed with no evidence it shipped"
   it('counts a hand-driven close that never entered a pipeline status but carries an explicit merge stamp', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
@@ -142,7 +138,6 @@ describe('ISS-817 computeProjectProgress shipped-evidence', () => {
     );
     await logTransition(byHand, owner.id, 'closed', CLOSED_AT);
 
-    // cm:guard the ISS-817 property must survive this widening or it is not a widening but a regression: an issue whose merged_at was written BY its own close is still not evidence
     const autoStamped = await insertIssue(
       project.id,
       owner.id,
@@ -161,12 +156,10 @@ describe('ISS-817 computeProjectProgress shipped-evidence', () => {
   });
 
   it('stamped_at_close: the auto-stamp really does land on the close instant', async () => {
-    // cm:guard this pins the assumption the shipped predicate rests on — if a refactor splits the stamp out of the close's transaction, fail HERE rather than silently re-inflating the shipped figure
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     const issueId = await insertIssue(project.id, owner.id, 'stamp-probe', 'developed', null);
 
-    // cm:why mirrors apply-transition.ts — one transaction for both writes is what makes the timestamps equal
     await harness.db.transaction(async (tx) => {
       await tx.execute(
         sql`UPDATE issues SET merged_at = now() WHERE id = ${issueId} AND merged_at IS NULL`,

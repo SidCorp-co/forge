@@ -32,7 +32,6 @@ vi.mock('../queue/boss.js', () => ({
 vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
-// cm:why kill-gate is mocked for its import chain (→ `ws/server.js` → env validation), not its behaviour
 vi.mock('./kill-gate.js', () => ({
   killGraceMs: () => 90_000,
   requestJobKill: vi.fn(),
@@ -92,7 +91,6 @@ describe('the result hop and the stale alarm share one candidate predicate', () 
     const alarm = predicateOnly(sqlText(staleAlarmQuery(new Date('2026-06-12T12:00:00Z'))));
 
     expect(alarm).toBe(loop);
-    // cm:guard the equality above is worthless if `predicateOnly` normalised the whole predicate away, so this asserts the surviving text still carries the terms that decide which rows come back.
     expect(loop).toContain('LEFT JOIN LATERAL');
     expect(loop).toContain("j.status IN ('dispatched', 'running')");
     expect(loop).toContain("runtime_state IS DISTINCT FROM 'awaiting_input'");
@@ -108,12 +106,6 @@ describe('the result hop and the stale alarm share one candidate predicate', () 
     expect(sqlText(resultMissCandidateQuery())).not.toContain('j.kill_requested_at IS NULL');
   });
 
-  // cm:guard asserted on the text the HOP EXECUTED and not on what the builder returned, because
-  // a correct builder says nothing about `reapResultMisses` running it: an inlined copy left
-  // behind passes every assertion above and is still the query that ticks every 60 seconds.
-  // cm:guard BOTH halves of the result guard, because either alone passes a query that guards
-  // nothing — the lateral without the guard reads `job_events` and ignores it, and
-  // `lr.job_id IS NULL` without the lateral is an unbound alias the type checker cannot see.
   it('is the text the result hop actually executes', async () => {
     expect(RESULT_QUIET_MINUTES).toBe(60);
     dbExecute.mockResolvedValueOnce([]);
@@ -135,7 +127,6 @@ describe('the result hop and the stale alarm share one candidate predicate', () 
   });
 });
 
-// cm:guard `quietMinutes` is the ONE value that reaches the statement through `sql.raw`, because an interval's unit cannot be parameterised. Each case below is a value that would otherwise be pasted into the SQL verbatim, and the refusal is the deliverable rather than a widened check that makes one of them return something.
 describe('quietJobCandidateQuery refuses a threshold it cannot interpolate safely', () => {
   it.each([
     ['a fractional threshold', 1.5],

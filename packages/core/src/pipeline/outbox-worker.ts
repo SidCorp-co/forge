@@ -52,7 +52,6 @@ import { emitPipelineWedge } from './wedge.js';
 const POLL_INTERVAL_MS = 1_000;
 const BATCH_LIMIT = 50;
 const CLAIM_LEASE_MS = 120_000;
-// cm:why counts REdeliveries (see module header) — the filter `attempts < MAX_REDELIVERIES` therefore allows 1 initial delivery + MAX_REDELIVERIES retries before dead-lettering
 const MAX_REDELIVERIES = 3;
 
 // Index signature lets this satisfy postgres-js's `Record<string, unknown>`
@@ -74,7 +73,6 @@ let timer: NodeJS.Timeout | null = null;
 let running = false;
 let stopping = false;
 
-// cm:edge contract -> packages/core/src/pipeline/orchestrator.ts — this claim lease's at-least-once guarantee is only sound because considerEnqueue/buildAndEnqueueStepJob dedupe a re-emitted transition per-issue under pg_advisory_xact_lock
 async function claimBatch(): Promise<OutboxRow[]> {
   return db.execute<OutboxRow>(sql`
     UPDATE pipeline_outbox o
@@ -101,9 +99,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
   let failed = 0;
   const rows = await claimBatch();
 
-  // cm:guard never await hooks.emit() while a transaction is open on this connection or any other — subscribers (e.g. the orchestrator) open their own tx and can block on an unbounded lock, pinning whatever tx is still around
   for (const row of rows) {
-    // cm:guard `agency` here is IMPLIED by `actor_type`, not carried — the outbox row records who owned the transition and nothing about who was at the keyboard, so the moment a job token drives one this rebuild will call it human. Carry agency on `kernel_transitions_outbox` and read it here; this branch is a stand-in that reproduces exactly what the row already meant, not an answer to the agency question.
     const actor: Actor =
       row.actor_type === 'device' || row.actor_type === 'system'
         ? { type: 'device', id: row.actor_id ?? '<system>', agency: 'agent' }
@@ -115,12 +111,10 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
         actor,
         from: row.from_status as IssueStatus,
         to: row.to_status as IssueStatus,
-        // cm:why reopenCount is not carried on the outbox row (immutable event record) — subscribers that need it can read it from `issues`
         reopenCount: 0,
         outboxId: row.id,
         ...(row.reason ? { reason: row.reason } : {}),
       });
-      // cm:edge contract -> packages/core/src/pipeline/hooks.ts — only a `pipeline-orchestrator` failure is escalated; a best-effort subscriber failing (e.g. pm, which has no local guard) must not block delivery or raise a wedge claiming the status change was unprocessed
       assertHookDelivered(result, { owned: ['pipeline-orchestrator'] });
       await db.execute(sql`
         UPDATE pipeline_outbox SET processed_at = now(), claimed_at = NULL WHERE id = ${row.id}
@@ -157,7 +151,6 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
           },
         });
       }
-      // cm:why this fires exactly once, on the final permitted delivery's failure: claimBatch's `attempts < MAX_REDELIVERIES` filter means a row with attempts === MAX_REDELIVERIES will never be re-claimed, so this is the last chance to surface it
       if (row.attempts >= MAX_REDELIVERIES) {
         await emitPipelineWedge({
           projectId: row.project_id,

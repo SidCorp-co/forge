@@ -6,7 +6,6 @@
 // keeping it beside the client is what made the design kit import the API
 // client to render a markdown image (arch `web-design-holds-no-api-client`).
 
-// cm:edge contract -> packages/web-v2/src/lib/api/client.ts — `CORE_URL` is that module's origin too; it imports this one rather than re-deriving, so a change to the `/api` suffix rule cannot land on only one of them.
 export const CORE_URL = (process.env.NEXT_PUBLIC_API_URL || "/api").replace(/\/api\/?$/, "");
 
 /**

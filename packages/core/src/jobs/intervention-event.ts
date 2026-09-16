@@ -29,8 +29,6 @@ export interface InterventionEventInput {
  * Append the intervention row inside an OPEN transaction, so the status
  * mutation and its audit trail commit together or not at all.
  */
-// cm:edge contract -> packages/core/drizzle/migrations/0181_intervention_action_source.sql — `issue_intervention_events.source` is built as `'manual_' || data->>'action'`, so a new action value appears in the interventions metric under a name only this type decides. Adding one here without checking that view is how a resume came to be charted as a cancel.
-// cm:guard the advisory lock must be taken on the JOB, not the event — it serialises the `MAX(seq)+1` read against a concurrent insert for the same job, and it auto-releases at COMMIT/ROLLBACK. Locking anything else lets two surfaces compute the same seq.
 export async function insertInterventionEvent(
   tx: Tx,
   input: InterventionEventInput,

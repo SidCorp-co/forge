@@ -18,7 +18,6 @@ import type { PipelineHealthJob, PipelineHealthPausedRun } from './pipeline-heal
 /**
  * Q3 — the issue's live jobs, bucketed by issue id.
  */
-// cm:guard `held` MUST be loaded here but MUST NOT be counted at the runner-in-flight query in the loader below — this feeds the `issue_busy` and `job_held` reasons, which mirror L1 `issueBusyJob` (held blocks a duplicate), while that query mirrors `runner_load` (held burns no cap). Drop it here and the gate refuses to dispatch while pipelineHealth reports no waitingOn at all — the exact lie this file's lockstep edge exists to prevent.
 export async function loadActiveJobsByIssue(
   projectId: string,
   ids: string[],
@@ -74,7 +73,6 @@ export async function loadActiveJobsByIssue(
  * is the case where the run has no queued job to be joined from, so this reads
  * `pipeline_runs` by issue id directly.
  */
-// cm:guard filter on `status = 'paused'` and nothing else — narrowing this by the issue's own status, or by whether the run has queued work, rebuilds exactly the blind spot ISS-853 closed: a run paused with nothing queued under an issue that still reads `approved`
 export async function loadPausedRunsByIssue(
   projectId: string,
   ids: string[],

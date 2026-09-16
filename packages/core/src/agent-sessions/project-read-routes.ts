@@ -33,7 +33,6 @@ const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
 export const agentSessionProjectReadRoutes = new Hono<{ Variables: AuthVars }>();
-// cm:guard scope these to the two agent-session paths, never `'*'` — this router shares the /api/projects prefix with thirty others, and a wildcard `use` there runs in front of every one of their paths too (ISS-719). The narrow patterns are the whole reason a second `requireAuth` here is harmless.
 agentSessionProjectReadRoutes.use('/:id/agent-sessions', requireAuth(), assertEmailVerified());
 agentSessionProjectReadRoutes.use(
   '/:id/agent-sessions/:sessionId',
@@ -77,7 +76,6 @@ agentSessionProjectReadRoutes.get(
   },
 );
 
-// cm:guard the project comes from the ROW, never from the path — reading `:id` and trusting it would let a member of project A name their own project in the path and pull any session id from project B. The path segment is only there so the PAT fence has a project to check; authorisation is on `row.projectId`, and the mismatch is a 404 rather than a 403 so the route does not confirm the session exists.
 agentSessionProjectReadRoutes.get(
   '/:id/agent-sessions/:sessionId',
   zValidator('param', sessionParamSchema, (r) => {

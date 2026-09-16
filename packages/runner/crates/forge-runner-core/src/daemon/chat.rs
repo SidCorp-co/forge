@@ -287,7 +287,6 @@ pub async fn handle_send(
             project_slug: f.project_slug,
             // No system prompt on follow-ups — `--resume` keeps the original.
             system_prompt: None,
-            // cm:guard a follow-up DOES carry a model. Verified on claude 2.1.241: `--resume` with a changed `--model` runs the new model (haiku -> sonnet -> haiku, one session id, read back from `modelUsage`), and `--resume` with no `--model` inherits the session's last one. Hardcoding None here made the picker a lie for every turn after the first.
             model: f.model,
             resume_id: f.claude_session_id.filter(|s| !s.is_empty()),
             mcp_servers_override: f.mcp_servers_override,
@@ -326,9 +325,7 @@ fn chat_spec(session_id: &str, prompt: &str, turn: &Turn) -> JobSpec {
         mcp_servers_override: turn.mcp_servers_override.clone(),
         resume_id: turn.resume_id.clone(),
         agent_session_id: Some(session_id.to_string()),
-        // cm:guard chat NEVER takes a session-cap permit, and ISS-920 giving that wait a 600s bound does not change it: core's `no_client_ack` sweeper kills an unacked chat turn at 90s, so a bounded queue still ends the turn before it spawns (session 1af837da, 2026-09-04: five user messages, no reply). Owner decision: chat has no limit.
         counts_against_session_cap: false,
-        // cm:guard chat takes the DEFAULT and no project value, because the field is `pipelineConfig.sessionResidencySeconds` and chat has no pipeline behind it. A chat session's residency is bounded by the same const it always was; giving it a pipeline project's number would make a project setting silently change how long an unrelated chat window stays warm.
         session_residency_seconds: None,
     }
 }
@@ -348,11 +345,9 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
         turn.resume_id.is_some()
     );
 
-    // cm:guard refresh HERE and not in handle_start / handle_send — both funnel through this function, and a per-caller refresh is exactly how the resume lane got forgotten. Session 228cdf03 idled 28h and answered from the checkout it was created with. Residency does NOT move it: `run_turn` is entered once per TURN, not once per spawn — the two only looked the same while a turn was a spawn.
     let git_state = refresh::refresh(Path::new(&turn.repo_path), None).await;
     tracing::info!("[chat {session_id}] {}", refresh::describe(&git_state));
 
-    // cm:guard a session that can be reused must NOT be reused across a model change — the picker is honoured by respawning with `--model`, exactly as it was before residency. Verified 2026-08-29 that an in-band `/model` also works, but it costs its own turn and its result would be read as the answer to the user's question; that lands with the phase 4 message vocabulary, not here.
     let resident = runner.resident(&session_id).await;
     let reuse = match &resident {
         Some(r) if r.model == turn.model => true,
@@ -364,7 +359,6 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
         None => false,
     };
 
-    // cm:guard ISS-873 invariant 7 — a RESIDENT session already holds the pre-refresh file contents, so a checkout that moved under it must be announced. Under one-shot this was free: the process was always newer than the refresh. A stale checkout makes file content and `git log` agree WITH EACH OTHER, which makes "I verified by reading the files, not just history" the one check that cannot catch it.
     let moved_under_us = reuse
         && resident
             .as_ref()
@@ -388,7 +382,6 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
     let spec = chat_spec(&session_id, &prompt, &turn);
 
     let (tx, rx) = mpsc::channel::<RunnerEvent>(200);
-    // cm:guard `send` failing must fall back to a spawn, never fail the turn. The resident session can go away between the `resident()` check and the write — the idle ceiling, an abort, a crash — and a user whose message is refused because a process died in that window has lost the turn for a reason that has nothing to do with them.
     let started = if reuse {
         match runner.send(&session_id, prompt.clone(), tx.clone()).await {
             Ok(()) => Ok(()),
@@ -458,10 +451,8 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
         tokio::select! {
             ev = rx.recv() => match ev {
                 Some(RunnerEvent::ClaudeSessionId(sid)) => { claude_sid = Some(sid); dirty = true; }
-                // cm:guard recorded, NOT flushed on its own — a state change is not new transcript, and marking it dirty would post a whole-transcript PATCH per turn end on top of the terminal one that already carries it.
                 Some(RunnerEvent::StateChanged(state)) => { runtime_state = Some(state.to_string()); }
                 Some(RunnerEvent::Stdout(json)) => {
-                    // cm:guard counting must NOT set `dirty` — a tool-heavy stretch emits no assistant text, so marking it dirty turns a silent period into one full-transcript PATCH every FLUSH_INTERVAL. Session 5250d5e1 (15 min, 17 text turns, dozens of tool calls) would have gone from ~17 writes to ~1200, each carrying the whole growing messages array. The count rides the next text flush and the terminal patch, which always fires; nothing reads the interim value.
                     tool_calls = tool_calls.saturating_add(count_tool_uses(&json));
                     if let Some(msg) = parse_assistant_message(&json) {
                         turn_msgs.push(msg);
@@ -565,7 +556,6 @@ async fn patch_failed(
         messages: Some(msgs),
         claude_session_id: claude_sid,
         tool_call_count: tool_calls,
-        // cm:guard a failed turn reports `closed`, never the park — a session that died is not waiting for anyone, and `awaiting_input` is the one value that exempts a row from the heartbeat hop.
         runtime_state: Some("closed".into()),
     };
     agent_sessions::patch_session(client, session_id, &patch).await

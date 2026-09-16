@@ -23,8 +23,6 @@ export function extractVerdict(payload: StepHandoffPayload): StepVerdict | null 
   return null;
 }
 
-// cm:why `verified_by_test` is a passing test and not a waiver: it is the verdict that the automated suite covers the AC, so the tests ran and were green. `blocked_fixture` says the opposite — the AC could not be exercised at all — and `fail` speaks for itself.
-// cm:guard ISS-948's trigger is a passing TEST, deliberately not a status change and deliberately not the `drive` step. `drive`'s `outcome: advanced` says the turn finished, never that anything passed, so an autonomous project feeds this loop only once someone decides which `drive` outcomes count — which is a value decision ISS-948 forbids taking here.
 const PASSING_TEST_RESULTS: readonly StepVerdict[] = ['pass', 'verified_by_test'];
 
 function isPassingTestHandoff(payload: StepHandoffPayload): boolean {
@@ -57,7 +55,6 @@ const writeInputBaseSchema = scopeSchema.extend({
   kind: z.enum(issueStepContextKinds),
 });
 
-// cm:guard `actor` is REQUIRED, never optional with a fallback — the refresh below writes an `activity_log` row, whose `actor_agency` default reads as a plausible `human` (`db/schema-activity.ts`), so a caller that omitted it would attribute an agent's handoff to a person and nobody would report a feed that looks right.
 const writeIssueContextActorSchema = z.object({
   type: z.enum(actorTypes),
   id: z.uuid(),
@@ -93,13 +90,11 @@ export async function writeIssueContext(
     if (!validated.step) {
       throw new Error('writeIssueContext: kind=handoff requires `step`');
     }
-    // cm:guard the discriminator is cross-validated against the scope because nothing else is: an agent that submitted a `triage` payload under a `plan` slot would corrupt every downstream read of that slot, and the row would look well-formed.
     if (validated.payload.step !== validated.step) {
       throw new Error(
         `writeIssueContext: payload.step (${validated.payload.step}) does not match scope.step (${validated.step})`,
       );
     }
-    // cm:guard write the verdict for EVERY step, `null` included (ISS-381) — a corrected re-run of the same attempt has to clear the previous value, and skipping the write for a step that carries no verdict leaves a phantom one on the row.
     const verdict = extractVerdict(validated.payload);
     const [row] = await db
       .insert(issueStepContexts)
@@ -114,12 +109,9 @@ export async function writeIssueContext(
         verdict,
       })
       .onConflictDoUpdate({
-        // cm:edge contract -> packages/core/src/db/schema.ts#issue_step_contexts_handoff_uq — target columns + targetWhere must match that partial unique index or the upsert finds no arbiter
-        // cm:why drizzle cannot express a partial-unique target; Postgres still resolves the conflict by index when the target columns match the index's
         target: [issueStepContexts.issueId, issueStepContexts.step, issueStepContexts.attempt],
         targetWhere: sql`${issueStepContexts.kind} = 'handoff'`,
         set: {
-          // cm:edge contract -> packages/core/src/jobs/finalize-done.ts — a re-run reuses (issue, step, attempt), so the conflict update MUST move `pipeline_run_id`: that reader selects on it, and a row left pointing at the previous run reads as absent to the current one
           pipelineRunId: sql`excluded.pipeline_run_id`,
           payload: sql`excluded.payload`,
           verdict: sql`excluded.verdict`,
@@ -143,7 +135,6 @@ export async function writeIssueContext(
     return row;
   }
 
-  // cm:why unreachable while `handoff` is the only kind in the enum, and kept so a kind added there fails loudly here rather than falling through to a silent no-op.
   throw new Error(`writeIssueContext: kind '${validated.kind}' not implemented`);
 }
 

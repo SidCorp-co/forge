@@ -19,8 +19,6 @@ export interface ThreadRef {
   tmid: string;
 }
 
-// cm:guard the lookup is by (connection, room, thread) and nothing else — the same triple the unique index holds — because a thread we do not own must be indistinguishable here from one that does not exist, and the caller falls through to the conversation handler on null (ISS-978 criterion 21).
-// cm:guard a RETIRED issue thread still resolves, and the `retired` flag rather than a null is what lets the caller refuse it by name: dropping the row on retirement would send a reply left there to the conversation handler, which answers a person with a model in a thread that was theirs (ISS-981 criteria 35, 36).
 export async function subjectForThread(ref: ThreadRef): Promise<ThreadSubject | null> {
   const [row] = await db
     .select({
@@ -62,7 +60,6 @@ export interface IssueThread {
 }
 
 /** The live thread this issue's comments go to, or null when none is open. */
-// cm:guard live rows only — a retired thread points into a room the project is no longer bound to, and posting a comment there sends it to people who stopped following this issue when the binding moved (ISS-981 criterion 32).
 export async function liveThreadForIssue(
   issueId: string,
   tx: Tx = db,
@@ -83,7 +80,6 @@ export async function liveThreadForIssue(
  * Register the thread a subject was opened in. A second registration for the
  * same triple is the same thread, and is left alone.
  */
-// cm:guard `onConflictDoNothing` with NO target, which is what a rolled-back binary also writes: the conflict may be the room triple or the subject's own unique, and naming one of them would let the other raise instead of being absorbed.
 export async function registerThread(
   subject: { questionId: string } | { issueId: string },
   ref: ThreadRef,
@@ -98,8 +94,6 @@ export async function registerThread(
 /**
  * Retire this issue's live thread, so the next comment opens a new one.
  */
-// cm:guard retirement is a timestamp and never a delete, and the partial unique is what makes the replacement registrable: the retired row keeps holding its room triple so a reply left there still resolves and is refused by name (ISS-981 criteria 35, 36).
-// cm:guard scoped to the EXACT row the caller decided about, never to the issue: two workers reading the same stale thread after a rebind would otherwise have the slower one retire the replacement the faster one just registered, leaving the issue with no live thread and its new thread's replies refused as retired (ISS-981 criterion 32).
 export async function retireIssueThread(
   issueId: string,
   ref: ThreadRef,

@@ -8,8 +8,6 @@ export const SKIPS_PATH = '.forge/test-skips.json';
 export const TEST_FILE_RE = /\.(test|spec)\.(ts|tsx|mts|cts|mjs|cjs|js|jsx)$/;
 export const CONFIG_RE = /(^|\/)vitest[^/]*\.config\.(ts|mts|cts|js|mjs)$/;
 
-// cm:guard a suite-level skip only. `it.skip` on one case is a quarantine visible in the run output; a skipped DESCRIBE takes the whole file out while the runner still reports it as a passing file, which is the shape that hid the device-runner E2E for months.
-// cm:guard both patterns are anchored at STATEMENT position, and that anchor is the rule. Matching `describe.skip(` anywhere on a line flags any file that quotes the syntax — this checker's own test file did, and it would have failed the gate the moment it was tracked. A checker that fires on documentation of itself gets an exemption written for it, and the exemption is where the next real one hides.
 const SKIP_STATEMENT_RE = /^describe\s*\.\s*(skip|skipIf|todo)\s*\(/;
 const SKIP_BINDING_RE =
   /^(?:export\s+)?(?:const|let|var)\s+[\w$]+\s*=\s*[^;]*\?\s*describe\s*:\s*describe\s*\.\s*skip\b/;
@@ -28,7 +26,6 @@ export function isSuiteSkip(line) {
  * Returns `{ code: 0 }`, `{ code: 1, unreachable, undeclaredSkips }`, or
  * `{ code: 2, reason }`.
  */
-// cm:guard order matters: a runner that could not answer is exit 2 BEFORE any coverage is computed. Judging the remainder would report every file that runner owns as unreachable — a real-looking violation list produced by a broken measurement, which is worse than no measurement, because someone will act on it.
 export function judge({ testFiles, collectedPerRunner, declaredSkips, skipHits, unreadable }) {
   for (const [cfg, files] of Object.entries(collectedPerRunner)) {
     if (files === null) return { code: 2, reason: `\`vitest list\` failed for ${cfg}` };
@@ -37,7 +34,6 @@ export function judge({ testFiles, collectedPerRunner, declaredSkips, skipHits, 
     return { code: 2, reason: 'found no vitest config — nothing could collect anything' };
   }
   if (declaredSkips === null) return { code: 2, reason: `${SKIPS_PATH} is not readable JSON` };
-  // cm:guard a tracked test file missing from disk is a NAMED refusal, never an unhandled ENOENT: the file is in the index and not in the tree, which is a deletion nobody staged, and the raw `readFileSync` stack that used to escape here named `node:fs` as the thing that broke while the remedy — `git rm` the file you deleted — appeared nowhere (2026-09-14).
   if (unreadable?.length) {
     return {
       code: 2,

@@ -143,11 +143,9 @@ describe('the interventions metric, read by a personal access token', () => {
     expect(body.events[0]?.source).toBe('direct_sql');
   });
 
-  // cm:guard the assertion this suite exists for, and the one that goes vacuous first. It must fail because the FENCE refused, not because a stub ran out of rows: the `issue_intervention_events` read is asserted un-run, so a fence removed while the route still 404s on some later query cannot pass this.
   it('refuses the same token the project its allowlist does not name, and reads no row of it', async () => {
     tokenScopedTo([PROJECT_A]);
     queueRows([{ emailVerifiedAt: new Date() }]);
-    // cm:why the owner IS a member of B, so the token's own allowlist is the only thing left that can refuse — without that row the planted-fence-removal run errors on an exhausted stub instead of answering 200 with `i-b`, and the assertion stops distinguishing a fence from a missing mock
     queueRows([{ orgId: 'org-1', memberRole: 'admin', orgRole: 'owner' }]);
     dbExecute.mockResolvedValueOnce([B_EVENT_ROW]);
 

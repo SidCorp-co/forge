@@ -149,7 +149,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
-    // cm:why both addresses baked in up front — config/env.ts parses ADMIN_EMAILS once at import time, so it cannot be changed per-test; a test seeding only one of the two never triggers the other's row
     process.env.ADMIN_EMAILS = `${ADMIN_EMAIL},${ADMIN_EMAIL_2}`;
 
     mods = (await import('../../src/admin/alert-sweeper.js')) as unknown as Mods;
@@ -163,7 +162,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     await truncateAll(harness.db);
   });
 
-  // cm:why the in-process sweep-interval gate is a real module-level singleton across this whole file (not reset per test); each call must pass a `now` strictly >5min past every prior call so the gate never skips a sweep this suite depends on
   it('writes exactly one unread notification per admin when A1 crosses into crit', async () => {
     const admin = await seedAdmin();
     await seedOrphan();
@@ -211,7 +209,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(rows[0]?.resolved_at).toBeNull();
   });
 
-  // cm:guard an acknowledged (read) active alert MUST still be resolved on the healthy pass — otherwise resolved_at stays NULL, the partial unique index keeps blocking, and a later recurrence is silently dropped (ISS-652 review blocker; resolveNotifications matches on resolved_at IS NULL, not read = false)
   it('resolves an acknowledged alert on the healthy pass so a recurrence re-fires', async () => {
     await seedAdmin();
     const { jobId } = await seedOrphan();
@@ -221,7 +218,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(created).toBeDefined();
     await harness.db.execute(sql`UPDATE notifications SET read = true WHERE id = ${created?.id}`);
 
-    // cm:why the healthy pass must stamp resolved_at on the acknowledged (read) row, not skip it
     await clearOrphan(jobId);
     const cleared = await mods.runAlertSweep(nextNow());
     expect(cleared.resolved).toBeGreaterThan(0);
@@ -229,7 +225,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(afterClear).toHaveLength(1);
     expect(afterClear[0]?.resolved_at).not.toBeNull();
 
-    // cm:why recurrence must claim a fresh unread row, not be swallowed by the now-resolved prior row
     await seedOrphan();
     const recurred = await mods.runAlertSweep(nextNow());
     expect(recurred.notified).toBeGreaterThan(0);
@@ -252,7 +247,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect((await opsAlertRows()).every((r) => r.read && r.resolved_at !== null)).toBe(true);
   });
 
-  // cm:why no seedAdmin() call — ADMIN_EMAILS is non-empty (set in beforeAll) but no users row matches it, so platformAdminUserIds() is empty
   it('notifies nobody when no user matches the ADMIN_EMAILS allow-list, without throwing', async () => {
     await seedOrphan();
     await expect(mods.runAlertSweep(nextNow())).resolves.toMatchObject({
@@ -261,7 +255,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     });
   });
 
-  // cm:guard dedupe/claim must be per (userId, resolutionKey), not a single global check — two distinct admins must each get their own unread row
   it('writes a distinct row per admin, not a single global row', async () => {
     const admin1 = await seedAdmin();
     const admin2 = await seedSecondAdmin();
@@ -275,7 +268,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(userIds).toEqual([admin1.id, admin2.id].sort());
   });
 
-  // cm:guard escalation must stay in place on the ONE unread row (the unique index forbids a second) — a resolve-then-re-emit would leave a read row plus a new one for the same live condition
   it('escalates warn -> crit on the same unread row', async () => {
     const admin = await seedAdmin();
     await seedStuckJobs(1, 700);
@@ -319,7 +311,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(rows[0]?.read).toBe(true);
   });
 
-  // cm:guard the active row's TEXT must track the condition on every sweep, while the recipient is pinged only on a severity move. Gating the whole UPDATE on the severity change froze the count for the life of the incident, so an A2 opened at 1 stuck job still read "1 job" once 2 were stuck — the operator's only number, stale, with no second notification coming to correct it.
   it('refreshes the active row body as the condition grows, without re-notifying', async () => {
     await seedAdmin();
     await seedStuckJobs(1, 700);
@@ -329,7 +320,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     const opened = await opsAlertRows('ops-alert:A2');
     expect(opened[0]?.body).toContain('1 job');
 
-    // cm:why a second stuck job keeps A2 at `warn` (crit needs 3) — the count moves but the severity does not, which is the ONLY combination that distinguishes a refresh from a re-notify
     await seedStuckJobs(1, 700);
     const second = await mods.runAlertSweep(nextNow());
     expect(second.notified).toBe(0);
@@ -342,7 +332,6 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(refreshed[0]?.body).not.toContain('1 job ');
   });
 
-  // cm:guard platformAdminUserIds() must require a verified email — an allow-listed-but-unverified account must not receive cross-tenant alert details
   it('does not notify an admin whose email is unverified', async () => {
     await seedUnverifiedAdmin();
     await seedOrphan();

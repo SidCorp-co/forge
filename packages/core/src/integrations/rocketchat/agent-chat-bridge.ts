@@ -3,7 +3,6 @@
  * it runs NO synthesis turn: the session already produced the final
  * user-facing reply, so delivery screens it and posts it verbatim.
  */
-// cm:guard must be fired from BOTH terminal writers — agent-sessions/routes.ts PATCH (runner happy-path) and lifecycle/transition.ts (sweeper, cascade, cancel, dispatch-failure) — or a whole class of replies hangs silent
 
 import type { agentSessions as agentSessionsTable } from '../../db/schema.js';
 import { logger } from '../../logger.js';
@@ -24,7 +23,6 @@ import {
 
 type SessionRow = typeof agentSessionsTable.$inferSelect;
 
-// cm:guard three distinct meanings, do not collapse them: a snapshot screens against itself; `null` means the key IS present but its computation failed, which fails CLOSED; `'legacy-session'` (key absent entirely, pre-ISS-818 row) is the only case that self-computes, and is named rather than `undefined` so a caller who merely forgot the argument cannot reach it
 function readProgressFacts(metadata: unknown): ProgressFacts | null | 'legacy-session' {
   const m = metadata as Record<string, unknown> | null;
   if (!m || !('progressFacts' in m)) return 'legacy-session';
@@ -49,7 +47,6 @@ function readProgressFacts(metadata: unknown): ProgressFacts | null | 'legacy-se
   };
 }
 
-// cm:why one-shot dispatch means the whole transcript IS the turn the claimed-creation check judges, so there is no "final turn" to isolate — unlike the escalation bridge, whose reply comes from a separate Bao turn and passes []
 function extractToolCalls(messages: unknown): Array<{ name: string; arguments: string }> {
   if (!Array.isArray(messages)) return [];
   const calls: Array<{ name: string; arguments: string }> = [];
@@ -71,8 +68,6 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   const meta = readRoomReplyMeta(session.metadata, 'agentChat');
   if (!meta) return;
   if (meta.deliveredAt) return;
-  // cm:guard the room is checked against THIS session's project BEFORE the claim: an agent session runs long, a room rebound while it ran is not this project's to answer into, and a throw from this lookup after the claim would spend the one stamp this delivery has (ISS-1001).
-  // cm:guard FIRST of a pair — the second read sits immediately before `sendFixedReply` below and BOTH are load-bearing: drop this one and a rebound room still costs a failover redispatch and a screening turn, drop that one and the answer they produce is posted into a room that moved (ISS-1001).
   const bound = await roomStillBoundTo({
     connectionId: meta.connectionId,
     projectId: session.projectId,
@@ -88,8 +83,6 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   }
   if (!(await claimRoomReplyDelivery(session, 'agentChat'))) return;
 
-  // cm:why the CAS claim above already stamped THIS session's deliveredAt, so retrying here can never double-post — its "delivery" is really a hand-off to the retry; a content-side outcome (completed, no usable/screened text) is never retried, since retrying would just reproduce the same content decision; deterministic non-infra failures (skill_not_synced, ws_publish_failed) are excluded because retrying them on every runner produces the same outcome
-  // cm:guard compare the RESOLVED cause, never the raw column — rows written before ISS-877 carry `ws-publish-failed` with a hyphen, and a literal comparison silently starts failing over the one class this list exists to exclude
   const failureCause = resolveFailureCause(session.failureReason);
   if (
     session.status !== 'completed' &&
@@ -114,7 +107,6 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   if (!finalText) {
     reply = AGENT_CHAT_FALLBACK_REPLY(meta.botName);
   } else {
-    // cm:guard this door declares ZERO repairs and that is not an oversight: `finalText` is the last message of a runner session that has already ended, so there is no turn to ask again and a budget here would be one this door could never spend. It still goes through `withRepairs` so the count lives in the door table beside its reason rather than as an absent loop nobody can see (ISS-997).
     const outcome = await withRepairs('agent-chat-completion', [finalText], {
       screen: () =>
         screenReplyAtDoor('agent-chat-completion', {
@@ -141,8 +133,6 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
     }
   }
 
-  // cm:guard the binding is read a SECOND time, here, because everything since the first read takes time a rebind fits inside — a failover redispatch and a screening turn, either of them minutes — and the first read cannot know what happened during them (ISS-1001).
-  // cm:why no claim is touched here: the claim above is already spent and that is right, since a rebound room is terminal for THIS delivery; the answer is not re-queued, because the project that would retry it is no longer the room's.
   if (
     !(await roomStillBoundTo({
       connectionId: meta.connectionId,

@@ -1,6 +1,5 @@
 import type { Context } from 'hono';
 
-// cm:guard every member carries executable markup (SVG embeds <script>, HTML is script) and must be served `attachment` plus a script-blocking CSP — the download URL is opened with a live session cookie, so rendering one inline runs it in the app origin (ISS-706)
 const INERT_MIMES = new Set(['image/svg+xml', 'text/html']);
 
 /**

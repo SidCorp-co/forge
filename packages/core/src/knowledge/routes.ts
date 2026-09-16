@@ -51,7 +51,6 @@ knowledgeRoutes.get(
   },
 );
 
-// cm:edge contract -> packages/core/src/mcp/tools/forge-knowledge.ts — this body is `forge_knowledge` action=search field-for-field (query, topK, scope, strategy) and must stay so while both call `runUnifiedSearch`: the REST route exists to let a client leave MCP without losing the capability, and a divergence here is a capability the two transports disagree about. `sourceFilter` is deliberately absent from BOTH — it is `POST /api/memory/search`'s, and `runUnifiedSearch` has no such parameter.
 const searchBodySchema = z.object({
   query: z.string().trim().min(1).max(4000),
   scope: z.enum(['knowledge', 'memory', 'all']).default('knowledge'),
@@ -59,7 +58,6 @@ const searchBodySchema = z.object({
   strategy: z.enum(['semantic', 'keyword', 'hybrid']).default('semantic'),
 });
 
-// cm:why POST, not GET: `GET /:id/knowledge/:slug` already owns this path, so a GET here resolves as the slug `search` and answers "knowledge entry not found" (ISS-930 probed it). The method is what keeps the two apart, with no ordering rule to preserve.
 knowledgeRoutes.post(
   '/:id/knowledge/search',
   rateLimit(RULES.knowledgeSearch, { name: 'knowledge-search' }),
@@ -120,7 +118,6 @@ knowledgeRoutes.put(
     const { id, slug } = c.req.valid('param');
     const body = c.req.valid('json');
     const userId = c.get('userId');
-    // cm:why a knowledge write is `member`, deliberately the same bar as a memory write and not the `writer` role the MCP tool asserts — the two transports differ here, and this is the one that is intended.
     await assertProjectAccess(id, userId);
 
     try {

@@ -93,7 +93,6 @@ export async function createUnauditedFixture(): Promise<UnauditedFixture> {
       `);
     },
 
-    // cm:guard `jobs_active_unique` is on (issue_id, type) for ACTIVE rows, so two fixture jobs on one issue must differ in `type` or one insert fails on a constraint that has nothing to do with what the test is asserting.
     async insertJob(status = 'queued', opts = {}) {
       const id = randomUUID();
       const run = opts.runId === undefined ? ids.runId : opts.runId;
@@ -107,7 +106,6 @@ export async function createUnauditedFixture(): Promise<UnauditedFixture> {
       return id;
     },
 
-    // cm:guard `agent_sessions.pipeline_run_id` is NOT NULL, so a session cannot be created without a run — which is why the `metadata.issueId` resolution path is reached through `insertIssuelessRun`, never through a null run.
     async insertSession(status = 'idle', opts = {}) {
       const id = randomUUID();
       await harness.db.execute(sql`

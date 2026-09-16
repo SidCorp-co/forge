@@ -14,7 +14,6 @@ import type { MemoryHit } from './search.js';
 export const RERANK_POOL_FACTOR = 3;
 export const RERANK_POOL_CAP = 50;
 export const RERANK_HOLDOUT_ONE_IN = 5;
-// cm:guard 1,500, not 600 — a chunk passage runs to ~1,400 characters and the model ranks what it is shown; at 600 it judged passages by their opening and demoted the exact hit on 8–13 of 40 tail-fact questions per project, at 1,500 on 2–8 (six live corpora, 2026-09-05, ISS-914). A pool of 24 is ~36k characters of prompt, which the fast model in use accepts; a model that cannot is a model-choice decision, never a reason to lower this silently. `maxTokensFor` depends on the candidate count only and is untouched
 const CANDIDATE_CHARS = 1500;
 const CACHE_TTL_MS = 5 * 60_000;
 const CACHE_MAX = 500;
@@ -41,12 +40,10 @@ export function rerankPoolSize(topK: number): number {
   return Math.min(topK * RERANK_POOL_FACTOR, RERANK_POOL_CAP);
 }
 
-// cm:guard the holdout is drawn per search and only for calls that would otherwise be reranked — the pilot's exit criterion (docs/proposals/retrieval-v3-rerank-chunks.md, phase 1) compares confirmed-feedback rates of `reranked:true` rows against `rerankHoldout:true` rows, so a holdout drawn on ineligible calls or skipped on eligible ones leaves the flag with no control group
 export function inRerankHoldout(): boolean {
   return randomInt(RERANK_HOLDOUT_ONE_IN) === 0;
 }
 
-// cm:guard the model is shown the text that MATCHED — the passage on a chunked project, the whole row otherwise — and the cache key hashes the same string; showing the row head on a chunked project demoted the exact-passage hit out of the top 8 in 2 of 4 live passes on forge-dev and 1→4 / 1→5 on forge-plugin (2026-09-05, ISS-913), because a 75k-character issue was judged by its first paragraph while the query matched passage 76
 export function shownText(hit: MemoryHit): string {
   return hit.matchedChunk?.text ?? hit.text;
 }
@@ -93,7 +90,6 @@ export function applyRerankOrder<T>(candidates: T[], order: number[]): T[] {
   return [...ranked, ...omitted];
 }
 
-// cm:guard the key covers the ids IN SUBMITTED ORDER and the sha of every text, never a sorted id set — a cached value is the complete ordering of one submitted set, so the same ids in another order or one id whose text changed must miss; keying on sorted ids let the predecessor serve a stale ordering (proposal review, 2026-09-04)
 export function rerankCacheKey(model: string, query: string, hits: MemoryHit[]): string {
   const h = createHash('sha256');
   h.update(model).update('|').update(query);

@@ -84,7 +84,6 @@ export interface StatusDonutData {
 
 export function statusDonut(dist: Record<string, number> | undefined): StatusDonutData {
   const d = dist ?? {};
-  // cm:edge contract -> packages/core/src/projects/health-routes.ts — the donut centre must equal that route's "Open issues" KPI, so terminal `awaiting_release`/`closed` and not-yet-active `draft` are excluded from the total on both sides (ISS-528).
   let total = 0;
   for (const [status, count] of Object.entries(d)) {
     if (!NON_OPEN_STATUSES.has(status)) total += count;
@@ -196,8 +195,6 @@ export function activeRuns(runs: PipelineRunListItem[] | undefined): PipelineRun
 /** Live runs with no live JOB on them. Split out from `awaitingReleaseRuns`:
  *  that one names the single expected park (the release gate); this one is
  *  everything else, which is the set nobody could see before. */
-// cm:guard "no live job" is NOT "idle" — a master-lane run carries agent_sessions and no jobs row, so it lands here while fully live and heartbeating (14 such runs across 5 projects, 2026-09-12). This bucket is a job-liveness bucket; do not label it idle in user-facing copy, and do not reap from it.
-// cm:edge contract -> packages/core/src/pipeline/runs-rollup.ts — `liveJobs` is a job count there for the same reason; the two must keep the same meaning or the dashboard says idle about a box at capacity
 export function idleRuns(runs: PipelineRunListItem[] | undefined): PipelineRunListItem[] {
   return liveRuns(runs).filter(
     (r) => (r.liveJobs ?? 0) === 0 && r.currentStep !== AWAITING_RELEASE_STEP,
@@ -331,9 +328,6 @@ export interface RunnersSummary {
  * ACTUAL in-flight job; otherwise `busy` falls back to the queue running-count.
  * No utilization% (not stored — deferred to ISS-378); revoked devices dropped.
  */
-// cm:guard the spine is the PROJECT's runner rows, never the caller's `/me/devices`: a device belongs to whoever paired it, so keying on the viewer's own fleet made every runner somebody else paired vanish and the card state "No runners paired yet · 0/0 online" over a project with an online box — a false claim rather than an empty list, measured on forge-dev 2026-09-09 (VISION: state-never-lies).
-// cm:why `active` needs no runnerId→deviceId bridge any more — the snapshot and the spine are keyed alike, and the queue counters are the only thing still looked up by `deviceId`.
-// cm:guard `online` reads the RUNNER's status as well as the device's, because the endpoint filters neither: a retired runner keeps its row (retire sets `disabled`, it does not delete) and a draining one keeps heartbeating on an online device, so counting the device alone reports capacity the pool will not offer work to. Measured on getcontent/sidpeak/dodgeprint-api 2026-09-09, each carrying a `draining` row beside a live one.
 export function runnersSummary(
   projectRunners: ProjectRunner[] | undefined,
   queue: QueueStats | undefined,

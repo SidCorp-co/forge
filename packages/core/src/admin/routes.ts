@@ -220,7 +220,6 @@ adminProtected.get(
   },
 );
 
-// cm:guard whoami mounts under requireAuth but NEVER requireAdmin — it is how a client discovers whether it IS an admin, via the 200/403 split, so putting it behind the admin gate makes every non-admin read as an error instead of a No
 const whoamiRoutes = new Hono<{ Variables: AuthVars }>();
 whoamiRoutes.use('*', requireAuth(), assertEmailVerified());
 whoamiRoutes.get('/whoami', async (c) => {
@@ -228,7 +227,6 @@ whoamiRoutes.get('/whoami', async (c) => {
   if (!row) {
     throw new HTTPException(401, { message: 'user not found', cause: { code: 'UNAUTHENTICATED' } });
   }
-  // cm:edge lockstep -> packages/core/src/middleware/require-admin.ts — the same ADMIN_EMAILS allow-list as `requireAdmin`, answering Yes/No here instead of throwing, and through the SAME function so the two cannot read the env differently (ISS-1012)
   return c.json({ isAdmin: onAdminList(row.email), email: row.email });
 });
 

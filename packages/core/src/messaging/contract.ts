@@ -21,7 +21,6 @@ export type Audience = string;
  * ends: figures have a snapshot to be checked against, and a promise of a
  * later action has nothing that will keep it.
  */
-// cm:guard a third intent is a ROW rather than surgery, the same way `audiences.ts` says a third audience is: nothing under this directory switches on an intent value, so `chat` costs a cell row and a door row and no branch anywhere. The pairs are SPARSE and always were — `public:ask` ships reserved with no door — so the set is five cells over two audiences and three intents rather than a filled grid (ISS-1005).
 export type Intent = 'ask' | 'report' | 'chat';
 
 export type CellId = `${string}:${Intent}`;
@@ -57,7 +56,6 @@ export interface MessageRule {
  * A rule broken, told to whoever wrote it: which rule, what went wrong, the
  * shape it should have had, and one message that has it.
  */
-// cm:guard `shape` and `example` are not decoration — a bare "wrong format" makes an agent rewrite by guessing and spend its repair budget on nothing, which is the defect ISS-997 names in its own rules. A refusal built without them is the defect wearing the new type.
 export interface MessageRefusal {
   readonly rule: string;
   readonly why: string;
@@ -69,7 +67,6 @@ export interface MessageRefusal {
 /**
  * The whole result of screening. There is NO text on it, in either arm.
  */
-// cm:guard the absence of a text field is the "nothing rewrites what an agent wrote" rule made structural: a layer that could hand back an edited message could turn `blocked: condition 3 was not met` into something friendlier and destroy the one fact the reader needed. Adding a text field here is how that becomes possible again, so do not.
 export type MessageVerdict =
   | { readonly ok: true }
   | { readonly ok: false; readonly refusals: readonly MessageRefusal[] };
@@ -87,7 +84,6 @@ export interface CellSpec {
 /**
  * A door: where a message is screened, and what happens when it cannot pass.
  */
-// cm:guard the ending and the repair count live HERE and never on the cell, because one cell is screened at doors whose lifecycles differ — `question-ask` has the agent on the line and `question-delivery` posts minutes later with nobody to ask again. A count on the cell would have to be right for both and can only be right for one (ISS-997).
 export type DoorPolicy =
   | {
       readonly id: DoorId;

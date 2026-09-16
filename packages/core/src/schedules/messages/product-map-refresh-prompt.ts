@@ -6,7 +6,6 @@
 // (overview mindmap / scenario flowcharts / workflow state-diagrams / per-module
 // overviews) current from the issue stream by UPSERTING changed entries.
 //
-// cm:edge contract -> packages/core/src/labels/module-diagrams.ts — the mindmap / context / user-flow / swimlane kinds are GENERATED from the module taxonomy since ISS-950 and are not this agent's to draw. It authors the overview / scenario / workflow ENTRIES; widening it back over the four generated kinds gives them two owners and no way to tell which one a reader is looking at.
 //
 // Self-contained: the prompt drives the refresh via forge_knowledge + forge_issues
 // MCP tools directly, so it works on any project regardless of whether the

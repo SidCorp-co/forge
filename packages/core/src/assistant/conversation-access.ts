@@ -19,8 +19,6 @@ const notFound = (message: string) =>
 /**
  * A one-to-one room is read by the people IN it, whatever roles its scope would grant.
  */
-// cm:guard the scope check alone is the wrong rule for a `direct` room and became a live hole the moment a screen read this router: `derivedScope` answers what the room is ABOUT, so every member of the project passed it and one person's private chat was readable by all of them. `agent_sessions` has had this fence since ISS-522 (`eq(agentSessions.userId, userId)` on the interactive list) and the conversation store never needed one because nothing read it (ISS-1004 step 5).
-// cm:guard it refuses a `direct` room whose people were never recorded — a Rocket.Chat DM, where the collector opens the venue and adds no person — rather than falling back to the scope check. Nobody reading such a room in the Forge UI is the safe half of the trade and the visible one; the other half would be handing Bob the transcript of Alice's DM with the bot.
 export async function assertInTheRoom(
   row: ConversationRow,
   userId: string,
@@ -38,8 +36,6 @@ export async function assertInTheRoom(
 /**
  * Who may change WHO IS IN a room: somebody already in it, whatever its shape.
  */
-// cm:guard this is NOT `assertInTheRoom` with the shape test dropped, and the difference is the whole point: reading a group room is a scope question, and CHANGING one is not. Reusing the read rule here would let anybody holding roles on a group room's projects add an agent to it, take a colleague out of it, and widen what it can see — none of which they are in the room to have a view about (ISS-1011 criterion 37).
-// cm:guard a room that records NO people is therefore not changeable from Forge at all, and that is the truthful answer rather than a gap: a Rocket.Chat room's membership is its channel's, and the refusal says so instead of letting the Forge UI write a membership the channel will never show.
 export async function assertMembershipActor(
   row: ConversationRow,
   userId: string,
@@ -76,8 +72,6 @@ export async function writableConversation(id: string, userId: string): Promise<
 /**
  * Run one membership change with the room held still underneath it.
  */
-// cm:guard the checks are INSIDE the transaction and behind a `FOR UPDATE` on the conversation, because every one of them is a read the write then depends on: two requests that each read a scope of one project — one adding a second project's agent, one adding a colleague who holds no role on that second project — both pass and both commit, leaving a person listed in a room they are refused on opening. Serializing on the row is the same fence `removeParticipant` already takes for its last-handle count, for the same reason (ISS-1011, review F5).
-// cm:guard the writable door AND the membership actor check, in that order, because they refuse different people and both refusals are owed: the first is "you hold no member role on a project this room is about", the second is "you are not in this room". A caller failing both is told about the role first, which is the one they can do something about.
 export async function withMembershipLock<T>(
   id: string,
   userId: string,
@@ -103,7 +97,6 @@ export async function withMembershipLock<T>(
 /**
  * Whether this caller may change who is in this room — the same two questions, answered.
  */
-// cm:guard answered by the SERVER and handed to the screen rather than derived on the client from a project role: group readability admits a project member who is not in the room, and a screen deciding on the role alone shows them an Add agent button every press of which is refused. A capability the server computes is the only one that agrees with the door (ISS-1011, review F6).
 export async function mayChangeMembership(row: ConversationRow, userId: string): Promise<boolean> {
   try {
     await assertConversationWritable(row.id, userId);

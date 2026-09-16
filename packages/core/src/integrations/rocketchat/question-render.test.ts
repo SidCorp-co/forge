@@ -159,7 +159,6 @@ describe('a free-text round in a room', () => {
   const rendered = () =>
     renderRound({ issueKey: 'ISS-996', step: textStep(), rounds: 1, parkDeadlineAt: null });
 
-  // cm:guard the round must NOT read like a choice one: a free-text round carrying an option-style instruction invites a bare number, and a bare number is the one reply that round has nothing to resolve against.
   it('states what would settle it and that the whole reply is the answer', () => {
     const text = rendered();
     expect(text).toContain('the sentence you meant, in your own words');
@@ -174,7 +173,6 @@ describe('a free-text round in a room', () => {
     ]);
   });
 
-  // cm:guard the re-post of an option list has nothing to say about a text round, and must not print a bare heading claiming options are about to follow.
   it('names no options when asked to show them again', () => {
     expect(renderOptionsAgain(textStep(), 1)).not.toMatch(/\n\d[.)]/);
   });

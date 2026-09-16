@@ -19,8 +19,6 @@ import { pausedRunWedgeEntityId, resolvePipelineWedge } from './wedge.js';
 /**
  * Resolve on every `pipelineRunStatusChanged` that lands anywhere but `paused`.
  */
-// cm:guard key off `toStatus`, NEVER `fromStatus` — `emitCloseHook` in pipeline/runs.ts hardcodes `fromStatus: 'running'` even on a paused→terminal close (it says so, and would need an extra round-trip not to), so a `fromStatus === 'paused'` test would silently miss every cancelled or completed run and resolve only the resumes.
-// cm:edge lockstep -> packages/core/src/pipeline/run-pause.ts — `resumeRunsWhere` is the resume half of the recovery this listens for; both halves reach here through the same hook, which is why there is one subscriber and not a call at each write site
 export function registerPausedRunWedgeResolve(bus: HooksBus): void {
   bus.on('pipelineRunStatusChanged', async (payload) => {
     if (payload.toStatus === 'paused') return;

@@ -17,7 +17,6 @@ import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
 
-// cm:guard pinned rather than inherited from `RULES.patRead`/`RULES.patWrite`: those defaults are operator knobs (`RATE_LIMIT_PAT_READ_MAX`, `RATE_LIMIT_PAT_WRITE_MAX`) and the read one is sized for a whole box of sessions, which a single box credential is not. A box does not degrade under a 429, it stops claiming. A daemon heartbeats, polls the pool for every binding and streams job events on one token, so it is the noisiest credential in the fleet and the least able to ask for another.
 const DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE = 600;
 
 /**
@@ -34,7 +33,6 @@ export function hashMachineId(raw: string): string {
  * Issue the token a box authenticates with. Returns the plaintext, which is
  * the only time it exists.
  */
-// cm:guard the previous token for this box is revoked and RENAMED first: `pat_user_name_uniq` is on (user_id, name), and a re-pair from the same machine rotates the SAME `devices` row, so a second mint under the live name violates the index and the whole pairing fails. Renaming rather than deleting keeps the record of what the box held before.
 export async function issueDeviceCredential(args: {
   deviceId: string;
   /** The principal the box acts as — a person, or an agent (ISS-932). */
@@ -59,7 +57,6 @@ export async function issueDeviceCredential(args: {
     userId: args.holderUserId,
     name,
     scopes: ['read', 'write'],
-    // cm:guard an EMPTY allowlist, and it is load-bearing rather than a placeholder. A box's credential is now an ordinary PAT, so without a fence it would reach the whole PAT data plane as its holder — a wider reach than the device token it replaced ever had, and the `device.ownerId` fiction returning in a new shape. `[]` fences it to no project at all (`effectiveProjectRole` returns null for every id), which is exactly right: the surfaces a box legitimately needs go through `requireDevice`, which resolves the DEVICE and never consults this fence. `null` here means "its owner's projects" and is the bug this line prevents.
     projectIds: [],
     deviceId: args.deviceId,
     rateLimitMax: DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE,

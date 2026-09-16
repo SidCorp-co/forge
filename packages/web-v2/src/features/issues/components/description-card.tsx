@@ -31,7 +31,6 @@ export function DescriptionCard({ issue, attachments, canWrite }: DescriptionCar
   const save = useSaveDescription(issue.id);
   const editing = draft !== null;
 
-  // cm:guard the artifact resolves against the ISSUE's attachments here, in the feature, and never inside `<BodyView>` — the design layer holds no API client (arch `web-design-holds-no-api-client`), and a `forge-artifact` whose id is not in this list must fall through to the generic block rather than draw a broken link.
   const renderArtifact = (id: string) => {
     const row = attachments.find((a) => a.id === id);
     return row ? <AttachmentList rows={[row]} /> : null;

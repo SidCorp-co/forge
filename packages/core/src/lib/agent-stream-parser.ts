@@ -282,7 +282,6 @@ function num(v: unknown): number | undefined {
   return typeof v === 'number' && Number.isFinite(v) ? v : undefined;
 }
 
-// cm:guard read `total_cost_usd` FIRST — `cost_usd` is the pre-2025 key and was the only one this read, so every session since the rename ended on the string 'Agent finished.' with cost, duration, turn count and permission denials all discarded. Keep the fallback so old transcripts re-derive unchanged.
 function parseResultMessage(
   data: Record<string, unknown>,
   timestamp: number,
@@ -359,7 +358,6 @@ export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]):
   }
 }
 
-// cm:why a tool's duration is nowhere in the stream — the only record is the gap between the two job_events carrying its tool_use and its tool_result, which is why `startedAt` is derived in the fold below and not in the parser.
 
 /** A persisted job_event row, narrowed to the fields the derive reads. */
 export interface JobEventLike {

@@ -73,7 +73,6 @@ export function writeMcpAudit(row: AuditRow): void {
   })();
 }
 
-// cm:guard nothing calls this, so the table is unpruned and a `count(*)` over it really is a lifetime count — which is exactly what `mcp/registered-tools.ts` and `docs/architecture/agent-surface.md` spend when they clear a tool for deletion on "zero rows, whole table". Wiring this to a tick turns that evidence into "zero rows in 90 days" and licenses deleting a quarterly-called tool with nothing going red, so whoever wires it changes that rule in the same commit.
 /** Delete audit rows older than 90 days. Idempotent; call on a cron tick. */
 export async function enforceMcpAuditRetention(): Promise<number> {
   const result = await db

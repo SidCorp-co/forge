@@ -25,7 +25,6 @@ export function Sparkline({
 
   const min = Math.min(...points);
   const max = Math.max(...points);
-  // cm:why a flat series has span 0, and dividing by it puts every point at NaN — draw it down the middle instead, which is what "no movement" looks like
   const span = max - min || 1;
   const stepX = width / (points.length - 1);
   const pad = 1.5;

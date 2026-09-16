@@ -107,7 +107,6 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details.blockingJobId).toBe('job-dispatched');
   });
 
-  // cm:guard `job_held` must OUTRANK issue_busy for a held sibling (RFC 0002) — both are true, but only job_held names the machine condition and tells the reader no action is needed; reporting issue_busy instead sends them looking for an active run that does not exist
   it('reports job_held, not issue_busy, when the sibling blocking a queued job is held', () => {
     const held = job({ id: 'job-held', status: 'held', type: 'code' });
     const queued = job({ id: 'job-queued', type: 'review' });
@@ -116,7 +115,6 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details.heldJobId).toBe('job-held');
   });
 
-  // cm:guard a held job with NO queued sibling is the common case and the one the old code reported as nothing at all — keep this test even though it looks like a duplicate of the one above; they exercise opposite sides of the `queuedJobs.length === 0` return
   it("reports job_held when the held job is the issue's only job", () => {
     const held = job({ id: 'job-solo', status: 'held', type: 'code' });
     const out = classifyPipelineHealthForIssue(
@@ -126,7 +124,6 @@ describe('classifyPipelineHealthForIssue', () => {
     expect(out.waitingOn?.details.holdReason).toBe('all_devices_exhausted');
   });
 
-  // cm:guard a busy box is NOT a reason to wait and must never become one again. Core stopped deciding how many jobs a box may hold when the master began claiming from the pool, so `runner_full` could only name a hold nothing enforces — an operator sent to wait for a slot that was never occupied. Reintroducing any capacity arm here puts that lie back.
   it('reports no reason for a pinned runner that already has work — a busy box still claims', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({ jobs: [job({ runnerId: 'rnr-1', type: 'plan' })] }),
@@ -151,7 +148,6 @@ describe('classifyPipelineHealthForIssue', () => {
 });
 
 describe('classifyPipelineHealthForIssue — the two gates that never clear themselves', () => {
-  // cm:guard these four are the regression suite for the two blind spots — a paused parent run and an empty runner pool both reported NO waitingOn at all, which is indistinguishable from a healthy issue awaiting its turn; that silence is what let ISS-576/ISS-652 sit paused for 3 days
   it.each(['paused', 'cancelled', 'failed', 'completed'])(
     'classifies run_not_running when the parent run is %s',
     (runStatus) => {
@@ -202,7 +198,6 @@ describe('waitingCause is a pass-through of issues.waiting_kind (RFC 0002 INV-5)
     }
   });
 
-  // cm:guard the five-way derivation this replaced inferred `merged_parked` from exactly this row shape (waiting + a merged_at) — a re-introduced inference is what put an override button on the wrong park on ISS-163
   it('reports NO cause when the kind was never authored, whatever else the row says', () => {
     const out = classifyPipelineHealthForIssue(
       baseInput({

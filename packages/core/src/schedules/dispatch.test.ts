@@ -38,7 +38,6 @@ vi.mock('../db/client.js', () => ({
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
     transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) => {
-      // cm:why applyKernelTransition opens its own transaction on whatever executor it is handed and stamps `forge.kernel_txn` through `execute`, so this tx double owes both
       const tx: Record<string, unknown> = {
         update: txUpdate,
         insert: () => ({ values: async () => undefined }),
@@ -62,7 +61,6 @@ const resolveRepoPathMock = vi.fn(
 const resolveRunnerRepoMock = vi.fn<
   (projectId: string, deviceId: string) => Promise<string | null>
 >(async () => null);
-// cm:why composes resolveRunnerRepoMock + resolveRepoPathMock exactly like the real function, so tests seeding those two keep working unchanged
 const resolveSessionRepoPathForDeviceMock = vi.fn<
   (
     projectId: string,
@@ -471,7 +469,6 @@ describe('dispatchScheduleRun (ISS-244 interactive path)', () => {
       status: 'failed',
       sessionId: SESSION_ID,
     });
-    // cm:why read off the TRANSACTION-level update rather than the bare `db.update`: the cleanup routes through applyKernelTransition, which opens a transaction of its own before its CAS, so the payload never reaches the outer handle
     const setPayloads = txUpdateSet.mock.calls.map((c) => c[0] as { status?: string });
     expect(setPayloads.some((p) => p?.status === 'failed')).toBe(true);
   });

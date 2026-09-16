@@ -105,8 +105,6 @@ describe('upsertKnowledgeEntries', () => {
     expect(results.map((r) => r.id)).toEqual(['id-a', 'id-a']);
   });
 
-  // cm:guard the embed text is title, blank line, body — so a degraded rewrite may keep the stored
-  // vector only when NEITHER moved. Comparing `body` alone kept a vector for a superseded title.
   it('preserves a stored vector under an outage only when title AND body are unchanged', async () => {
     embedBatchMock.mockRejectedValueOnce(new FakeOutage('down'));
     returned = [{ id: 'id-a', slug: 'a', projectId: PROJECT }];
@@ -126,7 +124,6 @@ describe('upsertKnowledgeEntries', () => {
     expect(embeddingClause()).toBe('excluded.embedding');
   });
 
-  // cm:guard a short answer from the embeddings service is refused by NAME: spreading it over the rows would write `excluded.embedding = NULL` on a batch this path calls healthy, overwriting good stored vectors with nothing and leaving the backfill no null to find.
   it('refuses a batch the embeddings service answered short', async () => {
     embedBatchMock.mockResolvedValueOnce([[0.1, 0.2]]);
     await expect(
@@ -140,7 +137,6 @@ describe('upsertKnowledgeEntries', () => {
     expect(embedBatchMock).not.toHaveBeenCalled();
   });
 
-  // cm:guard the conflict target is `(project_id, slug)`, so the de-duplication key is the pair — keyed on the slug alone one project's entry drops another project's of the same name, and both callers are then handed the surviving project's row id, which is a row in somebody else's project
   it('keeps both entries when two projects send the same slug', async () => {
     const OTHER = '22222222-2222-4222-8222-222222222222';
     const mine = entry('deploy-guide', 'Mine', 'my body');

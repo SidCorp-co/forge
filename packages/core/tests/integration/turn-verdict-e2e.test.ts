@@ -105,7 +105,6 @@ async function done(jobId: string): Promise<boolean> {
 }
 
 describe('the turn verdict', () => {
-  // cm:guard the ONLY status that keeps a session resident. Widening it is how a runner slot is held for a pause a human chose, and `answer-resume.ts` carries the same rule from the other end — the two must name one status or a park is resumable by one and invisible to the other.
   it('keeps the session resident while the issue is parked on a question', async () => {
     expect(await done(await jobOn('needs_info'))).toBe(false);
   });
@@ -119,7 +118,6 @@ describe('the turn verdict', () => {
     expect(await done(await jobOn('on_hold'))).toBe(true);
   });
 
-  // cm:guard an answer this endpoint cannot give must still be an answer. A job with no issue can never be parked on a question, so reading it as "unknown" and staying resident holds the slot forever on a job nobody can ever reply to.
   it('finishes a job that has no issue at all', async () => {
     expect(await done(await jobOn(null))).toBe(true);
   });

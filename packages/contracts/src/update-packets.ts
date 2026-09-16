@@ -35,7 +35,6 @@ export const updatePacketSchema = z.object({
 });
 export type UpdatePacket = z.infer<typeof updatePacketSchema>;
 
-// cm:guard story must reject empty/whitespace-only — the one hard-blocking human input in the Update Pipeline (§3), no packet may be issued without it
 export const createUpdatePacketInputSchema = z.object({
 	change: z.string(),
 	story: z.string().trim().min(1, "story is required"),

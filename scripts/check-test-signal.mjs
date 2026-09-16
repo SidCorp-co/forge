@@ -35,7 +35,6 @@ import {
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'test-signal-baseline.json');
 
-// cm:why `.onDelete` is deliberately absent from declarationPattern — cascade-vs-restrict decides whether deleting a parent destroys child rows, which the declaration does not make obvious and a bug here loses data
 const DEFAULTS = {
   scanRoots: [
     'packages/core/src',
@@ -144,7 +143,6 @@ if (parsed.error) {
 const mode = parsed.mode;
 
 const files = mode === '--staged' ? collectStaged() : collectAll();
-// cm:guard `--all` finding zero test files means scanRoots point nowhere, not that the repo has no tests. Reporting clean there is the fail-open shape every checker in this repo exits 2 on; `--staged` may legitimately be empty.
 if (mode !== '--staged' && files.length === 0) {
   console.error(
     `check-test-signal: no test files under ${CFG.scanRoots.join(', ')} — check ` +
@@ -153,7 +151,6 @@ if (mode !== '--staged' && files.length === 0) {
   process.exit(2);
 }
 
-// cm:guard an unreadable baseline REFUSES, and does not fall through to an empty one. Read as `{}` this checker still exits 1 — every frozen file reads as new — but --update-baseline overwrites the damaged file without ever having read it, which turns a corrupt baseline into a silently re-frozen one. Same refusal as check-lint-budget.mjs, which the shared module exists to keep in step.
 const doc = loadBaseline(BASELINE_PATH);
 if (doc === null) {
   console.error(
@@ -164,7 +161,6 @@ if (doc === null) {
 }
 const baseline = doc.files ?? {};
 
-// cm:guard a file is RECORDED only when a ratio trips, which is what separates this checker from the biome budgets: they freeze every diagnostic, this freezes only files already over the line. So the baseline holds offenders, not measurements, and a file that drops below the ratio leaves the baseline entirely rather than being frozen at a lower number.
 const current = {};
 for (const file of files) {
   const rel = relative(ROOT, file);

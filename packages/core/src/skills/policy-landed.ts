@@ -43,7 +43,6 @@ async function lastSnapshotFor(
   return { digest: row.afterHash, entries: parseEntries(row.reason) };
 }
 
-// cm:edge contract -> packages/core/src/prompt/facts/invariant-set.ts#buildPlatformInvariantSet — parses the `id vN (sha)` shape that function's `summary` emits; change the format there and the delta silently degrades to "added" for every entry
 const ENTRY_RE = /([a-z0-9-]+) v(\d+) \(([0-9a-f]{8})\)/g;
 
 function parseEntries(reason: string | null): PlatformInvariantEntry[] {
@@ -68,7 +67,6 @@ export async function ensurePolicyLandedFor(projectId: string): Promise<boolean>
   const previous = await lastSnapshotFor(projectId);
   if (previous?.digest === set.digest) return false;
 
-  // cm:guard one row per project, not one global row — assembleBundle reads `policy.landed` scoped to its project, so a global-only stamp would leave every bundle's item 11 empty
   await db.transaction(async (tx) => {
     await recordSkillActivityEvent(tx, {
       eventType: 'policy.landed',

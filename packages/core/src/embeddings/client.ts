@@ -93,7 +93,6 @@ export class EmbeddingsClient {
     return (await this.embedDetailed(texts)).vectors;
   }
 
-  // cm:guard the model that PRODUCED the vectors rides beside them, because this is the one place the fallback is chosen: a caller caching by the configured model would otherwise keep serving a fallback vector after the primary recovers (ISS-1041 criterion 6).
   async embedDetailed(texts: string[]): Promise<EmbedDetailed> {
     if (texts.length === 0) return { vectors: [], model: this.cfg.model };
     this.assertBreakerClosed();
@@ -205,7 +204,6 @@ export class EmbeddingsClient {
       if (response.status >= 500) {
         throw new RetriableError(`${response.status} ${body.slice(0, 200)}`);
       }
-      // cm:guard a budget/quota rejection MUST classify as unavailable, not as a hard error — callers degrade gracefully on EmbeddingUnavailableError (memory stores a keyword-searchable row for backfill) but propagate anything else, and that difference is a whole session's learning silently lost
       if (isQuotaRejection(response.status, body)) {
         throw new EmbeddingUnavailableError(
           `embeddings quota exhausted (${response.status}): ${body.slice(0, 200)}`,
@@ -249,7 +247,6 @@ function isRetriable(err: unknown): boolean {
   return err instanceof RetriableError;
 }
 
-// cm:why matched on body text and not status alone — providers signal an exhausted budget as 400/402/403 as readily as 429, and the case that actually cost us a learning was a 400 reading "Budget has been exceeded"
 const QUOTA_MARKERS = [
   'budget has been exceeded',
   'budget exceeded',

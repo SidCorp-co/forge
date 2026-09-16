@@ -23,8 +23,6 @@ export interface StreamBandProps {
 /**
  * Two opposing series about a midline, with a third drawn across them.
  */
-// cm:guard both series share ONE scale, so the taller of the two sets it: scaling each half to its own maximum draws a week that created 40 and closed 4 as two equal blocks, which is the inverse of what the figure is for (ISS-988 criterion 36).
-// cm:guard no door — a week is a date-windowed aggregate no client-reachable route can list, so nothing here is focusable and nothing carries a cursor (ISS-988 criteria 42-44).
 export function StreamBand({
   weeks,
   inboundLabel,

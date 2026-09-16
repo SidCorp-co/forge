@@ -165,7 +165,6 @@ describe("ActivityTab — VISION §5 boundary", () => {
 });
 
 describe("the collapsed-repeat badge is reachable without a mouse", () => {
-  // cm:guard the tooltip is the POINTER copy of this sentence; assert the sr-only one, because that is the copy a reader with no pointer gets and the only one that can silently disappear
   it("names which attempts folded, without needing a pointer", () => {
     render(
       <ActivityTab

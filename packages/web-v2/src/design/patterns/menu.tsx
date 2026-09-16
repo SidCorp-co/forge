@@ -32,7 +32,6 @@ export interface MenuProps {
 
 /** Generic dropdown menu (row actions, overflow ⋯). Keyboard: ↑/↓ move, Enter
     select, Esc close (returns focus to trigger). Closes on outside click. */
-// cm:guard inertness is `aria-disabled` and NEVER the native `disabled` attribute — a natively disabled button cannot be focused, and every read of it here decides where focus goes
 const isInert = (el: HTMLButtonElement) => el.getAttribute("aria-disabled") === "true";
 
 export function Menu({
@@ -48,7 +47,6 @@ export function Menu({
   const triggerRef = useRef<HTMLSpanElement>(null);
   const itemRefs = useRef<(HTMLButtonElement | null)[]>([]);
 
-  // cm:guard focus MUST land inside the panel even when every row is inert — the panel is what carries `onKeyDown`, so a menu that leaves focus on the trigger cannot be closed with Escape and never announces the row it opened to report (ISS-982 narrowed the status menu to rungs that have no exits at all)
   useEffect(() => {
     if (!open) return;
     const rows = itemRefs.current.filter(Boolean) as HTMLButtonElement[];
@@ -65,7 +63,6 @@ export function Menu({
     if (focusTrigger) (triggerRef.current?.firstElementChild as HTMLElement)?.focus?.();
   };
 
-  // cm:guard Escape and Tab are handled BEFORE the arrow keys ask what is focusable — they must work on an all-inert menu, which is the one a reader is most likely to want out of
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Escape") {
       e.preventDefault();
@@ -90,7 +87,6 @@ export function Menu({
     }
   };
 
-  // cm:guard `trigger` must be an interactive element (button/IconButton): the span below carries the popup semantics only, and native Enter/Space activation bubbling to its onClick is what makes the menu keyboard-operable without a redundant tab stop (D1)
   return (
     <div ref={ref} className={cn("relative inline-flex", className)}>
       <span

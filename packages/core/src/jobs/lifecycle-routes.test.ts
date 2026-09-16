@@ -50,11 +50,9 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy })
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const dbSelect = vi.fn(() => ({ from: selectFrom }));
 
-// cm:why applyKernelTransition opens a transaction before its CAS (ISS-884), so EVERY job UPDATE this route makes — the flips, the ack, the kill-ack — lands on the `tx` double below, and the bare `db.update` chain this file used to carry became unreachable
 const dbInsertValues = vi.fn(async () => undefined);
 const dbInsert = vi.fn(() => ({ values: dbInsertValues }));
 
-// cm:guard the `tx` chain must MIRROR the db chain exactly — `cancelJob` runs the status flip and the audit insert inside one transaction with an advisory-lock seq frontier, so a mock that serves the transaction differently from the pool tests a path production does not take (ISS-442 C0).
 const txUpdateReturning = vi.fn();
 const txUpdateWhere = vi.fn(() => ({ returning: txUpdateReturning }));
 const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
@@ -70,7 +68,6 @@ const tx: Record<string, unknown> = {
     values: (v: unknown) => (Array.isArray(v) ? txAuditValues(v) : txInsertValues(v)),
   })),
   execute: txExecute,
-  // cm:why applyKernelTransition opens a transaction of its own on whatever executor it is handed — a real one on `db`, a savepoint on a `tx` — so a tx double owes one too
   transaction: async <T>(cb: (t: unknown) => Promise<T>): Promise<T> => cb(tx),
 };
 const dbTransaction = vi.fn(async (cb: (t: unknown) => unknown) => cb(tx));
@@ -89,7 +86,6 @@ const scheduleRetryMock = vi.fn(
     scheduled: false,
   }),
 );
-// cm:edge contract -> packages/core/src/jobs/retry.ts — the literal MUST equal AUTO_RETRY_PAYLOAD_KEY there; hold.ts (reached via the resume route) imports the real constant, and omitting it here made `buildRequeueUpdate` strip a key named "undefined" instead of the spent rotation
 vi.mock('./retry.js', () => ({
   AUTO_RETRY_PAYLOAD_KEY: '_autoRetry',
   scheduleAutoRetryWithVerify: (...args: unknown[]) => scheduleRetryMock(...(args as [])),
@@ -394,7 +390,6 @@ describe('POST /:id/fail (device)', () => {
   });
 });
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/salvage.rs — this body is what `Salvage::to_json` emits, field for field. `failBodySchema` is `.strict()`, so drift on either side is a 400 that discards the WHOLE failure report rather than only the salvage; reading both files is not the same as exercising the boundary, which is why this test posts the literal shape.
 describe('POST /:id/fail — salvage (ISS-862 L1)', () => {
   function failWith(body: Record<string, unknown>) {
     selectLimit.mockResolvedValueOnce([jobRow]);
@@ -403,7 +398,6 @@ describe('POST /:id/fail — salvage (ISS-862 L1)', () => {
     return postAsDevice('fail', body);
   }
 
-  // cm:guard find the update that CARRIES failureMeta rather than `.at(-1)` — the fail route is no longer the last writer on this mock: the kernel chokepoint now also revokes the job's token, and that `.set()` lands after it. `.at(-1)` read the revoke and reported the route had written nothing, which is a test that breaks on an unrelated write rather than on its own rule.
   const sets = () =>
     txUpdateSet.mock.calls.map((a) => (a as unknown[])[0] ?? {}) as Record<string, unknown>[];
   const lastFailureMeta = () => [...sets()].reverse().find((s) => 'failureMeta' in s)?.failureMeta;
@@ -510,7 +504,6 @@ describe('POST /:id/kill-ack (device) — ISS-785', () => {
     const r = await postAsDevice('kill-ack', { outcome: 'killed' });
 
     expect(r.status).toBe(200);
-    // cm:guard first-ack-wins is enforced by the UPDATE's WHERE (killConfirmedAt IS NULL) — the route must never reject a terminal job, the ack is evidence not a transition
     expect(txInsertValues).toHaveBeenCalledTimes(1);
   });
 });
@@ -594,7 +587,6 @@ describe('POST /:id/resume (user)', () => {
     },
   };
 
-  // cm:guard three queued `selectLimit` results in this exact order — assertEmailVerified, the route's own authz load, then the service's re-read. Drop one and the service reads the USER row as its job, which fails on a status mismatch and looks like a route bug.
   it('re-queues a held job and audits it as a resume, not a cancel', async () => {
     selectLimit.mockResolvedValueOnce([verifiedUser]);
     selectLimit.mockResolvedValueOnce([heldJob]);
@@ -620,7 +612,6 @@ describe('POST /:id/resume (user)', () => {
     );
   });
 
-  // cm:guard 409 NOT_HELD, never 200 — a resume that reports success for a job it did not move is the state-lies failure `VISION: state-never-lies` forbids, and the operator would stop looking for the stuck step
   it('409 NOT_HELD when the job is in any other status', async () => {
     selectLimit.mockResolvedValueOnce([verifiedUser]);
     selectLimit.mockResolvedValueOnce([jobRow]);

@@ -64,7 +64,6 @@ type AttributionRow = {
 
 const emptyCounts = (): ModuleCounts => ({ total: 0, open: 0, closed: 0, recentlyActive: 0 });
 
-// cm:why the read is per ATTRIBUTION rather than a grouped count because the parent rollup dedupes by issue: an issue that is a secondary on both a parent and its child would otherwise be counted twice in the parent's own+inherited, and counts cannot express identity
 async function readAttributions(
   projectId: string,
   activeWithinDays: number,
@@ -74,7 +73,6 @@ async function readAttributions(
     .from(labels)
     .where(and(eq(labels.projectId, projectId), eq(labels.kind, 'module')));
 
-  // cm:guard the join is narrowed to MODULE junction rows, not to junction rows — narrowing after the join instead gives an issue carrying only a plain label a NULL row of its own, and that row is what the unattributed bucket is read from, so holding a plain label and holding nothing would read identically
   return db
     .select({
       issueId: issues.id,
@@ -121,8 +119,6 @@ function orderModules(
   for (const list of byParent.values()) list.sort((a, b) => a.name.localeCompare(b.name));
 
   const out: { id: string; depth: number }[] = [];
-  // cm:guard the seen set bounds the walk — `parentId` is acyclic only because `module-service.ts`
-  // refuses a cycle, and a row written around that route would recurse forever here.
   const seen = new Set<string>();
   const walk = (parent: string, depth: number): void => {
     for (const row of byParent.get(parent) ?? []) {
@@ -219,7 +215,6 @@ export async function moduleRollup(
   }
 
   const byId = new Map(moduleRows.map((m) => [m.id, m]));
-  // cm:guard a module with no issues is a row of zeroes, never an absent row — a caller cannot tell a missing row from an empty module, so the ordered taxonomy drives the output and the attributions only fill it in
   const modules = orderModules(moduleRows).map(({ id, depth }): ModuleRollupRow => {
     const module = byId.get(id) as (typeof moduleRows)[number];
     const ownRows = byModule.get(id) ?? [];

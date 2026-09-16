@@ -55,7 +55,6 @@ export const phaseJournal = pgTable(
     runId: uuid('run_id')
       .notNull()
       .references(() => pipelineRuns.id, { onDelete: 'cascade' }),
-    // cm:why nullable exactly where pipeline_runs.issue_id is — pm/interactive/system runs have phases but no issue, and NOT NULL here would silently drop them from every metric built on this table
     issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'cascade' }),
     jobId: uuid('job_id').references(() => jobs.id, { onDelete: 'set null' }),
     agentSessionId: uuid('agent_session_id').references(() => agentSessions.id, {
@@ -79,7 +78,6 @@ export const phaseJournal = pgTable(
     endedAt: timestamp('ended_at', { withTimezone: true }),
   },
   (t) => ({
-    // cm:guard one row per (run, phase, attempt) — resume reads the latest unfinished phase, and a duplicate makes "where did it stop" ambiguous exactly when the session has died and cannot be asked
     oneRowPerAttempt: uniqueIndex('phase_journal_run_phase_attempt_idx').on(
       t.runId,
       t.phase,

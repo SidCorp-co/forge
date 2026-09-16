@@ -119,7 +119,6 @@ export function usePreferenceChanges() {
   });
 }
 
-// cm:guard a restore invalidates BOTH the preferences and the trail: the restore is itself a write the trail records, and a screen that refreshed only the value would show a style with no row saying how it got there (ISS-1034 criterion 53).
 export function useRestorePreferenceChange() {
   const qc = useQueryClient();
   return useMutation({

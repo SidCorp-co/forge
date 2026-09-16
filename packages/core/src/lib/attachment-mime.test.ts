@@ -71,12 +71,10 @@ describe('resolveAttachmentMime — the bytes rescue, they do not demote', () =>
   });
 
   it('reads application/octet-stream as no declaration — the multipart routes write it themselves', () => {
-    // cm:guard this is what a browser sends for a `.log` it cannot type — the multipart routes write the placeholder themselves, so a change that starts believing it re-refuses the headline case (ISS-957)
     expect(resolve('gate.log', 'application/octet-stream', ANSI_LOG)).toEqual({
       ok: true,
       mime: 'text/plain',
     });
-    // cm:why the placeholder buys the bytes nothing — the name still guesses `text/plain`, so a binary `.log` is refused `not-text`, naming the bytes rather than the placeholder
     expect(resolve('core.log', 'application/octet-stream', PNG)).toEqual({
       ok: false,
       reason: 'not-text',
@@ -128,7 +126,6 @@ describe('resolveAttachmentMime — what it still refuses', () => {
 
 describe('looksBinary — what a two-byte prefix must not buy', () => {
   const bom = (lead: number[], rest: Buffer) => Buffer.concat([Buffer.from(lead), rest]);
-  // cm:guard this fixture must stay long enough to contain a lone surrogate — an 8-byte stub decodes to four ordinary code points and IS text, so shortening it turns these three assertions green against the very hole they exist to catch (ISS-957)
   const BLOB = Buffer.concat([
     PNG,
     Buffer.from(Array.from({ length: 512 }, (_, i) => (i * 37) % 256)),
@@ -164,7 +161,6 @@ describe('looksBinary — what a two-byte prefix must not buy', () => {
   });
 
   it('states the residual: a tiny blob whose UTF-16 reading IS valid text is admitted as text', () => {
-    // cm:why priced rather than hidden — 8 bytes with no lone surrogate decode to four ordinary code points and are text by the only definition this predicate has; a fatal UTF-16 decode rejected 200 of 200 random 4 KB blobs, so the residual is bounded to inputs too short to carry a surrogate, which is too short to be a file worth smuggling
     expect(resolve('notes.txt', 'text/plain', bom([0xff, 0xfe], PNG))).toEqual({
       ok: true,
       mime: 'text/plain',
@@ -214,7 +210,6 @@ describe('allowedSetForTarget', () => {
     const allowed = allowedSetForTarget('issue');
     expect(allowed.extensions).not.toContain('.log');
     expect(allowed.anyExtensionIfText).toBe(true);
-    // cm:why the flag is only worth printing if it is true of the resolver, so this asserts the behaviour under it rather than the literal
     expect(resolve('gate.log', '', utf8('ok\n'))).toEqual({ ok: true, mime: 'text/plain' });
     expect(resolve('trace.wibble', '', utf8('ok\n'))).toEqual({ ok: true, mime: 'text/plain' });
   });
@@ -280,7 +275,6 @@ describe('safeName is an identity, so distinct documents stay distinct', () => {
 });
 
 describe('the name byte budget', () => {
-  // cm:guard these count BYTES — an 81-character CJK name overflows a 255-byte ext4 component once the storage key adds its `<epoch>-` prefix, and a UTF-16 length reads it as comfortably short (ISS-963)
   it('reads a CJK name that fits in 200 characters as over budget', () => {
     expect('文'.repeat(80).length).toBeLessThan(200);
     expect(nameExceedsByteBudget(safeName(`${'文'.repeat(80)}.pdf`))).toBe(true);
@@ -301,7 +295,6 @@ describe('the name byte budget', () => {
     expect(nameExceedsByteBudget(safeName(`${stem}one.pdf`))).toBe(true);
   });
 
-  // cm:guard a length cap may not cut inside an astral character — the lone high surrogate left behind is shared by all 1,024 code points in its block, so two distinct names arrive at one row through the very rule meant to keep them apart (ISS-963)
   it('does not split a surrogate pair into a shared prefix', () => {
     const stem = 'a'.repeat(199);
     expect(safeName(stem + String.fromCodePoint(0x20000))).not.toBe(

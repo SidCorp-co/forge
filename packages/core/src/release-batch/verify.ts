@@ -101,8 +101,6 @@ export function describeProbeReading(probe: VerifyProbe, r: ProbeReading): strin
   }
 }
 
-// cm:guard the cache-buster and the no-cache header are BOTH required and neither is decoration — the probe reads through whatever CDN or reverse proxy fronts the site (varnish, in the case this was written for), and a cached 200 from the previous build is exactly the state verification exists to catch
-// cm:guard return the SHAPE of the failure and never a bare null. The four ways a read can fail send the repair in two different directions, and a caller handed one value for all of them writes the sentence "no probe answered" over a site that answered perfectly well.
 export async function readProbe(probe: VerifyProbe): Promise<ProbeReading> {
   const url = new URL(probe.url);
   url.searchParams.set('_forge_cb', String(Math.random()).slice(2));
@@ -254,7 +252,6 @@ export async function verifyDeployed(args: VerifyArgs): Promise<VerifyOutcome> {
 /**
  * Why the window closed red, health first and identity second.
  */
-// cm:guard ask HEALTH before identity and never the other way round. A dead application has no identity to be wrong about, and reporting "the live build is unchanged" over a site answering 502 sends the repair at the build when the container is not running. The order here IS the diagnosis the account is written from.
 function failureFor(
   state: LiveState,
   commitBefore: string | null,
@@ -279,7 +276,6 @@ function failureFor(
     return {
       ...base,
       health: 'up',
-      // cm:why this sentence is the one ISS-1042 exists to separate out. The site answered; what failed is the probe DECLARATION, and telling an operator the deploy did not land would send them to the build for a typo in `commitPath`.
       reason: `the application is healthy and no probe reported a commit (${state.unidentified.join('; ')}) — read this as a probe declaration that does not match what the application serves, not as a failed deploy`,
     };
   }
@@ -287,7 +283,6 @@ function failureFor(
     return {
       ...base,
       health: 'up',
-      // cm:why this is the whole point of the pre-release read: the site is up, the deploy reported success, and it is still serving what it served before
       reason: `the live build is unchanged (${state.identity}) — the site is healthy and still serving the pre-release commit`,
     };
   }

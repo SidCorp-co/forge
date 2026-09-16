@@ -156,7 +156,6 @@ describe('GET /api/me/pulse — liveness (ISS-988) · an issue in flight that no
     expect(body.work.perProject[0]?.abandonedIssues).toBe(1);
   });
 
-  // cm:guard `jobs.issue_id` is nullable and carries ON DELETE SET NULL, so a live job reachable only through its RUN must still count as work in flight — reading `jobs.issue_id` alone reports a worked issue as abandoned, the exact inverse of this figure (ISS-988).
   it('leaves an issue alone whose live job is linked only through its run', async () => {
     const { user, project, token } = await seed.member();
     const issueId = await seed.addIssue({

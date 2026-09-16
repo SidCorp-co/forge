@@ -18,7 +18,6 @@ export interface PriorAttempt {
   salvage: SalvageRecord | null;
 }
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/lifecycle.rs — the runner serialises this exact object onto `POST /api/jobs/:id/fail`. `failBodySchema` there is `.strict()`, so a field the runner adds without adding it here is a 400 and the WHOLE failure report is lost, not just the salvage half.
 export const salvageSchema = z
   .object({
     outcome: z.enum(['pushed', 'committed_not_pushed', 'none', 'refused', 'failed']),
@@ -38,7 +37,6 @@ export type SalvageRecord = z.infer<typeof salvageSchema>;
  *  Spreads to nothing when the runner reported none, so the caller can spread unconditionally. */
 export function salvageSet(salvage: SalvageRecord | undefined | null) {
   if (!salvage) return {};
-  // cm:guard `detail` is raw git stderr from the runner and lands in a retry's PROMPT. `fatal: Authentication failed for 'https://user:token@host'` would carry the push credential into the transcript, so it is scrubbed at the boundary where it enters the database, not where it is rendered.
   const safe: SalvageRecord = salvage.detail
     ? { ...salvage, detail: scrubLogText(salvage.detail) }
     : salvage;
@@ -118,7 +116,6 @@ export async function loadPriorAttempts(
 function salvageLine(s: SalvageRecord): string | null {
   switch (s.outcome) {
     case 'pushed':
-      // cm:guard name the fetch explicitly. The next attempt may run on another box, and it cuts its own checkout from the BASE branch — so the salvage commit is not in its history and "start from that commit" reads as already-satisfied. Without `git fetch origin <branch>` the agent redoes the work and then hits a non-fast-forward on its own push.
       return `Its uncommitted work was salvaged to \`${s.branch}\` as \`${s.sha}\`${
         s.files ? ` (${s.files} file(s), +${s.insertions ?? 0})` : ''
       }. Run \`git fetch origin ${s.branch}\` and branch from \`origin/${s.branch}\` rather than from the base branch — that commit is WIP, not reviewed work, and your own push will be rejected as non-fast-forward if you skip it.`;

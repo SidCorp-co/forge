@@ -33,8 +33,6 @@ const { extractFinalAssistantText, readRoomReplyMeta, roomStillBoundTo } = await
   './room-delivery.js'
 );
 
-// cm:guard the rule every path that posts from a STORED rid depends on: a session records the room
-// it began in, and the binding that put it there can move while the work runs (ISS-1001).
 describe('roomStillBoundTo', () => {
   const args = { connectionId: 'conn-1', projectId: 'proj-1', rid: 'ROOM1' };
 
@@ -141,7 +139,6 @@ describe('readRoomReplyMeta', () => {
     });
   });
 
-  // cm:why null and not a default: a `direct` row whose principal reads as the organization's creator is the substitution ISS-987's authority rule exists to refuse, so an absent field has to stay distinguishable from a present one
   it('reads the shape and the stored speaker back when the row carries them', () => {
     const meta = readRoomReplyMeta(
       {

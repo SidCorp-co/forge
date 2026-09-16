@@ -10,7 +10,6 @@ import type { SpeakerResolution } from '../assistant/identity/speaker-link.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 
 /** Where a conversation happens, in the terms its transport uses for it. */
-// cm:guard the venue lives HERE and not in the store, so an adapter importing the contract it implements imports no store module at all — which is what `transport-free.test.ts` measures at zero (ISS-1002).
 export interface ConversationVenue {
   adapter: ConversationAdapter;
   externalId: string;
@@ -36,7 +35,6 @@ export interface ConversationHistoryMessage {
  * Text that has passed a screen, carrying the screen's verdict and the exact
  * string it was passed.
  */
-// cm:guard the value owns its own text and there is no way to build one around a DIFFERENT string, which is the whole point: a screen run over the option labels while the rendered message went out unscreened is the hole ISS-978's review found, and a verdict that travels beside the text rather than inside it cannot close it.
 export interface ScreenedMessage {
   readonly text: string;
   readonly problems: readonly string[];
@@ -64,7 +62,6 @@ export interface ConversationTransport {
    * Whether a room's shape follows who is in it — both ways — or is settled
    * when its venue is first seen. Absent: settled (ISS-1034).
    */
-  // cm:guard declared by the TRANSPORT and never inferred from its name, because the store names no transport: a channel whose room is a chat client's own has a shape the client decided and `assertVenueMatches` holds it to; a room Forge itself owns has nothing outside it to disagree with, and its shape may move with its members (ISS-1034 criteria 41-46).
   shapeFollowsMembership?: boolean;
 }
 
@@ -78,7 +75,6 @@ export type ConversationAdapterPorts<Frame> = ConversationTransport & Conversati
 
 const transports = new Map<ConversationAdapter, ConversationTransport>();
 
-// cm:guard registration is by adapter NAME and the store holds nothing else about a transport: adding a second adapter is one `registerConversationTransport` call and no change here, which is the property `transport-free.test.ts` exists to keep true (ISS-1001 criteria 34, 36).
 export function registerConversationTransport(transport: ConversationTransport): void {
   transports.set(transport.adapter, transport);
 }

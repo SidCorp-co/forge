@@ -170,7 +170,6 @@ describe('ISS-967 component bodies reach a client as a tree', () => {
     expect(rendered.nodes[0]).toMatchObject({ name: 'blockquote' });
   });
 
-  // cm:guard the preview refuses exactly what a save refuses, and the message is the deliverable: it is where an author learns what to change, and a generic 400 here turns a one-line correction into a source read.
   it('refuses component markup in the preview with the same named 400 the save gives', async () => {
     const { jwt } = await seed();
     const res = await app.request('/api/body/preview', {

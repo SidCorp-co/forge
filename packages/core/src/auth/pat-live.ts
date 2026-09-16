@@ -15,7 +15,6 @@ import { personalAccessTokens } from '../db/schema.js';
 /**
  * Unrevoked AND unexpired.
  */
-// cm:guard ONE spelling of "live", and `auth/pat.ts:verifyPat` is built from it rather than carrying its own copy. The two halves are not the same question: a token whose `expires_at` has passed is never revoked, so a reader testing only `revoked_at IS NULL` counts it as live and tells an operator an account can act when the door would turn it away. Every surface that reports whether a principal can act asks here — `orgs/agent-accounts.ts:listAgentAccounts` and the reachability of a conversation handle (ISS-1003 criteria 2, 7, 20).
 export function patIsLive() {
   return and(
     isNull(personalAccessTokens.revokedAt),

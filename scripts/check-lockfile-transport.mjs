@@ -30,8 +30,6 @@ if (!existsSync(LOCKFILE)) {
 
 const { scanned, offenders } = sshResolutions(readFileSync(LOCKFILE, 'utf8'));
 
-// cm:guard a lockfile holding no resolution at all exits 2 and never 0: an empty scope is
-// indistinguishable from a clean one here, and forwarding "I read nothing" as a pass is the failure.
 if (scanned === 0) {
   console.error(
     'lockfile-transport: pnpm-lock.yaml holds no `resolution:` entry — the file, ' +

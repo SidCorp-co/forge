@@ -70,7 +70,6 @@ export async function registerIntegrationsWorker(): Promise<void> {
             }
           }
         } catch (err) {
-          // cm:guard rethrow — pg-boss's retry policy is the only thing that re-runs this, and the delivery row plus the breaker were already written by the adapter, so swallowing here loses the retry and keeps the failure.
           logger.error(
             { err, bindingId: data.bindingId, runId: data.runId, jobKind: data.jobKind },
             'integrations worker: coolify job threw — retry will be scheduled by pg-boss',
@@ -91,7 +90,6 @@ export async function registerIntegrationsWorker(): Promise<void> {
 function healthGateDeps(data: CoolifyHealthGateJob) {
   return {
     probe: (url: string) => probeHealth(url),
-    // cm:guard a gate with no `deliveryId` is watching a ROLLBACK's own build, which holds nothing — settling there would resolve a hold the failed deploy already owns and hand the run a second, contradictory outcome.
     settle: async (verdict: 'succeeded' | 'failed', detail?: string) => {
       const deliveryId = data.deliveryId;
       if (!deliveryId) return;
@@ -142,7 +140,6 @@ export async function enqueueCoolifyDispatch(
     retryLimit: opts.retryLimit ?? 5,
     retryBackoff: opts.retryBackoff ?? true,
     retryDelay: opts.retryDelay ?? 30,
-    // cm:guard the dedup key is the caller's `requestId` — pg-boss DROPS a send whose singletonKey is already in flight, so two deploys that reuse one requestId become one deploy and the second one's caller waits on a hold nothing will settle
     singletonKey: job.requestId,
   })) as string;
   return id;

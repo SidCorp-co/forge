@@ -129,9 +129,6 @@ describe('runCoolifyHealthGate', () => {
   });
 });
 
-// cm:guard criteria 35 and 36 of ISS-1042, and they are two claims rather than one. A gate that
-// dispatched nothing but also settled nothing would satisfy the first and leave the deploy hold
-// pending until the sweeper's quiet window, which reads to an operator as a deploy still in flight.
 describe('a window that closes unhealthy repairs nothing by itself', () => {
   const closed = () => gateJob({ deadlineAt: new Date(NOW - 1).toISOString() });
 
@@ -141,9 +138,6 @@ describe('a window that closes unhealthy repairs nothing by itself', () => {
     expect(sendCalls()).toEqual([]);
   });
 
-  // cm:guard the delivery log is where an automatic rollback WOULD show, so asserting the whole
-  // list of events is the assertion. `toContain('deploy.unhealthy')` would go on passing beside a
-  // `deploy.rollback.auto` written next to it, which is the exact row this change removes.
   it('writes the unhealthy row and no rollback row beside it', async () => {
     await runCoolifyHealthGate(closed(), deps());
 
@@ -162,9 +156,6 @@ describe('a window that closes unhealthy repairs nothing by itself', () => {
     expect(String(d.settle.mock.calls[0]?.[1])).toContain('unreachable (ECONNREFUSED)');
   });
 
-  // cm:guard the page has to say the broken build IS STILL SERVING. An operator who reads "the
-  // deploy failed" over a gate that used to roll back will assume the previous image is up, and
-  // that assumption is the outage going unattended.
   it('pages saying the failed build is still serving and nothing was rolled back', async () => {
     await runCoolifyHealthGate(closed(), deps());
 
@@ -173,9 +164,6 @@ describe('a window that closes unhealthy repairs nothing by itself', () => {
     expect(paged).toContain('still serving');
   });
 
-  // cm:guard the hold is settled even when the audit row could not be written. `recordGateFailure`
-  // swallows its own failure precisely so the settle still happens, and a throw here would leave
-  // the run pending on a deploy everyone can see is dead.
   it('still fails the hold when the unhealthy row cannot be written', async () => {
     recordDeliveryMock.mockRejectedValueOnce(new Error('duplicate key value violates unique'));
     const d = deps();
@@ -187,10 +175,6 @@ describe('a window that closes unhealthy repairs nothing by itself', () => {
   });
 });
 
-// cm:guard criterion 37. The capability is NOT what was removed — only the automatic caller — and
-// this is the assertion that keeps the two apart. Read as source rather than exercised, because
-// what is claimed is that the operator door still names the verb; exercising the route would prove
-// the Hono handler and say nothing about whether this module reaches it.
 describe('the operator keeps the rollback this gate gave up', () => {
   it('leaves runCoolifyRollback and listCoolifyRollbackImages reachable from the integration routes', async () => {
     const { readFile } = await import('node:fs/promises');

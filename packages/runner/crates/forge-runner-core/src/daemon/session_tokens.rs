@@ -19,24 +19,20 @@ use std::path::PathBuf;
 use crate::error::{Error, Result};
 
 /// The token-to-session map for one box, backed by a file beside the socket.
-// cm:guard the map is token -> session and is read ONLY in that direction. A lookup by session id would let a caller who knows a session name reach it, which is the declared-id weakness this replaces.
 pub struct SessionTokens {
     path: PathBuf,
 }
 
 /// Where the map lives: beside `control.sock`, so the config dir separates the
 /// box's several runner services exactly as it separates their sockets.
-// cm:edge naming -> packages/runner/crates/forge-runner-core/src/daemon/control.rs — `socket_path` picks the directory; two daemons sharing this file would hand each other's masters valid capabilities.
 pub fn default_path() -> Option<PathBuf> {
     crate::daemon::control::socket_path().map(|s| s.with_file_name("control-tokens.json"))
 }
 
 /// The environment variable a pane carries its capability in.
-// cm:edge contract -> packages/runner/crates/forge-runner/src/cmd/hook.rs — the CLI reads this name and puts the value on every frame; a session never sees an id to send.
 pub const TOKEN_ENV: &str = "FORGE_CONTROL_TOKEN";
 
 /// The capability this process was spawned with, for the CLI side of the socket.
-// cm:guard refuse by NAME when the variable is absent rather than sending an empty token. An empty token is refused as `unknown_token`, which reads as a revoked capability and sends a master looking at core; "not spawned by the daemon" is a different fault with a different fix.
 pub fn token_from_env() -> std::io::Result<String> {
     match std::env::var(TOKEN_ENV) {
         Ok(t) if !t.trim().is_empty() => Ok(t),
@@ -58,7 +54,6 @@ impl SessionTokens {
             .unwrap_or_default()
     }
 
-    // cm:guard mode 0600 on write, and the file is created here rather than trusted to exist. A capability readable by another user on the box is not a capability, and this file is the whole of the socket's authentication.
     fn store(&self, map: &HashMap<String, String>) -> Result<()> {
         if let Some(parent) = self.path.parent() {
             std::fs::create_dir_all(parent).map_err(|e| Error::Other(format!("tokens: {e}")))?;

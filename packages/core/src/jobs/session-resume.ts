@@ -60,7 +60,6 @@ export async function loadResumeBounds(
  * `compact_boundary` pre-token value. Fail-safe: 0 on no rows or DB error, so
  * a broken estimate never blocks a dispatch.
  */
-// cm:guard scoped to the ISSUE since ISS-897 removed session groups, and that is deliberately BROADER than the resume it guards: a retry resumes one parent attempt, but every session of an issue shares the transcript that attempt would reload, so the widest peak is the honest bound. Narrowing it to one session id would let a chain of small attempts resume past a peak that has already forced a compaction.
 export async function estimateIssueContextTokens(issueId: string): Promise<number> {
   try {
     const rows = await db.execute<{ peak: string | null }>(sql`

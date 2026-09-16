@@ -27,7 +27,6 @@ const listQuerySchema = z.object({
   projectId: z.uuid(),
   issueId: z.uuid(),
   pipelineRunId: z.uuid().optional(),
-  // cm:why CSV rather than repeated params because the caller is the dispatcher's injection allow-list, which holds the step list as one string.
   steps: z
     .string()
     .optional()

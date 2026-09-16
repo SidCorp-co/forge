@@ -73,7 +73,6 @@ function edgeToMenuItem(
 ): MenuItem {
   const isIncoming = dir === "in";
   const otherId = isIncoming ? e.fromIssueId : e.toIssueId;
-  // cm:why The server names an issue or nothing does — see the sibling fallback in `derive.ts`.
   const displayId =
     (isIncoming ? e.fromDisplayId : e.toDisplayId) ?? `#${otherId.slice(0, 6)}`;
   const title = isIncoming ? e.fromTitle : e.toTitle;
@@ -130,7 +129,6 @@ function RelationChip({
  *  to navigate — instead of an opaque emoji + count (ISS-366 D3). The edge data
  *  is already enriched (displayId/title/status, ISS-331). Renders nothing when
  *  the issue has no relations. */
-// cm:guard `deps` is a PROP, exactly as `CostCell` takes `value` — this component is rendered once per row in the desktop table and once per mobile card, so a data-fetching hook here is one request per row (ISS-1017, the ISS-437 rule). Its source is the search response's `withDependencies=1` hydration, and `undefined` means the caller did not ask rather than "no edges".
 export function DepBadges({
   deps,
   slug,
@@ -144,13 +142,11 @@ export function DepBadges({
 
   const incoming = deps?.incoming ?? [];
   const outgoing = deps?.outgoing ?? [];
-  // cm:why Edge `kind` encodes "from <verb> to": an INCOMING `blocks` means this issue is blocked-by; an OUTGOING one means it blocks. `decomposes`/`parent` run parent→child, so an OUTGOING one is a subtask of this epic and an INCOMING one is this issue's parent. Mirrors `depCounts` + the rail's `PropertiesRail`.
   const blockedBy = incoming.filter((e) => e.kind === "blocks");
   const blocks = outgoing.filter((e) => e.kind === "blocks");
   const subtasks = outgoing.filter((e) => isParentEdge(e.kind));
   const parents = incoming.filter((e) => isParentEdge(e.kind));
 
-  // cm:why a plain "Blocked by N" count hides whether anything is still holding the issue back, so a stuck row is invisible to someone scanning the list — the still-open blockers get the loud red chip and the fully-resolved ones stay a muted count
   const openBlockers = openBlockingRefs(deps);
   const refToMenuItem = (r: BlockingRef): MenuItem => ({
     label: r.title ? `${r.displayId} · ${r.title}` : r.displayId,
@@ -214,7 +210,6 @@ export function DepBadges({
  * module's own, carried as a dot rather than as the pill's fill: a module colour is arbitrary
  * project data and cannot be relied on to contrast with the pill's text.
  */
-// cm:edge contract -> packages/core/src/issues/search.ts — `modules` exists only when the caller opts in with `withModules=1`; `issuesApi.search` always does, and a caller that stops would silently blank this column
 export function ModuleCell({ modules }: { modules: ModuleAttribution[] | undefined }) {
   const primary = modules?.find((m) => m.isPrimary);
   if (!primary) return <span className="fg-caption text-muted">—</span>;

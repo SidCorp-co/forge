@@ -45,7 +45,6 @@ import { globalEffectiveMd } from './effective.js';
 import { hashSkillBody } from './hash.js';
 import { ensurePolicyLandedFor } from './policy-landed.js';
 
-// cm:why omits undefined keys — exactOptionalPropertyTypes rejects `{ x: undefined }`, so nullable DB columns must be filtered before forwarding to RecordSkillActivityEventInput.
 async function logActivity(
   executor: SkillActivityExecutor,
   params: Omit<
@@ -179,8 +178,6 @@ export function validateC1C5(bundle: Partial<ReconcileBundleSnapshot>): string |
  * Whether the stored body is provably the one running on every device that has
  * reported. Pure — no DB access — so the rule is unit-testable in isolation.
  */
-// cm:guard `observed-from-run` may only be claimed when the STORED body IS what runs — Forge keeps no content-addressed copy of an observed body, so a mismatch cannot be resolved by fetching the real bytes; the only honest move is to stop claiming observation and let C4 refuse
-// cm:why the label used to depend on merely HAVING an observedSha, so a stale or shadowed device still yielded a bundle labelled `observed-from-run` while handing the agent the server's copy — C4 exists to stop exactly that, and was passing on it
 export function isRunningBodyObserved(
   storedHash: string | null,
   observations: ReadonlyArray<{ observedSha: string | null; shadowedBy: string | null }>,
@@ -230,7 +227,6 @@ export async function assembleBundle(
 ): Promise<AssembleBundleResult | AssembleBundleRefused> {
   const readAt = new Date().toISOString();
 
-  // cm:why fetched at call time (not from a stored snapshot) to satisfy C2 freshness.
   const [
     packetRow,
     projectRow,
@@ -292,7 +288,6 @@ export async function assembleBundle(
       )
       .orderBy(desc(reconcileRuns.createdAt))
       .limit(10),
-    // cm:guard scoped to this project — an unscoped policy.landed read would leak another project's reason/deltaSummary into this bundle (MINOR K, ISS-801 review).
     db
       .select({
         reason: skillActivityEvents.reason,
@@ -417,8 +412,6 @@ export async function assembleBundle(
   };
 }
 
-// cm:guard serve these two agents' instructions from the global skill row, NEVER from the device's disk — Forge alone owns the agent that governs every project's updates, so no project may adopt, edit or fork it (owner decision 2026-08-10)
-// cm:why the disk-path form forced adoption + install_only fan-out, which handed each project an editable copy of its own governor and made the run depend on the sync path that already fails in the wild (device.sync.failed 502, portal-lighthuman 2026-08-09)
 async function loadAgentInstructions(name: string): Promise<string> {
   const [row] = await db
     .select({ skillMd: skills.skillMd, prompt: skills.prompt })
@@ -477,15 +470,12 @@ export function buildVerifierPromptWith(
   );
 }
 
-// cm:edge naming -> packages/core/src/jobs/retry.ts — exported so a verify_skill retry clone can rebuild promptString with ITS OWN job id instead of reusing the dead original's (MINOR V, ISS-801 review round 4).
 export async function buildVerifierPrompt(runId: string, jobId: string): Promise<string> {
   return buildVerifierPromptWith(runId, jobId, await loadAgentInstructions('forge-verify-skill'));
 }
 
-// cm:why must equal the number of verify_skill jobs spawnVerifierJobs dispatches — recordVerifierVote's majority tally never resolves if fewer jobs exist than it waits for.
 const VERIFIER_VOTE_COUNT = 3;
 
-// cm:why bounds the retryOf walk below; independent of jobs/retry.ts's RETRY_MAX_ROUNDS (importing it would cycle retry.ts -> reconcile-service.ts -> retry.ts) but serves the same purpose.
 const MAX_RETRY_CHAIN_DEPTH = 10;
 
 /**
@@ -520,7 +510,6 @@ async function resolveRetryChainIds(
  */
 async function failActiveReconcileRun(runId: string, reason: string): Promise<void> {
   await db.transaction(async (tx) => {
-    // cm:why FOR UPDATE row-locks this run, so a concurrent verdict/vote write cannot race the fail-transition below.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -575,7 +564,6 @@ async function spawnVerifierJobs(runId: string, projectId: string): Promise<void
     return;
   }
 
-  // cm:why projects.createdBy is a valid FK stand-in for a system-initiated dispatch — same convention as finalize-failure.ts's reconcileIssueStatusAfterFailure.
   const [projectRow] = await db
     .select({ createdBy: projects.createdBy })
     .from(projects)
@@ -586,10 +574,8 @@ async function spawnVerifierJobs(runId: string, projectId: string): Promise<void
     return;
   }
 
-  // cm:why loaded once for all VERIFIER_VOTE_COUNT verifiers — the body is identical per run, so doing it inside the loop was three byte-identical selects of a multi-KB TOASTed column.
   const verifierInstructions = await loadAgentInstructions('forge-verify-skill');
 
-  // cm:guard each verifier needs its OWN one-shot 'system' pipeline_run — closeRunIfOneShot (pipeline/runs.ts) cascade-cancels every still-active sibling job on a shared run the instant any one job on it goes terminal.
   const openedRunIds: string[] = [];
   const jobIds: string[] = [];
   for (let i = 0; i < VERIFIER_VOTE_COUNT; i++) {
@@ -674,14 +660,11 @@ export async function spawnReconcileRun(input: {
   skillId: string;
   actorUserId: string;
 }): Promise<SpawnReconcileResult> {
-  // cm:guard refuse a `pinned` skill BEFORE assembling a bundle or opening a run — no reconcile may ever rewrite a deliberately divergent body (ISS-795 §9.6)
-  // cm:why anhome's forge-release dropped the production merge after 148484a0 broke prod for 10 days; an agent "helpfully" restoring it would recreate that outage
   const [pinnedRow] = await db
     .select({ pinned: skills.pinned, pinnedReason: skills.pinnedReason })
     .from(skills)
     .where(eq(skills.id, input.skillId))
     .limit(1);
-  // cm:guard skill_activity_events.skill_id FKs to skills(id) — only forward input.skillId to logActivity below when this query proved the row exists, else the insert 23503s (ISS-801 review BLOCKER AD).
   const skillRowExists = pinnedRow !== undefined;
 
   if (pinnedRow?.pinned) {
@@ -705,7 +688,6 @@ export async function spawnReconcileRun(input: {
     return { ok: false, reason: 'pinned', detail };
   }
 
-  // cm:why self-heal before assembling — the boot sweep only sees projects that existed at boot, so a project created since would otherwise carry an empty bundle item 11 (ISS-795 stage ①)
   await ensurePolicyLandedFor(input.projectId).catch((err) =>
     logger.warn({ err, projectId: input.projectId }, 'reconcile.policyLanded.ensure.failed'),
   );
@@ -756,7 +738,6 @@ export async function spawnReconcileRun(input: {
     return { ok: false, reason: 'no-runner', detail: 'no online runner bound to this project' };
   }
 
-  // cm:why opened before the tx below — openOneShotRun uses module-level db and cannot join a transaction.
   let pipelineRun: { id: string };
   try {
     pipelineRun = await openOneShotRun({ projectId: input.projectId, kind: 'system' });
@@ -768,7 +749,6 @@ export async function spawnReconcileRun(input: {
   let runId: string;
   let jobId: string;
 
-  // cm:guard load the agent body BEFORE opening the transaction — querying the module-level `db` inside `db.transaction` borrows a SECOND pool connection while the write tx holds the first, and stretches the tx by a full round trip.
   const reconcileInstructions = await loadAgentInstructions('forge-reconcile');
 
   try {
@@ -835,11 +815,9 @@ export async function spawnReconcileRun(input: {
     return { ok: false, reason: 'error', detail: String(err) };
   }
 
-  // cm:why pg-boss send() must happen after commit — enqueueing inside the tx above risks a job message for a run the tx then rolls back.
   try {
     await enqueueReconcileJob(jobId);
   } catch (err) {
-    // cm:guard a send() failure here must not strand reconcile_runs at 'pending' forever — nothing else can terminate it, and reconcile_runs_active_project_uq would then block every future run.
     logger.error(
       { err, projectId: input.projectId, runId, jobId },
       'reconcile.spawn.enqueue.error',
@@ -863,7 +841,6 @@ export async function spawnReconcileRun(input: {
       .catch((txErr) =>
         logger.error({ txErr, runId, jobId }, 'reconcile.spawn.enqueue.containment.error'),
       );
-    // cm:why closeRun cascades the still-queued job to 'cancelled' via cascadeCancelChildJobs.
     await closeRun(pipelineRun.id, 'failed').catch((closeErr) =>
       logger.error({ closeErr, runId: pipelineRun.id }, 'reconcile.spawn.closeOrphanedRun.error'),
     );
@@ -879,7 +856,6 @@ export interface RecordVerdictInput {
   verdict: ReconcileVerdict;
   candidateBody: string | null;
   rationale: string;
-  // cm:guard the gate is DECLARED by the reconcile agent and re-judged adversarially by the verifiers — no server-side rule may override or second-guess it, including for `escalate` (owner decision 2026-08-10)
   /**
    * Which gate this change must clear, as judged by the reconcile agent — the
    * only party that has read the actual diff between running and candidate body.
@@ -903,10 +879,8 @@ interface VerdictTxResult {
  *
  * Called by the reconcile agent via the `forge_reconcile` MCP tool.
  */
-// cm:guard call only when the run is 'pending' or 'running' — nothing else ever writes 'running', so 'pending' must stay a valid pre-verdict status here (BLOCKER F, ISS-801 review).
 export async function recordReconcileVerdict(input: RecordVerdictInput): Promise<void> {
   const result = await db.transaction(async (tx): Promise<VerdictTxResult> => {
-    // cm:why FOR UPDATE row-locks this run, serializing concurrent verdict calls.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -995,8 +969,6 @@ export async function recordReconcileVerdict(input: RecordVerdictInput): Promise
     return { toVerifying: true, projectId: runRow.projectId, notify: null };
   });
 
-  // cm:why dispatched AFTER commit, mirroring spawnReconcileRun's enqueue-after-tx pattern — dispatching inside the tx above risks jobs for a run it then rolls back (BLOCKER M path 1, ISS-801 review).
-  // cm:why spawnVerifierJobs' OWN try/catch covers the run-open/job-insert/enqueue steps; this outer catch is the backstop for the runners/projects selects and failActiveReconcileRun itself throwing past it — without it a DB blip there leaves the run at 'verifying' with zero verifiers (MINOR W, ISS-801 review round 4).
   if (result.toVerifying) {
     await spawnVerifierJobs(input.runId, result.projectId).catch((err) => {
       logger.error({ err, runId: input.runId }, 'reconcile.verify.spawn.error');
@@ -1046,7 +1018,6 @@ interface VerifierVoteTxResult {
 
 export async function recordVerifierVote(input: RecordVerifierVoteInput): Promise<void> {
   const result = await db.transaction(async (tx): Promise<VerifierVoteTxResult> => {
-    // cm:why FOR UPDATE row-locks this run, serializing concurrent votes.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -1070,7 +1041,6 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       return { notify: null, projectId: runRow.projectId };
     }
 
-    // cm:guard jobId must resolve to a real dispatched verify_skill job bound to this run — a fabricated jobId must never reach the majority tally (BLOCKER C, ISS-801 review).
     const [verifierJob] = await tx
       .select({ id: jobs.id })
       .from(jobs)
@@ -1095,7 +1065,6 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       decidedAt: new Date().toISOString(),
     };
 
-    // cm:why a retry clone votes under its OWN jobId (MINOR V) — supersede the dead ancestor's vote instead of tallying both (MINOR AC).
     const retryChainIds = await resolveRetryChainIds(tx, input.jobId);
     const votesWithoutChainAncestor = existingVotes.filter((v) => !retryChainIds.has(v.jobId));
     const allVotes = [...votesWithoutChainAncestor, newVote];
@@ -1103,7 +1072,6 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
     const passCount = allVotes.filter((v) => v.vote === 'pass').length;
     const failCount = allVotes.filter((v) => v.vote === 'fail').length;
 
-    // cm:why VERIFIER_VOTE_COUNT (module-level, shared with spawnVerifierJobs) is 3 (odd, no ties); 2-of-3 pass auto-publishes (ISS-795 design).
     const MAJORITY = Math.ceil(VERIFIER_VOTE_COUNT / 2);
 
     const majorityPass = passCount >= MAJORITY;
@@ -1134,7 +1102,6 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
         packetId: runRow.packetId,
         reason: `verifier majority fail: ${failCount}/${allVotes.length}`,
       });
-      // cm:why verifier-fail escalation leaves `verdict` at its pre-verifying value (never 'escalate') — the pendingSkillUpdates bucket's escalated clause requires verdict='escalate', so this path is intentionally excluded from the gate notification.
       return { notify: null, projectId: runRow.projectId };
     }
 
@@ -1175,7 +1142,6 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
       const candidateBody = runRow.candidateBody ?? '';
       const lastGoodHash = runRow.lastGoodHash;
 
-      // cm:why fetch existing files before update (reconcile only changes skillMd) so effectiveHash matches what the runner echoes as installedHash, letting resolvePacketIdForHash link device.skill.* events (ISS-798 BLOCKER C).
       const [skillRow] = await tx
         .select({ files: skills.files })
         .from(skills)
@@ -1229,7 +1195,6 @@ export async function recordVerifierVote(input: RecordVerifierVoteInput): Promis
  */
 export async function applyReconcileRun(runId: string, actorUserId: string): Promise<void> {
   await db.transaction(async (tx) => {
-    // cm:why FOR UPDATE row-locks this run, serializing concurrent apply/reject calls.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -1248,7 +1213,6 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
     const candidateBody = runRow.candidateBody ?? '';
     const lastGoodHash = runRow.lastGoodHash;
 
-    // cm:why fetch existing files before update (reconcile only changes skillMd) so effectiveHash matches what the runner echoes as installedHash, letting resolvePacketIdForHash link device.skill.* events (ISS-798 BLOCKER C).
     const skillIdForPublish = runRow.skillId;
     const [skillRow] = await tx
       .select({ files: skills.files })
@@ -1287,11 +1251,9 @@ export async function applyReconcileRun(runId: string, actorUserId: string): Pro
     });
   });
 
-  // cm:why after commit — resolveNotifications is itself best-effort (catches + logs internally).
   await resolveNotifications(`reconcile_run:${runId}:gate`);
 }
 
-// cm:guard reconcileRuns terminal states — keep this set in sync with any new reconcileRuns.status value
 const RECONCILE_RUN_TERMINAL_STATUSES = ['applied', 'escalated', 'failed'];
 
 /**
@@ -1309,7 +1271,6 @@ export async function rejectReconcileRun(
   reason: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    // cm:why FOR UPDATE row-locks this run, serializing concurrent apply/reject calls.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -1340,7 +1301,6 @@ export async function rejectReconcileRun(
     });
   });
 
-  // cm:why after commit — resolveNotifications is itself best-effort (catches + logs internally). A reject also produces the resolution: no further action is owed on this run.
   await resolveNotifications(`reconcile_run:${runId}:gate`);
 }
 
@@ -1356,7 +1316,6 @@ export async function acknowledgeReconcileRun(
   reason?: string,
 ): Promise<void> {
   await db.transaction(async (tx) => {
-    // cm:why FOR UPDATE row-locks this run, serializing concurrent acknowledge calls.
     const [runRow] = await tx
       .select()
       .from(reconcileRuns)
@@ -1388,7 +1347,6 @@ export async function acknowledgeReconcileRun(
     });
   });
 
-  // cm:why after commit — resolveNotifications is itself best-effort (catches + logs internally).
   await resolveNotifications(`reconcile_run:${runId}:gate`);
 }
 

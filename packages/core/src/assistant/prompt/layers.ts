@@ -27,8 +27,6 @@ export const ALL_LAYERS: readonly PromptLayer[] = [
  * The channel-neutral method: what `forge_guide get answering-as-the-assistant` serves and what
  * every door carries.
  */
-// cm:guard the guide's body is THESE TWO composed and holds no copy of its own, which is what keeps
-// ISS-1007's rule — the guide is the only copy of any sentence it carries — true after the split.
 export const METHOD_LAYERS: readonly PromptLayer[] = [BASE_LAYER, TOOLS_LAYER];
 
 /** What every door renders before its own layer. */

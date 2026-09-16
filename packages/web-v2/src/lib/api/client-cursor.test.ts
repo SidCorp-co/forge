@@ -51,7 +51,6 @@ describe('apiClientCursorAll — the whole thread, not its first page', () => {
     expect(String(fetchMock.mock.calls[1]?.[0])).toContain('cursor=a%2Bb%2Fc%3D%3D');
   });
 
-  // cm:guard the walk must stop on `nextCursor === null` and on nothing else. A `total` that outruns the rows is NORMAL here — the comments route counts replies in `total` while a page carries roots — so a stop derived from `items.length < total` reads the end of the thread as a missing page and never terminates.
   it('stops on a null cursor even while total still exceeds what it has', async () => {
     fetchMock.mockResolvedValueOnce(page([{ id: 1 }], 900, null));
 
@@ -80,7 +79,6 @@ describe('apiClientCursorAll — the whole thread, not its first page', () => {
     });
   });
 
-  // cm:guard a server that always returns a cursor must make this THROW, never spin. The loop is the only thing between a contract break on the route and a browser tab that hangs with no error anyone can read.
   it('throws rather than spinning when the cursor never goes null', async () => {
     fetchMock.mockImplementation(async () => page([{ id: 1 }], 900, 'always'));
 

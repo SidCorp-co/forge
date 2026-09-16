@@ -14,9 +14,6 @@
 import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-core';
 import { memories, memorySources, projects } from './schema.js';
 
-// cm:edge sideeffect -> packages/core/drizzle/migrations/0208_memory_revisions.sql — rows here are written by the `memories_record_replacement` trigger and by nothing in TypeScript; a reader who greps for an INSERT into this table finds none, and a checker that trusts the grep concludes the table is dead
-// cm:edge contract -> packages/core/src/memory/write-service.ts#AGENT_AUTHORED_SOURCES — the trigger's `NEW.source IN ('note','knowledge','policy')` is that same set written in SQL, where nothing type-checks it. Lifecycle mirrors (issue/comment/job/decision) are excluded on purpose: their text mirrors a record that keeps its own history, and an issue-description edit would otherwise mint a revision row on every keystroke-sized save, forever, in a table nobody reads
-// cm:guard a revision is written only when `text_content` actually CHANGED — the embedding backfill, `feedback` and a re-write of identical text must leave no trace, or the history stops meaning "someone replaced this"
 export const memoryRevisions = pgTable(
   'memory_revisions',
   {

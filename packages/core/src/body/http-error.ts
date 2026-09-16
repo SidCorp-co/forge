@@ -12,7 +12,6 @@ import { HTTPException } from 'hono/http-exception';
 import { BodyInvalidError } from './errors.js';
 import { type PreparedBody, type PrepareInput, prepareBody } from './prepare.js';
 
-// cm:guard the 400 carries `err.message` VERBATIM. It names the offender, and that is the entire reason this gate produces compliance where a guide produced 14-28% — a caller told only "invalid body" has nothing to correct.
 export function bodyInvalidHttp(err: BodyInvalidError): HTTPException {
   return new HTTPException(400, {
     message: err.message,

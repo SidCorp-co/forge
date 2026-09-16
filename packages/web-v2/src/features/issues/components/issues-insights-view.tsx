@@ -44,14 +44,11 @@ const WINDOW_DAYS = 7;
 export function IssuesInsightsView({ scope }: IssuesInsightsViewProps) {
   const { projectId } = scope;
 
-  // cm:guard the project room and NOT a poll: the throughput and duration rows are invalidated by the same WS events the list screen listens to, so this card cannot show a window the list has already moved past
   useRoom(projectRoom(projectId));
 
   const durationsQ = useStepDurations({ projectId, days: WINDOW_DAYS });
   const throughputQ = useThroughput({ projectId, days: WINDOW_DAYS });
 
-  // cm:guard the Where-time-goes rows are keyed on the step each duration row carries, never folded onto one of the seven — that fold reported every `drive` step, which is all of them here, as `triage` (ISS-999)
-  // cm:why aggregateStepCosts sorts slowest-median first, so `steps[0]` IS the bottleneck and the Flow-signal line needs no second pass
   const steps = useMemo(() => aggregateStepCosts(durationsQ.data), [durationsQ.data]);
   const maxMedian = Math.max(1, ...steps.map((s) => s.medianSec));
   const slowest = steps[0] ?? null;
@@ -172,7 +169,6 @@ export function IssuesInsightsView({ scope }: IssuesInsightsViewProps) {
 /** Daily shipped bars. Rows arrive as `{ date, count }` for days with at least
  *  one closure; we render them in date order with heights relative to the busiest
  *  day. Honest about being shipped-only (no failed series exists server-side). */
-// cm:why exported for `insights-throughput.test.ts`, the characterization fixture that pins this series across ISS-999. The panel above it was rebuilt in that change and this one was not; a fixture is what says so, where "untouched" is a claim about a diff nobody re-reads.
 export function ThroughputChart({ rows }: { rows: ThroughputRow[] | undefined }) {
   const ordered = useMemo(
     () => [...(rows ?? [])].sort((a, b) => a.date.localeCompare(b.date)),
@@ -191,7 +187,6 @@ export function ThroughputChart({ rows }: { rows: ThroughputRow[] | undefined })
     );
   }
 
-  // cm:guard each bar is positioned against its own box and NOT sized by a percentage height inside a flex item: a percent height on an item whose height comes from `flex-1` resolves to zero in the browser, so every bar rendered invisible and the card drew an empty chart under the sentence "108 shipped over the last 7 days" — measured on forge-beta 2026-09-14 (ISS-999)
   return (
     <div className="flex flex-col gap-3">
       <div className="flex items-end gap-2" style={{ height: 120 }}>

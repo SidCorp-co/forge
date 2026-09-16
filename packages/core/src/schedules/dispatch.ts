@@ -46,7 +46,6 @@ const NON_STEWARD_STANDING_KEYS = new Set<string>([
 
 type StandingBuilder = (input: { mode: ScheduleMode; projectId: string }) => string;
 
-// cm:guard A standing key listed here MUST also appear in NON_STEWARD_STANDING_KEYS above, or its session is tagged metadata.steward and the steward-report parser mis-handles output that is not a steward report. Absent from this map, a standing key silently falls through to the steward prompt instead of erroring.
 const STANDING_BUILDERS: Record<string, { build: StandingBuilder; defaultMode: ScheduleMode }> = {
   [DRIFT_CHECK_KEY]: { build: buildDriftCheckPrompt, defaultMode: 'propose' },
   [PRODUCT_MAP_KEY]: { build: buildProductMapRefreshPrompt, defaultMode: 'auto' },
@@ -424,11 +423,9 @@ async function dispatchScheduleScriptRun(
   return { ok: true, sessionId: run.id, status: 'success', resolvedProjectId };
 }
 
-// cm:edge naming -> packages/core/src/schedules/dispatch-types.ts — every caller imports these from this module; they live next door so the runner-less branches can use them without an import cycle, and re-exporting keeps that a file layout rather than an API change
 export type {
   DispatchScheduleInput,
   DispatchScheduleResult,
   ScheduleRowForDispatch,
 } from './dispatch-types.js';
-// cm:edge protocol -> packages/core/src/jobs/loop-monitor.ts — it reaches the failover through a dynamic import('../schedules/dispatch.js'), so this re-export is load-bearing: move the symbol and that call resolves to undefined at runtime with nothing failing to compile.
 export { redispatchScheduleSessionOnFailover } from './failover.js';

@@ -15,7 +15,6 @@ import { describe, expect, it } from 'vitest';
 
 const SCHEMA = 'src/db/schema-questions.ts';
 
-// cm:guard the option's fields are asserted as a SET and the assertion is the whole list, not a ban list: a discriminator arrives under whatever name its author picks, and a check that names the forbidden ones catches only the names somebody already thought of (ISS-964 criterion 13).
 const OPTION_FIELDS = ['id', 'label', 'authority', 'bindsTo', 'executedBy', 'fingerprint'] as const;
 
 function fieldsOf(type: string): string[] {
@@ -34,10 +33,7 @@ describe('an option has one shape and no discriminator', () => {
     ).toEqual([...OPTION_FIELDS].sort());
   });
 
-  // cm:guard scans the TREE rather than this module, because the claim is about a name that must exist nowhere — a discriminator deleted here and revived in a route, a contract or the web app would satisfy every other test in the suite (ISS-964 criterion 13).
   it('has no option kind anywhere in first-party source', () => {
-    // cm:guard `--untracked`, because `git grep` reads the INDEX by default and a discriminator revived in a file nobody has staged yet is exactly the one this scan exists to catch.
-    // cm:guard `git grep` exits 1 when it finds NOTHING, which is this test's green — reading the exit code as a failure would make the passing case the error case.
     let hits = '';
     try {
       hits = execFileSync(

@@ -74,7 +74,6 @@ describe('resolveRoomShape', () => {
     expect(fetchRoomType).toHaveBeenCalledTimes(2);
   });
 
-  // cm:why one installation's room id may not answer for another's: the same rid on a second Rocket.Chat server is a different room, and a rid-only cache would hand it the first server's shape — which decides whether a mention is required (same rule as `assistant_speaker_links.external_namespace`)
   it('does not let one server answer for another server room of the same id', async () => {
     fetchRoomType.mockResolvedValueOnce('d').mockResolvedValueOnce('c');
 

@@ -82,7 +82,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     expect(res.headers.get('WWW-Authenticate')).toBeNull();
   });
 
-  // cm:guard ISS-931 asserted this refusal happened WITHOUT `verifyDeviceToken` being consulted, because a bare `toBe(401)` would stay green against a middleware that verified a device and then rejected it. ISS-932 deleted that verifier from the process, so the surviving half is that `verifyPat` is not consulted either and the message still names the class — a pre-ISS-932 box reads this line and nothing else.
   it('refuses the opaque token a pre-ISS-932 box holds, by name', async () => {
     const app = makeApp();
     const res = await app.request('/whoami', {
@@ -92,7 +91,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     expect(vi.mocked(verifyPat)).not.toHaveBeenCalled();
     const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('UNAUTHENTICATED');
-    // cm:guard assert the CLASS and the remedy, not just the 401: an operator reading this holds a real, paired, unexpired credential on the wrong plane, and `invalid personal access token` would send them hunting a PAT problem that does not exist.
     expect(body.message).toMatch(/device tokens no longer authenticate \/mcp/i);
     expect(body.message).toMatch(/newer forge-runner/i);
     expect(body.message).toMatch(/\/ws/);
@@ -101,7 +99,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     );
   });
 
-  // cm:guard the name is INERT — a person may hand-mint a token called `job:...` and it must establish NOTHING, because agency is a property of the PRINCIPAL since ISS-932 wave 4 and of its OWNER since ISS-1003. Two spellings are wrong here and this case refuses both: reading the name would stamp `agent` and let a hand-made credential claim an identity, and reading the owner as `human` — what this asserted until ISS-1003 — would hand every agent borrowing a person's token the exemption from the ISS-786/812 evidence gates. `null` is neither claim, and `actorAgency` resolves it to `agent` so the gates still apply.
   it('stamps nothing on a person-owned token, whatever its name imitates', async () => {
     const jobId = '77777777-7777-4777-8777-777777777777';
     vi.mocked(verifyPat).mockResolvedValue({
@@ -143,7 +140,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
     expect(res.status).toBe(401);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('UNAUTHENTICATED');
-    // cm:why realm only, with no `error=`: RFC 6750 §3 reserves the error codes for a request that actually presented credentials
     expect(res.headers.get('WWW-Authenticate')).toBe('Bearer realm="forge-mcp"');
   });
 
@@ -153,7 +149,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
       headers: { authorization: 'Basic abc123' },
     });
     expect(res.status).toBe(401);
-    // cm:why credentials WERE presented, in the wrong scheme: RFC 6750 §3 asks for `invalid_request` so a spec-aware client fixes the header instead of retrying the same value, and so an MCP client suppresses its OAuth DCR fallback
     expect(res.headers.get('WWW-Authenticate')).toBe(
       'Bearer realm="forge-mcp", error="invalid_request"',
     );
@@ -177,7 +172,6 @@ describe('requirePat middleware (ISS-150, ISS-931)', () => {
       headers: { authorization: `Bearer ${PAT_TOKEN}` },
     });
     expect(res.status).toBe(401);
-    // cm:why token present but invalid: `error="invalid_token"` is what makes an MCP client surface the failure instead of falling back to OAuth DCR
     expect(res.headers.get('WWW-Authenticate')).toBe(
       'Bearer realm="forge-mcp", error="invalid_token"',
     );
@@ -293,7 +287,6 @@ describe('requirePat rate limit, split by request class', () => {
     expect((await app.request('/read', { headers: hdrs })).status).toBe(429);
   });
 
-  // cm:guard THE falsifying assertion for the whole split. A single shared bucket passes every other test in this block; only a write succeeding after the read budget is spent distinguishes two buckets from one, and that is the property ISS-961 was filed for.
   it('still accepts a write once the read budget is spent', async () => {
     tokenWith(3);
     const reads = classedApp('read');

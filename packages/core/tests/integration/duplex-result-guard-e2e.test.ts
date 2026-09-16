@@ -35,7 +35,6 @@ let harness: TestDatabase;
 let projectId: string;
 let monitor: typeof import('../../src/jobs/loop-monitor.js');
 
-// cm:guard an ISO string, NOT a Date — postgres-js has no column type to bind a Date against inside a raw `sql` template and throws ERR_INVALID_ARG_TYPE, the same trap `loop-monitor.ts` records on its ackFast cutoff.
 const STALE = new Date(Date.now() - 6 * 60 * 60_000).toISOString();
 
 beforeAll(async () => {
@@ -104,7 +103,6 @@ async function staleJob(opts: JobOpts): Promise<string> {
   return jobId;
 }
 
-// cm:guard tick 1 of the two-phase kill gate returns `kill_requested`, never `reaped` — so `killRequested` is what says the row was a CANDIDATE. Asserting on `reaped` would read 0 for every case and the test would pass whatever the predicate selects.
 async function resultHopPicked(): Promise<number> {
   return (await monitor.reapResultMisses(new Date(), { projectId })).killRequested;
 }
@@ -120,7 +118,6 @@ describe('hop 4 · the result guard under residency', () => {
     expect(await resultHopPicked()).toBe(1);
   });
 
-  // cm:guard the whole of invariant 5. Before this predicate the `result` from turn 1 made the job permanently invisible to this hop, so a duplex session that wedged at hour three was never reaped by anything.
   it('reaps a resident session that has gone quiet since a turn ended', async () => {
     await staleJob({ result: true, runtimeState: 'working' });
     expect(await resultHopPicked()).toBe(1);
@@ -131,7 +128,6 @@ describe('hop 4 · the result guard under residency', () => {
     expect(await resultHopPicked()).toBe(0);
   });
 
-  // cm:guard a park is exempt from the QUIET CLOCK only — with no result event it is still not reapable here, which is what keeps the exemption from being a second, wider amnesty than the one phase 2 priced.
   it('leaves a park alone whether or not a turn has ended yet', async () => {
     await staleJob({ result: false, runtimeState: 'awaiting_input' });
     expect(await resultHopPicked()).toBe(0);
@@ -159,7 +155,6 @@ describe('hop 3c · session-lost under residency', () => {
     expect(await sessionLostPicked()).toBe(0);
   });
 
-  // cm:guard no park exemption on THIS hop, deliberately: the session is already terminal, so the process is gone and there is nobody left to answer. Exempting a parked-and-dead session would wedge the runner slot with nothing on the other end of the question.
   it('reaps a resident job whose session died after a turn ended', async () => {
     await staleJob({ result: true, runtimeState: 'awaiting_input', sessionStatus: 'failed' });
     expect(await sessionLostPicked()).toBe(1);

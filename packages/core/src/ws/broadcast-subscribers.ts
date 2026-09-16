@@ -35,7 +35,6 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-  // cm:guard `issue.statusChanged` is published INLINE in `issues/transition.ts`, atomically with the UPDATE, and must never be re-emitted from this bus. A second publish here would arrive after the row is already visible, so a client that acted on the earlier one would be told again — and the two would drift the moment either grew a condition.
 
   bus.on('taskCreated', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
@@ -195,7 +194,6 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     }
   });
 
-  // cm:guard best-effort ONLY, and the durable half must stay. `rooms.ts:publish` skips any socket that is not OPEN and buffers nothing, so an offline device misses this frame with no record that it happened; what makes that cost latency instead of the provision is the device's own `GET /api/devices/me/provisions` on its next pass. The same rule holds for `master.wake` registered above.
   bus.on('runnerProvisionRequested', (p) => {
     roomManager.publish(deviceRoom(p.deviceId), {
       event: 'provision.request',

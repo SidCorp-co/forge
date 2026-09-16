@@ -28,7 +28,6 @@ const querySchema = z.object({
   skillId: z.uuid().optional(),
   deviceId: z.uuid().optional(),
   packetId: z.string().min(1).optional(),
-  // cm:guard a limit over the maximum is REFUSED and never clamped: a caller asking for 50,000 events and served 1,000 under a `truncated` flag it did not ask about reads the page as the whole log. The refusal names the maximum.
   limit: z.coerce
     .number()
     .int()
@@ -95,7 +94,6 @@ skillActivityRoutes.get('/', async (c) => {
   });
 });
 
-// cm:why the §7 self-check (activity-chain-integrity.ts) had no operational surface before this — only an integration test called it, so a broken chain in production went undetected (ISS-798 fix review).
 skillActivityRoutes.get('/chain-integrity', async (c) => {
   await assertPlatformAdmin(c);
   const report = await checkSkillActivityChainIntegrity();

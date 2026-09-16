@@ -12,7 +12,6 @@ import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { verifyHmacSignature } from './hmac.js';
 
-// cm:guard every header here belongs to a provider that actually SIGNS its webhooks — `x-coolify-signature-256` went with the Coolify inbound path (ISS-922) because Coolify sends no signature at all, and an entry for a provider that signs nothing only makes an unreachable branch look reachable.
 const PROVIDER_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
 
 const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
@@ -44,13 +43,11 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     .limit(1);
   if (!project) throw notFound();
 
-  // cm:guard a provider header claims the request for its adapter and the generic path below never sees it — so registering an adapter is what MOVES a provider off `projects.webhookSecret` onto the binding's own `integrationSecret`. Adding a header here without an adapter turns every one of that provider's deliveries into ADAPTER_NOT_REGISTERED rather than falling through.
   for (const map of PROVIDER_HEADER_MAP) {
     if (!c.req.header(map.header)) continue;
     const adapter = getAdapter(map.provider);
     if (!adapter) throw badRequest({ provider: map.provider }, 'ADAPTER_NOT_REGISTERED');
 
-    // cm:why multi-env disambiguation: the signature is verified against each binding's own integrationSecret and dispatched on the one that matches, which is what tells a staging delivery apart from a prod one.
     const candidatePairs = await listActiveBindingsForProjectProvider(project.id, map.provider);
     if (candidatePairs.length === 0) {
       throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
@@ -107,7 +104,6 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
     }
   }
 
-  // cm:guard the generic path accepts a signed body and DOES NOTHING with it — keep it that way. It exists so a provider can be pointed here while its adapter is being written, and `actions: 0` in the response is the only thing telling an operator the payload was dropped. Anything that starts acting on a body here is a second inbound path, which is what registering an adapter is for.
   if (!project.secret) {
     throw badRequest({ slug: 'webhook not enabled' }, 'WEBHOOK_DISABLED');
   }

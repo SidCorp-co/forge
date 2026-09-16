@@ -37,7 +37,6 @@ export type PatPrincipal = {
    * majority of agents, and a rule written on it refused real agents while
    * admitting every agent borrowing a person's credential.
    */
-  // cm:guard `null` is UNESTABLISHED and is not a synonym for `human` — the only thing that establishes a person is a session, which is not this species of credential at all. Do not default it, do not coalesce it at a call site, and do not widen `ActorAgency` to carry it: `comments.author_agency` is nullable and stores the null as "nothing claimed", while every gate that must fail closed reads it through `issues/actor-agency.ts:actorAgency`, which maps unestablished to `agent` in one place (ISS-1003 criteria 22-25).
   agency: 'agent' | null;
   /**
    * The agent account this credential belongs to, or `null` for a person's.
@@ -51,24 +50,20 @@ export type PatPrincipal = {
   tokenId: string;
   scopes: readonly string[];
   projectIds: readonly string[] | null;
-  // cm:guard non-null is BOTH the slug-omitted default and the auth fence (ISS-497), and the second of those is why a null here is not a widening to be tidied away: null means user-level, which is a token whose reach is its owner's projects. Reading it as "no project set, so no restriction" inverts the fence.
   boundProjectId: string | null;
   /**
    * The permission names this token was granted, or absent where it was
    * granted none — which is every group, not no group.
    */
-  // cm:guard absent, `null` and `[]` are ONE answer here — the whole menu (ISS-973) — so do not normalize between them and do not read any of them as "holds nothing". Optional precisely because that default is the safe direction: a builder that forgets the field produces the same reach as an unmigrated row, where a required field forgotten in the other direction would lock a live integration out. `patGrantCovers` is the only reader.
   permissions?: readonly string[] | null;
   /**
    * The paired box this token was issued to, or `null` for a token a person
    * holds. It is what `requireDevice` and `/ws` resolve a device from now that
    * a device is a registry row rather than a credential (ISS-932).
    */
-  // cm:guard non-null is the ENTIRE authority to act as a box, so no surface may fall back to `userId` when it is null — that is the `device.ownerId` fiction the AAT exists to remove, where a machine borrowed its owner's whole account. `middleware/require-device.ts` refuses by name instead.
   deviceId: string | null;
 };
 
-// cm:guard ONE species reaches `/mcp`, and this alias staying a single member is the whole of ISS-931. A device token authenticates `/ws` and the `requireDevice` REST routes and NOTHING here; widening it back into a union restores the second live path that ISS-894's deletions exist to remove, and it does so silently — every `principal.kind === 'pat'` test in `mcp/**` was deleted as unreachable, so the device branch would come back with no gate reading it.
 export type McpPrincipal = PatPrincipal;
 
 export type PrincipalVars = {
@@ -109,12 +104,10 @@ const unauth = (message: string, options?: { invalidToken?: boolean; invalidRequ
     },
   });
 
-// cm:guard a 429 from these buckets is a throttle and may never escalate into a revoke. The bucket only ever counts tokens `verifyPat` already accepted, so a guesser never reaches it and the only client it can punish is a legitimate one that is busy; the three-breaches-an-hour auto-revoke that lived here burned four of one user's tokens in a day (2026-09-03) and protected nothing. In-memory by design: a restart forgets it, which only grants a fresh window.
 type PatBucket = {
   minuteCount: number;
   minuteResetAt: number;
 };
-// cm:guard keyed by token AND class, never by token alone: one shared bucket is what let a wave's ordinary reads spend the budget its writes then queued behind (ISS-961). `bucketKey` is the only place the two halves are named, so a class added to `PatRequestClass` needs nothing here.
 const patBuckets = new Map<string, PatBucket>();
 
 const bucketKey = (tokenId: string, requestClass: PatRequestClass) => `${tokenId}:${requestClass}`;
@@ -155,7 +148,6 @@ interface RateLimitOutcome {
   firstRejectionInWindow: boolean;
 }
 
-// cm:why an explicit `rate_limit_max` caps EACH class rather than the two together: the box credential that pins one (`devices/credential.ts`) was sized at 6x a box's measured peak, and that intent is per axis — a box doing 600 reads and 600 writes in a minute is still six times anything measured.
 function checkPatRateLimit(
   tokenId: string,
   requestClass: PatRequestClass,
@@ -218,7 +210,6 @@ function maybeEmitPatUsed(tokenId: string, userId: string): void {
  * (`pat-rest-surface.ts:scopeForMethod`), `/mcp` off the JSON-RPC envelope
  * (`mcp/request-class.ts`).
  */
-// cm:guard `onVerified` fires at the ONE instant this function knows the caller is who they say, and it is the only evidence of that a thrower can leave behind: everything below may throw, and a caller that inferred authentication from the status it caught would be reading a 429 as proof of a `verifyPat` that a future upstream throttle need never have run (ISS-974). It is deliberately not a return value — the 429 path never reaches one.
 export async function authenticatePat(
   c: Context,
   token: string,
@@ -233,11 +224,9 @@ export async function authenticatePat(
   const outcome = checkPatRateLimit(row.id, requestClass, row.rateLimitMax);
   c.header('X-RateLimit-Limit', String(outcome.max));
   c.header('X-RateLimit-Remaining', String(outcome.remaining));
-  // cm:why the epoch second the window resets, not the seconds left: `Retry-After` already carries the delta, and a client that retries twice against a duration recomputes a moving target while an absolute reset stays true for the whole window. The generic `rateLimit()` middleware has always sent all three; this surface sent two until ISS-961.
   c.header('X-RateLimit-Reset', String(Math.ceil((Date.now() + outcome.resetMs) / 1000)));
   c.header('X-RateLimit-Scope', requestClass);
   if (!outcome.allowed) {
-    // cm:why one audit row per breached window, not per rejected request — the row answers "was this token throttled, when, from where", and a client retrying at 4 Hz would otherwise write 240 rows a minute of the same answer.
     if (outcome.firstRejectionInWindow) {
       writeMcpAudit({
         userId: row.userId,
@@ -253,7 +242,6 @@ export async function authenticatePat(
     const retryAfterSeconds = Math.max(1, Math.ceil(outcome.resetMs / 1000));
     const windowSeconds = Math.ceil(outcome.windowMs / 1000);
     c.header('Retry-After', String(retryAfterSeconds));
-    // cm:why the body names the window, the ceiling and which of the two classes refused, because `Retry-After` alone tells a client how long to sleep and nothing about whether to sleep at all. A wave whose READS are exhausted may still write, and `scope` is the only thing in the response that says so.
     throw new HTTPException(429, {
       message:
         `rate limit exceeded: ${outcome.max} ${requestClass} request(s) per ` +
@@ -273,7 +261,6 @@ export async function authenticatePat(
 
   touchPatUsage(row.id, getClientIp(c));
   maybeEmitPatUsed(row.id, row.userId);
-  // cm:guard the two fields below are ONE reading of the owner and they are the whole of what a token may claim: an agent account owns it, so the agent is named and its agency established; a person owns it, so NOTHING is established — not that a person is at the keyboard, which only a session can say, and not that an agent is, which only an agent's own credential can. This is the ONE place a PAT principal is built, for `/mcp` AND for REST (`pat-rest-surface.ts:beginPatRequest` calls straight into here), so a wrong answer here is wrong on every surface at once. Reading a person's token as `human` is what ISS-1003 removed: most agents run on one, so the field said `human` for the majority of agents and exempted every one of them from the ISS-786/812 evidence gates those gates were written for. The token's NAME still buys nothing: a person's token called `job:...` establishes no agent.
   return {
     kind: 'pat',
     agency: ownerKind === 'agent' ? 'agent' : null,
@@ -288,14 +275,12 @@ export async function authenticatePat(
   };
 }
 
-// cm:guard the message names the CLASS and the remedy, not just the rejection. A device token is a real, paired, unexpired credential on the wrong plane, so `invalid personal access token` sends an operator to look for a PAT problem that does not exist. Until every box runs a `forge-runner` that writes the job's token into `.mcp.json` (ISS-931), this 401 is what an upgrade-lagging box reads, and it is the only place that can tell it what to do.
 const DEVICE_TOKEN_REFUSAL =
   'device tokens no longer authenticate /mcp — an agent session presents its own ' +
   '`job:`/`session:` token, minted by core and written into the job MCP config by ' +
   'forge-runner. A runner box seeing this needs a newer forge-runner binary; the device ' +
   'token still authenticates /ws and the device REST routes.';
 
-// cm:guard `/mcp` does NOT consult `permissions`, and that is a scope line rather than an oversight: ISS-972 put the MCP surface's own permission model outside ISS-973, so today a token narrowed to `issues:read` is narrowed on REST and unnarrowed here. Anyone adding the grant check to this middleware owes the menu an MCP-side mapping first — `/mcp` has tools, not `/api/...` paths, so `patGrantCovers` has nothing to match on and would refuse everything.
 export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> => {
   return async (c, next) => {
     const parsed = parseBearerHeader(c);
@@ -306,7 +291,6 @@ export const requirePat = (): MiddlewareHandler<{ Variables: PrincipalVars }> =>
 
     if (!isPatLike(token)) throw unauth(DEVICE_TOKEN_REFUSAL, { invalidToken: true });
 
-    // cm:edge ordering -> packages/core/src/mcp/request-class.ts — `mcpRequestClass()` mounts ABOVE this middleware and is what sets the var; the `write` fallback is the stricter of the two, so a request that reached here unclassified spends the smaller budget rather than the larger one.
     const principal = await authenticatePat(c, token, c.get('patRequestClass') ?? 'write');
     if (!principal) throw unauth('invalid personal access token', { invalidToken: true });
     c.set('patTokenId', principal.tokenId);

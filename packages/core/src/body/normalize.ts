@@ -52,7 +52,6 @@ function isBlock(node: BodyNode): boolean {
 
 function serializeNode(node: BodyNode): string {
   if (node.type === 'comment') return '';
-  // cm:guard a `raw` text node is emitted VERBATIM — escaping it turns a mermaid `-->` into `--&gt;` and the diagram stops rendering, which is Decision 6's whole point
   if (node.type === 'text') return node.raw ? node.value : escapeText(node.value);
   const attrs = Object.entries(node.attrs)
     .map(([k, v]) => ` ${k}="${escapeAttr(v)}"`)

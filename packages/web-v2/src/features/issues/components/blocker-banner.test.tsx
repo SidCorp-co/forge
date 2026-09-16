@@ -69,7 +69,6 @@ describe("BlockerBanner — a paused run on an issue that looks healthy", () => 
     expect(onResumeRun).toHaveBeenCalledWith("run-42");
   });
 
-  // cm:guard no button for a pause the sweeper frees — offering Resume there asks an operator to do work a sweep is about to do anyway, and a surface that asks for pointless action is the one whose next real ask gets ignored
   it("offers no resume for a pause a person does not clear", () => {
     renderPaused({ resumer: "sweeper", kind: "missing_skill", detail: "open" });
     expect(screen.queryByRole("button", { name: /resume run/i })).toBeNull();
@@ -85,7 +84,6 @@ describe("BlockerBanner — a paused run on an issue that looks healthy", () => 
   });
 });
 
-// cm:guard the needs_info banner points a blocked reader at the DECISION PANEL and never at the comment thread: since ISS-996 a park is settled by answering its question row, and an answer typed into the comments resumes nothing.
 describe("BlockerBanner — an issue parked for information", () => {
   it("points at the decision below rather than the comment thread", () => {
     const blocker = deriveBlockerState({ status: "needs_info" }, undefined, undefined);

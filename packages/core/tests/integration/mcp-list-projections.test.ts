@@ -88,7 +88,6 @@ describe('MCP list projections', () => {
     expect(row).toBeDefined();
     expect(Object.keys(row ?? {})).not.toContain('messages');
     expect(row?.messageCount).toBe(3);
-    // cm:guard `diff` and the three `pipeline*` jsonb columns are unbounded too, and the REST list carries them while this one must not — asserting only `messages` would let the next widening through the one gap it actually costs an agent its turn to hit.
     for (const heavy of [
       'diff',
       'usage',

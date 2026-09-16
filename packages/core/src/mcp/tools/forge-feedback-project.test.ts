@@ -62,7 +62,6 @@ describe('forge_feedback submit refuses to guess the project (ISS-992)', () => {
     expect(insertValues).not.toHaveBeenCalled();
   });
 
-  // cm:why The bound on the change: a read that looks at the wrong feed is visibly empty, so the three reading arms keep resolving the caller's project and are NOT refused.
   it("leaves list resolving the caller's project with no projectId", async () => {
     const tool = forgeFeedbackTool(makeCtx());
 
@@ -75,7 +74,6 @@ describe('forge_feedback submit refuses to guess the project (ISS-992)', () => {
     expect(out.reports).toEqual([]);
   });
 
-  // cm:why The context resolves one project and the caller names another: the row must land where the CALLER said. Before ISS-992 this call filed against the context's project and said nothing.
   it('files into the project the caller named, not the one the context resolves', async () => {
     const tool = forgeFeedbackTool(makeCtx('some-other-project'));
 
@@ -95,7 +93,6 @@ describe('forge_feedback submit refuses to guess the project (ISS-992)', () => {
 
     const inserted = (insertValues.mock.calls[0] as unknown[])?.[0] as Record<string, unknown>;
     expect(inserted.projectId).toBe(PROJECT_ID);
-    // cm:why and the slug the context carries was never looked up — `queueMemberOnly` queued no row for it
     expect(selectLimit).toHaveBeenCalledTimes(2);
   });
 });

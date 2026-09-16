@@ -21,7 +21,6 @@ export interface StatusChipProps {
    *  holding a queued step ("No runner online") in the `session` one — while
    *  keeping the bucket colour + dot for at-a-glance grouping. Overridden only
    *  by the live `running · stage` band. ISS-366 D2, ISS-903. */
-  // cm:guard a session-domain label must be RUN vocabulary — a gate, a step, an execution state — and never an issue lifecycle status: mixing the two is what ISS-366 D2 separated the domains to stop, and honouring `label` here is only sound while that holds
   label?: string;
 }
 
@@ -33,7 +32,6 @@ const SESSION_LABELS: Partial<Record<StatusKey, string>> = {
   zombie: "Stalled",
   paused: "Idle",
   passed: "Verified",
-  // cm:guard "Waiting for me" is the INTERACTIVE-CHAT default (ISS-664) and is a lie for a machine gate — a caller that knows why the run is waiting passes `label`, which now wins over this entry; before ISS-903 it was dropped, so a `retry_cooldown` step whose own copy reads "no action" told the reader to act
   waiting: "Waiting for me",
 };
 
@@ -43,8 +41,6 @@ export function StatusChip({ status, stage, size = "md", domain = "issue", label
   const isSession = domain === "session";
   const baseLabel = isSession ? (label ?? SESSION_LABELS[status] ?? m.label) : (label ?? m.label);
   const text = stage && isRunning ? `running · ${stage}` : baseLabel;
-  // cm:guard the text is BOUNDED and carries its full self in `title`, because `stage` is the step a session recorded and that is untyped jsonb the server writes — not one of a fixed seven. Until ISS-999 the caller folded every value onto a seven-word vocabulary, which bounded the width by accident; the truthful value has no such bound and a long one widened the sessions table and overflowed the mobile card.
-  // cm:why mono is EXECUTION telemetry — a session chip always reads that way, and an issue chip only while it is showing the live `running · step` band, so the two vocabularies never look like one
   const mono = isSession || (stage && isRunning);
   return (
     <span

@@ -31,20 +31,17 @@ const notFound = (message: string) =>
 
 export const issueMergeRoutes = new Hono<{ Variables: AuthVars }>();
 
-// cm:edge ordering -> packages/core/src/index.ts — this router carries `use('*', requireAuth(), ...)`, which covers EVERY /api/issues path once registered, so it must mount after issueAttachmentRoutes for the same reason issueExtrasRoutes does: registration order is what decides, not disjoint paths (ISS-719).
 issueMergeRoutes.use('*', requireAuth(), assertEmailVerified());
 
 const mergeMarkerBodySchema = z
   .object({
     target: z.string().trim().min(1).max(200).optional(),
     note: z.string().trim().min(1).max(2000).optional(),
-    // cm:edge contract -> packages/core/src/mcp/tools/forge-issues.ts — the same field on the MCP door, sharing this schema so one surface cannot accept a sha shape the other refuses
     commit: mergedCommitShaSchema.optional(),
     mergedAt: z.iso.datetime().optional(),
   })
   .strict();
 
-// cm:guard `merged_at` is the feature-branch barrier's release signal (jobs/queued-gates.ts reads it to unblock every `blocks` dependent), so these two are a shipped-work CLAIM, not a field edit — which is why they route through `applyMergeMarker` rather than patching the column, and why `member` is the floor. They exist so the CLI can make that claim over REST without `forge_issues.mark_merged`; a hand-rolled second implementation here would be the copy that forgets the evidence gate.
 async function runMergeMarker(
   c: Context<{ Variables: AuthVars }>,
   op: 'mark' | 'unmark',

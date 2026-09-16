@@ -21,7 +21,6 @@ export type InboundSkipReason = 'own-message' | 'system' | 'edited' | 'empty';
 /**
  * The facts about a message that hold in any room it came from.
  */
-// cm:guard these are about LOOPS and NOISE and apply to every room shape alike — a direct room relaxed only addressing, which no longer exists. Making one of them conditional would let the bot answer its own message, which is an unbounded loop with nothing left to stop it (ISS-987, ISS-1004).
 export function decideSkip(
   msg: RocketChatIncomingMessage,
   botUserId: string,
@@ -29,7 +28,6 @@ export function decideSkip(
   if (msg.userId === botUserId) return 'own-message';
   if (msg.isSystem) return 'system';
   if (msg.isEdited) return 'edited';
-  // cm:guard empty means NOTHING CARRIED, not blank text: a screenshot posted with no caption is a question, and dropping it here left the image out of the durable log entirely, so no window could ever be asked about it (ISS-1004, review pass 2 F6).
   if (!msg.text.trim() && msg.images.length === 0) return 'empty';
   return null;
 }
@@ -47,7 +45,6 @@ export interface SeenTracker {
   /**
    * Take the mark back off an id whose work did not survive.
    */
-  // cm:guard the mark is a claim that this message is DURABLE somewhere, so a collect that rolled back must withdraw it: RC re-emits the same id after enrichment, and a mark left behind by a failed attempt turns that second delivery into a false duplicate — the message is then in no log and in no window, and nobody is owed an answer for a question that was asked (ISS-1004, review pass 2 F3).
   forget(id: string): void;
 }
 
@@ -57,7 +54,6 @@ export function createSeenTracker(cap = 1000): SeenTracker {
     if (seen.has(id)) return true;
     seen.add(id);
     if (seen.size > cap) {
-      // cm:why Set iterates in INSERTION order per spec, which is what makes taking the first entries a drop of the oldest fifth rather than an arbitrary fifth
       const it = seen.values();
       for (let i = 0; i < cap / 5; i++) {
         const next = it.next();

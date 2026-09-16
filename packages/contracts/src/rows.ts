@@ -15,7 +15,6 @@ export type User = Pick<
 
 export type Project = typeof schema.projects.$inferSelect;
 
-// cm:edge contract -> packages/core/src/issues/pipeline-health.ts — ISS-164: that loader derives every member of this union server-side, and the FE renders what it is told rather than re-deriving it; a reason added there and not here renders as nothing at all.
 export type PipelineWaitingReason =
   | 'issue_busy'
   | 'job_held'
@@ -24,7 +23,6 @@ export type PipelineWaitingReason =
   | 'runner_stale'
   | 'runner_too_old';
 
-// cm:edge contract -> packages/core/src/db/schema.ts — mirrors `waitingKinds`; a value here that core cannot store renders a banner nothing can produce, and the reverse leaves an authored kind falling through to generic copy
 export type WaitingCause = 'needs_decision' | 'needs_resource';
 
 export interface PipelineHealth {
@@ -40,14 +38,12 @@ export interface PipelineHealth {
   waitingCause?: { kind: WaitingCause };
 }
 
-// cm:edge contract -> packages/core/src/db/schema.ts — the `model_tier` enum, shared so a client's model picker cannot offer a tier POST /api/agent-sessions/{start,send} would reject (ISS-718)
 export type ModelTier = schema.ModelTier;
 
 export type ProjectMember = typeof schema.projectMembers.$inferSelect;
 
 export type Label = typeof schema.labels.$inferSelect;
 
-// cm:edge contract -> packages/core/src/db/schema.ts — `labelKinds`, shared so a client cannot build a filter or a picker on a kind the server would reject
 export type LabelKind = schema.LabelKind;
 
 /**
@@ -68,7 +64,6 @@ export interface ModuleAttribution {
  * source-path one; `nearestCommonAncestor` is the parent two undeclared cousins hang under, or
  * null when their subtrees are unrelated.
  */
-// cm:edge contract -> packages/core/src/labels/module-drift.ts — the same three interfaces are declared there as the return of `moduleDrift`, and the route serializes that object unchanged; a field added on one side and not the other reads as `undefined` at every consumer
 export interface ModuleDriftNode {
   labelId: string;
   name: string;
@@ -98,7 +93,6 @@ export interface ModuleDriftResponse {
   agreedEdgeCount: number;
 }
 
-// cm:edge contract -> packages/core/src/labels/module-rollup.ts — ISS-949: the rollup's response, re-declared for the same reason `ModuleAttribution` is, and because one more module reached from `public.ts` trips the coordinator-blob limit; a field added there and not here reaches no client
 export interface ModuleCounts {
   total: number;
   open: number;
@@ -135,7 +129,6 @@ export interface ModuleRollupResponse {
   unassigned: ModuleCounts;
 }
 
-// cm:edge contract -> packages/core/src/issues/routes.ts — `serializeIssue` is what adds `displayId` on top of the stored row, and `agentSessions`/`agentStatus` arrive ONLY under `?withAgentSessions=1` (ISS-128); no database row carries any of the three, so a client that reads them off a plain issue row gets `undefined` and no type error.
 export type Issue = typeof schema.issues.$inferSelect & {
   displayId: string;
   agentSessions?: Array<{
@@ -164,7 +157,6 @@ export type JobEvent = typeof schema.jobEvents.$inferSelect;
 
 export type Device = typeof schema.devices.$inferSelect;
 
-// cm:why ISS-305 — this grant code mints a DEVICE token; the desktop user-JWT pairing flow is a separate path and the two are not interchangeable
 export type DeviceLoginCode = typeof schema.deviceLoginCodes.$inferSelect;
 
 // ISS-271 — runner row now carries the per (device × project) repo checkout
@@ -222,5 +214,4 @@ export type UxContractRuleRow = typeof schema.uxContractRules.$inferSelect;
 export type UxFindingRow = typeof schema.uxFindings.$inferSelect;
 
 
-// cm:why ISS-800 — Divergence Charter row type, Update Pipeline §5
 export type DivergenceCharterRow = typeof schema.divergenceCharters.$inferSelect;

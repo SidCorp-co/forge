@@ -170,7 +170,6 @@ function StagePanel({
   async function handleSave() {
     setError(null);
     setTestResult(null);
-    // cm:guard carry `healthUrl` through — a config PATCH replaces the whole `targets` array, so a save that drops the key silently disarms the post-deploy health gate and its rollback (ISS-971). Empty stays absent: the field's absence is what turns the gate off.
     const cleanTargets = targets
       .map((t) => ({
         ...(t.id ? { id: t.id } : {}),
@@ -185,7 +184,6 @@ function StagePanel({
     }
     try {
       if (existing) {
-        // cm:guard `targets` is binding-tier and always sendable by a project admin; baseUrl and token are connection-tier and org-gated, so an org-locked save must NOT include them or the whole PATCH answers 403 and the targets edit is lost with it
         const config: Record<string, unknown> = { targets: cleanTargets };
         if (!orgLocked && baseUrl.trim()) config.baseUrl = baseUrl.trim();
         await update.mutateAsync({

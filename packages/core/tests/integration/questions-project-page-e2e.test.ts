@@ -126,7 +126,6 @@ describe('ISS-1022 · GET /api/questions?projectId= is a page', () => {
     expect(new Set(seen).size).toBe(7);
   });
 
-  // cm:guard the walk is a KEYSET and this is the case that separates it from an offset: a question on the page already read is answered before the next page is asked for, which under an offset shifts every row behind it backward and starts the next page past one of them — a decision dropped from the queue with `hasMore` still reading complete. The cursor names the row it left off at, so nothing in front of it moves (ISS-1022).
   it('reaches every open decision even when one on a page already read is answered mid-walk', async () => {
     const asked: string[] = [];
     for (let i = 0; i < 7; i++) asked.push((await askChoice()).id);
@@ -152,7 +151,6 @@ describe('ISS-1022 · GET /api/questions?projectId= is a page', () => {
     expect(new Set(seen)).toEqual(new Set(asked.filter((id) => id !== closed)));
   });
 
-  // cm:guard the case that separates `hasMore` from "the page came back full": with six rows and a page of three the LAST page holds exactly three, and a `hasMore` read off fullness alone sends the queue to fetch a page that does not exist — the "Load the rest" control offered over nothing (ISS-1022).
   it('says no further page remains on a last page holding exactly the page size', async () => {
     for (let i = 0; i < 6; i++) await askChoice();
 
@@ -171,12 +169,10 @@ describe('ISS-1022 · GET /api/questions?projectId= is a page', () => {
     expect(last?.nextCursor).toBeNull();
   });
 
-  // cm:guard the cursor is compared as the WHOLE `(created_at, id)` key at the precision the database holds it: two questions asked in one transaction share a `created_at` to the microsecond, and two more can differ only below the millisecond a JS `Date` can represent. A cursor that carries the timestamp alone loops on the boundary row forever; one rounded to milliseconds re-matches its own row and does the same (ISS-1022).
   it('returns each of a tied and a sub-millisecond timestamp exactly once, and terminates', async () => {
     const asked: string[] = [];
     for (let i = 0; i < 6; i++) asked.push((await askChoice()).id);
     const { sql } = await import('drizzle-orm');
-    // cm:guard both hard pairs STRADDLE a page boundary at `limit: 2`, which is the whole discriminating power of this case: descending, the page ends on `…04.000002` with `…04.000001` first on the next one, so a cursor rounded to milliseconds excludes a row it has not returned; and it ends again on one of the two rows tied at `…03.000000`, so a cursor carrying the timestamp WITHOUT the id excludes its twin. Put both pairs inside one page and every wrong cursor passes (ISS-1022).
     const at = [
       '2026-01-01 00:00:05.000000+00',
       '2026-01-01 00:00:04.000002+00',
@@ -210,7 +206,6 @@ describe('ISS-1022 · GET /api/questions?projectId= is a page', () => {
     expect(new Set(seen)).toEqual(new Set(asked));
   });
 
-  // cm:guard the two silent readings of a bad cursor, both measured live on beta before this landed: `cursor=abc` had no separator and was DROPPED, so the caller got page one back as though it were the page it asked for — a drain loop that never advances and never says why; and a cursor whose timestamp had been corrupted went into the `::timestamptz` cast and came back a 500, a caller's typo reading as a server fault. Neither is a refusal a caller can act on (ISS-1022).
   it('refuses a cursor it did not mint by name, rather than dropping it or raising on the cast', async () => {
     for (let i = 0; i < 4; i++) await askChoice();
     const { QuestionRefused } = await import('../../src/questions/write.js');
@@ -230,7 +225,6 @@ describe('ISS-1022 · GET /api/questions?projectId= is a page', () => {
     }
   });
 
-  // cm:guard the check is on the SHAPE and deliberately not on authenticity: a hand-built key that decodes is a legal starting point, because the cursor grants nothing — the page is already scoped by this caller's role on the project before the cursor is read at all. This case is here so that "refused" is never quietly widened into "issued by us", which would be a claim the implementation does not make (ISS-1022).
   it('accepts a decodable key the caller built itself, because a cursor grants nothing', async () => {
     const asked: string[] = [];
     for (let i = 0; i < 4; i++) asked.push((await askChoice()).id);
@@ -249,7 +243,6 @@ describe('ISS-1022 · GET /api/questions?projectId= is a page', () => {
     expect(page?.total).toBe(4);
   });
 
-  // cm:guard the cursor must survive a query string UNESCAPED, because "send it back exactly as it arrived" is the whole contract and a caller reading that sentence will do exactly that. The raw key carries a space and a `+`, and `+` in a query string decodes to a space — measured on beta, where the unescaped form answered 500 (ISS-1022).
   it('mints a cursor with no character a query string would alter', async () => {
     for (let i = 0; i < 4; i++) await askChoice();
     const page = await read.projectQuestionsFor(ctx.projectId, ctx.adminId, undefined, {
@@ -303,7 +296,6 @@ describe('ISS-1022 · the list row answers without carrying the history', () => 
     expect(row.steps).toBeUndefined();
   });
 
-  // cm:guard dropping `steps` is only safe because `currentStep` replaces it: `QuestionCard` in web-v2 renders this queue and reads the live round off the row, so a projection that sends neither leaves that screen drawing an undefined round with a submit bound to nothing. `rounds` is what says how many are not on the row.
   it('replaces the dropped history with the live round and a count of the rest', async () => {
     await askChoice();
     const page = await read.projectQuestionsFor(ctx.projectId, ctx.adminId);
@@ -315,7 +307,6 @@ describe('ISS-1022 · the list row answers without carrying the history', () => 
     expect(row.rounds).toBe(1);
   });
 
-  // cm:guard the row must say what is being ASKED and which round it is: `POST /api/questions/:id/answer` refuses an answer that does not carry the round the person was shown, so a list carrying the controls without the prompt and the round is a queue a reader can see and cannot answer. Dropping `steps` is what makes these two derived fields load-bearing.
   it('carries the prompt and the round of the live decision, which the dropped array used to carry', async () => {
     await askChoice();
     const page = await read.projectQuestionsFor(ctx.projectId, ctx.adminId);
@@ -333,7 +324,6 @@ describe('ISS-1022 · the list row answers without carrying the history', () => 
     expect(row?.recommendedOptionId).toBe(CHOICE_OPTION.id);
     expect(row?.needed).toBe('');
     expect(row?.locked).toBe(false);
-    // cm:guard the per-option `locked` verdict is the SERVER's and the list must carry it, not only the detail: an admin-authority option shown unlocked in a queue is a decision the reader is invited to take and will then be refused.
     expect(row?.options.map((o) => [o.id, o.locked])).toEqual([
       [CHOICE_OPTION.id, false],
       [ADMIN_OPTION.id, false],

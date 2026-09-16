@@ -9,5 +9,4 @@
 
 export const AUTH_COOKIE_NAME = 'forge_auth';
 
-// cm:edge naming -> packages/core/src/auth/cookie.ts — `setRefreshCookie` scopes this cookie to /api/auth so no other route can log it; a reader that assumes it arrives on every path will find it absent rather than wrong.
 export const REFRESH_COOKIE_NAME = 'forge_refresh';

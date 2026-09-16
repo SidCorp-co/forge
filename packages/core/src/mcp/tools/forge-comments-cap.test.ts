@@ -19,7 +19,6 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const selectLimit = vi.fn();
-// cm:guard `.orderBy()` must be awaitable AND `.limit()`-able, and LAZILY so — the reply query in `listIssueCommentPage` awaits at `orderBy` with no `limit` after it while the root query calls `.limit()` on the same object (ISS-956)
 const selectOrderByRows = vi.fn(async (): Promise<unknown[]> => []);
 const selectOrderBy = vi.fn(() => ({
   limit: selectLimit,
@@ -30,7 +29,6 @@ const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy })
 const selectInnerJoin = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-// cm:guard `insertComment`'s stage read used to join `projects` and be told apart by that join; since the body mandate was removed (2026-09-14) it is a plain `from(issues).where().limit()`, indistinguishable from an auth lookup by chain shape — so the stage row is queued on `selectLimit` like any other, and a case one short resolves its insert against an auth row.
 const selectFrom = vi.fn(() => ({
   where: selectWhere,
   innerJoin: selectInnerJoin,
@@ -76,7 +74,6 @@ function authzHits() {
   selectLimit.mockResolvedValueOnce([memberAccessRow]);
 }
 
-// cm:guard a WRITE queues one more row than a read: `insertComment` reads the issue's stage after the two auth lookups, and since the body mandate was removed (2026-09-14) that read is a plain `from(issues).where().limit()` indistinguishable from them by chain shape. Calling this before a LIST instead makes the list resolve the stage row as its comment page, and `serialize` then reads `body` off a row that has none.
 function writeHits() {
   authzHits();
   selectLimit.mockResolvedValueOnce([{ stage: 'open' }]);
@@ -186,7 +183,6 @@ describe('forge_comments body cap (ISS-958)', () => {
     })) as { comments: Array<{ body: string }> };
 
     expect(envelope.comments).toHaveLength(1);
-    // cm:why the read projection FRAMES a body as untrusted data (ISS-532), so byte-identity is asserted on what reached the INSERT above; here the assertion is that the whole record survives the round trip inside that frame rather than being split, trimmed or truncated
     expect(envelope.comments[0]?.body).toContain(body);
   });
 

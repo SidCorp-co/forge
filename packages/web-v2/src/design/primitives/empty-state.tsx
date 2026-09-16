@@ -10,7 +10,6 @@ export interface EmptyStateProps {
   /** Lead with the mascot (default). Set false for dense inline spots. */
   mascot?: boolean;
   /** Id for the headline, which also makes it programmatically focusable. */
-  // cm:guard `tabIndex={-1}` rides WITH the id rather than being always-on: a heading in the tab order is a stop that does nothing for every keyboard user on every screen, and a screen that has to move focus here after a list empties needs it reachable by script only (ISS-998).
   titleId?: string;
 }
 

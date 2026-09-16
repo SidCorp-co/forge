@@ -23,7 +23,6 @@ async function readProjectName(projectId: string): Promise<string | null> {
   return row?.name ?? null;
 }
 
-// cm:guard the holder is named ONLY to a caller who can already see it. Probing candidate prefixes would otherwise enumerate the private projects on the deployment one refusal at a time, and the issue asks for uniqueness, not for disclosure (codex review of ISS-992).
 async function issuePrefixRefusal(
   refusal: Exclude<AssignPrefixResult, { ok: true }>,
   userId: string,

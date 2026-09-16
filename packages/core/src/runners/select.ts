@@ -11,21 +11,14 @@ import type { RequiredCapabilities } from './types.js';
  * in the enclosing query (works whether the runner row is aliased or not;
  * `devices` has no `device_id` column so the bare ref resolves outward).
  */
-// cm:guard this correlates on a BARE `device_id` so it resolves outward whether or not the caller aliases `runners` — which means NO other column named `device_id` may be in scope where it is used. A join or subquery exposing a second one makes the reference ambiguous and Postgres fails the WHOLE query, which surfaces as "no runner available" for every job on the project rather than as an error anyone attributes to this line. Alias such keys (`AS load_device_id`), do not qualify this one.
 const NOT_DISABLED_DEVICE = sql`AND NOT EXISTS (
   SELECT 1 FROM devices d WHERE d.id = device_id AND d.disabled_at IS NOT NULL
 )`;
 
-// cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — every candidate predicate in this file must also sit in `fresh_capable_runners`; a clause here and not there makes the picker offer a job this selector then refuses, and the job spins `queued` forever with no gate reason
-// cm:why placed alongside rate_limited_until (not a bare column ref) so it
-// resolves correctly whether the enclosing query aliases `runners` as `r.` or not
 const NOT_QUARANTINED = sql`AND (quarantined_until IS NULL OR quarantined_until <= now())`;
 
-// cm:guard `auth` MUST be excluded by NAME, never left to `rate_limited_until` — that column is NULL for an auth limit BY DESIGN (no parseable reset), so the time-based filter passes it and an auth-dead box reads as perfectly healthy. lib/device-pool.ts has carried this exact clause for the chat path all along; the job path did not, and device dev1-ai013 took 421 jobs on an expired OAuth session in 5.5h (forge-beta 2026-08-14).
 const NOT_AUTH_LIMITED = sql`AND limit_reason IS DISTINCT FROM 'auth'`;
 
-// cm:guard NULL means "legacy row, never provisioned" and MUST stay eligible — 4 runners are NULL today and blocking them would starve their projects for a column they predate. Only an EXPLICIT non-ready value blocks.
-// cm:guard a workspace that is not `ready` cannot run a job, and this gate is the only thing that says so — `provision_status` was write-only telemetry (web drew a stepper, no dispatch path read it), so runner ubuntu1/Anhome sat at `needs_manual_setup` while the picker fed it one job an hour for 8 hours, every one dying on `preflight_failed: work_tree` (measured 2026-08-14).
 const WORKSPACE_READY = sql`AND (provision_status IS NULL OR provision_status = 'ready')`;
 
 /**
@@ -34,8 +27,6 @@ const WORKSPACE_READY = sql`AND (provision_status IS NULL OR provision_status = 
  *
  * `column` lets a caller that aliases `runners` pass `sql`r.device_id``.
  */
-// cm:guard this belongs in the same WHERE as rate_limited_until, NOT in an exclude set — the retry rotation re-runs with its exclusions cleared when a round wraps, so a pool expressed as an exclusion evaporates exactly when every pool member is tripped
-// cm:guard build a parenthesised parameter list and use `IN (...)`. Drizzle expands an interpolated JS array as a ROW CONSTRUCTOR ($4,$5,$6,$7), so `= ANY(tuple::uuid[])` dies with `cannot cast type record to uuid[]` — the handler throws, pg-boss dead-letters after 2 retries, and the job row stays `queued` with `gateReason: null` forever. That killed EVERY dispatch on forge-dev for 11 days (2026-08-14 to 2026-08-25), because a pool is configured on every one of its states. Same idiom as lib/device-pool.ts.
 function poolClause(deviceIds: string[] | null | undefined, column = sql`device_id`) {
   if (!deviceIds || deviceIds.length === 0) return sql``;
   return sql`AND ${column} IN (${sql.join(
@@ -72,7 +63,6 @@ export function defaultRunnerCapabilities(
  *
  * `capabilities.pm` is the PM opt-in written by {@link defaultRunnerCapabilities}.
  */
-// cm:guard this reads ONE row for a device that may hold several — the unique index is `runners_project_device_type_uq` (project, device, type), so a device bound to two projects has two `claude-code` rows and this `limit(1)` is unordered between them. The header used to claim an index named `runners_device_type_uq` pinned one row per device; no such index exists. Which project's capabilities a device-only caller means is undecided — docs/proposals/mcp-runner-status-writes-are-unaudited.md carries it.
 export async function readDeviceClaudeCodeCapabilities(
   deviceId: string,
 ): Promise<Record<string, unknown> | null> {
@@ -173,7 +163,6 @@ export async function onlineCapableDeviceIds(
 ): Promise<string[]> {
   const required = JSON.stringify(requiredCapabilities ?? {});
   const livenessSeconds = Math.floor(dispatchLivenessMs() / 1000);
-  // cm:guard `includeBelowFloor` widens the set for REPORTING only and must never reach a routing caller — a below-floor box cannot claim, so a picker or rotation handed one is back in the deadlock this clause was added to close. Its single legitimate use is telling an operator "your fleet is too old" apart from "your fleet is offline", which are the same empty set otherwise.
   const floorClause = opts?.includeBelowFloor ? sql`` : CLAIM_CAPABLE_DEVICE;
   const limitClause = opts?.includeLimited
     ? sql``

@@ -139,7 +139,6 @@ describe('steer E2E', () => {
     expect(frame?.data.jobId).toBe(s.jobId);
   });
 
-  // cm:guard THIS is the assertion the feature exists to satisfy, and it is the one a passing delivery test cannot stand in for. Drop `actor` from the `requestSessionSend` call in steer-session.ts and only this goes red: the instruction still arrives, the session still runs, and a human reaching into a running agent stops being counted anywhere.
   it('charts the steer as manual_inject in the interventions view', async () => {
     const s = await seed();
 
@@ -171,7 +170,6 @@ describe('steer E2E', () => {
     expect(view[0]?.detail).toBe('duplicating a helper');
   });
 
-  // cm:guard the park belongs to `pipeline/answer-resume.ts`, and letting a steer through here is not a widening — it is a SECOND writer onto one session. The parked agent asked something; the reply would arrive as the next turn's prompt, answering a question it had already moved past.
   it('refuses a session parked on a question, and names the door that owns it', async () => {
     const s = await seed({ runtimeState: 'awaiting_input' });
 
@@ -208,7 +206,6 @@ describe('steer E2E', () => {
     ).toBe('NO_LIVE_SESSION');
   });
 
-  // cm:guard a send with no device room reaches a durable row and nothing else. Returning it as a result would tell the caller their instruction landed in an agent that will never read it — the `state-never-lies` violation item 1 is about, arriving through the door item 2 opened.
   it('refuses rather than reporting success when there is no device to deliver to', async () => {
     const s = await seed({ withDevice: false });
 
@@ -224,7 +221,6 @@ describe('steer E2E', () => {
     ).toBe('NO_DEVICE');
   });
 
-  // cm:guard the idempotency key is the COMMENT id, so a redelivery of one intent must not queue the instruction twice. Two separate steers are two comments and therefore two rows — that is the case this distinguishes it from.
   it('gives two separate steers two rows', async () => {
     const s = await seed();
     const send = await steer();

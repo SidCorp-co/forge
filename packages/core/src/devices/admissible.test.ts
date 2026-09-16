@@ -38,7 +38,6 @@ beforeEach(() => {
 });
 
 describe('readAdmissions', () => {
-  // cm:guard the entry status is admitted with NO `poolBacklog` declared, and that is the whole of criterion 23's other half: since ISS-933 core mints no drive job, so a project that offered only its declared backlog would go silent with no error anywhere saying why.
   it('admits the entry status even when no poolBacklog is declared', async () => {
     execute.mockResolvedValueOnce([projectRow({ enabled: true })]);
     await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([
@@ -52,7 +51,6 @@ describe('readAdmissions', () => {
     expect(a?.statuses).toEqual(['draft', 'open']);
   });
 
-  // cm:guard a GATED project admits the entry status only for an issue a human released by hand. `mode:'manual'` means a human presses Run, and it kept that meaning when the gate moved from "core mints" to "the issue is offered".
   it('withholds the entry status while a human holds the gate', async () => {
     execute.mockResolvedValueOnce([
       projectRow({ states: { open: { mode: 'manual' } }, poolBacklog: { statuses: ['draft'] } }),
@@ -85,13 +83,11 @@ describe('readAdmissions', () => {
     expect(a?.limit).toBe(20);
   });
 
-  // cm:guard the SAFE direction. A stored config this build can no longer parse must read as NO backlog: a hand-read would keep offering rows `promoteFromBacklog` then refuses, and the master could not tell which of the two surfaces was wrong.
   it('reads a config the canonical schema rejects as no backlog at all', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['open'] } })]);
     await expect(readAdmissions({ deviceId: DEVICE })).resolves.toEqual([]);
   });
 
-  // cm:guard the device principal must see only what its own bindings cover. Scoped through `runners` exactly as `readPool` is; a query that dropped the join would hand a paired box its owner's whole account.
   it('scopes the project read through this device runners binding', async () => {
     execute.mockResolvedValueOnce([]);
     await readAdmissions({ deviceId: DEVICE });
@@ -115,7 +111,6 @@ describe('readAdmissibleIssues', () => {
     expect(execute).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard AC4 — no `jobId` on a backlog row, ever. A row a master could hand to `pool claim` is a malformed claim waiting to happen, and keeping the field off the type is the whole reason the backlog is a sibling key.
   it('returns rows carrying no job id', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'] } })]);
     execute.mockResolvedValueOnce([issueRow()]);
@@ -154,7 +149,6 @@ describe('readAdmissibleIssues', () => {
     expect(row).not.toHaveProperty('satisfied');
   });
 
-  // cm:guard "no work has been opened for this issue" and NOTHING else. A dependency filter, a priority ordering or a cap beyond the project's own `limit` are the master's judgements — a backlog that pre-decides them is the kernel routing again through a second door.
   it('excludes issues that already carry a job or an open run, and nothing more', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'], limit: 3 } })]);
     execute.mockResolvedValueOnce([]);

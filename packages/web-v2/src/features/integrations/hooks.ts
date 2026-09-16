@@ -323,7 +323,6 @@ export function useCanManageConnection(
 
 function useInvalidateConnections() {
   const qc = useQueryClient();
-  // cm:edge protocol -> packages/core/src/integrations/connection-routes.ts — the connection router emits NO project-room broadcast (only the project router calls broadcastIntegrationChanged), so a connection write reaches project-scoped views ONLY through this second key
   return () => {
     qc.invalidateQueries({ queryKey: ["integration-connections"] });
     qc.invalidateQueries({ queryKey: ["integrations"] });

@@ -40,7 +40,6 @@ export const STRANDED_GRACE_MS = 6 * 60 * 60 * 1000;
  * without it "read" means "pinged again within the minute", every minute, for
  * the life of the park.
  */
-// cm:guard this MUST stay wider than the sweep interval (`pipeline/sweeper.ts`, 60s) by a large margin, and it is what bounds the predicate below: that predicate matches EVERY `waiting` park past the grace window, i.e. roughly the number of parked issues on the fleet, rather than the rare merged-and-parked contradiction the deleted staged arm needed. A cooldown at or below the sweep interval reintroduces exactly the per-tick storm.
 export const STRANDED_RENOTIFY_MS = 24 * 60 * 60 * 1000;
 
 export interface StrandedIssuesResult {
@@ -54,7 +53,6 @@ export function strandedResolutionKey(issueId: string): string {
   return `issue:${issueId}:stranded`;
 }
 
-// cm:edge lockstep -> packages/core/src/notifications/notify-transitions.ts — the key is cleared when the issue reaches a terminal placement, and a key nothing clears is an alarm that stays lit after the close it asked for
 export function owedCloseResolutionKey(issueId: string): string {
   return `issue:${issueId}:owed-close`;
 }
@@ -65,8 +63,6 @@ export function owedCloseResolutionKey(issueId: string): string {
  * project has no admin at all — nobody was reachable, which is the one case a
  * `notified` count of zero cannot distinguish from "nothing to say".
  */
-// cm:guard `resolved_at IS NULL` is the OUTER condition and must stay outside the `or` — it is what "this strand is still the one we alarmed about" means (db/schema.ts says every reader owes this column, never `read`). A resolved row is a strand that ENDED: the condition cleared and `notifications/auto-resolve.ts` stamped it. Suppressing on that row would mute a genuine RE-strand for the rest of the window — ~16h of silence indistinguishable from no strand, in the module whose whole job is breaking silence.
-// cm:guard inside the `or`, unread **or** recently sent, never existence alone — existence alone surfaces a strand once and never again, and unread alone re-pings every 60s tick from the moment a human reads it. Reading means "seen", not "resolved", so it stops suppressing; {@link STRANDED_RENOTIFY_MS} is what stops "seen" meaning "tell me again this minute".
 async function surfaceOnce(args: {
   now: Date;
   projectId: string;
@@ -113,7 +109,6 @@ async function surfaceOnce(args: {
  * nothing coming for it. Best-effort: never throws — a failure here must not
  * abort the sweep.
  */
-// cm:guard the age is measured from `updated_at`, and the `merged_at` arm this used to carry alongside it went with the staged lane (ISS-895): a park in this lane has no merge to date it from, so a `merged_at`-only test would age nothing and this pass would report zero forever.
 export async function detectStrandedIssues(
   now: Date = new Date(),
   scope: { projectId?: string } = {},
@@ -165,8 +160,6 @@ export async function detectStrandedIssues(
       else notified += sent;
     }
 
-    // cm:guard gated on `notified`, NOT on `detected` — a park already surfaced is not news, and this runs every 60s against a predicate that matches every parked issue on an autonomous project. Logging the detection instead reprints the same issue ids each minute for as long as the park lasts, which buries the tick where something actually changed.
-    // cm:guard `unreachable` is the second arm and is NOT redundant: a project with no admin at all (`projectAdminUserIds` returns none) notifies nobody, so gating on `notified` alone would make the one case where the alarm reaches NO human the one case that also prints nothing.
     if (notified > 0 || unreachable > 0) {
       logger.warn(
         { detected: rows.length, notified, unreachable, issueIds: rows.map((r) => r.id) },
@@ -192,8 +185,6 @@ export async function detectStrandedIssues(
  * Detection + notify only, like the park above: closing is a claim about
  * shipped work, and a pass that cannot read the repo must not make it.
  */
-// cm:guard `merged_at` alone is NOT this shape and never becomes it — a reopened issue carries the stamp of its first landing while real work is in flight. The live-job and running-run exclusions are what separate the two, and dropping either turns this alarm on every issue that has ever shipped anything (ISS-940).
-// cm:edge lockstep -> packages/core/src/pipeline/reconciler.ts — the rescue pass excludes exactly these rows from re-dispatch, so this is the only thing that says a stamped issue exists; drop it and the exclusion becomes the silence it was added to replace
 export async function detectOwedCloses(
   now: Date = new Date(),
   scope: { projectId?: string } = {},
@@ -219,7 +210,6 @@ export async function detectOwedCloses(
           isNotNull(issues.mergedAt),
           lt(issues.mergedAt, cutoff),
           notInArray(issues.status, terminal),
-          // cm:guard write `issues.id` LITERALLY in both subqueries — drizzle renders a column reference interpolated into a raw `sql` template UNQUALIFIED, so `${'$'}{issues.id}` becomes a bare `id`, which inside `from jobs j` resolves to `j.id` and makes the clause `j.issue_id = j.id`: never true, `not exists` always true, and the exclusion silently disappears. Caught by owed-close-e2e.test.ts, which is the only place it can be caught.
           sql`not exists (select 1 from jobs j where j.issue_id = issues.id and j.status in ('queued','dispatched','running'))`,
           sql`not exists (select 1 from pipeline_runs r where r.issue_id = issues.id and r.status = 'running')`,
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),

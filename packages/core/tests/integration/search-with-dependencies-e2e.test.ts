@@ -144,7 +144,6 @@ async function insertEdge(opts: {
   return id;
 }
 
-// cm:guard `projects.issue_prefix` is held by `projects_issue_prefix_fk` against `issue_prefix_aliases`, so the alias row comes FIRST — a bare UPDATE on `projects` answers 23503
 async function setPrefix(projectId: string, prefix: string): Promise<void> {
   await harness.db.execute(
     sql`INSERT INTO issue_prefix_aliases (project_id, prefix) VALUES (${projectId}, ${prefix})`,
@@ -176,7 +175,6 @@ describe('ISS-1017 · search ?withDependencies against a real database', () => {
     for (const row of rows) expect(row).not.toHaveProperty('dependencies');
   });
 
-  // cm:guard this is the case the mocked suites cannot answer: the one query has to reach an edge through EITHER endpoint column, so a WHERE that lost the OR still returns half the page's badges and nothing goes red
   it('files one edge on both of the rows it joins, in the right direction', async () => {
     const blocker = await insertIssue('blocker');
     const blocked = await insertIssue('blocked');
@@ -189,7 +187,6 @@ describe('ISS-1017 · search ?withDependencies against a real database', () => {
     expect(byTitle(rows, 'blocked').dependencies?.outgoing).toEqual([]);
   });
 
-  // cm:guard these two are what the both-endpoints case above CANNOT prove: with both ends on the page either half of the `OR` finds the edge on its own, so only a page holding ONE end goes red when the other half is dropped. Measured 2026-09-15 by deleting the `to_issue_id` half — every other case in this file still passed.
   it('finds the edge through to_issue_id when only the blocked end is on the page', async () => {
     const hidden = await insertIssue('hidden-blocker');
     const shown = await insertIssue('shown-dependent');
@@ -229,7 +226,6 @@ describe('ISS-1017 · search ?withDependencies against a real database', () => {
     expect(fromList).toEqual(fromEndpoint);
   });
 
-  // cm:guard the writer refuses a cross-project edge (dependency-service CROSS_PROJECT), so this fixture is inserted directly — the read must still name each endpoint under ITS OWN project, because naming a blocker in another project under this page's prefix reports a different issue that exists
   it("names an endpoint in another project with that project's prefix", async () => {
     const other = await createTestProject(harness.db, user.id);
     await setPrefix(project.id, 'FD');
@@ -243,7 +239,6 @@ describe('ISS-1017 · search ?withDependencies against a real database', () => {
     expect(edge?.toDisplayId?.startsWith('FX-')).toBe(true);
   });
 
-  // cm:guard `project_id` scopes the EDGE and the page is one project's, so an edge recorded under another project's scope is not this page's to render even when one of its ends is on the page
   it('leaves an edge scoped to another project out of this page', async () => {
     const other = await createTestProject(harness.db, user.id);
     const a = await insertIssue('a');

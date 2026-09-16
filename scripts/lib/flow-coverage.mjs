@@ -10,7 +10,6 @@
 
 export const FLOW_RE = /cm:flow\s+([A-Za-z0-9_-]+)\/([A-Za-z0-9_-]+)/;
 
-// cm:why a cm:flow annotation sits on a comment line ABOVE the code it names, so the step's line falls just outside its own function — hence the tightest containing function, or failing that one declared within 5 lines below
 const LOOKAHEAD = 5;
 
 export function parseSites(grepStdout, flows) {
@@ -44,7 +43,6 @@ export function fnHitsAt(entry, line) {
   return best;
 }
 
-// cm:guard the statement a step NAMES is the nearest one at or below the annotation, never the tightest enclosing one — a `cm:flow` above a function sits inside no statement, and widening to enclosing statements would answer with the whole function body and make this level identical to the function level it exists to distinguish
 export function stmtHitsAt(entry, line) {
   let best = null;
   for (const [id, loc] of Object.entries(entry.statementMap ?? {})) {
@@ -86,7 +84,6 @@ export function lookup(source, site) {
   };
 }
 
-// cm:guard a step with several annotation sites is covered when ANY site is, per source and per level independently — collapsing the two levels into one merge would let a function-hit at site A vouch for a statement at site B
 export function mergeSites(prev, per) {
   if (!prev) return per;
   return prev.map((p, i) => {

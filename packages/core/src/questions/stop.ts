@@ -12,8 +12,6 @@ import { agentSessions, terminalAgentSessionStatuses } from '../db/schema.js';
 import { agentQuestions } from '../db/schema-questions.js';
 
 export async function stopSession(args: { agentSessionId: string; by: string; reason: string }) {
-  // cm:guard the record moves FIRST and unconditionally — no liveness check, no process lookup, no delivery attempt. Whether a process exists is exactly what a stop cannot know, and gating the write on it is how a stop becomes a request (ISS-964 criterion 17).
-  // cm:guard the two writes are ONE transaction under the kernel marker, or migration 0219's triggers file this stop in `unaudited_transitions` and the interventions metric reads a deliberate verb as a human hand on the database.
   await withKernelMarker(db, async (tx) => {
     await tx
       .update(agentSessions)

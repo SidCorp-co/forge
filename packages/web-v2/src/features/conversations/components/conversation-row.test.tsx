@@ -51,9 +51,6 @@ describe("ConversationRow · the actions on a row", () => {
     expect(screen.getByRole("button", { name: "Delete Release plan" })).toBeInTheDocument();
   });
 
-  // cm:guard the action is asserted NOT to be inside the open target: a button nested in a button is
-  // invalid HTML that React hoists out of its parent, and the press that lands on the inner one both
-  // deletes the room and opens it.
   it("keeps every action outside the button that opens the room", () => {
     mount();
     const opener = screen.getByRole("button", { name: "Open Release plan in Alpha" });
@@ -62,9 +59,6 @@ describe("ConversationRow · the actions on a row", () => {
     }
   });
 
-  // cm:guard the reveal is keyed on focus-within as well as hover, because a control a keyboard can
-  // tab to and never see is a control a keyboard user cannot use: the tab lands, the row looks
-  // unchanged, and nothing on screen says where focus went.
   it("reveals the actions on focus and not on hover alone", () => {
     mount();
     const actions = screen.getByRole("button", { name: "Delete Release plan" }).parentElement;
@@ -115,8 +109,6 @@ describe("ConversationRow · renaming in place", () => {
     expect(screen.getByLabelText("Conversation name")).toHaveValue("Release plan");
   });
 
-  // cm:guard Escape is asserted to write NOTHING, not merely to close: an editor that committed on
-  // the way out would rename a room every time somebody opened the editor and changed their mind.
   it("writes nothing when the editor is dismissed with Escape", () => {
     const props = mount();
     fireEvent.click(screen.getByRole("button", { name: "Rename Release plan" }));

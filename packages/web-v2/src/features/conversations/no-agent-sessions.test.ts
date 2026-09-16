@@ -17,14 +17,12 @@ import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
 import { describe, expect, it } from "vitest";
 
-// cm:guard every path a person can reach a CHAT through, and nothing whose subject is a run. `app/(workspace)/layout.tsx` is here because it mounts the dock and the overlay; `features/session` and `features/sessions` are deliberately absent, because a screen whose subject is a session is where `agent_sessions` BELONGS (ISS-1004 step 5, criterion 29).
 const CONVERSATION_SURFACES = [
 	"src/features/conversations",
 	"src/app/(workspace)/conversations",
 	"src/app/(workspace)/layout.tsx",
 ];
 
-// cm:why the store's own name, the REST path that serves it and the React Query prefix the run screens key under: a surface that reads a run reaches it through one of the three, and a surface that reads a room reaches none of them.
 const RUN_STORE = [/agent_sessions/, /agent-sessions/, /["'`]agent-session["'`]/];
 
 const files = (path: string): string[] => {
@@ -39,7 +37,6 @@ const files = (path: string): string[] => {
 	return readdirSync(full).flatMap((entry) => files(join(path, entry)));
 };
 
-// cm:guard comments are stripped before the match, and that is the POINT rather than a convenience: this file's own subject is prose about `agent_sessions`, and so is the note on `grouping.ts` saying what the popover used to read. A guard that cannot tell a mention from a read would be paid off by deleting the explanation.
 const code = (body: string): string =>
 	body
 		.replace(/\/\*[\s\S]*?\*\//g, "")

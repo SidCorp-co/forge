@@ -45,9 +45,6 @@ describe('composeLayers', () => {
     expect(out).toBe('first\nlast');
   });
 
-  // cm:guard a token the door does not name THROWS and a null one drops its line, and the two may
-  // not be folded: dropping on both makes a typo in a token an instruction that silently leaves the
-  // persona, which no reader of the rendered text can see (criterion 5).
   it('throws naming the layer and the token for a token the values map does not name (criterion 5)', () => {
     expect(() =>
       composeLayers([layer('tools', 'reads {nobodyNamesThis}')], { askedBy: null }),
@@ -87,9 +84,6 @@ describe('the layers this repository ships', () => {
     ]);
   });
 
-  // cm:guard "no code" is asserted over the FILE, because that is the property the split claims: a
-  // layer that grew a function would be a second reader of its own text and the composer would stop
-  // being the only one (criterion 11).
   it('exports no function from any layer module (criterion 11)', () => {
     for (const file of ALL_LAYERS.map((l) => `${l.id === 'base' ? 'base' : l.id}.ts`)) {
       const src = readFileSync(join(HERE, file), 'utf8');
@@ -102,10 +96,6 @@ describe('the layers this repository ships', () => {
 /**
  * Which benchmark task measures which layer, and why.
  */
-// cm:guard FROZEN here as well as declared on the layer, and the two are compared: a header held
-// only to "names a shipped task id" stays green when a layer is repointed at an unrelated task,
-// which is the layer-to-measurement contract quietly going away (codex F2). A pair added or moved
-// has to be justified in this table in the same change.
 const MANIFEST: Record<LayerId, Record<string, string>> = {
   identity: {
     'memory-question':
@@ -159,9 +149,6 @@ describe('every layer names the tasks that measure it', () => {
     }
   });
 
-  // cm:guard an empty header is legal and LOUD: the benchmark walks the browser door only, so the
-  // room layer has no task, and borrowing one from another door would be a measurement claim
-  // nobody can take (criterion 8).
   it('says why, where it names none (criterion 8)', () => {
     for (const l of ALL_LAYERS) {
       if (l.benchTasks.length > 0) expect(l.whyUnmeasured, l.id).toBeUndefined();
@@ -176,8 +163,6 @@ describe('every layer names the tasks that measure it', () => {
     }
   });
 
-  // cm:guard the other direction, which is the one a reader of the benchmark needs: a task no layer
-  // claims is a figure that moves with nobody owning it (criterion 10).
   it('leaves no shipped task unclaimed by some layer (criterion 10)', () => {
     const claimed = new Set(ALL_LAYERS.flatMap((l) => [...l.benchTasks]));
     expect([...shipped].filter((id) => !claimed.has(id))).toEqual([]);
@@ -209,9 +194,6 @@ describe('the order each door composes', () => {
     expect(METHOD_LAYERS.map((l) => l.id)).toEqual(['base', 'tools']);
   });
 
-  // cm:guard the EQUALITY and not only the order, which is what criterion 18 actually says: the
-  // order test passes for a guide that composed the right layers and then appended a sentence of
-  // its own, which is exactly the second copy ISS-1007 removed and this split has to keep removed.
   it('composes the guide body from those layers and adds nothing (criterion 18)', () => {
     expect(ASSISTANT_METHOD_GUIDE.body).toBe(composeLayers(METHOD_LAYERS));
   });
@@ -221,10 +203,6 @@ describe('what the layers had to say to close ISS-1057', () => {
   const tools = ALL_LAYERS.find((l) => l.id === 'tools') as PromptLayer;
   const linking = ALL_LAYERS.find((l) => l.id === 'linking') as PromptLayer;
 
-  // cm:guard asserted as a property of every `-h` SENTENCE rather than as the absence of the
-  // string: `-h` still has a legitimate mention — the way out for a verb whose form is not carried
-  // — and a test reading for the bare substring would have to choose between forbidding that and
-  // catching nothing (criterion 15).
   it('mentions -h only as the way out for a verb whose form is not carried (criterion 15)', () => {
     const sentences = (text: string): string[] =>
       text.split(/(?<=[.;])\s+|\n/).filter((s) => s.includes('-h'));
@@ -243,11 +221,6 @@ describe('what the layers had to say to close ISS-1057', () => {
     expect(linking.text).toContain('`#/` route');
   });
 
-  // cm:guard the layer POINTS AT the carried forms and does not restate them: `READ_FORMS` is
-  // generated into the `forge` tool's own description and held to the bundled CLI's Usage lines by
-  // `forge-cli-forms.test.ts`, so a copy here would be the one thing that can go stale silently.
-  // The plan's criterion 12 said the layer carries the forms; it points at them, and the correction
-  // on the issue says so (criterion 12).
   it('tells the model the forms are already in the tool description (criterion 12)', () => {
     expect(tools.text).toContain('the forms you need are already in its description');
   });

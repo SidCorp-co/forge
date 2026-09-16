@@ -152,7 +152,6 @@ describe('the heartbeat tick', () => {
       closed_at: null,
     });
 
-    // cm:guard the second tick is the assertion that the heartbeat window it just opened counts as a window OPEN: without that clause every tick would add one (ISS-1034 criterion 36 "exactly one").
     expect(await heartbeat.runHeartbeatTick(NOW)).toMatchObject({
       opened: 0,
       skipped: { 'window-open': 1 },
@@ -182,7 +181,6 @@ describe('the heartbeat tick', () => {
     });
   });
 
-  // cm:guard two INDEPENDENT connections, because one connection sees its own uncommitted insert and the partial unique index is never asked the question this case exists for (ISS-1034 criterion 65).
   it('two ticks racing on one room open one window between them (criterion 65)', async () => {
     await self({ heartbeat: { enabled: true, intervalMs: HOUR } });
     await say('agent', 'earlier answer', 5 * HOUR);

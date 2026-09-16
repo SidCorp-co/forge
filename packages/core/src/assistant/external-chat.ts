@@ -61,7 +61,6 @@ export interface ExternalChatTurnArgs {
    * this reply honours and whose writes the speaker-bound tools make. Distinct
    * from `userId`, which is who the turn ACTS as (ISS-1034).
    */
-  // cm:guard three values, three meanings: absent means "the principal spoke" (every caller that predates the split, and every direct venue); a string names a linked speaker who is not the principal (a group venue); `null` means the newest author is nobody Forge knows, which the turn is TOLD rather than left to guess (codex F1).
   speakerUserId?: string | null | undefined;
   /** The transport's own label for the speaker, quoted in the unlinked sentence and nowhere else. */
   speakerLabel?: string | null | undefined;
@@ -81,17 +80,10 @@ export interface ExternalChatTurnArgs {
   /**
    * What this turn WRITES to the room it reads. Default: the question and the answer.
    */
-  // cm:guard a SCREENED adapter passes `question-only` and records the answer itself: the model's first answer can fail the reply guard and be replaced by a corrective retry or a fixed fallback, and a transcript holding the rejected text is a record of a conversation nobody had (ISS-1001).
-  // cm:guard `nothing` is for the RETRY of such a turn — its message is a code-authored instruction, and persisting it files words the speaker never said under their name — while a SILENCE is written under `question-only` all the same, because nothing replaces it and the reason is the row's whole point.
-  // cm:guard `silence-only` is for a turn whose question is ALREADY a row — the collector wrote it when the message arrived — and whose answer is the screened caller's to record after delivery. What it still owes the transcript is the SILENCE: without it a window the model declined to answer leaves no row, and a person cannot tell it from a turn that never ran (ISS-1004).
   record?: 'question-and-answer' | 'question-only' | 'silence-only' | 'nothing';
   db?: typeof defaultDb;
 }
 
-// cm:guard the reference set is bounded HERE and nowhere upstream: the turn keeps it whole so the
-// reply screen can answer "did this turn look that id up?" for every id the model actually saw, and
-// what has to stay small is the jsonb column this row writes. Truncation is recorded rather than
-// silent, so a reader of the audit row can tell a short list from a cut one (ISS-1057, codex F1).
 const AUDIT_ISSUE_REFS_CAP = 60;
 
 function cappedForAudit<T extends { resultIssueRefs?: readonly string[] }>(call: T): T {
@@ -114,10 +106,6 @@ export interface ExternalChatTurnResult {
   error: string | null;
   iterations: number;
   /** Tool calls the model made this turn — callers verify reply claims (cited issue ids) against what was actually done. */
-  // cm:guard `resultIssueRefs` and `isError` ride along because the reply screen reads them: an
-  // issue id this turn's own tracker call RETURNED is an id the turn looked up, which is what
-  // `only-verified-citations` says it screens for, and narrowing this type to the name and the
-  // arguments is what hid that from it for so long (ISS-1057).
   toolCalls: Array<{
     name: string;
     arguments: string;
@@ -151,7 +139,6 @@ export async function runExternalChatTurn(
     .where(eq(appConfig.projectId, args.projectId))
     .limit(1);
 
-  // cm:why computed unconditionally every turn, never gated on "is this a progress question" — that intent-routing is the hole ISS-673 fell through
   const progress = await computeProjectProgress(args.projectId, dbi);
 
   const resolved = await resolveForProject(args.projectId, {
@@ -160,7 +147,6 @@ export async function runExternalChatTurn(
     db: dbi,
   });
 
-  // cm:guard a turn with neither a conversation nor a venue is EPHEMERAL and writes no room: the escalation bridge's synthesis is one message posted by another path, not a conversation being had, and giving it a room of its own left an unread `chat_sessions` row behind every escalation (ISS-1001).
   const turn: ConversationTurn | null =
     args.conversationId || args.externalId
       ? await openTurn({
@@ -176,7 +162,6 @@ export async function runExternalChatTurn(
 
   const record = args.record ?? 'question-and-answer';
   const images = args.images ?? [];
-  // cm:guard `silence-only` appends NOTHING here, and that is not the same as `nothing`: the retry's instruction is appended-but-unpersisted so the model sees it, while a collected question is already IN `turn.history`, so appending it again would show the model the same message twice.
   if (turn && record !== 'silence-only') {
     appendUserMessage(turn, args.message, {
       images,
@@ -185,7 +170,6 @@ export async function runExternalChatTurn(
     });
   }
 
-  // cm:guard the self is read off the HANDLE the turn speaks as (`turn.handleUserId`, the participant row carrying this project) and never off "the project's agent": a project may hold more than one agent account and the room names which one is in it (ISS-1034 criterion 3).
   const speakerUserId =
     args.speakerUserId === undefined ? (args.userId ?? null) : args.speakerUserId;
   const { self, speakerContext } = await loadTurnSelf({
@@ -224,7 +208,6 @@ export async function runExternalChatTurn(
     model: resolved.model,
     messages: providerMessages,
     tools: args.tools,
-    // cm:why an adapter turn is an agentic worker, not creative chat: a low temperature keeps small models on the call-the-tool path instead of narrating what they are "about to" do.
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,
     contextBudgetTokens: env.CHAT_CONTEXT_BUDGET_TOKENS,
@@ -243,7 +226,6 @@ export async function runExternalChatTurn(
     );
   }
 
-  // cm:guard LOG-ONLY and after the reply is built, never before: the probe's false-positive rate is unmeasured, and a detector that silences an answer on its first day cannot be told from one that silences correct answers. `chat_logs` writes `reply` beside `tool_calls` a few lines below, so what this warn opens is the window that decides whether a refusal is earned (ISS-1008).
   const confab = detectStateConfab(result.finalText, result.toolCalls);
   if (confab.suspected) {
     logger.warn(

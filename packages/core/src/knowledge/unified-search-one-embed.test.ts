@@ -73,8 +73,6 @@ describe('runUnifiedSearch', () => {
     expect(runMemorySearchMock.mock.calls[0]?.[0]).toMatchObject({ queryVec: VEC });
   });
 
-  // cm:guard the keyword strategy must still reach the memory search with NO vector — handing one
-  // down there would make a caller that asked for ts_rank pay an embedding it never wanted
   it('makes no embed call at keyword, and passes no vector down', async () => {
     await runUnifiedSearch({
       projectId: PROJECT,

@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 
 const dir = fileURLToPath(new URL('.', import.meta.url));
 
-// cm:guard there is no exception list and there must not become one. The three screens this module replaced all lived inside `integrations/rocketchat/`, which is exactly why a message's rules were decided by the door it left through rather than by who was going to read it (ISS-997).
 const TRANSPORT_WORDS = [
   'rocketchat',
   'RocketChat',
@@ -45,7 +44,6 @@ describe('the message contract knows no transport', () => {
     expect(offences).toEqual([]);
   });
 
-  // cm:guard the option-line grammar moved INTO the contract rather than being passed into it, and the adapter re-exports it. One constant is what keeps the rule that refuses a colliding label and the renderer that would have rendered it from drifting; two would let a label start rendering as an option the rule had already let through.
   it('owns the option-line grammar rather than borrowing one from an adapter', () => {
     expect(readFileSync(`${dir}option-line.ts`, 'utf8')).toContain('OPTION_LINE_RE');
     const renderer = readFileSync(

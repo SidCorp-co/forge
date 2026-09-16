@@ -27,7 +27,6 @@ export const METRICS = [
   // ISS-381 (Part 2) — backed by the new collection tables:
   'pass_rate', // issue_step_contexts.verdict, step='test'
   'approve_rate', // issue_step_contexts.verdict, step='review'
-  // cm:edge sideeffect -> packages/core/src/pipeline/sweeper.ts — `queue_depth` reads `queue_snapshots`, which only the sweeper writes; a stalled sweeper reads as a flat queue rather than as missing data.
   'queue_depth',
   'runner_uptime', // runner_events (status-change audit)
 ] as const;
@@ -132,7 +131,6 @@ export interface TimeseriesResult {
   series: TimeseriesPoint[];
 }
 
-// cm:guard reads BOTH `released` and `awaiting_release` because `activity_log` is HISTORY: 4,488 rows were written while the rung was called `released` (renamed 2026-09-10, migration 0228) and no migration rewrites them — a payload records what the status was called when it happened. Drop either spelling and the figure silently loses one side of that date.
 /**
  * Run the aggregation for one metric and return a dense, chart-ready series.
  * Read-only; every query is bounded by the `days` window (capped 1..90 by the
@@ -203,7 +201,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     }
 
     case 'cycle_time': {
-      // cm:guard work-start is the first transition into in_progress/approved and NOT `issues.created_at` (ISS-380 AC #3), falling back to `created_at` only for issues predating those transitions, so older resolved issues still contribute rather than dropping out of the series.
       const rows = (await db.execute(sql`
         WITH resolved AS (
           SELECT al.issue_id,
@@ -276,7 +273,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
     }
 
     case 'runner_utilization': {
-      // cm:why `jobs` has no started_at, so dispatched_at stands in for the busy interval's start — utilization is overstated by the dispatch-to-start gap, never understated
       const windowSeconds = BUCKET_SECONDS[bucket];
       const rows = (await db.execute(sql`
         SELECT ${utcDateTrunc(bucket, sql`dispatched_at`)} AS bucket,
@@ -530,9 +526,6 @@ export async function stepDurationsForProject(
 /**
  * The bounded rescue set: `retry_rescues_since`, called safely.
  */
-// cm:guard the ONE place the function is called from, so its argument contract lives here and not in three callers: a NULL project list means EVERY project and an empty list means NO rows, so passing `null` for "I have no visible projects" hands that caller the whole fleet (ISS-1022).
-// cm:guard each id is bound as its own parameter through `sql.join`, never interpolated as a JS array — drizzle expands an interpolated array as a ROW CONSTRUCTOR, so `= ANY(tuple)` is a malformed array literal that throws at Bind time. Same idiom as `me/pulse-sql.ts#idList`.
-// cm:edge contract -> packages/core/drizzle/migrations/0250_bounded_read_indexes.sql — the function's signature and its null/empty and inclusive-`since` semantics are defined there
 export function retryRescuesSince(projectIds: readonly string[] | null, since: SQL): SQL {
   const scope =
     projectIds === null
@@ -569,7 +562,6 @@ export type SessionFailureAggRow = {
   last_at: string | Date | null;
 };
 
-// cm:guard the OR is load-bearing: a session at any other status that still carries a `failure_reason` must come back too, so the caller can report it instead of dropping it. That is the ISS-759 completed-yet-failed shape plus the live rows the I1 trigger stamped, and narrowing this to the two failed statuses makes them invisible rather than absent.
 export async function sessionFailures(
   projectId: string,
   days: number,
@@ -587,8 +579,6 @@ export async function sessionFailures(
 
 export type ResumeDropRow = { drop_reason: string | null; sessions: number | string };
 
-// cm:guard `priorClaudeSessionId IS NOT NULL` is what defines the denominator, and it must stay in the WHERE rather than move to the caller. It is what keeps attempt 1 out: an attempt with no prior session to continue is the normal shape of a first try, and folding those in makes the drop rate shrink as the project does MORE fresh work.
-// cm:guard this must NOT inherit the failure histogram's status filter. A resume is dropped on healthy dispatches too — restricting it to `failed`/`cancelled_stale` would measure the drop rate of attempts that later died, report it as the drop rate, and leave both numbers wrong.
 export async function resumeDropsForProject(
   projectId: string,
   days: number,

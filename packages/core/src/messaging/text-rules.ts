@@ -45,7 +45,6 @@ const SHOUT_RE = /(^|\s)@(all|here|channel)\b/i;
  * A channel-wide mention written by an agent pages everyone in a room the
  * project bound for its own work. The notification is not the agent's to send.
  */
-// cm:guard two rows, one body, and the two `why` texts are NOT interchangeable: one is a question put to the people who can answer it, the other is a comment being carried into a room that did not write it. The consequence differs, so the sentence a writer is shown differs.
 function broadcastRule(id: string, why: (shout: string) => string): MessageRule {
   return {
     id,
@@ -118,7 +117,6 @@ export const NO_REDACTED_SECRET: MessageRule = {
 const CODE_FENCE_RE = /```/;
 const PATH_LINE_RE = /(?:^|\s)[\w./-]*[\w-]\.[a-z]{1,5}:\d+\b/i;
 
-// cm:guard keep this to unambiguous Forge jargon — common dictionary words (open/testing/closed/approved/waiting/draft/released) are excluded deliberately, because matching them retry-loops on legitimate prose
 const STATUS_ENUM_RE = /\b(needs_info|in_progress|on_hold|clarified|reopen|developed)\b/i;
 
 const REPHRASE =
@@ -156,20 +154,11 @@ export const NO_DEVELOPER_DETAIL: MessageRule = {
 /**
  * The names of the tools whose results are the TRACKER speaking.
  */
-// cm:guard an allowlist and not "every tool that did not error": a room-history or a memory-search
-// result is user-authored text, so an issue key somebody once typed into a chat message would
-// verify itself — which is the fabrication this rule exists to catch, arriving by a longer road
-// (ISS-1057, codex F2). `forge` is the tracker's own CLI; a tracker tool added later joins it here.
 const TRACKER_TOOLS = new Set(['forge', 'forge_issues']);
 
 /**
  * Every issue reference this turn's own tracker calls RETURNED.
  */
-// cm:guard an id present in the call's own ARGUMENTS is not returned by it, however it came back:
-// a model that invents `ISS-9999`, asks for it and reads it out of the refusal would otherwise
-// have verified its own invention. Measured over beta's QA window at 45d92580 this keeps exactly
-// that case refused — a fabricated `ISS-1028` the model asked for, was refused, then echoed into a
-// search — while admitting the 21 real ids the screen was refusing (ISS-1057, codex F1).
 function refsTheTrackerReturned(facts: MessageFacts): Set<string> {
   const returned = new Set<string>();
   for (const call of facts.toolCalls) {
@@ -186,14 +175,6 @@ function refsTheTrackerReturned(facts: MessageFacts): Set<string> {
 /**
  * An issue cited to a reader that this turn did not actually verify.
  */
-// cm:guard "verified" means EITHER the project holds it OR this turn's tracker call returned it,
-// and the second arm is what the rule's own `shape` has always claimed to screen for. Without it
-// the rule asked a different question — does this project hold the row — and refused a reply
-// quoting an issue's own title back, because a title may name another project's key: measured over
-// beta's QA window at 45d92580, `ISS-538` in the title `ISS-538 TC2 exe reject` was refused 28
-// times, and the corrective message the refusal sends says *cite issue ids only exactly as tools
-// returned them*, which is precisely what the reply had done. The single-issue task was 0/6 with a
-// correct first attempt every time (ISS-1057).
 export const ONLY_VERIFIED_CITATIONS: MessageRule = {
   id: 'only-verified-citations',
   shape: 'cite no issue id to a stakeholder unless this turn looked it up',
@@ -202,14 +183,6 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
   check: (text, f) => {
     if (f.issueLookupFailed) return none;
     const returned = refsTheTrackerReturned(f);
-    // cm:guard an id known ONLY from a result's prose may be MENTIONED and never ASSERTED ABOUT,
-    // and the two are separated here because only the second is a claim: a tracker result carries
-    // user-authored titles and descriptions, so the id in `ISS-538 TC2 exe reject` is a row this
-    // project does not hold appearing inside a row it does — quoting that title back is the answer,
-    // and `ISS-9999 is shipped` sourced from the same prose is a state claim nothing checked.
-    // `status-matches-the-row` cannot catch it: that rule abstains on a row this project has no
-    // entry for, which is correct for another project's key and is exactly the gap (codex F3 of the
-    // whole-set read, still open at its first recheck).
     const asserted = new Set(extractStatusAssertions(text, f.prefixes).map((a) => a.seq));
     const breaks: RuleBreak[] = [];
     for (const m of text.matchAll(issueTokenRe(f.prefixes))) {
@@ -228,21 +201,16 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
   },
 };
 
-// cm:guard no \b wrapping: JS's non-unicode \b treats accented Vietnamese letters as non-word characters, so a boundary before a phrase-initial word never matches — the internal `\s+` already delimits each alternative // i18n-allow: refers to the Vietnamese phrase words above
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
 /** A Forge issue-navigation target: `/projects/<slug>/issues/<segment>`, behind a host and/or a `#` or not. */
-// cm:why a backtick, a pipe and an asterisk end the segment too: a technical reply puts a valid path in inline code and the closing backtick is not part of the documentId (codex F3).
-// cm:guard a navigation path starts where a path starts — at the text's edge, after whitespace or an opening quote/bracket/backtick, or after an origin — never inside a longer path: `/api/projects/<uuid>/issues/search` is the API, not a link (codex F1 at effaee99).
 export const ISSUE_NAV_RE =
   /(?<![^\s([<"'`*_])(?:https?:\/\/[^\s/]+\/?)?(#?)\/projects\/([\w-]+)\/issues\/([^\s/?#)\]>,.;:!"'`|*]+)/gi;
 
 /** An issue link the web can open, or none. */
-// cm:guard scoped to Forge NAVIGATION targets and nothing else that has `/issues/` in it: `/api/issues/<id>/comments`, `packages/core/src/issues/routes.ts` and another host's tracker are legitimate in a role-holder's answer, and a rule refusing every `/issues/` path would refuse them in the one cell built to allow technical detail (ISS-1041, codex F5). What it refuses is the shape the persona prescribes and the model drifted from on beta: a hash route, or a segment that is not the documentId.
 export const ISSUE_LINK_SHAPE: MessageRule = {
   id: 'issue-link-shape',
   shape:
     'an issue link reads <base>/projects/<slug>/issues/<documentId> — the documentId a UUID, never a hash route and never an issue key or number in the path',
-  // cm:why the example carries no link at all: in `public:report` the sibling `issue-references-exist` refuses any documentId the example facts do not know, and an example must pass every rule of its cell.
   example: 'The CSV export fix is in; the tracker has the issue with its link.',
   needs: [],
   check: (text) => {
@@ -273,7 +241,6 @@ const EMPTY_PROMISE_RE =
  * A promise of a later turn, where the agent has no later turn. The reader owes
  * nothing on a report, so a promise to come back is a message that says nothing.
  */
-// cm:guard this rule is for `report` only and must never reach an `ask` cell: naming what you still need IS the point of an ask, and reading that as an empty promise refuses the one message the reader is there to answer.
 export const NO_EMPTY_PROMISE: MessageRule = {
   id: 'no-empty-promise',
   shape: 'report the result you have, or say exactly what is missing',

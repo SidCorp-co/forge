@@ -10,8 +10,6 @@ import type { TestServer } from './app-server.js';
  * `POST /api/projects/:id/devices/pairing-codes`, the device redeems it at the
  * public `POST /api/devices/pair`.
  */
-// cm:guard no fallback path, and no env flag to pick one. This helper had both, and the fallback minted a token through `issueDeviceToken` so the file compiled while the real branch was never executed — three bugs accumulated in it unseen (unscoped URL, no auth header, reading `token` where the route returns `deviceToken`) and the E2E advertised itself as ready to flip for months. A seam that is only exercised behind a flag nobody sets is not tested.
-// cm:edge contract -> packages/core/src/devices/routes.ts — mints at deviceUserRoutes `/:id/devices/pairing-codes` (mounted under /api/projects, requires a verified project member) and redeems at devicePublicRoutes `/pair`, which answers `{ deviceId, deviceToken, projectId }`. Nothing type-checks these two shapes across the fetch boundary.
 
 export interface MockDeviceEvent {
   event: string;

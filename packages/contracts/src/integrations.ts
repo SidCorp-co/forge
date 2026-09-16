@@ -169,7 +169,6 @@ export interface IntegrationDeliveryRow {
  * 4-value coarse bucket (needs_reauth maps to `attention`).
  */
 export interface IntegrationHealthResult {
-  // cm:guard `needs_scope` is NOT a flavour of `needs_reauth` and must stay in this union — core's `HealthStatus` has carried it since ISS-924 and this contract did not, so a 403 arrived over the wire as a value no consumer's type admitted. One says replace the credential, the other says the credential is fine and its permissions are not (ISS-1036 restored the member).
   status: 'ok' | 'degraded' | 'error' | 'needs_reauth' | 'needs_scope';
   message?: string;
   /** Free-form provider diagnostics surfaced to operators in the test-connection UI. */
@@ -200,7 +199,6 @@ export interface CoolifyTargetInput {
   label: string;
   resourceUuid: string;
   /** Absolute URL of this application's health endpoint; absent = no post-deploy health gate. */
-  // cm:edge contract -> packages/core/src/integrations/provider-schemas.ts — the zod target schema is the other half, and a form that sends a target without this key CLEARS a health gate an operator set, because a config PATCH replaces the whole `targets` array (ISS-971)
   healthUrl?: string;
 }
 
@@ -490,7 +488,6 @@ export interface BindingResponse {
   health?: IntegrationHealthResult | null;
 }
 
-// cm:why these list routes answer with a bare `{ items }` object rather than the X-Total-Count + bare-array convention `ListResponse<T>` wraps, so the envelopes below declare `items` and nothing else
 
 /**
  * Where one connection is actually used. The directory lists credentials that
@@ -515,7 +512,6 @@ export interface ConnectionDirectoryItem extends ConnectionSummary {
   usage: ConnectionUsage;
 }
 
-// cm:edge contract -> packages/core/src/integrations/connection-routes.ts — `usage` is carried by the LIST route alone; create/update answer with a bare ConnectionSummary, so widening ConnectionResponse to expect it would break both
 /** List envelope for connections (`GET /integration-connections`). */
 export interface ConnectionListResponse {
   items: ConnectionDirectoryItem[];

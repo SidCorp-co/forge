@@ -186,7 +186,6 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     try {
       return await dispatchAction(input, ctx, principal);
     } catch (err) {
-      // cm:edge contract -> packages/core/src/integrations/coolify/commands.ts — that module throws `CoolifyCommandError` with a bare sentence because REST turns it into a 400 body; the MCP contract is a `CODE: message` string, so the prefix is added HERE and must not be baked into the shared message.
       if (err instanceof CoolifyCommandError) throw new Error(`BAD_REQUEST: ${err.message}`);
       throw err;
     }
@@ -264,7 +263,6 @@ async function dispatchAction(
         const result = await fetchCoolifyDeploymentLogs(row.pair, deploymentUuid, input.lines);
         return { integrationId: row.id, ...result };
       } catch (err) {
-        // cm:guard NEVER echo the raw Coolify body to the caller — it is a third party's response and has carried tokens and internal hostnames; the message names what failed and nothing the provider said.
         if (err instanceof CoolifyApiError) {
           return {
             integrationId: row.id,

@@ -78,7 +78,6 @@ describe('parseServiceAccountKey', () => {
 });
 
 describe('where a signed assertion may be sent', () => {
-  // cm:guard `token_uri` is operator-supplied JSON and it is where core POSTs a SIGNED assertion, so an unchecked value is an SSRF door a project admin can open — and worse than a plain one, because the request carries a credential this deployment minted.
   it('refuses a key file whose token_uri is not Google, by name', () => {
     const foreign = JSON.stringify({
       ...JSON.parse(KEY_FILE),
@@ -244,7 +243,6 @@ describe('the token cache (criteria 5, 6, 7)', () => {
     expect(ep.calls).toHaveLength(2);
   });
 
-  // cm:guard a connection keeps its id across a rotation, so a cache key of (connection, scope) alone hands back the OLD account's token for the rest of its hour and every read and write runs as the account the operator just replaced.
   it("a rotated key does not reuse the old account's token", async () => {
     const ep = tokenEndpoint();
     const rotated = JSON.stringify({

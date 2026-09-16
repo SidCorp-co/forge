@@ -11,7 +11,6 @@ const { fetchStorefrontThemes } = await import('./themes.js');
 
 const MAIN = { id: 100, name: 'Store Theme', role: 'main', parent_theme_id: null };
 const DRAFT = { id: 200, name: 'Store Theme draft', role: 'unpublished', parent_theme_id: 100 };
-// cm:why a demoted previous main is ALSO role=unpublished — publishDraftTheme demotes it "as a one-click backup", which is exactly why role alone cannot identify the draft
 const OLD_MAIN_BACKUP = {
   id: 50,
   name: 'Store Theme (backup)',
@@ -53,7 +52,6 @@ describe('fetchStorefrontThemes', () => {
     ]);
   });
 
-  // cm:guard this is the whole point of keying on parent_theme_id — handing back a demoted backup would make a step build on, or publish, the wrong theme
   it('never mistakes a demoted previous main for the draft', async () => {
     mockFetch({ data: { storeThemes: [MAIN, OLD_MAIN_BACKUP] } }, { data: { themeVersions: [] } });
     const out = await fetchStorefrontThemes('crmk_x', '59');
@@ -83,7 +81,6 @@ describe('fetchStorefrontThemes', () => {
     expect(out?.themes[1]?.parentThemeId).toBe('100');
   });
 
-  // cm:guard null (query failed) must stay distinguishable from an empty result — the tool turns it into themesResolvedLive:false, and collapsing the two is how "unknown" gets read as "no draft"
   it('returns null when the query errors', async () => {
     mockFetch({ errors: [{ message: 'unauthenticated' }] });
     expect(await fetchStorefrontThemes('bad', '59')).toBeNull();
@@ -122,7 +119,6 @@ describe('fetchStorefrontThemes', () => {
     expect(f).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard the key belongs in the Authorization header and nowhere else — a key echoed into the request body lands in provider-side request logs
   it('never puts the api key in the query body', async () => {
     const seen: RequestInit[] = [];
     vi.stubGlobal(

@@ -116,7 +116,6 @@ beforeEach(() => {
 });
 
 describe('forge_step_start', () => {
-  // cm:guard the four flip cases this replaced (trigger→working for code, fix re-entry, resume idempotence, never-stomp) asserted a status write that ISS-895 removed with the staged step table. Re-adding any of them means core is stamping a status again, which is the prompt-layer discipline this tool was built not to break.
   it('returns the bundle and never touches status', async () => {
     const tool = forgeStepStartTool(ctx);
     loadIssue.mockResolvedValue(makeIssue());

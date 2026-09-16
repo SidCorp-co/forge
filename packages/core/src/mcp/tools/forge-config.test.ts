@@ -11,7 +11,6 @@ vi.mock('../../config/env.js', () => ({
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-// cm:guard the chain is TWO leftJoins before `where().limit(1)`, matching `effectiveProjectRole` in lib/authz.ts — a mock one join short resolves `undefined` and every principal reads as a non-member, which passes any test asserting a refusal.
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
@@ -43,7 +42,6 @@ const ORG_ID = '88888888-8888-4888-8888-888888888888';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 const adminAccessRow = { orgId: ORG_ID, memberRole: 'admin', orgRole: null };
 
-// cm:guard `admin` is in these scopes because `action=update` is admin-gated and `assertPrincipalIsAdmin` reads `principal.scopes` — a paired device carried none, so the scope half was skipped for it until ISS-931 took the device off `/mcp`.
 const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID, {
   scopes: ['read', 'write', 'admin'],
 });
@@ -198,7 +196,6 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     });
   });
 
-  // cm:guard ISS-1000 — this is the surface an AGENT reaches project config through, so the refusal is NAMED rather than left to `.strict()` answering `Unrecognized key`, which says the argument is gone and nothing about what replaced it.
   it('action=get no longer carries a stateContext key', async () => {
     const tool = forgeConfigTool({
       principal: fakePrincipal,
@@ -223,7 +220,6 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     expect(result.config).not.toHaveProperty('stateContext');
   });
 
-  // cm:guard ISS-1000 — an agent never reads this tool's zod schema; it reads the three DESCRIPTIONS below, and a retirement that leaves any of them promising `stateContext` sends a session to ask for a field it will be refused. This is the assertion that goes red when a key is removed from the code and left in the prose.
   it('no agent-facing description of forge_config names stateContext', () => {
     const tool = forgeConfigTool({ principal: fakePrincipal, projectSlug: null });
     const factText = FORGE_FACTS.find((f) => f.id === 'mcp-tool-reference')?.render() ?? '';
@@ -236,7 +232,6 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     }
   });
 
-  // cm:guard this is the only `action=update` case that reaches `assertPrincipalIsAdmin`: the refusal below short-circuits before the gate, so deleting this one takes the admin gate's coverage with it.
   it('action=update writes a projectFacts patch for an admin principal', async () => {
     const tool = forgeConfigTool({
       principal: fakePrincipal,

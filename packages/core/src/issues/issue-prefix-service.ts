@@ -5,7 +5,6 @@ import { isUniqueViolation } from '../lib/db-errors.js';
 import { type IssuePrefixShapeError, validateIssuePrefix } from '../lib/issue-ref.js';
 import { issuePrefixHolder } from './issue-prefix-read.js';
 
-// cm:guard a caller inside a transaction passes it here, and `dbi.transaction()` is then a SAVEPOINT: the unique-violation recovery below runs after a rollback to that savepoint, so the caller's own transaction survives a losing race instead of being poisoned by it
 export type PrefixWriter = Pick<typeof db, 'transaction' | 'select' | 'insert' | 'update'>;
 
 export type AssignPrefixResult =
@@ -14,8 +13,6 @@ export type AssignPrefixResult =
   | { ok: false; reason: 'taken'; holderProjectId: string | null };
 
 /** Give a project a prefix, or move it back to one it already holds. */
-// cm:guard the alias row and `projects.issue_prefix` are written in ONE transaction, and the pointer moves on EVERY accepted assignment — returning success for an alias this project already owns without moving the pointer acknowledges a change it did not apply, and the project goes on rendering its old prefix (ISS-992)
-// cm:edge lockstep -> packages/core/src/db/schema.ts#issuePrefixAliases — `projects_issue_prefix_fk` is what makes a divergence between the two unrepresentable rather than merely unlikely
 export async function assignIssuePrefix(
   projectId: string,
   raw: string,
@@ -43,10 +40,8 @@ export async function assignIssuePrefix(
       return { ok: true as const, prefix };
     });
   } catch (err) {
-    // cm:guard the losing side of two callers claiming one free prefix at once: both reads found it free, the index refused the second insert, and without this the caller gets a 500 on what is an ordinary conflict. Re-reading names the winner rather than guessing it.
     if (!isUniqueViolation(err)) throw err;
     const holder = await issuePrefixHolder(prefix);
-    // cm:guard the winner may be THIS project — two callers assigning one free prefix to the same project is not a conflict, and reporting `taken` against its own holder refuses a request whose state has already been reached (codex review of ISS-992). The pointer still has to move: the losing transaction rolled back before it did.
     if (holder?.projectId === projectId) {
       await dbi.update(projects).set({ issuePrefix: prefix }).where(eq(projects.id, projectId));
       return { ok: true, prefix };

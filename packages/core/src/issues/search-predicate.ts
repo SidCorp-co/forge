@@ -1,5 +1,3 @@
-// cm:guard ISS-960 — the ONE place the searchable issue fields are named. `search.ts` and `list-service.ts` both read it, and `issues.identSearch`'s generated expression (db/schema.ts) is generated over the same four columns; a field added to one and not the others answers confidently and wrongly, which is the defect this module was cut for.
-// cm:edge lockstep -> packages/core/src/db/schema.ts — `ISSUE_SEARCH_FIELDS` and the `identSearch` generated column must name the same columns, and widening that column needs a migration that rewrites it
 
 import { ilike, or, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
@@ -17,7 +15,6 @@ const columnOf: Record<IssueSearchField, AnyPgColumn> = {
   acceptanceCriteria: issues.acceptanceCriteria,
 };
 
-// cm:why no `ESCAPE '\\'` clause anywhere below: backslash is already Postgres' default LIKE escape, so the clause the old hand-written SQL carried was a no-op, and stating it on some arms and not others is what makes two of these look like different predicates
 /** Escape ILIKE wildcard metacharacters so user input can't inject patterns. */
 export function buildIlikePattern(q: string): string {
   const escaped = q.replace(/[\\%_]/g, (m) => `\\${m}`);

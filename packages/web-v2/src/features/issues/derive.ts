@@ -3,7 +3,6 @@
 // issue actually ran, dependency counts, filter → server params, client
 // grouping, comment-kind heuristic.
 //
-// cm:guard nothing here maps a status to a position. ISS-897 deleted the staged ladder from the kernel and ISS-999 deleted the two hand-written STATUS_TO_STAGE copies that still drew one — 17 keys here and 15 in features/pipeline/derive.ts, the second silently answering `triage` for `releasing` and `dropped`. A status says what is true of an issue now; it does not say how far along anything is, and any function here that answers "how far" is that projection coming back.
 
 import {
 	AUTONOMOUS_LABELS,
@@ -91,7 +90,6 @@ const LABEL_WORDS: Record<AutonomousLabel, string> = {
  * same way; this is the presentation of the label and nothing else. It carries no order — the
  * order is `AUTONOMOUS_LABELS`' own, in contracts — and no position.
  */
-// cm:guard a label's COLOUR is derived, never written here: `LABEL_TO_KERNEL` says which kernel status the label is written as, and `statusToChip` colours that status exactly as the chip on the card does. A hand-written tone column is what this file had until the review of ISS-999 found `reopen` amber in the board's column head and blue on the card inside it, and `closed` green in one place and grey in the other — the same drift ISS-999 deletes elsewhere, in the colour axis.
 export const LABEL_VIEW: Record<
 	AutonomousLabel,
 	{ label: string; status: StatusKey; tone: SemanticTone }
@@ -127,7 +125,6 @@ export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
  * Label an issue the way its project reads. `mode` is
  * `agentConfig.pipelineConfig.mode`; anything but `autonomous` is unchanged.
  */
-// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts — the kernel→label map lives there so web, dev and the MCP surface cannot disagree about what `in_progress` is called
 export const statusLabelFor = (s: IssueStatus): string =>
 	LABEL_VIEW[toAutonomousLabel(s)]?.label ?? statusLabel(s);
 export const priorityLabel = (p: IssuePriority): string =>
@@ -168,11 +165,9 @@ export function statusToChip(
 			return "passed";
 		case "awaiting_release":
 			return "shipped";
-		// cm:guard distinct from `shipped`: `released` is waiting for a person to press the button, `releasing` is the button already pressed. Collapsing the two is the ambiguity this status was added to remove.
 		case "releasing":
 			return "review";
 		case "closed":
-		// cm:guard `dropped` must not fall through to the `queued` default — a terminal issue rendered as queued reads as work still waiting, which is the exact misreading the status was added to stop. It shares `archived` with `closed` because the difference between them is that dependents stay blocked, and that is not a colour.
 		case "dropped":
 			return "archived";
 		case "on_hold":
@@ -205,7 +200,6 @@ export function statusToTone(status: IssueStatus): SemanticTone {
  * offering fifteen moves from a terminal issue, three of them statuses
  * nothing dispatches at, is what ISS-982 removed.
  */
-// cm:edge contract -> packages/core/src/pipeline/registry.ts#getPipelineRegistry — `statusExits` is where this list comes from; web keeps no copy of it, and adding one re-opens the drift ISS-982 closed
 export function allowedTransitions(
 	exits: StatusExits | undefined,
 	from: IssueStatus,
@@ -223,9 +217,7 @@ export interface GroupedTransition {
 	startsGroup: boolean;
 }
 
-// cm:guard membership here decides a target's kind only where the first-exit rule has not already claimed it — `closed → reopen` is that row's only exit and reads forward, which is correct: from a closed issue, reopening IS the move
 const BOUNCE_TARGETS = new Set<IssueStatus>(["needs_info", "on_hold", "reopen"]);
-// cm:guard `closed` is a discard EXCEPT where it is the row's first exit — from `releasing` and `testing` closing IS the outcome, and filing it under the danger group there would read as abandoning shipped work
 const DISCARD_TARGETS = new Set<IssueStatus>(["closed", "dropped"]);
 
 const KIND_ORDER: TransitionKind[] = ["forward", "bounce", "discard"];
@@ -268,7 +260,6 @@ export function groupedTransitions(
  * hid in its own noise. A rung's real exits are few enough that two identical
  * rows are the whole list, so a repeated label carries its kernel status.
  */
-// cm:guard disambiguate by the KERNEL name and never by relabelling: the map in `@forge/contracts/issue-vocabulary` is what every client reads a status as, and a menu inventing its own word for one is a second vocabulary (ISS-982)
 export function transitionLabels(
 	targets: IssueStatus[],
 	label: (s: IssueStatus) => string,
@@ -308,11 +299,9 @@ export function bulkAllowedStatuses(
 			common = common.filter((s) => allowedSet.has(s));
 		}
 	}
-	// cm:guard the three reason-required statuses stay OUT of a bulk pick (RFC 0002 INV-8) — the bulk endpoint carries no reason so every one of them would 422, and the shape that would make them work, one reason pasted across N issues, is the unexplained park the RFC deleted
 	return (common ?? []).filter((s) => !BULK_EXCLUDED_STATUSES.has(s));
 }
 
-// cm:edge contract -> packages/core/src/issues/transition-reason.ts — the same three as REASON_REQUIRED_STATUSES; a status added there stays offered here and mass-422s the whole selection
 const BULK_EXCLUDED_STATUSES = new Set<IssueStatus>([
 	"reopen",
 	"waiting",
@@ -370,15 +359,10 @@ export function filterToQueryParams(filter: IssueFilter): {
 	origin?: "detector" | "human";
 } {
 	switch (filter) {
-		// cm:why detector output is excluded so this bucket answers "what did I decide to build?" and nothing else
-		// cm:edge contract -> packages/core/src/issues/creator.ts — `origin` values must match buildOriginCondition
 		case "draft":
 			return { status: ["draft"], origin: "human" };
-		// cm:why unreviewed machine findings get their own lane because on one project they outnumbered the real parked backlog and made the Draft tab unreadable
 		case "findings":
 			return { origin: "detector" };
-		// cm:edge contract -> packages/contracts/src/issue-vocabulary.ts#KERNEL_TO_LABEL — every bucket below is resolved through the label axis, so a status whose label moves changes tab in the same commit and a status added to the kernel lands somewhere without an edit here. Typing the tuples back in is what let `tested` sit in a tab after ISS-897 took it off the ladder.
-		// cm:guard `awaiting_release` and `reopened` belong to the PERSON, not the machine, and putting them with `running` is the mistake this arm exists to prevent: the release gate waits for somebody to approve it, and nothing has dispatched at `reopen` since the reopen→open rewrite was retired on 2026-09-10 — a row shown as the machine's is a row nobody goes back to.
 		case "you":
 			return {
 				status: statusesForLabels(
@@ -390,7 +374,6 @@ export function filterToQueryParams(filter: IssueFilter): {
 			};
 		case "agent":
 			return { status: statusesForLabels("open", "running") };
-		// cm:guard `dropped` belongs here and nowhere else. It is terminal, so it is not live work, and leaving it out of every bucket is what made 12 of forge-dev's issues reachable only through All. It renders distinctly from `done` because deciding not to do the work and finishing it are different outcomes.
 		case "done":
 			return { status: statusesForLabels("done", "dropped") };
 		default:
@@ -402,7 +385,6 @@ export function filterToQueryParams(filter: IssueFilter): {
  * The statuses named by a `?status=` parameter, or undefined where it names
  * none the lifecycle has.
  */
-// cm:guard an unknown status is DROPPED, never passed through: the server enumerates `status`, so one bad value 400s the whole list and a dashboard cell links to an error instead of its own records. A parameter naming nothing valid returns undefined, which leaves the tab's own filter in charge rather than narrowing to the empty set (ISS-988 criterion 47).
 export function statusesFromParam(
 	raw: string | null | undefined,
 ): IssueStatus[] | undefined {
@@ -435,7 +417,6 @@ export function memberLabel(
 	return m ? m.email : assigneeId.slice(0, 8);
 }
 
-// cm:edge contract -> packages/core/src/issues/creator.ts — mirrors FORGE_AGENT_LABEL/isAgentChannel
 export const FORGE_AGENT_LABEL = "Forge Agent";
 
 /** ISS-756 — the ONE creator-label helper for every surface (cell, mobile
@@ -669,7 +650,6 @@ export function openBlockingRefs(
 		)
 		.map((e) => ({
 			id: e.fromIssueId,
-			// cm:why The server names an issue or nothing does: a fallback built here from six characters of a uuid renders `ISS-a3f91c`, which reads as a reference and resolves to nothing.
 			displayId: e.fromDisplayId ?? `#${e.fromIssueId.slice(0, 6)}`,
 			title: e.fromTitle ?? null,
 			status: e.fromStatus ?? null,
@@ -693,7 +673,6 @@ export function deriveBlockerState(
 ): BlockerState | null {
 	const blockingRefs = openBlockingRefs(deps);
 
-	// cm:guard ISS-853 — this arm is FIRST, above needs_info and both waiting kinds, and moving it down re-hides the pause: while a run is paused NOTHING dispatches whatever the issue's status says, so every arm below would show a CTA ("Approve", "Provide info") promising movement that cannot happen. The cost is named in the plan: an issue that is both `needs_info` and paused shows the pause, and the question stays in the decision panel below.
 	const paused = pausedRunView(pipelineHealth?.pausedRun);
 	if (paused) {
 		return {
@@ -718,7 +697,6 @@ export function deriveBlockerState(
 		};
 	}
 
-	// cm:guard the kind is read, never inferred (RFC 0002 INV-5) — a NULL kind must fall through to the generic copy below, because the five-way inference this replaced showed an "Override & resume" button on a park that had nothing to override
 	const isWaiting = issue.status === "waiting";
 	const waitingKind = isWaiting
 		? (pipelineHealth?.waitingCause?.kind ?? null)
@@ -747,7 +725,6 @@ export function deriveBlockerState(
 		};
 	}
 
-	// cm:why `info`, not `attention`, although the arm keeps its Resume action: nobody is OWED anything by a pause somebody chose, and `attention` is the colour that says a person has to act. It is the same false claim the label and the attention bucket carried before ISS-970, in the fourth reader — the two arms above, `needs_info` and `waiting`, are the ones that keep it.
 	if (issue.status === "on_hold") {
 		return {
 			tone: "info",
@@ -759,11 +736,9 @@ export function deriveBlockerState(
 	}
 
 	const waitingOn = pipelineHealth?.waitingOn;
-	// cm:guard do not gate this arm on `WAITING_REASON_COPY[reason]` again — core owns the reason vocabulary and this package hand-mirrors it, so an unrecognised reason used to fall through to the blocking-refs arm and the banner said NOTHING about a gate the server had named
 	const gate = waitingOn ? gateView(waitingOn) : null;
 	if (waitingOn && gate) {
 		const copy = { reason: gate.detail, who: gate.who };
-		// cm:guard the banner tone follows `gate.needsAction`, the same field the chip's colour follows — this arm read `info` for every non-dependency gate, so a paused run and an empty runner pool looked exactly as calm as a 60-second retry cooldown on the one screen a human opens to find out why nothing is happening
 		return {
 			tone: gate.needsAction ? "attention" : "info",
 			reason: copy.reason,
@@ -775,7 +750,6 @@ export function deriveBlockerState(
 		};
 	}
 
-	// cm:guard this arm must stay unconditional for `waiting` (never fall through to 6) — an issue parked at `waiting` with no authored kind is still a human wait, and 6 would describe it as a dependency block
 	if (isWaiting) {
 		return {
 			tone: "attention",
@@ -850,7 +824,6 @@ export function handoffOutcomeLabel(
  *
  * A session the kernel calls `queued` names a step nobody has started, so it names no running step.
  */
-// cm:guard `queued` is not `running` and must not be flattened onto it here. The screen passed `activeSession.skill` unconditionally, so a queued retry of a step that already had a handoff row rendered "Running" in the Steps card while the kernel said queued — the same shape as the ladder ISS-999 deletes: a state asserted from something next to the state rather than from the field that records it.
 export function runningStepOf(
 	health: PipelineHealth | null | undefined,
 ): string | null {
@@ -866,8 +839,6 @@ export function runningStepOf(
  * autonomous project it is the only one. Durations and cost are summed across the attempts of the
  * most recent RUN of that step, and the latest attempt's handoff is attached.
  */
-// cm:guard a state is read from the field that records it and NEVER from a step's position beside another. This replaced deriveStageOutcomes (ISS-999), whose state came from `i < currentIdx ? "done" : "pending"` over seven fixed stages, so a `code` issue asserted that triage, clarify and plan had happened and that review, test and release were coming — six claims with no row behind any of them. There is deliberately no `pending`: a step with no row has not been skipped or scheduled, it does not exist.
-// cm:why scoped to the most-recent run per step, then summed across that run's attempts — a reopened issue has several runs of the same step, and summing all of them double-counts every earlier attempt into the figure a reader takes for this one
 export function deriveStepOutcomes(
 	handoffs: StepHandoffRow[] | undefined,
 	durations: StepDurationRow[] | undefined,

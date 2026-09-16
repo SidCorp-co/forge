@@ -63,7 +63,6 @@ export function useAnchoredMenu({
       const target = e.target as Node;
       const anchor = anchorRef.current;
       if (!anchor) return;
-      // cm:guard the PANEL has to be excluded as well as the anchor whenever it is not a descendant of it. A viewport-fixed sibling panel is outside the anchor, so anchor-only click-away unmounts it on mousedown — before the `click` that carries its own onClick lands, which silently killed the error state's Retry button and turned a scrollbar drag into a dismissal.
       if (anchor.contains(target)) return;
       if (panelRef?.current?.contains(target)) return;
       onClose();
@@ -90,7 +89,6 @@ export function useAnchoredMenu({
       const r = anchor.getBoundingClientRect();
       const vw = window.innerWidth;
       const w = Math.min(width, vw - GUTTER * 2);
-      // cm:why right-align to the anchor, then clamp BOTH edges — at 375px a right-aligned panel of the desired width starts off-screen, so clamping only the left edge is not enough
       const left = Math.min(Math.max(r.right - w, GUTTER), Math.max(vw - GUTTER - w, GUTTER));
       setPos(
         placement === "above"

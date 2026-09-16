@@ -17,7 +17,6 @@ import type { PipelineConfig } from "./types";
 expect.extend(matchers);
 
 const mutate = vi.fn();
-// cm:guard usePipelineConfig().data must be the SAME object reference across renders — pipeline-tab.tsx's `useEffect(() => setDraft(cfgQ.data.pipelineConfig), [cfgQ.data])` re-seeds `draft` from a fresh reference, silently discarding any in-progress edit (toggle/mode click) before Save ever reads it
 let pipelineData: { pipelineConfig: PipelineConfig } | undefined;
 vi.mock("./hooks", async () => {
   const actual = await vi.importActual<typeof import("./hooks")>("./hooks");
@@ -49,7 +48,6 @@ vi.mock("@/features/runners/hooks", () => ({
   useProjectRunners: () => ({ data: [], isPending: false }),
 }));
 
-// cm:guard `PROJECT_DATA` is hoisted for the SAME reason `pipelineData` is, and this tab now has two hooks that need it: PluginsSection seeds its draft in `useEffect(..., [projectQ.data])`, so a mock that builds a fresh object per render re-seeds on every render, re-renders, and never settles — an inline literal here spun the render loop until the worker OOM'd at 4 GB after ~300s rather than failing an assertion.
 const PROJECT_DATA = { agentConfig: {} };
 vi.mock("@/features/projects/hooks", () => ({
   useProject: () => ({ data: PROJECT_DATA, isLoading: false, isError: false, refetch: vi.fn() }),
@@ -79,7 +77,6 @@ const STORED: PipelineConfig = {
       disallowedTools: DENYLIST_FULL,
       futureStageKnob: "stage-round-trips",
     },
-    // cm:guard `mode` off the entry status is NOT a key a GET can return since ISS-994 — core strips a stored one and refuses a PATCH that sets one — so the round-trip cases below carry `model` instead. Putting `mode` back here would make the fixture a document the API cannot produce and the save it asserts a 400.
     awaiting_release: { enabled: true, model: "opus", disallowedTools: DENYLIST_FULL },
   },
   someFutureKnob: "round-trips",
@@ -103,7 +100,6 @@ beforeEach(() => {
 afterEach(cleanup);
 
 describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
-  // cm:guard removing the `...cfg` / `...rest` spreads on the save path makes this pass for the wrong reason — delete one and watch this go red before trusting it green.
   it("flipping the master switch preserves every states[*] override and unknown keys", () => {
     renderTab();
     fireEvent.click(screen.getByRole("switch", { name: "Pipeline enabled" }));
@@ -117,7 +113,6 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     expect(sent.someFutureKnob).toBe("round-trips");
   });
 
-  // cm:guard the entry gate is the OTHER control on this tab, and it is the one that WRITES INTO `states` — so it is where a wholesale stage write would drop `disallowedTools` and nothing else would notice. `awaiting_release` has no such control: it carries no dispatch gate, and its handling lives in ReleaseSection. It stays in STORED so the case above still proves an untouched stage round-trips whole.
   it("closing the entry gate writes both knobs and preserves the rest of that stage", () => {
     renderTab();
     fireEvent.click(screen.getByRole("switch", { name: "Start queued issues automatically" }));
@@ -133,7 +128,6 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     );
   });
 
-  // cm:guard this is the case the read-only version of this screen could not have: a per-STAGE save now exists, and it is the one place a `states` map gets rebuilt. `withStagePatch` spreads cfg + cfg.states + the stage; drop any one of the three spreads and one of these three assertions goes red.
   it("saving one stage preserves the other stages, the unknown keys and its own untouched keys", () => {
     renderTab();
     fireEvent.click(screen.getByText("in_progress").closest("button") as HTMLElement);
@@ -167,7 +161,6 @@ describe("Pipeline tab · preserve-on-save (ISS-813, ISS-767 pattern)", () => {
     expect(states.open.disallowedTools).toEqual(DENYLIST_FULL);
   });
 
-  // cm:guard the toggle must READ the OR of both knobs, not just `enabled` — a project stored with `mode: 'manual'` alone is held by `isEntryGateClosed` and must not render as running.
   it("reads a stage held by `mode` alone as closed", () => {
     pipelineData = {
       pipelineConfig: {

@@ -12,19 +12,15 @@
 import { readdirSync } from 'node:fs';
 import { withoutComments, withoutFences } from './markdown.mjs';
 
-// cm:guard `\s+` after the hashes, never `\s*`, and it must match `headingLevel`'s. CommonMark renders `##Honest costs` as a paragraph, so `\s*` both accepted a heading no reader sees and left the section unable to be closed by the next such line.
-// cm:edge contract -> docs/proposals/README.md — that file publishes this heading to whoever writes the next proposal; the two are agreed by nothing a compiler checks, so a reword here with none there leaves authors following a rule the gate no longer enforces
 export const SECTION_RE = /^(#{2,6})\s+(?:\d+\.\s*)?honest costs\b.*$/im;
 
 /** The index at any depth carries the rule, not a price of its own. */
 const INDEX = 'README.md';
 
-// cm:guard filter by BASENAME over a RECURSIVE listing. A flat read, or a whole-path compare against `README.md`, both narrow the enforced scope below the one `docs/proposals/README.md` publishes ("every `.md` here") — and a document the gate never opens is one it reports as priced, because the success line counts what it scanned rather than what exists.
 export function selectProposals(entries) {
   return entries.filter((n) => n.endsWith('.md') && n.split('/').pop() !== INDEX);
 }
 
-// cm:guard the `recursive` flag belongs HERE, with the filter it is half of. It sat in the CLI for one round, where the only thing that could test it was a hand-built copy of the tree — and a filter tested over a synthetic list stays green when the listing that feeds it goes flat, which is the under-scope re-opening with every test still passing.
 export function listProposals(dir) {
   const entries = readdirSync(dir, { recursive: true }).map((n) => String(n).split('\\').join('/'));
   return selectProposals(entries);
@@ -33,7 +29,6 @@ export function listProposals(dir) {
 /** A section that is present and says nothing is the shape this gate exists to refuse. */
 const MIN_WORDS = 12;
 
-// cm:guard the token must be the WHOLE cell or bullet, never a substring. `N/A` matched anywhere flags a row that legitimately says "N/A for self-hosted", and a rule that fires on the honest answer is how an exemption gets written for it.
 const PLACEHOLDER_RE = /^(tbd|todo|t\.b\.d\.?|n\/a|none|nothing|unknown|\?+)\.?$/i;
 
 const ROW_RE = /^\s*(\||[-*+]\s|\d+\.\s)/;
@@ -56,7 +51,6 @@ function sectionBody(text, match) {
   return (end < 0 ? after : after.slice(0, end)).filter((l) => l.trim() !== '');
 }
 
-// cm:guard separator cells are dropped, and the floor is counted over what is left. Counting the raw line let `| The commitment | What it costs you |` plus `|---|---|` clear a floor of 12 with two words of actual price — in the very table shape the README mandates, which is the shape a thin section will take.
 function cells(line) {
   return line
     .replace(ROW_RE, '')
@@ -102,7 +96,6 @@ export function judgeDocument(rel, raw) {
  * Returns `{ code: 0, scanned }`, `{ code: 1, scanned, violations }`, or
  * `{ code: 2, reason }`.
  */
-// cm:guard an empty scope is exit 2, never a pass. This gate's whole subject is documents that ought to exist, so "I found no proposals" and "every proposal prices itself" must never print the same verdict — a renamed directory would otherwise turn the rule off silently.
 export function judge(documents) {
   const paths = Object.keys(documents);
   if (paths.length === 0) {

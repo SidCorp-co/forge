@@ -178,7 +178,6 @@ export async function resolveRunnerRepoPath(
  * `null` for the desktop/local path). Combines the runner binding lookup with
  * the project-default fallback so callers never hand-roll the chain.
  */
-// cm:edge lockstep -> packages/core/src/agent-sessions/chat-turn.ts — the turn dispatcher and the runner re-pin route must resolve cwd identically
 export async function resolveSessionRepoPathForDevice(
   projectId: string,
   deviceId: string | null,

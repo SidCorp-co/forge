@@ -20,7 +20,6 @@ export interface AlertSweepResult {
   resolved: number;
 }
 
-// cm:why an in-process gate resets on restart, so re-running one extra sweep right after a deploy is harmless — dedup is DB-backed (the active-row claim below), not this gate
 const ALERT_SWEEP_INTERVAL_MS = (() => {
   const env = Number(process.env.FORGE_ALERT_SWEEP_INTERVAL_MS);
   return Number.isFinite(env) && env > 0 ? env : 5 * 60_000;
@@ -52,7 +51,6 @@ const ALERT_TITLES: Record<AdminAlert['id'], string> = {
  *
  * Returns whether the recipient was notified, NOT whether a row was written.
  */
-// cm:why escalation updates the active row instead of resolving then re-emitting — the active-row index preserves one incident per recipient/key until the condition itself clears
 async function claimOrEscalate(input: {
   userId: string;
   title: string;
@@ -71,9 +69,6 @@ async function claimOrEscalate(input: {
   let notificationId = claimed[0]?.id;
 
   if (!notificationId) {
-    // cm:guard the CTE must be `FOR UPDATE`, not a plain `FROM notifications prev` self-join — a non-locked rowmark is re-read under EvalPlanQual, so with two core replicas sweeping at once BOTH read the pre-update severity, both report an escalation, and the recipient is notified twice for one move. Locking the row first serializes them: the loser sees the winner's severity and refreshes the text silently.
-    // cm:guard refresh title/body on EVERY sweep, notify only on a severity move — gating the whole UPDATE on the severity change froze the text for the life of the incident, so an A2 opened at 3 stuck jobs still read "3 jobs" at 30, with no second notification coming to correct it. Reading `prev` is the only way to have both: RETURNING yields the NEW row, so the pre-update severity is otherwise unreachable.
-    // cm:guard clear `read` on a severity move, and ONLY on a severity move — an escalation on a row the admin had already opened otherwise reaches no channel at all: the toast needs a live socket, the bell counts unread, and the row keeps its original created_at so it does not resurface. It never self-heals either, because the next sweep finds severity already 'error' and fires nothing. Clearing it on every sweep instead would re-mark the row unread forever while the condition lasts.
     const updated = await db.execute<{ id: string; escalated: boolean }>(sql`
       WITH locked AS (
         SELECT id, severity FROM notifications
@@ -128,7 +123,6 @@ export async function runAlertSweep(now: Date = new Date()): Promise<AlertSweepR
       const resolutionKey = opsAlertResolutionKey(alert.id);
 
       if (alert.status === 'ok') {
-        // cm:edge lockstep -> packages/core/src/notifications/auto-resolve.ts — this pass depends on resolveNotifications stamping READ-but-active rows too; an acknowledged ops_alert keeps resolved_at NULL, stays active under the partial unique index, and would block every later recurrence from re-firing
         resolved += await resolveNotifications(resolutionKey);
         continue;
       }

@@ -12,7 +12,6 @@ import { and, desc, eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type AgentSessionStatus, agentSessions } from '../db/schema.js';
 
-// cm:guard NEVER add `messages` to either projection. It is the whole reason they exist — a transcript is unbounded, it is the one column a list has no use for, and `messageCount` answers the only question a list actually asks of it. A caller that needs the transcript is fetching ONE session and has `agent-sessions/:id` for it.
 export const agentSessionListColumns = {
   id: agentSessions.id,
   projectId: agentSessions.projectId,
@@ -41,7 +40,6 @@ export const agentSessionListColumns = {
   updatedAt: agentSessions.updatedAt,
 } as const;
 
-// cm:guard narrower than the REST projection ON PURPOSE, and it must stay that way: `diff`, `usage` and the three `pipeline*` jsonb columns are unbounded too, and an MCP result that overflows the token cap does not truncate — it crashes the agent mid-turn. The web list renders those fields; an agent listing sessions is choosing which ONE to fetch, and `.get` is where the detail lives.
 export const agentSessionMcpListColumns = {
   id: agentSessionListColumns.id,
   projectId: agentSessionListColumns.projectId,

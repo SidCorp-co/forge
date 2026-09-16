@@ -138,8 +138,6 @@ export function applySkillMaintenanceCarveout(
  * and it is the owner's, not this table's. A project that wants opus sets
  * `states.open.model`, which still wins over everything here.
  */
-// cm:guard a stage's tier is FIXED — nothing may vary it at dispatch time. Reopen-driven escalation (ISS-535 escalateModel) was deleted by owner decision: with every repo-touching stage at opus the ladder had no rung left to climb, and ISS-766 measured the opus-on-rework loop at $698 of a $1,207 week. Re-adding a runtime bump re-opens that.
-// cm:edge contract -> packages/core/src/pipeline/pipeline-config-schema.ts — keyed by the same four names `STAGE_NAMES` declares; the staged rungs were dropped by ISS-897 because nothing stamps them on a payload any more, and a default for a status no job carries is a tier no dispatch can reach.
 export const DEFAULT_STAGE_MODELS: Record<string, string> = {
   open: 'sonnet',
   in_progress: 'sonnet',
@@ -182,7 +180,6 @@ async function loadStageMap(projectId: string): Promise<Record<string, StageConf
     if (!states || typeof states !== 'object') return null;
     return states as Record<string, StageConfig>;
   } catch (err) {
-    // cm:guard a DB hiccup here must NOT crash a dispatch — log the degradation and proceed with defaults, because per-state overrides are a refinement and losing them costs a less-tuned run while throwing costs the run entirely.
     logger.warn(
       { err, projectId },
       'stage-overrides: failed to load pipelineConfig.states, dispatching with defaults',
@@ -278,7 +275,6 @@ export async function resolveStageOverrides(
     timeoutSeconds: stage.timeoutSeconds ?? null,
     mcpServers: stage.mcpServers ? { ...(stage.mcpServers as Record<string, unknown>) } : null,
     budget: stage.budget ? { ...stage.budget } : null,
-    // cm:why an empty array normalizes to null so `[]` cannot read as "no device is eligible" and silently wedge every job on the stage
     deviceIds: stage.deviceIds && stage.deviceIds.length > 0 ? [...stage.deviceIds] : null,
     declaredNames: stage.mcpServers
       ? [...collectDeclaredMcpNames({ mcpServers: stage.mcpServers as Record<string, unknown> })]

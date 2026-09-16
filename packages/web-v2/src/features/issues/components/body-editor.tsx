@@ -42,7 +42,6 @@ interface Tool {
   run: (span: { doc: string; from: number; to: number }) => Edit;
 }
 
-// cm:guard every entry is a pure function from `markdown-actions`, and a new one belongs there rather than inline: a CodeMirror view in jsdom has no layout, so an action written here is an action no test can assert the output of.
 const TOOLS: Tool[] = [
   { icon: "bold", label: "Bold", keys: "Ctrl+B", run: (s) => toggleWrap(s, "**") },
   { icon: "italic", label: "Italic", keys: "Ctrl+I", run: (s) => toggleWrap(s, "_") },
@@ -58,7 +57,6 @@ const TOOLS: Tool[] = [
 
 const SHORTCUTS: Record<string, number> = { b: 0, i: 1, k: 3 };
 
-// cm:guard the shortcut is a plain listener on the EDITOR's own element, not a CodeMirror extension and not a `keydown` on the wrapping div. Not an extension because web-v2 resolves two physically distinct copies of `@codemirror/state` — its own and the hoisted root one — so an extension built against either fails the other's `instanceof` with "Unrecognized extension value in extension set" (2026-09-14). Not the div because a static element carrying a key handler is the a11y rule's case, and correctly: it fires for anything inside it rather than for the editor. The listener dies with `v.dom` when CodeMirror destroys it.
 function shortcut(e: KeyboardEvent, v: EditorView): void {
   if (!(e.ctrlKey || e.metaKey) || e.altKey) return;
   const at = SHORTCUTS[e.key.toLowerCase()];
@@ -69,7 +67,6 @@ function shortcut(e: KeyboardEvent, v: EditorView): void {
   applyTool(tool, v);
 }
 
-// cm:guard the change and the selection travel in ONE transaction, and the edit is never written back through `onChange` instead: a value swap re-renders with a selection computed against the old document, which drops the caret at the end on every button. (It is not an undo claim — CodeMirror's history groups transactions dispatched in the same tick, so splitting them still costs one undo.)
 function applyTool(tool: Tool, v: EditorView): void {
   const { from, to } = v.state.selection.main;
   const edit = tool.run({ doc: v.state.doc.toString(), from, to });
@@ -104,7 +101,6 @@ export function BodyEditor({
   const view = useRef<EditorView | null>(null);
   const debounced = useDebounced(value, PREVIEW_DEBOUNCE_MS);
 
-  // cm:guard built ONCE and never from a value that changes per render: `extensions` is reconciled by identity, so an array rebuilt each render reconfigures the editor on every keystroke and drops the selection mid-word. `run` is a `useCallback` over no deps for the same reason.
   const extensions = useMemo(() => [markdown()], []);
 
   const preview = useQuery({
@@ -129,7 +125,6 @@ export function BodyEditor({
             disabled={disabled}
             aria-label={tool.keys ? `${tool.label} (${tool.keys})` : tool.label}
             title={tool.keys ? `${tool.label} · ${tool.keys}` : tool.label}
-            // cm:guard `onMouseDown` + preventDefault, not `onClick`: a click steals focus from the editor first, so by the time the handler runs the selection it is about to format has been collapsed.
             onMouseDown={(e) => {
               e.preventDefault();
               run(tool);
@@ -171,7 +166,6 @@ export function BodyEditor({
                 <Spinner size={12} /> Checking…
               </p>
             ) : preview.isError ? (
-              // cm:guard the refusal is the kernel's own message, which names the element, the attribute and its legal set — replacing it with a generic line removes the only thing that tells an author what to change (ISS-898's whole compliance result).
               <p className="fg-body-sm text-[color:var(--red-600)]">
                 {formatApiError(preview.error)}
               </p>

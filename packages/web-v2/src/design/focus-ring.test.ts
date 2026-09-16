@@ -10,7 +10,6 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { describe, expect, it } from "vitest";
 
-// cm:guard Keyboard focus must stay VISIBLE on every interactive element (ux-contract §4); these two assertions are the only thing standing between an added `shadow-*` and a control no keyboard user can locate, so neither may be relaxed to make a new component pass — give the component its ring instead.
 
 const DESIGN_DIR = dirname(fileURLToPath(import.meta.url));
 const SRC_DIR = resolve(DESIGN_DIR, "..");
@@ -73,7 +72,6 @@ describe("keyboard focus ring", () => {
     const [open, close] = layerBaseSpan(css);
     expect(open).toBeGreaterThan(-1);
 
-    // cm:guard Delete this rule and every control that does not declare its own ring goes ringless; move it OUT of `@layer base` and it beats every per-component ring instead (flame accent, bare inputs), which is why the span is checked and not just the presence.
     expect(css.slice(open, close)).toMatch(
       /:focus-visible\s*\{[^}]*box-shadow:\s*var\(--shadow-focus\)/,
     );

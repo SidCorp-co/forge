@@ -32,7 +32,6 @@ import { dirname, join, relative, resolve, sep } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 
-// cm:why resolved from this file rather than from `git rev-parse` or cwd — the checker must work in a source tarball with no .git and when invoked from any directory. Run from elsewhere, the old git-or-cwd root walked nothing and reported "0 violations across 0 files".
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 
 // Latin-1 Supplement letters (À–ÿ) excluding the math/punctuation glyphs
@@ -41,7 +40,6 @@ const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const NON_ENGLISH = /[À-ÖØ-öø-ſƠơƯưẠ-ỹ]/u;
 const NON_ENGLISH_GLOBAL = /[À-ÖØ-öø-ſƠơƯưẠ-ỹ]/gu;
 
-// cm:guard an unreadable config must abort, never fall back to DEFAULTS. Silently reverting to this repo's own layout is how a consuming repo gets a green run over a scope that does not exist there.
 const DEFAULTS = {
   scanRoots: ['packages/web-v2/src', 'packages/core/src'],
   scanExts: ['.ts', '.tsx', '.md'],
@@ -200,7 +198,6 @@ function scanContent(file, content, violations) {
 
 function report(violations, mode, fileCount) {
   const useColor = process.stdout.isTTY === true;
-  // cm:guard `all` walking zero files means scanRoots resolved nowhere, not that the tree is clean. Before this, invoking the script from another directory printed "0 violations across 0 files" and exited 0 — the fail-open shape the other checkers exit 2 on.
   if (mode === 'all' && fileCount === 0) {
     console.error(
       `check-source-language: no files under ${SCAN_ROOTS.join(', ')} — check ` +

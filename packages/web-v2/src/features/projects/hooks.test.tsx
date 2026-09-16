@@ -30,7 +30,6 @@ describe("useProjectHealth's refetch cadence", () => {
     vi.useFakeTimers({ shouldAdvanceTime: true });
   });
 
-  // cm:guard the rail mounts this query on EVERY workspace route, so what this asserts is what walking around the app costs — and it is the case that goes red if the staleTime is dropped back to the library default (ISS-1018).
   it("does not refetch on a second mount ninety seconds later, which the library default would", async () => {
     const qc = client();
     const health = vi.spyOn(projectApi, "health").mockResolvedValue([]);
@@ -39,7 +38,6 @@ describe("useProjectHealth's refetch cadence", () => {
     await waitFor(() => expect(health).toHaveBeenCalledTimes(1));
     first.unmount();
 
-    // cm:why ninety seconds sits BETWEEN the two windows — past the library's 60 s default, well inside the five minutes this hook sets — and a shorter gap would pass against either and prove nothing.
     vi.setSystemTime(Date.now() + 90_000);
 
     const second = renderHook(() => useProjectHealth(), { wrapper: wrapper(qc) });
@@ -47,7 +45,6 @@ describe("useProjectHealth's refetch cadence", () => {
     expect(health).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard the pair to the case above, and the reason the staleTime is not a freshness claim: invalidateQueries does not consult it, so every WebSocket event that moves one of these figures still reaches the screen at once. Delete this and that number reads as a five-minute staleness window, which it is not.
   it("refetches inside the window when the key is invalidated", async () => {
     const qc = client();
     const health = vi.spyOn(projectApi, "health").mockResolvedValue([]);

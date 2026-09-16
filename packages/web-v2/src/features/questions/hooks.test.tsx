@@ -74,7 +74,6 @@ afterEach(() => {
 });
 
 describe("a refusal sends the screen back to the server", () => {
-  // cm:guard every refusal core raises on this path — stale round, already answered, expired, voided — means the cached round is behind the row. Without this refetch the person is looking at a decision the server has moved past and every further click earns the same refusal (ISS-980 criterion 19).
   it("refetches the round after the answer is refused", async () => {
     listForIssue.mockResolvedValueOnce({ questions: [aQuestion(1)] });
     listForIssue.mockResolvedValue({ questions: [aQuestion(2)] });
@@ -109,7 +108,6 @@ describe("a refusal sends the screen back to the server", () => {
 });
 
 describe("the poll is bounded by whether there is anything to poll for", () => {
-  // cm:guard the empty case must NOT poll: `agent_questions` carries no index on `issue_id`, so an unconditional interval puts a sequential scan behind every open issue screen. The first question reaches an open screen through `lib/ws/event-router.ts` instead (ISS-980).
   it("does not go back to the server for an issue that carries no question", async () => {
     vi.useFakeTimers();
     listForIssue.mockResolvedValue(empty);
@@ -130,7 +128,6 @@ describe("the poll is bounded by whether there is anything to poll for", () => {
     expect(listForIssue.mock.calls.length).toBeGreaterThan(1);
   });
 
-  // cm:guard the reconnect is the ONLY recovery an empty panel has, because the poll above is deliberately off for it: a screen open across a dropped connection missed the `issue.statusChanged` frame that would have carried its first question, and nothing else on this key fires (ISS-980).
   it("picks up a first question missed across a dropped connection", async () => {
     listForIssue.mockResolvedValueOnce(empty);
     listForIssue.mockResolvedValue({ questions: [aQuestion(1)] });

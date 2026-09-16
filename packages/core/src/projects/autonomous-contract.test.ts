@@ -21,7 +21,6 @@ describe('missingAutonomousFacts', () => {
     expect(missingAutonomousFacts(ANSWERED)).toEqual([]);
   });
 
-  // cm:guard blank must count as missing, or a half-filled settings form flips the project to autonomous with a build command the agent cannot run
   it('counts a blank or whitespace answer as unanswered', () => {
     expect(
       missingAutonomousFacts({ ...ANSWERED, 'test-commands': '   ' }).map((f) => f.key),
@@ -37,7 +36,6 @@ describe('missingAutonomousFacts', () => {
 });
 
 describe('AUTONOMOUS_FACT_CONTRACT', () => {
-  // cm:guard a contract key that collides with a reserved key is unsettable: mergeProjectFacts drops reserved keys silently, so the gate would demand an answer the author has no way to give
   it('claims no key that projectFacts reserves as derived', () => {
     const reserved = new Set<string>(RESERVED_PROJECT_FACT_KEYS);
     expect(AUTONOMOUS_FACT_CONTRACT.filter((f) => reserved.has(f.key))).toEqual([]);

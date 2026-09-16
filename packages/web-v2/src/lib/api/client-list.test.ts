@@ -41,7 +41,6 @@ describe('apiClientList — a page cannot pass for a whole list', () => {
     });
   });
 
-  // cm:guard this is the case the old `header !== null ? … : items.length` fallback answered WRONG and silently. Restore that fallback and this test is the only thing that goes red — every other list assertion in the app keeps passing, because a truncated page and a complete list are byte-identical once the header is gone.
   it('throws when the header is absent, instead of guessing the page is the whole list', async () => {
     fetchMock.mockResolvedValueOnce(listResponse([{ id: 1 }, { id: 2 }], {}));
 
@@ -69,7 +68,6 @@ describe('apiClientList — a page cannot pass for a whole list', () => {
     });
   });
 
-  // cm:guard the envelope must be trusted over the header, and this is the case that tells them apart: a body saying 900 with a header saying 2 can only come from a route that computed one of them by hand. The body is the contract `listResponse` builds; the header is the compatibility copy.
   it('prefers the envelope total over a header that disagrees', async () => {
     fetchMock.mockResolvedValueOnce(
       new Response(JSON.stringify({ items: [{ id: 1 }], returned: 1, total: 900 }), {

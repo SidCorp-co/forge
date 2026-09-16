@@ -124,7 +124,6 @@ function LiveRow({
  *  No heartbeat dot and no runner — there is no session to have either, and an
  *  "unknown heartbeat" grey dot would read as a dead agent rather than an
  *  absent one. */
-// cm:guard the no-gate branch must SAY the step is awaiting its turn — a panel that renders the word "queued" with nothing beside it is the ambiguity ISS-903 closed, on the other side: the reader cannot tell "about to run" from "held for six days"
 function QueuedRow({
   step,
   slug,

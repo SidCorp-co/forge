@@ -80,7 +80,6 @@ export function sourceUnknownRefusal(source: string): SpeakerRefusal {
  * The ONE resolution. A speaker is the Forge user a confirmed row names, or a
  * named refusal — never a guess, never a fallback, never a service identity.
  */
-// cm:guard the only writer of an identity on the chat side. A second path to a `userId` — a bot account standing in for a person, a "best effort" match at call time, a default project owner — makes `questions/write.ts:answeredBy` lie, which is what `comments.is_ai` did before it was dropped on 2026-09-04 disagreeing with the token on 3,172 of 23,414 rows.
 export async function resolveSpeaker(ref: SpeakerRef): Promise<SpeakerResolution> {
   if (!isConversationAdapter(ref.source)) {
     return { linked: false, refusal: sourceUnknownRefusal(ref.source) };

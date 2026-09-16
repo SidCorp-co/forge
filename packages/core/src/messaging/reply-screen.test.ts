@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 // cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` pragma naming what its Vietnamese fixture exercises. The fixtures have to be Vietnamese, because the rules under test match Vietnamese phrasing, and deleting a pragma to pay the drain reds the language gate instead.
 
-// cm:why every case here reaches the cell through a DOOR rather than through an audience and an intent, because that is the only way a caller can name one after ISS-1002: the pair comes off the door's row, so a door screened against the wrong cell is what these fixtures would catch.
 
 const selectWhere = vi.fn();
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
@@ -141,7 +140,6 @@ describe("screenReplyAtDoor, over the chat-sync door's public:report cell", () =
     });
 
     it("the 'legacy-session' sentinel self-computes rather than skipping the check", async () => {
-      // cm:why the db mock has no `.groupBy`, so the self-compute fails closed — proving the call happened rather than being skipped
       selectWhere.mockResolvedValue([]);
       const verdict = await screenStakeholderReply(
         'proj-1',

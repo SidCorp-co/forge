@@ -60,7 +60,6 @@ interface Checkpoint {
   claudeSessionId: string | null;
   startedAt: Map<string, number>;
   makeId: () => string;
-  // cm:guard `md5(messages::text)` of the row this checkpoint wrote, read back INSIDE the transaction that wrote it. It is what stops an incremental flush folding onto a transcript this process did not write — another replica's rebuild, a `PATCH /api/agent-sessions/:id` carrying `messages`, or its own write that a later one replaced. Weakening it to a count, or to the ids alone, re-admits a content-only foreign write in silence, and the transcript that comes out is a plausible one nobody can tell from the real thing.
   fingerprint: string;
 }
 
@@ -79,12 +78,10 @@ interface FlushState {
   checkpoint: Checkpoint | null;
 }
 
-// cm:guard process-local, like the broadcast tail-debouncer in broadcast.ts, so in a multi-replica deploy two replicas each hold their own. Neither can corrupt the other's transcript: a checkpoint is only ever resumed against a row still answering with the fingerprint it wrote, and every write is compare-and-swapped on that same fingerprint, so the replica whose baseline moved loses the swap and re-derives against what now stands rather than overwriting it with something older. Both halves are load-bearing — keep only the fingerprint and a late write still clobbers a newer transcript; keep only the swap and a flush still folds onto an array it did not write.
 const flushStates = new Map<string, FlushState>();
 
 let lastSweepAtMs = 0;
 
-// cm:why swept rather than deleted on job end: `deriveSessionFinal` is the only deleter, and a cancelled or abandoned job never reaches it. That leak was one small object per session before ISS-1020 and is now a checkpoint carrying `startedAt`, which grows with the job's tool calls — so the map has to bound itself.
 function sweepIdleStates(now: number): void {
   if (now - lastSweepAtMs < IDLE_SWEEP_INTERVAL_MS) return;
   lastSweepAtMs = now;
@@ -114,13 +111,10 @@ function getState(sessionId: string): FlushState {
   return st;
 }
 
-// cm:guard the fingerprint covers BOTH columns a derive writes, and it has to: `claudeSessionId` is half the derived result and it moves without `messages` moving at all, so a fingerprint over the transcript alone lets a flush holding a stale prefix put an old session id back over a newer one and sit there — the transcript looks right and the id is a lie. The two md5s are concatenated rather than hashed together so no transcript ending in an id's first characters can collide with a shorter one.
 /** The stored derived result's fingerprint, computed by Postgres over the
  *  stored bytes themselves rather than over a re-serialized copy of them. */
 const storedFingerprint = sql<string>`md5(${agentSessions.messages}::text) || ':' || md5(coalesce(${agentSessions.claudeSessionId}, ''))`;
 
-// cm:guard the cancel is re-checked in the WRITE and not only in the read above, because a cancel moves neither column the fingerprint covers: it lands on `status` and `failure_reason`, so a cancel committing between the two would leave the swap intact and the late stream would be written, broadcast and dual-written to the turn table by the very derive the read-time guard says drops it.
-// cm:guard `is not distinct from`, never `=`: `failure_reason` is nullable, and a plain equality makes the whole conjunction NULL for a failed session carrying no reason — `NOT NULL` is NULL, the row matches nothing, and every derive on such a session silently writes nothing at all.
 const notUserCancelled = sql`not (${agentSessions.status} = 'failed' and ${agentSessions.failureReason} is not distinct from 'user_cancelled')`;
 
 interface Resumed {
@@ -153,7 +147,6 @@ function resumeFrom(
   }
   return {
     lastSeq: cp.lastSeq,
-    // cm:guard the fold gets a COPY. `mergeMessages` replaces the tail of the array it is handed and pushes onto it, and the array read off the row is also the pre-flush baseline `syncTurnsWithMessages` diffs against — share one array between the two and the turn table silently stops recording the turns this flush appended, while the transcript column still looks right.
     state: {
       messages: prevMessages.slice(),
       claudeSessionId: cp.claudeSessionId,
@@ -192,8 +185,6 @@ async function deriveOnce(
     .limit(1);
   if (!existing) return 'nothing-to-write';
 
-  // cm:guard never overwrite or revive a session the user explicitly cancelled: a stream arriving after the cancel is dropped, and the derive is one of the doors it can arrive through.
-  // cm:edge lockstep -> packages/core/src/agent-sessions/routes.ts — the same rule guards the user PATCH, and it has to be on both: a late write reaching the row by the derive and one reaching it by the PATCH are the same fact arriving by two doors, and a guard on one leaves the other reviving the row.
   if (existing.status === 'failed' && existing.failureReason === 'user_cancelled') {
     return 'nothing-to-write';
   }
@@ -230,7 +221,6 @@ async function deriveOnce(
       claudeSessionId && existing.claudeSessionId !== claudeSessionId ? claudeSessionId : null,
   });
   if (!written) {
-    // cm:guard zero rows is two outcomes wearing one face, and telling them apart is the point: the swap losing is retried against what now stands, the cancel firing is the answer. Collapse them and a cancelled session burns three re-derives and then logs that the write was lost, which reads as a fault where there was none.
     const [now] = await db
       .select({ status: agentSessions.status, failureReason: agentSessions.failureReason })
       .from(agentSessions)
@@ -257,7 +247,6 @@ async function deriveOnce(
     };
   }
 
-  // cm:why the FIRST new turn fires immediately and every append after it rides the tail-debouncer: the client learns the turn id from that first broadcast and cannot render the stream without it, while the rest are the same turn growing and would cost one frame each.
   written.sync.appended.forEach((t, i) => {
     broadcastTurnAppended(written.updated, t, { isStreamingTail: i > 0 });
   });
@@ -287,8 +276,6 @@ async function writeTranscript(
   agentSessionId: string,
   w: TranscriptWrite,
 ): Promise<WriteResult | null> {
-  // cm:why the SET list is written as a literal so `kernel-marker-guard.test.ts` can see it carries no `status` — this is the transcript flush, the hottest write on the session table, and it is the one place worth proving status-free rather than paying a marker round-trip per flush. `claudeSessionId` is stable once known, so it is spread in only when the row does not already carry it rather than churning the column on every flush.
-  // cm:guard the WHERE carries the fingerprint the derive read, so a transcript replaced since that read is never overwritten by one computed from the old bytes. Dropping it restores an unconditional write, and with it the case ISS-1020 names: a slow incremental flush committing after the final rebuild and putting the terminal transcript back to an earlier seq.
   return db.transaction(async (tx) => {
     const [row] = await tx
       .update(agentSessions)
@@ -304,7 +291,6 @@ async function writeTranscript(
           notUserCancelled,
         ),
       )
-      // cm:why the next checkpoint's fingerprint comes back on this RETURNING rather than from a select after it. RETURNING evaluates against the row as written, so it is the same answer a re-read would give — and a re-read is a second detoast of the largest jsonb column in the schema, on the write this issue exists to make cheaper.
       .returning({ ...getTableColumns(agentSessions), fingerprint: storedFingerprint });
     if (!row) return null;
     const { fingerprint, ...updated } = row;
@@ -334,7 +320,6 @@ async function runDerive(jobId: string, agentSessionId: string): Promise<void> {
       'session-transcript: lost the transcript write every attempt — nothing written',
     );
   } catch (err) {
-    // cm:guard a checkpoint may only ever describe a write that committed, and this one did not. Leaving it standing is how the next flush folds new events onto a transcript that was never stored.
     if (st) st.checkpoint = null;
     logger.warn({ err, jobId, agentSessionId }, 'session-transcript: derive failed');
   }
@@ -392,7 +377,6 @@ export async function deriveSessionFinal(jobId: string, agentSessionId: string):
       // runDerive never rejects, but guard regardless.
     }
   }
-  // cm:guard the terminal transcript is a full rebuild from every event, always. Dropping the checkpoint here is what makes that true: leave it and the last derive a session ever gets is an incremental one, and any event the cursor skipped is skipped for good.
   st.checkpoint = null;
   await runDerive(jobId, agentSessionId);
   flushStates.delete(agentSessionId);

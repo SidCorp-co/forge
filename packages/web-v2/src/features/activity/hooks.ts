@@ -17,7 +17,6 @@ import { useQuery } from "@tanstack/react-query";
 import { activityApi, type ListActivityOpts } from "./api";
 
 /** Cross-project activity feed. Keyed `['chat-logs','list',opts]`. */
-// cm:guard `refetchOnWindowFocus: true` is LOAD-BEARING here and is no longer the library default: since ISS-1019 the project default is false, so this line is signal (2) of the three this feed has, and deleting it as redundant takes one of them away silently.
 export function useActivity(opts: ListActivityOpts) {
   return useQuery({
     queryKey: ["chat-logs", "list", opts],

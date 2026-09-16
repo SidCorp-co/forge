@@ -22,7 +22,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:guard the two mocks stand in for a parsed environment and a database connection, never for the allowlist: `CHAT_TOOL_ALLOWLIST` itself and every factory on it are real here, which is what lets the names below be read off the tools rather than off a fixture (ISS-1007).
 vi.mock('../../config/env.js', () => ({ env: {} }));
 vi.mock('../../db/client.js', () => ({ db: {} }));
 
@@ -31,7 +30,6 @@ import { forgeIssuesTool } from '../../mcp/tools/forge-issues.js';
 import { forgeCliTool } from './forge-cli-tool.js';
 import { CHAT_TOOL_ALLOWLIST } from './registry.js';
 
-// cm:guard the frozen set, and it is spelled out rather than counted: a count passes when one tool is swapped for another, and the whole point of this file is that WHICH tool and WHICH action are what a fence has been written for. `forge` is first because it is the door the persona names first (ISS-1007, ISS-1009).
 const FROZEN: ReadonlyArray<readonly [string, readonly string[] | null]> = [
   ['forge', null],
   ['forge_guide', ['list', 'get']],
@@ -62,14 +60,12 @@ describe('the chat tool allowlist', () => {
     }
   });
 
-  // cm:guard the two arms are named as ABSENT rather than the two present ones asserted, because `toEqual` on the pair would pass a day when `upsert` joined them: this is the assertion that has to fail if somebody widens the entry (ISS-1007).
   it('lets no writing arm of forge_guide reach a room', () => {
     const guide = CHAT_TOOL_ALLOWLIST.find((s) => nameOf(s) === 'forge_guide');
     expect(guide?.allowedActions).not.toContain('upsert');
     expect(guide?.allowedActions).not.toContain('delete');
   });
 
-  // cm:guard neither wrapper may come back beside the CLI: measured 2026-09-15 with both offered, the model reached the wrapper for a status question, a duplicate check and a settings change while the persona named the CLI — two doors to one tracker is which one a model in a hurry takes, and the wrapper knows nothing of `forge new`'s neighbours, fold or shape (ISS-1009).
   it('offers the forge CLI first, and neither tracker wrapper', () => {
     const factories = CHAT_TOOL_ALLOWLIST.map((s) => s.factory);
     expect(factories[0]).toBe(forgeCliTool);

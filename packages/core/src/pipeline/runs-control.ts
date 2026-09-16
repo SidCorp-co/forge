@@ -5,8 +5,6 @@
  * (`mcp/tools/forge-pipeline-runs.ts`) both call into these helpers so the
  * transition semantics live in one place.
  */
-// cm:guard flipping `pipeline_runs.status` to `paused` or `cancelled` is the ONLY mutation needed to stop new jobs being picked, because the ISS-101 dispatcher gate already filters on `r.status = 'running'`. A second stop mechanism added here would be a state the dispatcher does not read.
-// cm:guard the transitions this file refuses are as load-bearing as the ones it performs: `completed`/`failed` reject every verb, and `cancelled` rejects pause/resume while staying idempotent under cancel. Widening any of those turns a terminal run back into a live one, which the cascade has already finished cleaning up after.
 
 import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
@@ -27,7 +25,6 @@ import { cascadeCancelChildJobs, type JobRow, requestKillsForCascade } from './r
  * a finished issue). Everything else is "actionable" and would be re-picked by
  * the orchestrator the moment the run dies, so cancel parks it at `on_hold`.
  */
-// cm:guard `releasing` is skipped for a STRONGER reason than the terminal two: a batch is executing over the issue right now, and parking it at `on_hold` takes it off the status `finish` and `abort` transition FROM, so the release completes against a row neither outcome can find.
 const CANCEL_PARK_SKIP_STATUSES = new Set<IssueStatus>([
   'on_hold',
   'closed',
@@ -49,7 +46,6 @@ export type CancelPipelineRunResult = {
 export interface CancelPipelineRunOptions {
   /** The user the cancel is attributed to. Recorded on the run flip AND the issue park. */
   actorUserId?: string;
-  // cm:guard REQUIRED even though `actorUserId` is optional — the two answer different questions and only one of them has a safe default. An absent user id records `null`, which is honest; an absent agency records `'human'`, which is a claim.
   actorAgency: ActorAgency;
   /**
    * Park the linked issue at `on_hold`. Defaults to TRUE — "stop working on
@@ -128,8 +124,6 @@ export async function resumePipelineRun(runId: string): Promise<PipelineRunRow> 
  * Runs AFTER the cancel commits (the transition opens its own transaction) and
  * is best-effort: a failure here must not fail the cancel.
  */
-// cm:guard the brake is that `on_hold` has no `STATUS_TO_JOB_TYPE` mapping, NOT the actor — every other status a cancelled run can leave behind is actionable, so the orchestrator opens a replacement run seconds later and the cancel achieves nothing (ISS-411). A future edit that parks somewhere actionable restores that silent re-dispatch.
-// cm:guard record the human who cancelled, never a synthesized device — a device actor attributes the park to `projects.createdBy`, which drops it out of the interventions metric that counts user-actor transitions. The device fallback is for callers with no user in scope, not the normal path.
 async function parkIssueOnCancel(run: PipelineRunRow, actorUserId?: string): Promise<boolean> {
   if (run.kind !== 'issue' || !run.issueId) return false;
   try {
@@ -233,8 +227,6 @@ export async function cancelPipelineRun(
   let issueParked = false;
   if (result.broadcast) {
     broadcastRunStatus(result.run);
-    // cm:guard `fromStatus: 'running'` is FALSE when the run was `paused`, and on this path that is a new false statement rather than an inherited one — before this call an operator cancel emitted nothing, so `sentry-breadcrumbs.ts` now renders "running -> cancelled" for a run that was paused, on the surface the maintainer uses to reconstruct a run's history without the DB. Priced, not free: THREE of the four subscribers DECIDE on `toStatus` and never read this field; the fourth, `sentry-breadcrumbs.ts`, decides on nothing and only RENDERS `fromStatus`, which is exactly where the cost lands. `emitCloseHook` in pipeline/runs.ts already records the same fixed value for the identical case. The exit condition is the honest value threaded through `applyKernelTransition`'s returning shape — NOT a pre-select here, which is a second round-trip and a second convention.
-    // cm:guard emit AFTER the transaction commits, and never skip it — an operator cancel is a terminal run transition, and three subscribers already assume every one of them reaches this hook: `release-batch/claim-subscriber.ts` names "operator cancelPipelineRun → runs-control.ts" in its own header (an assumption that was false until this call existed, which is why ISS-764 needed a sweeper backstop), `memory/candidates-observer.ts` mines terminal issue runs, and `pipeline/paused-run-wedge-resolve.ts` clears the frozen-queue notification whose ONLY other clearer is a resume.
     await hooks.emit('pipelineRunStatusChanged', {
       runId: result.run.id,
       projectId: result.run.projectId,

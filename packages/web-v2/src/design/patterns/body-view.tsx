@@ -80,7 +80,6 @@ function renderNode(node: BodyNode, ctx: RenderCtx, key: string): ReactNode {
   if (node.type === "text") return node.value;
   if (isComponent(node)) return <ComponentNode key={key} node={node} ctx={ctx} />;
 
-  // cm:guard look the tag up with `Object.hasOwn`, never with a bare index. The scanner accepts any `[A-Za-z][A-Za-z0-9-]*` name, so `<constructor>` and `<tostring>` are bodies a person can write, and a plain index reaches `Object.prototype` and emits the tag instead of unwrapping it.
   const cls = Object.hasOwn(COMPACT_TAG_CLASS, node.name)
     ? COMPACT_TAG_CLASS[node.name]
     : undefined;
@@ -112,7 +111,6 @@ function renderNode(node: BodyNode, ctx: RenderCtx, key: string): ReactNode {
       </div>
     );
   }
-  // cm:guard an unrecognised tag is UNWRAPPED, never dropped and never emitted: `createElement` with an author-supplied name would put arbitrary markup on the page, and dropping it loses the prose inside. Core's sanitizer already unwraps the same way, so this only ever fires on a row written before a tag left the allowlist.
   if (cls === undefined) return <span key={key}>{children}</span>;
   if (VOID_TAGS.has(node.name)) return createElement(node.name, { key, className: cls });
   return createElement(node.name, { key, className: cls }, children);
@@ -128,7 +126,6 @@ function ComponentNode({ node, ctx }: { node: BodyNode; ctx: RenderCtx }) {
     return <>{ctx.renderArtifact(node.attrs.id)}</>;
   }
 
-  // cm:guard render `children` IN ORDER — do not split prose from slots and concatenate. A slot is an ordinary child, so partitioning moves a `forge-artifact` written mid-paragraph to the end of the block and silently reorders what the author wrote.
   return (
     <section className="my-3 rounded-md border border-line bg-surface first:mt-0">
       <header className="flex flex-wrap items-center gap-2 border-b border-line-subtle px-3 py-2">
@@ -149,7 +146,6 @@ export function BodyView({
 }: BodyViewProps): ReactNode {
   if (format !== "html") return <Markdown className={className}>{body}</Markdown>;
   if (!nodes) {
-    // cm:guard a component body with no tree is a row THIS build's scanner could not read, and it must never fall through to `<Markdown>` — react-markdown escapes the tags and the screen shows literal `<forge-…>`, which is the exact defect ISS-967 exists to remove.
     return (
       <div className={cn("min-w-0 max-w-full", className)}>
         <p className="fg-body-sm text-muted">

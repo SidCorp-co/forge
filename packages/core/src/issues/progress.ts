@@ -39,11 +39,9 @@ export interface ProjectProgress {
 
 const REMAINING_STATUSES = new Set<IssueStatus>(['draft', 'waiting', 'needs_info', 'on_hold']);
 
-// cm:guard the ONLY place issue statuses are bucketed into a progress figure — a second counter (chat self-count, a bespoke report) re-opens ISS-671's 54-issue incident
 export function bucketOf(status: IssueStatus, hasShippedEvidence: boolean): ProgressBucket {
   if (status === 'awaiting_release' || (status === 'closed' && hasShippedEvidence))
     return 'shipped';
-  // cm:guard `dropped` is terminal and shipped nothing BY DEFINITION — falling through to the `in_flight` default would count every dropped issue as work still in progress, forever, which is the shape of the ISS-671 incident this function exists to prevent
   if (status === 'closed' || status === 'dropped') return 'closed_unshipped';
   if (REMAINING_STATUSES.has(status)) return 'remaining';
   return 'in_flight';
@@ -62,7 +60,6 @@ function emptyByStatus(): Record<IssueStatus, number> {
  * MUST treat `null` as fail-closed, not as "zero progress".
  */
 /** The pool, or a caller's open transaction — this is one read and it must join the caller's. */
-// cm:guard typed as the `execute` this function actually calls, NOT as `typeof db`: the wide type excluded a transaction (a `PgTransaction` has no `$client`), so a caller inside one silently fell back to the pool and waited for a second connection while holding its first — the ten-wide deadlock `loadStageContext` names (ISS-981, found reviewing ISS-997).
 export type ProgressReader = Pick<typeof defaultDb, 'execute'>;
 
 export async function computeProjectProgress(
@@ -77,9 +74,6 @@ export async function computeProjectProgress(
         and ${activityLog.payload}->>'to' = ${BASE_MERGE_STATE}
     )`;
 
-    // cm:guard ISS-817 — `merged_at` alone is NOT shipped-evidence: markMergedOnClose stamps it on EVERY close, so this is the WHOLE discriminator now that the post-code conjunct is gone. Drop the NOT and the predicate degenerates to "closed", reporting never-merged code as shipped.
-    // cm:why the auto-stamp and the close's activity_log row are written in ONE transaction and Postgres now() is transaction-start time, so their timestamps are identical; a genuine base-merge stamp came from an earlier transaction and cannot collide
-    // cm:edge lockstep -> packages/core/src/issues/apply-transition.ts — this reads the timestamp identity that markMergedOnClose + the activity_log write produce together; splitting those two writes apart silently re-inflates `shipped`
     const stampedByCloseItself = sql`exists (
       select 1 from ${activityLog}
       where ${activityLog.issueId} = ${issues.id}
@@ -88,10 +82,8 @@ export async function computeProjectProgress(
         and ${activityLog.createdAt} = ${issues.mergedAt}
     )`;
 
-    // cm:why ISS-791 — the second disjunct asks only whether the stamp was DELIBERATE, because exactly three writers set `merged_at` and the question partitions them: `markMergedIfLeavingBase` is already the first disjunct, `markMergedOnClose` is the auto-stamp the `not` here excludes, and `applyMergeMarker` is the audited claim gated by `pipeline/work-evidence.ts`. It used to also require a logged transition into developed/testing/tested/released, which no hand-driven issue ever has — so work finished outside the pipeline and claimed through the one sanctioned surface was reported as "closed with NO evidence it shipped".
     const hasShippedEvidence = sql<boolean>`(${leftMergeState} or (${issues.mergedAt} is not null and not ${stampedByCloseItself}))`;
 
-    // cm:why evidence is computed per issue in a derived table then grouped — grouping DIRECTLY on the expression made Postgres reject it ("subquery uses ungrouped column issues.id"): the builder renders it differently in the select list vs the GROUP BY, so the two stop matching
     const rows = await dbi.execute<{
       status: IssueStatus;
       has_shipped_evidence: boolean;
@@ -147,7 +139,6 @@ export function buildProgressFactsBlock(p: ProjectProgress): string {
   return [
     'Project progress (computed by the system from live data — AUTHORITATIVE).',
     'Do not recount, re-derive, or estimate these figures from issue lists; state them as given. Each figure below is a distinct bucket — do not merge them.',
-    // cm:why ISS-817 — "released to production" overclaimed: this bucket also holds issues merged to the base branch and closed by hand, which have shipped code but no production release
     `- shipped (code reached the release branch): ${p.shipped}`,
     `- closed with no recorded release (duplicate, merged elsewhere, decided not to do — or shipped without a matching record): ${p.closedUnshipped}`,
     `- in progress: ${p.inFlight}`,

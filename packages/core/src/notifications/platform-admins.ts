@@ -9,7 +9,6 @@ import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
 import { parseAdminList } from '../middleware/require-admin.js';
 
-// cm:guard mirrors requireAdmin's ADMIN_EMAILS allow-list AND the GET route's assertEmailVerified() gate — an unverified address on the allow-list must not receive cross-tenant alert details
 export async function platformAdminUserIds(): Promise<string[]> {
   const allowed = parseAdminList();
   if (allowed.length === 0) return [];

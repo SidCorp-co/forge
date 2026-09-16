@@ -56,7 +56,6 @@ describe('ISS-186 prompt-snapshot write path', () => {
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
     await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
-    // cm:guard the runner row must be bound to THIS device — `prepareClaimedJob` resolves the runner by (project, device) and refuses by name when the pair is missing.
     const runnerId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
@@ -144,7 +143,6 @@ describe('ISS-186 prompt-snapshot write path', () => {
       chars: number;
       estTokens: number;
     }>;
-    // cm:why the floor is 2 rather than 3 — project-config is only emitted when the project HAS one, so pinning 3 makes this test a function of fixture config rather than of the preamble builder.
     expect(blocks.length).toBeGreaterThanOrEqual(2);
     for (const block of blocks) {
       expect(block).toHaveProperty('id');

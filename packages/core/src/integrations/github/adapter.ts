@@ -40,7 +40,6 @@ export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
     hasDeliveryLog: true,
   },
 
-  // cm:guard 403 is NOT `needs_reauth` — GitHub answers 401 for a credential it does not recognise and 403 for one it does recognise and refuses (permission not granted to the App, SSO not authorised). Collapsing them tells the operator to reconnect when what they must do is grant a permission, and reconnecting reproduces the state exactly. This is the mislabel ISS-924 files against the coolify adapter; do not reproduce it here.
   async healthcheck(ctx: AdapterContext<GitHubConfig, GitHubSecrets>): Promise<HealthCheckResult> {
     const { owner, repo, installationId } = ctx.config ?? {};
     const base = (ctx.config?.apiBaseUrl ?? GITHUB_API_BASE).replace(/\/+$/, '');
@@ -137,7 +136,6 @@ export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
       repository?: { full_name?: string };
     };
 
-    // cm:guard match the repository before acting — a GitHub App signs every installation's deliveries with ONE webhook secret, so a valid signature proves the App sent it and says NOTHING about which binding it belongs to. Without this check the router's "first binding whose secret verifies" would hand a second repo's events to the first repo's binding, silently and with a 200.
     const arrived = payload?.repository?.full_name;
     const expected =
       ctx.config?.owner && ctx.config?.repo ? `${ctx.config.owner}/${ctx.config.repo}` : null;

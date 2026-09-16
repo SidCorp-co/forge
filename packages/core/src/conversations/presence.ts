@@ -55,7 +55,6 @@ export const PRESENCE_KEYS = [
 ] as const;
 const HEARTBEAT_KEYS = ['enabled', 'intervalMs'] as const;
 
-// cm:guard `strict` on both objects and a refusal that NAMES the accepted keys: a presence knob nobody reads is a setting an admin believes is in force, and the silent absorb is worse than the refusal. The messages carry the bound because the person fixing the payload is reading the error, not this file.
 export const presenceConfigSchema = z
   .object({
     dormantMs: bounded('dormantMs').optional(),
@@ -110,9 +109,7 @@ export interface ResolvedPresence {
  * One set of thresholds for a room with several handles: each key folds by
  * its own operator, and a key nobody set folds as its default.
  */
-// cm:guard the operator is PER KEY and not one "most conservative" rule, because conservatism points different ways: a shorter `dormantMs` and a smaller `backoffAfter`/`loopLimit` stop speech sooner (min), while a LONGER `loopBounceMs` counts more exchanges as bounces (max), and `mention` speaks less than `window`. A single min over the lot would make the loop breaker looser in exactly the room that set it tighter (ISS-1034, codex F4).
 export function foldPresence(selves: readonly PresenceConfig[]): ResolvedPresence {
-  // cm:guard a handle that left a key UNSET joins the fold with that key's DEFAULT rather than dropping out of it: one handle at `backoffAfter: 20` beside one that said nothing folds to min(20, 3) = 3, because the silent handle asked for the default and the default is a value, not an abstention. Dropping it would let one handle's loosening govern a room another handle expected to be tighter (ISS-1034 criterion 35, codex F4).
   const pick = <K extends keyof ResolvedPresence>(
     key: K,
     op: (values: number[]) => number,
@@ -142,7 +139,6 @@ export function heartbeatOf(self: PresenceConfig): { enabled: boolean; intervalM
 /**
  * Whether a message names a handle: `@handle` or the bare handle as a word.
  */
-// cm:guard the name matched is the ORG HANDLE and the match is a whole word, case-insensitive: a handle `forge` must not fire on "forgery", and `@Forge` typed by a person on a phone is the same address. A null handle — an org that has minted none — can be named by nobody, so it never matches (ISS-1034 criteria 66, 67).
 export function namesHandle(content: string, handle: string | null): boolean {
   if (!handle) return false;
   const escaped = handle.replace(/[.*+?^${}()|[\]\\-]/g, '\\$&');

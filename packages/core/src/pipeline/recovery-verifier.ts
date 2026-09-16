@@ -48,18 +48,15 @@ export const JOB_TYPE_EXPECTED_EXIT_STATUS: Record<JobType, readonly IssueStatus
   code: ['developed'],
   review: ['testing', 'reopen'],
   test: ['awaiting_release', 'reopen', 'tested'],
-  // cm:guard the `staging` entry exists only to keep `Record<JobType>` exhaustive for historical `jobs` rows — no status maps to it and nothing dispatches it. Same shape as `staging` in `db/schema.ts#jobTypes`: a jobType outliving its issue status.
   staging: ['reopen'],
   fix: ['developed'],
   release: ['awaiting_release', 'closed'],
   custom: [],
   pm: [],
-  // cm:guard EMPTY on purpose — the autonomous driver owns the issue's whole walk, so there is no single status its one job is expected to land on; listing one here would make the recovery verifier call a still-working session unadvanced
   drive: [],
   // smoke canaries (ISS-455) are issue-less; there is no status to advance.
   smoke: [],
   release_batch: [],
-  // cm:why reconcile/verify_skill jobs are issue-less (system pipeline_runs), so there is no status to advance
   reconcile: [],
   verify_skill: [],
 };

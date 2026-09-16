@@ -27,7 +27,6 @@ const steerBodySchema = z
   })
   .strict();
 
-// cm:guard every `SteerError['code']` needs a row here: the map is exhaustive by TYPE, so a new code fails the build rather than reaching a caller — but only while this stays a `Record<SteerError['code'], …>` and not a partial. Widening it to `Partial<>` or `string` turns the next added code into a 500 that says nothing, which is what this route exists to avoid. This was a `cm:edge` to the `forge_steer` MCP tool until ISS-894 wave 3 deleted it; REST is now the only surface mapping these.
 const STATUS: Record<SteerError['code'], 404 | 409> = {
   NO_LIVE_SESSION: 404,
   SESSION_PARKED: 409,
@@ -36,7 +35,6 @@ const STATUS: Record<SteerError['code'], 404 | 409> = {
 
 export const issueSteerRoutes = new Hono<{ Variables: AuthVars }>();
 
-// cm:guard scoped to its OWN path, never `'*'`. `/api/issues` already carries two wildcard `requireAuth` guards, and `issueAttachmentRoutes` is only reachable by a device token because ISS-719 scoped ITS guard the same way — a third wildcard here is one more thing that has to stay mounted in the right order to keep that true. A route that owns one path needs no blanket. See middleware/route-mount-order.test.ts.
 issueSteerRoutes.use('/:id/steer', requireAuth(), assertEmailVerified());
 
 issueSteerRoutes.post(
@@ -67,7 +65,6 @@ issueSteerRoutes.post(
       .limit(1);
     if (!issue) throw new HTTPException(404, { message: 'issue not found' });
 
-    // cm:guard writer, not member. A steer becomes the agent's next turn on a real worktree, so it is a mutation of what the pipeline does — the same bar `forge_jobs.cancel` holds for reaching into a running job.
     const access = await loadProjectAccess(issue.projectId, userId);
     assertProjectRole(access, 'member');
 

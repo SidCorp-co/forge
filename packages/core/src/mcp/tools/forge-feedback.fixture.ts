@@ -18,7 +18,6 @@ export const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 
 export const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-// cm:guard the pipeline ctx carries a MACHINE principal — since ISS-931 the job comes off the `job:<id>` name on the caller's own token, so a person's PAT (`machine: null`) makes every context field null and the happy path stops asserting anything about attribution.
 const jobPrincipal = makeFakeJobPrincipal(TOKEN_ID, OWNER_ID, DEVICE_ID, PROJECT_ID);
 
 export function makeCtx(projectSlug = PROJECT_SLUG) {
@@ -62,14 +61,12 @@ export function makeFeedbackDbMocks(): FeedbackDbMocks {
   const dbSelect = vi.fn();
   const dbInsert = vi.fn();
   const dbUpdate = vi.fn();
-  // cm:why loadVisibleProjectIdsForPrincipal chain (org scope): selectDistinct({id}).from(projects).leftJoin(...).leftJoin(...).where(...)
   const selectDistinctWhere = vi.fn();
   const selectDistinctLeftJoin2 = vi.fn();
   const selectDistinctLeftJoin = vi.fn();
   const selectDistinctFrom = vi.fn();
   const dbSelectDistinct = vi.fn();
 
-  // cm:guard call this from `beforeEach` AFTER `vi.resetAllMocks()`, which clears IMPLEMENTATIONS as well as calls — skip it and every test fails with `Cannot read properties of undefined (reading 'where')`, which points at the drizzle chain and never at the reset that emptied it
   function install(): void {
     selectFrom.mockImplementation(() => ({
       where: selectWhere,
@@ -101,7 +98,6 @@ export function makeFeedbackDbMocks(): FeedbackDbMocks {
   }
 
   /** `submit` names its project, so it spends no slug lookup — only the membership check. */
-  // cm:guard a submit that resolved the caller's project instead would consume the slug row this helper deliberately does NOT queue, which is the shape the refusal exists to make impossible (ISS-992)
   function queueMemberOnly(...then: unknown[][]): void {
     let m = selectLimit.mockResolvedValueOnce([memberAccessRow]);
     for (const rows of then) m = m.mockResolvedValueOnce(rows);

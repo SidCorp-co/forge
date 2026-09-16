@@ -23,7 +23,6 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-// cm:edge contract -> packages/core/src/jobs/queued-gates.ts — these stubs must keep the real return SHAPES (a Map for the batch, a DispatchBarrier for the single job); queued-gates.test.ts owns whether the gate reasons themselves are right, this file only covers the MCP layer attaching them
 const gateReasonsMock = vi.fn(async (_projectId: string) => new Map<string, string>());
 const assertDispatchableMock = vi.fn(async (_jobId: string) => ({ ok: true }) as unknown);
 vi.mock('../../jobs/queued-gates.js', () => ({
@@ -140,7 +139,6 @@ describe('forge_jobs.list', () => {
     expect(result.jobs[0]?.id).toBe(JOB_ID);
   });
 
-  // cm:guard the gate reason must reach the CALLER, not just exist server-side — `queued` is the status of a job about to run AND of one blocked for weeks, and every diagnosis of the latter before this went through a hand-written database script
   it('attaches gateReason to queued rows', async () => {
     const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMemberThenJobs([baseJobRow]);
@@ -162,7 +160,6 @@ describe('forge_jobs.list', () => {
     expect(result.jobs[0]?.gateReason).toBeNull();
   });
 
-  // cm:guard skip the gate query when nothing is queued — a terminal-only page must not pay for a scan whose every answer would be omitted anyway
   it('does not query gates when no row is queued', async () => {
     const tool = forgeJobsListTool(makeFakeContext(fakePrincipal));
     mockMemberThenJobs([{ ...baseJobRow, status: 'done' as const }]);
@@ -313,7 +310,6 @@ describe('forge_jobs.events', () => {
     expect(result.lastSeq).toBe(7);
   });
 
-  // cm:guard an event whose own data exceeds the response budget must be ELIDED, never dropped — dropping it left lastSeq at the caller's own sinceSeq while the notice told them to re-call with it, so the replay looped on that one event forever
   it('elides an oversized event payload rather than wedging the cursor', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     mockJobThenMember();
@@ -325,7 +321,6 @@ describe('forge_jobs.events', () => {
     expect(JSON.stringify(result).length).toBeLessThan(38_000);
   });
 
-  // cm:guard the size trim sheds the NEWEST events on this cursor-paginated surface — shedding the oldest moves lastSeq past pages the caller never received, and nothing ever replays them
   it('keeps the earliest events when the page as a whole is too big', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     mockJobThenMember();
@@ -339,7 +334,6 @@ describe('forge_jobs.events', () => {
     expect(JSON.stringify(result).length).toBeLessThan(38_000);
   });
 
-  // cm:guard lastSeq must land on the LAST RETURNED event, never on the over-fetched probe row — the probe exists only to prove hasMore, and letting it set the cursor skips that event forever because nothing replays it
   it('over-fetches by one and leaves the cursor on the last event it returned', async () => {
     const tool = forgeJobsEventsTool(makeDeviceCtx());
     mockJobThenMember();
@@ -401,7 +395,6 @@ describe('forge_jobs.cancel', () => {
     expect(result.cancellationRequested).toBe(true);
     expect(cancelJobMock).toHaveBeenCalledWith(JOB_ID, {
       actorUserId: OWNER_ID,
-      // cm:guard `agent`, and it asserted `human` until ISS-1003: `cancelJob` takes the GATE's reading, which fails closed on a credential that established nobody. Attribution still follows the token's owner on the line above — the two answers are separate on purpose.
       actorAgency: 'agent',
       reason: 'stuck ghost job',
       source: 'mcp',
@@ -426,7 +419,6 @@ describe('forge_jobs.cancel', () => {
   });
 
   it('cancels a queued job whose project membership holds even with a terminal run (no run guard)', async () => {
-    // cm:edge contract -> packages/core/src/jobs/cancel-job.ts — this tool never reads pipeline_run status; cancel-job.ts owns whether a run state may block a cancel, and today it has no such guard, so a writer cancel succeeds regardless of run state
     const tool = forgeJobsCancelTool(makeDeviceCtx());
     mockJobThenMember({ status: 'dispatched' });
     cancelJobMock.mockResolvedValueOnce({
@@ -515,7 +507,6 @@ describe('forge_jobs.resume', () => {
     );
   });
 
-  // cm:guard writer-gated, same as cancel — a resume moves a job, and a viewer who can restart a step on someone else's project can spend their runner budget
   it('rejects a viewer with FORBIDDEN before calling the service', async () => {
     const tool = forgeJobsResumeTool(makePatCtx(null));
     selectLimit.mockResolvedValueOnce([{ ...baseJobRow, status: 'held' }]);

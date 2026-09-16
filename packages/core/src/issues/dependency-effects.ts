@@ -11,16 +11,8 @@
 
 import type { IssueDependencyKind } from '../db/schema.js';
 
-// cm:guard the ONE kind `hasChildIssues` reads. Changing it moves the waiver to a different edge, so every surface naming `decomposes` has to move with it — `dependency-effects.test.ts` reads the source of the surfaces that cannot interpolate this constant and goes red naming the file that did not follow.
-// cm:edge lockstep -> packages/core/src/pipeline/work-evidence.ts — that query must filter on THIS constant and never a literal
-// cm:edge lockstep -> packages/core/src/db/schema.ts — the `issueDependencyKinds` cm:guard names this kind as the exception to "no dispatch path reads a non-blocks kind"
-// cm:edge lockstep -> docs/modules/issue-work/README.md — the Guards section names this kind
 export const WORK_EVIDENCE_WAIVER_KIND: IssueDependencyKind = 'decomposes';
 
-// cm:edge contract -> packages/core/src/guides/registry.ts — rendered verbatim into the `issue-dependencies` guide
-// cm:edge contract -> packages/core/src/prompt/facts/registry.ts — rendered verbatim into the `relations` fact
-// cm:edge contract -> packages/core/src/mcp/tools/forge-pm-set-dependency.ts — rendered verbatim into the tool description
-// cm:edge contract -> packages/core/src/mcp/tools/forge-project-pm.ts — rendered verbatim into the `set_dependency` action text
 export const WORK_EVIDENCE_WAIVER_NOTE =
   `It does not gate dispatch, but it is NOT inert: one live \`${WORK_EVIDENCE_WAIVER_KIND}\` edge ` +
   "OUT of an issue waives that issue's work-evidence gate, so it can be marked merged and moved " +

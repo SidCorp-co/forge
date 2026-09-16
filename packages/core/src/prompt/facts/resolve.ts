@@ -107,18 +107,14 @@ interface IntegrationRow {
   hasOrgGuide?: boolean;
 }
 
-// cm:edge contract -> packages/core/src/integrations/usage-registry.ts — per-provider usage hints are data-driven there; adding an integration edits that table, never this renderer
-// cm:why one query, shared by the pipeline facts block and the chat preamble — a chat-only copy of the active-filter + sentry-target mapping would drift from what a job sees
 export async function loadActiveIntegrationRows(
   projectId: string,
   orgId?: string | null,
 ): Promise<IntegrationRow[]> {
-  // cm:guard both flags must hold — an inactive binding on an active connection (or vice versa) injects nothing at dispatch, so listing it here would advertise tools the agent will not receive
   const pairs = await listBindingsForProject(projectId);
   const active = pairs.filter((p) => p.binding.active && p.connection.active);
   if (active.length === 0) return [];
 
-  // cm:why the guide lookup is skipped when nothing is connected — an unconnected project must not pay a query to discover guides it will never be pointed at
   const orgGuides = orgId ? await loadOrgGuideProviders(orgId) : new Set<string>();
 
   return active.map((p) => ({
@@ -136,7 +132,6 @@ export async function loadActiveIntegrationRows(
   }));
 }
 
-// cm:why indented as a markdown sub-block so multi-line operator text cannot break out of its bullet and read as a new top-level instruction to the agent
 function indentBlock(text: string): string {
   return text
     .split('\n')
@@ -151,7 +146,6 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
   const lines = rows.map((r) => {
     const hint = getIntegrationUsage(r.provider);
     const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : '';
-    // cm:why the org's runtime guide WINS over the seeded slug — an org authors one precisely to correct or replace the shipped default, so pointing at the default would send the agent to the text they overrode
     const guideSlug = r.hasOrgGuide
       ? integrationGuideSlug(r.provider)
       : getIntegrationGuide(r.provider);
@@ -168,7 +162,6 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
     if (r.provider === 'sentry' && r.sentryTargets && r.sentryTargets.length > 0) {
       extra.push(renderSentryTargetsLine(r.sentryTargets));
     }
-    // cm:guard operator text, rendered VERBATIM and last so it is the final word for this provider — never summarise, reorder or truncate it here
     const instructions = r.instructions?.trim();
     if (instructions) {
       extra.push(
@@ -189,7 +182,6 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
  * an omitted status is one the agent is not shown, never one the pipeline
  * routes around.
  */
-// cm:guard rendering only — a status dropped here is still a status an issue can hold and a session can run at. Reading this filter as a routing decision is how `enabled` came to be described as an auto-transition it never performed (ISS-994).
 function buildLadder(states: Record<string, { enabled?: boolean } | undefined>): IssueStatus[] {
   return CANONICAL_LADDER.filter((s) => states[s]?.enabled !== false);
 }
@@ -244,8 +236,6 @@ export function makeProjectResolver(src: {
  * Parent comes back as a NAME because the only consumer writes it into a system prompt, where an
  * id is noise an agent cannot act on: `forge_issues` resolves a module by name as well as by uuid.
  */
-// cm:guard an EMPTY array is what keeps the `module-attribution` fact out of a taxonomy-less project's prompt, so this must stay a plain read with no placeholder row and no fallback list
-// cm:why read here rather than through `labels/module-service.ts`, which owns modules: that import is an EIGHTH module edge out of this file and `no-coordinator-blob` freezes it at seven. The invariants module-service holds are all about WRITES; a list has none to hold.
 export async function loadProjectModules(projectId: string): Promise<ProjectModuleFact[]> {
   const parents = alias(labels, 'parent_labels');
   const rows = await db
@@ -328,7 +318,6 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
         selectOnDemandSlugsFromKnowledge(projectId),
       ]);
     } catch {
-      // cm:why a prompt with stale facts beats no prompt: this path runs at dispatch, and throwing here would fail the job rather than the read
       alwaysInjectFacts = selectAlwaysInjectFacts(projectFacts, projectFactsConfig);
       projectFactKeys = Object.keys(projectFacts);
     }
@@ -386,7 +375,6 @@ export function renderStageFactsText(
     modules: inputs.modules,
   };
 
-  // cm:guard `relevant` is asked LAST and its absence means yes, so a fact that does not opt in renders exactly as it did before the predicate existed — the property the pinned-heading test in `resolve.test.ts` rests on
   const forgeText = FORGE_FACTS.filter(
     (f) =>
       f.tier === 'contextual' &&
@@ -398,9 +386,6 @@ export function renderStageFactsText(
 
   const projectParts: string[] = [];
 
-  // cm:guard the cap decides only whether a warning is logged: every flagged body renders whatever the summed size, because a truncated hard rule is worse than a warned-but-present one.
-  // cm:why "Follow them exactly." stays, and ISS-936 is where that was decided rather than overlooked. Nothing verifies the rule was obeyed, and the honest sentence about that (`ALWAYS_INJECT_GUARANTEE_NOTE`) is owed to the OWNER who sets the flag, on the surfaces that offer it. Putting it here instead tells the agent, inside the rule, that ignoring the rule costs nothing — which converts an unverified rule into an ignored one.
-  // cm:edge contract -> packages/core/src/projects/project-facts.ts — `ALWAYS_INJECT_GUARANTEE_NOTE` describes THIS render to an owner; a change to what is guaranteed here has to move that sentence
   const alwaysInject = inputs.alwaysInjectFacts;
   const alwaysInjectKeys = new Set(alwaysInject.map((f) => f.key));
   if (alwaysInject.length > 0) {

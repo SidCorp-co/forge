@@ -130,7 +130,6 @@ describe('forge_feedback submit', () => {
       boundProjectId: PROJECT_ID,
     });
 
-    // cm:guard the queue order below IS the assertion: `resolveEffectiveProjectId` reads `boundProjectId` with no slug and no explicit arg, then `assertPrincipalIsMember` takes the PAT path through `effectiveProjectRole`. Reorder the implementation and these `Once` mocks feed the wrong call.
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
     // No count check (no jobId)
     insertReturning.mockResolvedValueOnce([
@@ -193,7 +192,6 @@ describe('forge_feedback submit', () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     queueMemberOnly();
-    // cm:why only two rows are queued: the handler throws on the missing `summary` before it resolves the token's job, so a third would never be consumed and would leak into the next test
 
     await expect(
       tool.handler({ action: 'submit', projectId: PROJECT_ID, kind: 'friction', target: 'skill' }),
@@ -261,7 +259,6 @@ describe('forge_feedback list', () => {
     expect(result).not.toHaveProperty('truncated');
   });
 
-  // cm:guard assert BOTH halves — the limit reaching `.limit()` as limit+1 AND the un-inflated limit reaching the envelope. Passing overfetch() to both is the mutation that reports a bound page as `hasMore:false`, and it leaves every other test in this file green because they only assert row counts.
   it('over-fetches by one and reports the limit that bound the page', async () => {
     queueSlugAndMember(Array.from({ length: 4 }, (_, i) => ({ ...baseReport, id: `r${i}` })));
 
@@ -316,7 +313,6 @@ describe('forge_feedback list', () => {
     const tool = forgeFeedbackTool(makeCtx());
 
     mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
-    // cm:guard no resolveEffectiveProjectId / assertPrincipalIsMember call on the org scope: the fence IS loadVisibleProjectIdsForPrincipal, and a queued membership row here would hide its removal.
     selectLimit.mockResolvedValueOnce([
       { ...baseReport, projectId: PROJECT_ID, projectSlug: PROJECT_SLUG },
       {
@@ -515,7 +511,6 @@ describe('forge_feedback review', () => {
     });
   });
 
-  // cm:why a report is filed from wherever the defect was seen, so the issue that fixes it normally lives in the Forge project, not the reporting one — same-project made the field unusable for exactly the reports it exists to close (45 coolify-fanout reports, 4 projects, one fix)
   it('links a report to an issue in ANOTHER visible project (the Forge project)', async () => {
     const tool = forgeFeedbackTool(makeCtx());
     const reviewedAt = new Date('2026-07-20T00:00:00Z');
@@ -539,11 +534,9 @@ describe('forge_feedback review', () => {
       reviewedAt: expect.any(Date),
       linkedIssueId: FORGE_ISSUE_ID,
     });
-    // cm:guard the visible-project join runs ONCE for the fence and the link together; two calls here is the defect ISS-1025 removed
     expect(h.selectDistinctWhere).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard visibility is still the fence — relaxing same-project must not let a caller link to an issue in a project they cannot see.
   it('refuses a linkedIssueId in a project the caller cannot see, and stamps nothing', async () => {
     const tool = forgeFeedbackTool(makeCtx());
     const HIDDEN_ISSUE_ID = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
@@ -622,12 +615,10 @@ describe('forge_feedback review', () => {
     expect(result).toEqual({ ok: true, count: 2, scope: 'all', linkedIssueId: null });
   });
 
-  // cm:why this is the workflow the field exists for — one Forge defect reported N times from N projects folds into ONE issue in a single call; before this, bulk could not carry a link at all
   it('signalKey + scope=all folds every duplicate into ONE cross-project issue', async () => {
     const tool = forgeFeedbackTool(makeCtx());
     const FORGE_ISSUE_ID = 'eeeeeeee-eeee-4eee-8eee-eeeeeeeeeeee';
 
-    // cm:why ONE queued resolution for BOTH the scope=all fence and the resolveLinkedIssue fence (ISS-1025): the handler used to run that join twice per call, and this test used to have to queue it twice
     mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
     selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]);
     updateReturning.mockResolvedValueOnce([{ id: 'r1' }, { id: 'r2' }, { id: 'r3' }]);
@@ -651,7 +642,6 @@ describe('forge_feedback review', () => {
     });
   });
 
-  // cm:guard reviewed:false must clear the link too, or an un-reviewed report keeps pointing at an issue that no longer covers it
   it('reviewed:false on the bulk path clears reviewedAt AND the link', async () => {
     const tool = forgeFeedbackTool(makeCtx());
 

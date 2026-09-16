@@ -426,7 +426,6 @@ describe('memory write/get/delete integration (Phase 0)', () => {
       expect(rows[0]?.source).toBe('knowledge');
     });
 
-    // cm:guard ISS-876: an undeclared query key is STRIPPED by zValidator, not rejected, so a filter missing from `listQuerySchema` answers with the whole store and a `total` that counts it — indistinguishable from a match. Assert the narrowing AND the total.
     it('sourceRef filter narrows results and the total', async () => {
       const { projectId, token } = await seedMember();
       for (const ref of ['keep-me', 'other-1', 'other-2']) {

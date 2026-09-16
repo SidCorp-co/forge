@@ -233,7 +233,6 @@ export function SessionsScreen({ scope }: SessionsScreenProps) {
   const rowById = useMemo(() => new Map(rows.map((r) => [r.id, r] as const)), [rows]);
   const openRow = openSessionId ? rowById.get(openSessionId) : undefined;
 
-  // cm:guard one `now` per render, read once and passed down: deriving it inside each consumer lets the tab counts, the row chips and the filter disagree about which sessions are stalled within a single paint
   const now = Date.now();
   const displays = useMemo(
     () => rows.map((r) => deriveSessionDisplayStatus(r, now)),
@@ -674,7 +673,6 @@ function RunnerCell({
   );
 }
 
-// cm:why the chip gets a second line under it at all: one word is the whole of twenty different endings, so a live stalled row carries a countdown to the server's auto-reap — "stalled (display)" must never read as "already reaped (server)" — and a terminal row carries its cause.
 function StatusCell({
   row,
   display,
@@ -692,7 +690,6 @@ function StatusCell({
   // taking priority over the generic idle→paused mapping used everywhere else
   // (ChatScreen/SessionScreen keep that mapping unchanged; this is list-only).
   const awaitingReply = isAwaitingReply(row);
-  // cm:guard every terminal session is classified here rather than chip-mapped directly: benign cleanup and lifecycle cancels take the neutral `swept` token with a tooltip that says why, and only a genuine failure earns the red `failed` token and its amber reason — a red chip on filed-away work is an alarm nobody can act on (ISS-322, ISS-998).
   const outcome = classifySessionOutcome(display, row.failureReason);
   const chipStatus = awaitingReply
     ? "waiting"
@@ -702,7 +699,6 @@ function StatusCell({
   const reason = failureReasonLabel(row.failureReason) ?? row.failureReason ?? null;
   const showReason =
     !!reason && (display === "failed" || display === "stalled" || display === "cancelled_stale");
-  // cm:guard a `cancelled` session carries no `failureReason` — nothing failed — so the line below it comes from the OUTCOME instead. Without it the row says only "Closed", which is the calm terminal tone this design system reserves for filed-away work and does not say that somebody stopped this session (ISS-998).
   const subLine = showReason ? reason : display === "cancelled" ? outcome.label : null;
   // Red reason text only for a genuine failure; swept/cleanup reads subtle.
   const reasonColor = outcome.bucket === "failed" ? "var(--amberw-600)" : "var(--fg-subtle)";

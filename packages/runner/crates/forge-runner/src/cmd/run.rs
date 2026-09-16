@@ -28,7 +28,6 @@ pub struct Args {
 #[derive(Subcommand)]
 pub enum Command {
     /// Declare the issues about to be handed to a subagent. Starts nothing.
-    // cm:guard NOT called `open`: the pool verb this socket used to carry was `run_open`, it took a job from a queue and started a process, and it is still banned by name in `control.rs`. This one writes a row and starts nothing (ISS-1050).
     Declare(DeclareArgs),
     /// Say a declared run is finished, or never started.
     Close(CloseArgs),
@@ -68,7 +67,6 @@ fn socket() -> anyhow::Result<std::path::PathBuf> {
     Ok(path)
 }
 
-// cm:guard the refusal text the daemon sent is printed WHOLE and the exit is non-zero. Each refusal names what the master has to do next — which issue collided, which tree is held, which declared row to close, which project this pane actually serves — and a wrapper that reduced them to "failed" would take that away at the one moment it is worth having.
 pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
     let sock = socket()?;
     let token = session_tokens::token_from_env().map_err(|e| {

@@ -106,8 +106,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   // project/Workspace (ISS-685). False from the TopBar menu button.
   const [mobileNavProjectFirst, setMobileNavProjectFirst] = useState(false);
   const [scrolled, setScrolled] = useState(false);
-  // cm:why the dock's open state and width are per TAB and not per account: opening a conversation in one tab must not pop the panel open in every other one, which is what `useConversationDock`'s `syncTabs: false` buys (ISS-500)
-  // cm:guard the SAME conversation surface is mounted TWICE below and the two are kept exclusive by width alone — the overlay inside the content column is `md:hidden`, `ConversationDock` is `hidden md:flex` — so a breakpoint changed on one and not the other mounts both and a person types into whichever React rendered second
   const { chatOpen, setChatOpen, chatWidth, setChatWidth } = useConversationDock();
   const mainRef = useRef<HTMLElement>(null);
   // Hover-open coordination for the expanded-rail project switcher: the trigger

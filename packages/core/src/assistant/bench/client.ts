@@ -271,7 +271,6 @@ export function createClient(opts: ClientOptions) {
         if (q.source) qs.set('source', q.source);
         const env = await json<ListEnvelope<T>>('GET', `/api/chat-logs?${qs}`);
         rows.push(...env.items);
-        // cm:why the envelope's own offset, not page × the size asked for: the route caps pageSize, and a page smaller than asked would otherwise end the read early
         if (env.offset + env.returned >= env.total) return rows;
         if (env.returned === 0)
           throw new DeploymentRefusal(

@@ -86,9 +86,6 @@ describe("ConversationSidebar · the two sets and the way between them", () => {
     expect(screen.getByText("Archived conversations")).toBeInTheDocument();
   });
 
-  // cm:guard the count of New-conversation controls is what this asserts rather than their absence:
-  // the rail's own header carries one at all times, so an empty state that wrongly offered a second
-  // would still leave `getByRole` finding one and the assertion passing.
   it("tells an empty archived side that nothing is archived, without offering a new conversation", () => {
     mount({ showArchived: true, rows: [] });
     expect(screen.getByText("Nothing archived")).toBeInTheDocument();
@@ -119,8 +116,6 @@ describe("ConversationSidebar · the two sets and the way between them", () => {
     expect(props.onArchive).toHaveBeenCalledWith(false, expect.objectContaining({ id: "c3" }));
   });
 
-  // cm:guard the collapsed rail renders no toggle: it renders no list either, so a control there
-  // would swap a set nobody can see and read as having done nothing.
   it("shows no Archived control while the rail is collapsed", () => {
     mount({ collapsed: true });
     expect(screen.queryByRole("button", { name: "Archived" })).not.toBeInTheDocument();

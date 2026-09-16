@@ -109,7 +109,6 @@ describe('agentSelfPatchSchema', () => {
     expect(agentSelfPatchSchema.safeParse({ emoji: '🦞', greeting: 'hello' }).success).toBe(true);
   });
 
-  // cm:guard the exact payload the web editor sends for a blank interval, and the assertion is that the save LANDS with the interval unset and `enabled` kept — a top-level-only merge refused it (codex F5).
   it('merges heartbeat by its own keys: a nested null unsets the interval and keeps enabled', async () => {
     loadOrgAgent.mockResolvedValue({ id: AGENT, handle: 'babo' });
     stored.row = {

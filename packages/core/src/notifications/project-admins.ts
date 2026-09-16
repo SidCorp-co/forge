@@ -4,8 +4,6 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { organizationMembers, projectMembers, projects } from '../db/schema.js';
 
-// cm:guard mirrors effectiveProjectRole's admin rule (lib/authz.ts) — explicit project_members admin UNION org owner/admin — so a gate notification reaches exactly the people authorised to act on it. Widening this without widening authz sends someone a decision they cannot make.
-// cm:edge lockstep -> packages/core/src/lib/authz.ts — same admin definition
 export async function projectAdminUserIds(projectId: string): Promise<string[]> {
   const [project] = await db
     .select({ orgId: projects.orgId })

@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 //
-// cm:guard `disabled` must stay operable here — the toggle was locked on exactly the status it would fix, so the only control that returns a retired box refused precisely when it was needed and its caption sent the operator to a re-registration the unique index refuses (ISS-990).
 
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";

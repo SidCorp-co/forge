@@ -163,7 +163,6 @@ describe('seedBuiltinSkills', () => {
   });
 
   it('loads non-empty files[] for skills that ship a references/ folder (AC #3)', async () => {
-    // cm:guard the name is read from disk, never hardcoded. It was `['forge-plan', 'forge-test']` until ISS-895 deleted both with the staged lane, and a hardcoded name that no longer ships turns this into a green assertion over zero rows — the seeder could stop loading files entirely and nothing would say so.
     const realRoot = new URL('../../skills/', import.meta.url).pathname;
     const withRefs = readdirSync(realRoot, { withFileTypes: true })
       .filter((e) => e.isDirectory() && existsSync(path.join(realRoot, e.name, 'references')))

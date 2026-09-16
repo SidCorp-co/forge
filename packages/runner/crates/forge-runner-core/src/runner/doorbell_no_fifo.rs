@@ -34,7 +34,6 @@ pub fn path_for(ledger_path: &Path, run_id: &str) -> PathBuf {
         .join(format!("{run_id}.fifo"))
 }
 
-// cm:guard REFUSES by name and never answers `NoListener`, which is the one substitution that would be silent: `NoListener` is a live tier change a caller degrades to a park on, so returning it here would report a working fast path this platform does not have (ISS-964 criterion 11).
 pub fn listen(_ledger_path: &Path, _run_id: &str) -> Result<Listening> {
     Err(no_fifo())
 }
@@ -43,7 +42,6 @@ pub fn ring(_ledger_path: &Path, _run_id: &str) -> Result<Ring> {
     Err(no_fifo())
 }
 
-// cm:why the only operation that is vacuously true: a door this platform cannot open is a door there is nothing to take down, and a cleanup path that fails on it would abort an unwind over something that was never there.
 pub fn take_down(_ledger_path: &Path, _run_id: &str) -> Result<()> {
     Ok(())
 }

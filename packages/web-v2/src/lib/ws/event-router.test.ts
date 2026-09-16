@@ -18,7 +18,6 @@ function capture() {
   return { qc, keys, has: (k: unknown[]) => keys.includes(JSON.stringify(k)) };
 }
 
-// cm:guard `routeEvent` no longer invalidates synchronously — every key it decides on goes into a 250 ms window (ISS-1019) — so a case asserting without flushing reads an empty list and passes against a router that decided nothing at all.
 const send = (event: string, data: Record<string, unknown> = {}) => {
   const c = capture();
   routeEvent({ event, data, timestamp: "2026-09-12T12:00:00.000Z" }, c.qc);
@@ -30,7 +29,6 @@ afterEach(() => {
   flushInvalidations();
 });
 
-// cm:guard the dashboard is keyed `['pulse']`, and this file's own guard says a key outside the invalidated prefixes stops refreshing with nothing red to say so — these cases ARE that red. Each event below moves a figure the surface draws, so dropping one leaves the dashboard confidently stale (ISS-988).
 describe("the workspace pulse is refreshed by every event that moves one of its figures", () => {
   const movers: Array<[string, Record<string, unknown>, string]> = [
     ["issue.created", {}, "the open bucket and the weekly created series"],
@@ -48,7 +46,6 @@ describe("the workspace pulse is refreshed by every event that moves one of its 
     });
   }
 
-  // cm:guard a reconnect drops every event in the gap, so the replay is the only thing that repairs a dashboard left open across one (ISS-988)
   it("a reconnect replay refreshes it too", async () => {
     const c = capture();
     const { replayOnReconnect } = await import("./event-router");
@@ -67,7 +64,6 @@ describe("routeEvent", () => {
   });
 });
 
-// cm:guard the issues list renders its dependency badges from the search response since ISS-1017, so `['issue', id, 'dependencies']` no longer reaches it — these cases are the only thing that goes red if the list prefix is dropped from that branch and the chips start outliving the edge that was retracted.
 describe("a dependency change reaches the issues list, not only the two issues it names", () => {
   const c = send("dependencyChanged", {
     projectId: "p1",
@@ -87,7 +83,6 @@ describe("a dependency change reaches the issues list, not only the two issues i
   });
 });
 
-// cm:guard the prefix list is now ONE array read by both replays, so this is what says a prefix cannot be dropped from the reconnect path while it stays in the first-open one — the two used to be the same function and drift here is silent.
 describe("a reconnect still repairs every prefix it repaired before", () => {
   it("invalidates every prefix a dropped connection has to repair", async () => {
     const c = capture();

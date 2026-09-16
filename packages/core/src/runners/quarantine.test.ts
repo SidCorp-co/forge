@@ -126,7 +126,6 @@ describe('maybeQuarantineRunner', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  // cm:why the no-ack class: on pixelight one runner took 10 consecutive dispatches without a single ack over 4h41m and nothing here could see it
   it('trips on a streak of never-claimed dispatches', async () => {
     limit.mockResolvedValueOnce([
       { status: 'failed', error: 'dispatch_unclaimed' },
@@ -159,7 +158,6 @@ describe('maybeQuarantineRunner', () => {
     expect(update).not.toHaveBeenCalled();
   });
 
-  // cm:guard `session_lost` must keep tripping nothing — a session that started and then died can die from the agent's own work, so a streak of them says nothing about the box
   it('ignores a streak of lost sessions entirely', async () => {
     expect(await maybeQuarantineRunner(RUNNER_A, PROJECT_A, JOB_CURRENT, 'session_lost')).toBe(
       false,
@@ -213,7 +211,6 @@ describe('clearRunnerQuarantine', () => {
     expect(broadcastRunnerChanged).toHaveBeenCalledWith(PROJECT_A, RUNNER_A);
   });
 
-  // cm:why the alarm is cleared by a job SUCCEEDING on the box, never by the quarantine expiring
   it('resolves the runner alarm when a row was actually cleared', async () => {
     returning.mockResolvedValueOnce([{ id: RUNNER_A }]);
     await clearRunnerQuarantine(RUNNER_A, PROJECT_A);

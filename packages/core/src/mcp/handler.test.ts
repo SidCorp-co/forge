@@ -83,7 +83,6 @@ describe('@forge/core MCP server', () => {
       expect(names.has('forge_issues')).toBe(true);
       expect(names.has('forge_comments')).toBe(true);
       expect(names.has('forge_config')).toBe(true);
-      // cm:guard `forge_tasks` must NOT come back as a tool — ISS-146 folded it into `forge_issues` as the createTask/listTasks/updateTask/deleteTask sub-actions, which is why the four assertions below read the DESCRIPTION rather than the tool list
       expect(names.has('forge_tasks')).toBe(false);
       const issuesTool = res.tools.find((t) => t.name === 'forge_issues');
       expect(issuesTool?.description ?? '').toContain('createTask');
@@ -101,7 +100,6 @@ describe('@forge/core MCP server', () => {
     try {
       const res = await client.listTools();
       const names = new Set(res.tools.map((t) => t.name));
-      // cm:guard escalation has exactly one route: `forge_project_pm` action=write_decision with an optional `escalate` object. ISS-146 removed `flag_blocker` and the standalone `escalate` tool, ISS-483 §E#3 the `write_decision` shim — re-registering any of the three gives escalation a second door, and the dispatcher assertion below stops describing the only way in.
       expect(names.has('forge_pm.flag_blocker')).toBe(false);
       expect(names.has('forge_pm.escalate')).toBe(false);
       expect(names.has('forge_pm.write_decision')).toBe(false);
@@ -133,7 +131,6 @@ describe('@forge/core MCP server', () => {
     }
   });
 
-  // cm:guard the dispatchers must appear in `tools/list`: it is the only place a caller of a retired shim can find what replaced it, so a dispatcher that exists but is not listed leaves the migration undiscoverable (ISS-145)
   it('exposes the ISS-145 action dispatchers', async () => {
     const { client, server } = await connectClient();
     try {
@@ -143,10 +140,8 @@ describe('@forge/core MCP server', () => {
       expect(names.has('forge_project_pm')).toBe(true);
       expect(names.has('forge_pipeline_runs.list')).toBe(false);
       expect(names.has('forge_pm.snapshot')).toBe(false);
-      // cm:guard exactly two legacy names stay registered, and only because a live skill calls each by name — forge-skill-audit for `forge_pipeline_runs.get`, forge-plan/forge-triage/forge-build for `forge_pm.set_dependency`. Registering a third re-opens a second path into a dispatcher action; dropping one of these two breaks that skill's next run with `Unknown tool`, which is why both directions are asserted.
       expect(names.has('forge_pipeline_runs.get')).toBe(true);
       expect(names.has('forge_pm.set_dependency')).toBe(true);
-      // cm:guard a surviving shim's description must LEAD with the marker, so `tools/list` alone tells a caller where to go; make it a suffix and the migration target is only discoverable by invoking the tool that is going away
       const shim = res.tools.find((t) => t.name === 'forge_pipeline_runs.get');
       expect(shim?.description).toMatch(/^\[DEPRECATED/);
     } finally {
@@ -155,7 +150,6 @@ describe('@forge/core MCP server', () => {
     }
   });
 
-  // cm:edge lockstep -> packages/core/src/mcp/pm-device-gate.test.ts — this list is the CREDENTIAL-refused half of forge_project_pm's actions and that file holds the reachable half plus dispatch, which answers ISS-895 instead; an action that changes side without moving in both leaves both files passing while one asserts the opposite of the gate
   it('refuses the forge_project_pm action that needs runner state', async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({
@@ -181,7 +175,6 @@ describe('@forge/core MCP server', () => {
     }
   });
 
-  // cm:guard the refusal code must stay the literal `PM_REQUIRES_DEVICE`, because that string is the whole signal — ISS-150 Finding #2 was a gate keyed with the wrong separator, so it never fired at all and every test still passed
   it('lets a token reach the forge_pm.set_dependency shim', async () => {
     const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();
     const server = createMcpServer({
@@ -192,7 +185,6 @@ describe('@forge/core MCP server', () => {
     const client = new Client({ name: 'test', version: '0.0.0' });
     await client.connect(clientTransport);
     try {
-      // cm:guard `forge_pm.set_dependency` is the last standalone forge_pm.* name and it is NOT credential-gated. It carried the device gate its retired siblings had, on the stated ground that it "can run decomposeParent, which creates an integration branch, so a PAT reaching it writes git with no runner behind it" — that capability is gone (`decomposeParent` is nowhere in the tree) and `setIssueDependency` writes a row and emits hooks. The same edges were reachable to any token through `forge_issues data.relations`, which the refusal itself advertised, so the gate was a detour rather than a fence (ISS-931).
       for (const name of ['forge_pm.set_dependency']) {
         const res = await client.callTool({ name, arguments: {} });
         expect(res.isError).toBe(true);

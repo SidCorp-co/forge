@@ -83,7 +83,6 @@ describe("the operator queries are reachable by the event router", () => {
     expect(fresh.every((q) => q.state.isInvalidated)).toBe(false);
 
     routeEvent({ event, data, timestamp: new Date().toISOString() }, qc);
-    // cm:guard `routeEvent` decides the keys and hands them to a 250 ms window rather than invalidating on the spot (ISS-1019), so without this the assertion below reads the cache before the window closes and passes against a router that decided nothing at all.
     flushInvalidations();
 
     const after = qc.getQueryCache().getAll();
@@ -100,7 +99,6 @@ describe("useOperatorLiveRooms", () => {
     expect(subscribe.mock.calls.map(([r]) => r)).toEqual(["project:p-1", "project:p-2"]);
   });
 
-  // cm:guard a refetch hands the hook a NEW array of the SAME ids every time — keying the effect on identity would unsubscribe and resubscribe all 34 rooms on every poll, and a room re-joined mid-flight drops the events in between
   it("does not churn its subscriptions when the same ids arrive in a new array", () => {
     const { rerender } = renderHook(({ ids }: { ids: string[] }) => useOperatorLiveRooms(ids), {
       wrapper: wrapper(new QueryClient()),

@@ -22,7 +22,6 @@ export async function readCharter(
   return getCharterByProject(db, projectId);
 }
 
-// cm:edge protocol -> packages/core/src/skills/divergence-charters.ts — that module's guard requires `upsertCharter` to run inside a transaction so `charter.changed` lands with the upsert (invariant §9.11); this wrapper is what supplies one, and calling `upsertCharter` directly from a transport would break the invariant silently
 export async function upsertCharterAtomic(
   input: UpsertCharterInput,
 ): Promise<Awaited<ReturnType<typeof upsertCharter>>> {

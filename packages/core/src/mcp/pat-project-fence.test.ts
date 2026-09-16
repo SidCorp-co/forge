@@ -80,7 +80,6 @@ async function connect() {
   return { client, server };
 }
 
-// cm:guard take the result as `unknown` — the SDK types `callTool` as a union whose other arm has no `content`, so a narrower parameter type does not compile and a cast at every call site is what the existing MCP tests do instead.
 function textOf(res: unknown): string {
   const content = (res as { content?: unknown }).content;
   return (content as Array<{ type: string; text: string }> | undefined)?.[0]?.text ?? '';
@@ -103,7 +102,6 @@ describe('a project-bound PAT cannot reach another project over MCP', () => {
     try {
       const res = await client.callTool({ name, arguments: { projectId: FOREIGN } });
       expect(res.isError, name).toBe(true);
-      // cm:guard the refusal must read NOT_FOUND, never FORBIDDEN — a 403 confirms the project exists and turns every one of these tools into an existence oracle for projects the caller cannot see. The wording is the assertion; softening it to a generic "is an error" check would pass while the oracle came back.
       expect(textOf(res), name).toContain('not found or not accessible');
     } finally {
       await client.close();
@@ -118,7 +116,6 @@ describe('a project-bound PAT cannot reach another project over MCP', () => {
         name: 'forge_memory.search',
         arguments: { projectId: BOUND, query: 'x', topK: 1, strategy: 'keyword' },
       });
-      // cm:guard assert what the refusal is NOT, never that the call succeeds — the db is stubbed here, so a bound-project call still fails, just further in. Strengthening this to expect success would make it fail for a reason that has nothing to do with the fence, and the point of the case is only to show the fence is scoped rather than refusing everything.
       expect(textOf(res)).not.toContain('not found or not accessible');
     } finally {
       await client.close();

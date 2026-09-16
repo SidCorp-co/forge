@@ -26,8 +26,6 @@ import type { PoolRelation } from './pool.js';
 
 const DEFAULT_ADMISSIBLE_LIMIT = 20;
 
-// cm:guard `mergedAt` and `branch` are RAW EVIDENCE and must stay raw — never a `shipped`, `done` or `ready` boolean derived from them. A status answers only WHERE the work is (`pipeline/status-assertions.ts`); these two answer what EXISTS, and a master reading a backlog needs both to tell finished work from unstarted work. Without them a `draft` built by hand and a `draft` nobody has touched are the same row, because a hand-worked issue mints no job and the exclusions below key on jobs (ISS-940).
-// cm:guard NO `jobId` on this type, and never add one. A row a master could pass to `pool claim` is a malformed claim waiting to happen, and keeping one off it is the whole reason (ISS-917 B6) the backlog is a sibling key of the pool response rather than more `items`.
 export type AdmissibleIssue = {
   issueId: string;
   issueKey: string | null;
@@ -52,9 +50,6 @@ export type Admission = {
   entryOnRelease: boolean;
 };
 
-// cm:guard parse through the CANONICAL schema, never read the jsonb by hand: a config this build can no longer parse (a status dropped from `BACKLOG_ADMISSIBLE_STATUSES`, a key removed) must read as NO admissible set, because a hand-read keeps offering rows the box then refuses and the master cannot tell which of the two is wrong.
-// cm:guard the entry status is admitted for an AUTONOMOUS project and cannot come from `poolBacklog.statuses`, which is `issueStatuses` minus the driver statuses by construction. Since ISS-933 core mints no `drive` job, so without this an autonomous project offers nothing at all and goes silent with no error anywhere saying why (criterion 23).
-// cm:edge lockstep -> packages/core/src/pipeline/autonomous-dispatch.ts — `isEntryGateClosed` used to decide whether core MINTS and now decides whether the issue is OFFERED. It is the same gate and the same word to an operator; both halves must move together or the project either stalls or starts work a human meant to release.
 function admissionOf(projectId: string, agentConfig: unknown): Admission | null {
   const ac = (agentConfig as { pipelineConfig?: unknown } | null) ?? {};
   const parsed = pipelineConfigSchema.safeParse(ac.pipelineConfig ?? {});
@@ -68,7 +63,6 @@ function admissionOf(projectId: string, agentConfig: unknown): Admission | null 
     projectId,
     statuses: [...statuses],
     limit: cfg.poolBacklog?.limit ?? DEFAULT_ADMISSIBLE_LIMIT,
-    // cm:guard a GATED autonomous project still admits an entry-status issue a human released by hand. The gate is per project and a Run is per issue, so without this the only way to release one is to open the gate for all of them.
     entryOnRelease: isAutonomous(cfg) && !entryOpen,
   };
 }
@@ -98,7 +92,6 @@ export async function readAdmissions(args: {
     .filter((a): a is Admission => a !== null);
 }
 
-// cm:guard the same blocker facts `readPool` returns, keyed off the issue rather than a job — raw status and merge stamp, NEVER a computed `satisfied`: deciding whether a blocker is settled is the master's judgement, and a list that pre-answers it is the kernel routing again through a second door.
 const RELATIONS = sql`
   COALESCE((
     SELECT json_agg(json_build_object(
@@ -123,8 +116,6 @@ const RELATIONS = sql`
  * of projects, and a per-project cap expressed in SQL windows is unreadable for
  * no gain.
  */
-// cm:guard the exclusions are "work is OPEN on this issue right now" and NOTHING else — no dependency filter, no priority ordering, no cap beyond the project's own declared `limit`. Same rule `readPool` carries and for the same reason: those are the master's judgements, and a list that pre-decides them is the kernel routing again through a second door. Read as "has ever been opened" it excludes on history, which is the ISS-933 measurement below.
-// cm:guard a row carrying `mergedAt` is NOT excluded here, and adding such a filter is the wrong repair. `merged_at` is caller-asserted — any hop out of the base merge state stamps it, merge or not — so it is a fact to show the master, never grounds for the kernel to hide the row. Measured 2026-09-06: ISS-931 sat at `open` with its code on `origin/main` and was still offered as work (ISS-940).
 export async function readAdmissibleIssues(args: {
   deviceId: string;
   projectId?: string | undefined;

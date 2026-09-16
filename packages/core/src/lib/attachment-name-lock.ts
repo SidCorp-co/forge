@@ -3,7 +3,6 @@ import type { db } from '../db/client.js';
 
 export type NameCheckExecutor = Pick<typeof db, 'select'>;
 
-// cm:guard this must resolve to the TRANSACTION handle and never widen to `{ execute }` — `db` satisfies that shape, and `pg_advisory_xact_lock` on a pooled connection outside a transaction is released the instant the statement returns, so the call typechecks and locks nothing. `rollback()` is what `db` does not have, and it is the whole reason the alias is written this way (ISS-963)
 export type NameLockTx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 
 export type NameLockScope = 'issue' | 'comment';
@@ -28,7 +27,6 @@ export async function lockAttachmentName(
   parentId: string,
   name: string,
 ): Promise<void> {
-  // cm:guard `pg_advisory_xact_lock` and NOT the `_try_` form — a caller that cannot take the lock must WAIT for the holder and then see its row, because failing open is the bug this exists to close (ISS-963)
   await tx.execute(
     sql`SELECT pg_advisory_xact_lock(hashtextextended(${`${scope}:${parentId}:${name}`}, 0))`,
   );

@@ -54,7 +54,6 @@ vi.mock('./transition-reason.js', async (importActual) => {
   return { ...actual, postTransitionReasonComment: (...a: unknown[]) => postReasonMock(...a) };
 });
 
-// cm:guard stubbed because this file's subject is the park REWRITE, and the mint writes through the transaction's `insert`, which this stub does not carry. `tests/integration/park-mints-a-question-e2e.test.ts` owns the mint against a real database; what belongs here is that a park still CALLS it (ISS-996).
 const mintMock = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('./park-question.js', () => ({
   NEED_NOT_STATED: 'not stated',
@@ -77,7 +76,6 @@ const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const ACTOR_ID = '33333333-3333-4333-8333-333333333333';
 const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 
-// cm:guard an EMPTY config resolves to autonomous, and since ISS-897 removed `mode` there is no value that spells anything else — the only non-autonomous project left is one whose row does not come back at all, which `projectRow(null)` produces. Do not reintroduce a `mode` string here to get the negative case; it would parse to the same thing as the positive one and the test would pass for the wrong reason.
 function projectRow(present: 'yes' | null) {
   projectSelectLimit.mockResolvedValueOnce(present ? [{ agentConfig: {} }] : []);
 }
@@ -92,7 +90,6 @@ const REOPEN_OPTS = { transitionReason: 'the bug is still live on production' };
 
 beforeEach(() => {
   vi.clearAllMocks();
-  // cm:why `clearAllMocks` clears calls but NOT a queued `mockResolvedValueOnce`, and the reason-required test queues a project row it never consumes — without this reset that row leaks into the next test and answers its lookup as if the project were autonomous
   projectSelectLimit.mockReset();
   projectSelectLimit.mockResolvedValue([]);
   updateReturning.mockReset();
@@ -100,7 +97,6 @@ beforeEach(() => {
 });
 
 describe('reopen on an autonomous project', () => {
-  // cm:guard `reopen` SURVIVES on an autonomous project, and this case is the inverse of the one it replaces (which asserted the rewrite to `open`). The rewrite rested on `reopen` naming a step this mode does not have; the nine-status vocabulary makes it name a person's disagreement, which is theirs to route. Rewriting it now would send an aborted release — `releasing → reopen` — to `open`, offering a half-released issue to the pool as fresh work.
   it('leaves `reopen` at `reopen`, because it names a person and not a step', async () => {
     projectRow('yes');
     queueUpdate('reopen');
@@ -148,7 +144,6 @@ describe('reopen on an autonomous project', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  // cm:guard the counter is the whole quality signal a reopen carries — an issue reopened four times is a pipeline failing at something, and a transition that lands without incrementing makes that indistinguishable from four fresh issues
   it('still increments the reopen counter', async () => {
     projectRow('yes');
     queueUpdate('reopen');
@@ -180,7 +175,6 @@ describe('every other transition is untouched', () => {
     expect(result.status).toBe('reopen');
   });
 
-  // cm:guard the resolver must stay behind the cheap `isRewritablePark` status test — it runs on EVERY transition from every surface, and moving the project read in front of that test adds a query to every status write in the product for the two targets that can use it
   it('reads no project row at all under the orchestrator skip, where neither the park resolver nor the criteria resolver can matter', async () => {
     queueUpdate('in_progress');
 
@@ -195,7 +189,6 @@ describe('every other transition is untouched', () => {
     expect(updateSet.mock.calls[0]?.[0]?.reopenCount).toBe(issues.reopenCount);
   });
 
-  // cm:guard ONE project read, not two: an actor-chosen transition to a target the park resolver ignores still owes the ISS-959 criteria read, and that read is the whole cost this rule adds. A second read here would mean the park resolver stopped short-circuiting.
   it('reads the project exactly once for an actor-chosen target the park resolver ignores', async () => {
     projectRow(null);
     queueUpdate('in_progress');
@@ -232,7 +225,6 @@ describe('waiting on an autonomous project', () => {
     expect(setCurrentStepMock).toHaveBeenCalledWith(ISSUE_ID, 'needs_info');
   });
 
-  // cm:guard the kind is cleared BECAUSE the row no longer says `waiting`, and leaving it set would render a "a human is needed" banner keyed to a status the issue is not in — the exact stale-kind failure the CLEAR arm in apply-transition.ts exists for
   it('clears waitingKind on the rewritten row while still demanding it up front', async () => {
     projectRow('yes');
     queueUpdate('needs_info');
@@ -265,7 +257,6 @@ describe('waiting on an autonomous project', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  // cm:guard a person parking work owns their own resume; rewriting theirs to a comment-wakeable status would take the pause away from the human who chose it
   it("leaves a HUMAN's park at `waiting`", async () => {
     projectRow('yes');
     queueUpdate('waiting');
@@ -302,7 +293,6 @@ describe('waiting on an autonomous project', () => {
     expect(result.status).toBe('waiting');
   });
 
-  // cm:guard `on_hold` is a human's deliberate pause and the ISS-411 operator cancel writes it with a DEVICE actor — rewriting it here would undo the authoritative cancel, so this asserts the rewrite stops at `waiting`
   it('leaves `on_hold` alone even from a device actor', async () => {
     projectRow('yes');
     queueUpdate('on_hold');
@@ -318,7 +308,6 @@ describe('waiting on an autonomous project', () => {
   });
 });
 
-// cm:guard these key on the REQUESTED status, never the stored one: the CLEAR arm in apply-transition.ts nulls the kind for every target but `waiting`, and `HEADINGS.needs_info` ignores its `kind` argument, so a kind sent with any other target reached no reader at all. Measured on 16 `needs_info` parks, 2026-09-07 (ISS-965).
 describe('a waitingKind the write cannot keep', () => {
   it('refuses a kind sent with a `needs_info` request instead of nulling it in silence', async () => {
     projectRow(null);
@@ -334,7 +323,6 @@ describe('a waitingKind the write cannot keep', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  // cm:guard the refusal must sit OUTSIDE the `requiresAuthoredReason` block — `in_progress` demands no reason, so a check nested in that block would let the commonest silent drop straight through
   it('refuses a kind sent with a target that demands no reason at all', async () => {
     projectRow(null);
 

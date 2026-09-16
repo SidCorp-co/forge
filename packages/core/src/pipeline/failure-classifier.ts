@@ -37,13 +37,10 @@ import {
 } from './failure-patterns.js';
 import { parseRetryAfter, readRetryAfterHeader } from './retry-after-parser.js';
 
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/runner/claude_code.rs — the runner's plain error string is its only routing lever
-// cm:guard bump CLASSIFIER_VERSION on any pattern change, and keep specific buckets ahead of the transient fallthrough
 export const CLASSIFIER_VERSION = 11;
 
 export type FailureKind = 'code' | 'infra' | 'transient-cc' | 'timeout';
 
-// cm:why quarantine is reserved for ISS-825 (deterministic box-broken detection); no rule in this classifier emits it yet
 export type FailureAction = 'terminal' | 'quarantine' | 'failover' | 'retry';
 
 export interface ClassifyResult {
@@ -116,13 +113,11 @@ export function classifyFailure(input: ClassifyInput): ClassifyResult {
   const meta = input.meta ?? null;
   const retryAfter = extractRetryAfter(meta);
   const { kind, reason, meta: resultMeta, action, cause } = classifyKind(text, meta, input.signals);
-  // cm:guard an `unclassified` cause MUST arrive with `meta.needsReview` — the operator's review queue reads the flag and the taxonomy metric reads the cause, so a row that is one without the other makes the unclassified rate and the queue disagree, and a hole nobody can see is how `job_failed` lasted 1,787 rows
   const reviewedMeta =
     cause === 'unclassified' ? { ...(resultMeta ?? {}), needsReview: true } : resultMeta;
   return {
     kind,
     cause,
-    // cm:guard an explicit `action` from classifyKind MUST win — kind and action are two independent axes (diagnosis vs policy) and collapsing them is what forced `preflight_failed: work_tree` to be labelled `code` just to stop it retrying
     action: action ?? deriveActionFromKind(kind),
     reason,
     meta: reviewedMeta,
@@ -143,7 +138,6 @@ function classifyKind(
   action?: FailureAction;
 } {
   const reasonExcerpt = text.length > 200 ? `${text.slice(0, 197)}…` : text;
-  // cm:guard derive the cause ONCE, here, and let every branch below carry it — the policy buckets each span several causes (TRANSIENT alone covers a provider 429, an offline runner and a workspace preflight), so a per-branch cause would have to pick one and be wrong about the other two
   const textCause = causeForText(text);
 
   const metaErrorType = readMetaErrorType(meta);
@@ -178,13 +172,11 @@ function classifyKind(
     }
   }
 
-  // cm:guard the runner's token beats the message-count heuristic below, because the runner watched the process exit — an MCP-init death has no tool use and the heuristic calls that `transient-cc` (ISS-479). `[RESULT_ERROR]` returns null on purpose so the provider message in its detail still reaches the PERMANENT/TRANSIENT tables.
   const runnerKind = classifyRunnerToken(text);
   if (runnerKind) {
     return { kind: runnerKind, cause: textCause, reason: reasonExcerpt, meta };
   }
 
-  // cm:why ISS-823 — org/account spend-cap is per-account (evidence: CLASSIFIER_VERSION 7), so it fails over with exhaustion memory instead of going terminal
   if (isSpendLimitError(text)) {
     return {
       kind: 'transient-cc',
@@ -194,7 +186,6 @@ function classifyKind(
     };
   }
 
-  // cm:guard after the runner tokens and before the cc-startup signal, both deliberately: `[MCP_INIT_FAILED]` must still win, and a limit error that also looks like a startup death must route to failover rather than to the same box (ISS-596).
   if (isUsageLimitError(text)) {
     return {
       kind: 'transient-cc',
@@ -204,8 +195,6 @@ function classifyKind(
     };
   }
 
-  // cm:guard the two limit branches above stay AHEAD of the four pre-spawn verdicts below, and that ordering is not cosmetic. Those four match their token ANYWHERE in the blob, and the blob is `note` plus the transcript tail, so a spend-capped account whose agent output happens to contain `preflight failed` would route `infra`/`retry` on the same box instead of the per-account failover its exhaustion memory needs. Before ISS-920 the preflight patterns sat in TRANSIENT, below here; moving them up must not take the limits with them.
-  // cm:guard the four pre-spawn verdicts are matched HERE, above the cc-startup signal, and moving any of them down makes it unreachable rather than merely late: none of these jobs ever spawned, and the pre-spawn heartbeat leaves every one looking exactly like a startup death to `deriveCcStartupSignals`, which counts ALL job events (ISS-920). Every preflight prefix belongs in this group — the three terminal ones AND the catch-all — because a `push_credentials` timeout was still landing as `agent_startup_failed` after the first three moved up.
   for (const pat of TERMINAL_INFRA_PATTERNS) {
     if (pat.test(text)) {
       return {
@@ -252,7 +241,6 @@ function classifyKind(
     }
   }
 
-  // cm:guard this branch is broad and it must stay BELOW every verdict that names a job which never spawned. `deriveCcStartupSignals` counts ALL job events, not assistant messages, so one heartbeat satisfies it — which is how it was taking every permit failure, every repo-lock timeout and every `preflight_failed` (ISS-920). It sits above the remaining text patterns on purpose (ISS-450: a generic string from a real startup death must still reach immediate failover), so a new verdict about a job that never spawned goes above this line, not below.
   if (signals?.diedBeforeFirstToolUse === true && (signals.sessionMessageCount ?? 0) <= 3) {
     return {
       kind: 'transient-cc',
@@ -328,8 +316,6 @@ function classifyKind(
     }
   }
 
-  // cm:why no POLICY bucket matched; `infra` is the conservative default (bounded retry) and `needsReview` puts the pattern gap on the operator UI instead of hiding it (I4 removed the `unknown` KIND, which is a different axis from the `unclassified` cause)
-  // cm:guard carry `textCause` here rather than hard-coding `unclassified` — a POLICY gap and a CAUSE gap are different holes, and most texts that reach this branch (`dispatch_unclaimed`, `monthly_budget_exhausted`, `No space left on device`) have a perfectly well-known cause and merely no retry rule. Collapsing the two loses the diagnosis for exactly the failures nobody has written a policy for yet.
   return {
     kind: 'infra',
     cause: textCause,

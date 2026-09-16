@@ -8,7 +8,6 @@ const loadReleaseRoster = vi.fn();
 const createReleaseBatch = vi.fn();
 
 vi.mock('../release-batch/queries.js', () => ({ loadReleaseRoster: () => loadReleaseRoster() }));
-// cm:why fully replaced rather than spread over the real module — importing it for real pulls the db client and therefore the env contract, and this file has no database in it
 vi.mock('../release-batch/service.js', () => {
   class BatchInFlightError extends Error {
     constructor(public readonly existingJobId?: string | null) {
@@ -78,7 +77,6 @@ describe('the scheduled cut', () => {
     expect(out.status).toBe('success');
   });
 
-  // cm:guard the claim is a CAS over the whole list, so one already-claimed issue would reject the entire cut — a person pressing "Release now" a minute earlier must not cost the cron its night
   it('leaves out issues another batch already claimed', async () => {
     roster([{ id: 'a', claimedByRunId: 'other-run' }, { id: 'b' }]);
     createReleaseBatch.mockResolvedValue({ runId: 'run-1', issueIds: ['b'] });

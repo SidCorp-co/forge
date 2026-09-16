@@ -22,9 +22,6 @@ struct Advertisement {
 }
 
 /// What core advertises, or nothing at all.
-// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `GET /me/protections` is the other half, and it reports what that BUILD of core runs rather than anything about this device.
-// cm:guard every failure answers `vec![]` and none of them answers `Err`: a 404 IS the old core, and a timeout is a box that cannot tell an old core from a slow one. Returning an error would make a caller choose between propagating it — which fails a run for a deploy in progress — and swallowing it, which is the silent park this gate exists to stop.
-// cm:guard NOT cached: the whole point is a rolling deploy, so an answer cached from before core came up would keep the park shut for the life of the daemon, or open it against a core that has since been rolled back (criterion 27a).
 pub async fn park_protections(client: &CoreClient) -> Vec<String> {
     let url = client.url("/api/devices/me/protections");
     let Ok(resp) = client

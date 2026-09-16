@@ -17,7 +17,6 @@ describe('STATUS_ASSERTIONS (ISS-940)', () => {
     expect(Object.keys(STATUS_ASSERTIONS).sort()).toEqual([...issueStatuses].sort());
   });
 
-  // cm:guard this is the assertion that stops a status re-acquiring an evidence promise. A `landedOn`, `mergeRequired` or `commit` key would pass every other test in this file and reintroduce the exact ISS-940 defect, so the key set is compared literally.
   it('lets a status assert placement and nothing else', () => {
     for (const status of issueStatuses) {
       expect(Object.keys(STATUS_ASSERTIONS[status]).sort(), status).toEqual(['gate', 'nextActor']);
@@ -31,7 +30,6 @@ describe('STATUS_ASSERTIONS (ISS-940)', () => {
     }
   });
 
-  // cm:guard spelled literally on both sides — deriving the expectation from STATUS_ASSERTIONS is tautological and stays green when an entry is edited
   it('reads `developed` as the review gate awaiting a person', () => {
     expect(STATUS_ASSERTIONS.developed).toEqual({ gate: 'review', nextActor: 'human' });
     expect(awaitsHuman('developed')).toBe(true);

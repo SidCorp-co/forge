@@ -21,13 +21,10 @@ function shutdownSequence(): string {
 }
 
 describe('shutdown wiring (ISS-830)', () => {
-  // cm:guard removing this call costs no test elsewhere and no error at runtime — the process just exits with rows still claimed, and every restart landing mid-drain adds up to CLAIM_LEASE_MS of dispatch latency that no alarm covers
   it('runShutdown stops the outbox worker', () => {
     expect(shutdownSequence()).toContain('await stopOutboxWorker();');
   });
 
-  // cm:why matched with the `await …;` prefix, not the bare name — the guard comment
-  // beside the call names both functions in prose, and a bare-name scan reads that first
   it('stops it BEFORE closing the db — settling a claim needs a live connection', () => {
     const seq = shutdownSequence();
     expect(seq.indexOf('await stopOutboxWorker();')).toBeLessThan(seq.indexOf('await closeDb();'));

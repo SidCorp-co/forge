@@ -4,7 +4,6 @@ import { describe, expect, it } from 'vitest';
 
 const dir = fileURLToPath(new URL('.', import.meta.url));
 
-// cm:guard there is no exception list and there must not become one: the Forge UI's own adapter surface lives in `assistant/conversation-routes.ts` precisely so nothing here needs carving out.
 const TRANSPORT_WORDS = [
   'rocketchat',
   'RocketChat',
@@ -25,7 +24,6 @@ function storeFiles(): string[] {
  * What an adapter may import from here: the contract it implements, and the neutral machinery it is
  * a CALLER of.
  */
-// cm:guard `inbound-turn.js` left this list because the module left the tree: ISS-1004 split the turn-per-message into a collect and a later route, and `collect-inbound.js` + `route-window.js` + `windows.js` are what an adapter now calls in its place. What has NOT widened is the rule — no store function is on this list, and `store.js` appearing here would mean an adapter reading rows directly again, which is the coupling this file exists to fail CI on.
 const ADAPTER_FACING = [
   'ports.js',
   'turn-runner.js',
@@ -38,9 +36,6 @@ const ADAPTER_FACING = [
 /**
  * Who may reach the store from outside this directory, whole-tree and frozen.
  */
-// cm:guard `assistant/conversation-adapter.ts` is the fifth name and the argument for it is the one this comment demands: it is the Forge UI's OWN four ports, which is what the header above says this list exists to accommodate without an exception, and the two functions it needs are `findConversation` — to place the venue its `deliver` was handed — and `listParticipants` — to know whose sockets that delivery goes to. Neither is reachable through the adapter-facing set, because no adapter before this one delivered to people rather than to a server (ISS-1004 step 5).
-// cm:guard the integrations scan below catches a DIRECT import; this catches the way around it, which is a module outside integrations re-exporting or wrapping the store for an adapter to import instead — that intermediary has to appear here as a new name and be argued for. What neither catches is a wrapper somebody writes inside an already-listed file, and that is the honest limit of this gate rather than a gap to paper over (ISS-1002 review, F2).
-// cm:guard `assistant/conversation-access.ts` and `assistant/conversation-member-routes.ts` are the sixth and seventh names, and the argument is the one this list already accepted for the routes file beside them: both are the Forge UI's own surface rather than a transport's, and neither is reachable through the adapter-facing set. The access module exists BECAUSE the routes file grew a second router — it holds the three door checks so one copy serves both, which is strictly fewer store readers than two routers each keeping their own; the member routes reach `participants.js` because changing who is in a room is what they are for (ISS-1011).
 const STORE_READERS_OUTSIDE = [
   'assistant/conversation-access.ts',
   'assistant/conversation-adapter.ts',
@@ -72,7 +67,6 @@ describe('the conversation store knows no transport', () => {
     expect(storeFiles().length).toBeGreaterThan(3);
   });
 
-  // cm:guard this is the structural half of "Rocket.Chat becomes an adapter": the machine was extracted from 49 Rocket.Chat files, and the only thing that keeps it extracted is that naming one here fails CI. `outbound.test.ts` holds the same shape over the single delivery door (ISS-1001 criterion 32).
   it('names no transport in any store module', () => {
     const offences: string[] = [];
     for (const file of storeFiles()) {
@@ -84,8 +78,6 @@ describe('the conversation store knows no transport', () => {
     expect(offences).toEqual([]);
   });
 
-  // cm:guard the OTHER direction, and the one ISS-1001's criterion 35 was about: NO adapter tree reaches the store. This was three named Rocket.Chat files until the turn runner took the turn path out of that tree (ISS-1002); it is zero now and an exception list here is what would undo it.
-  // cm:guard the modules named below are the adapter CONTRACT and the neutral turn, which an adapter is meant to import — widening this set is how the store's own functions come back one re-export at a time, so a new name here needs the same argument the runner needed.
   it('is reached from no adapter tree, anywhere under integrations', () => {
     const root = fileURLToPath(new URL('../integrations/', import.meta.url));
     const offences: string[] = [];

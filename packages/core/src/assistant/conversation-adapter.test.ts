@@ -68,7 +68,6 @@ describe('the Forge UI adapter · deliver', () => {
     expect(receipt.messageId).toEqual(expect.any(String));
   });
 
-  // cm:guard the one this file exists for: a project-room fan-out passes every other assertion here, because the tab that asked is subscribed to both.
   it('publishes to no project room', async () => {
     await webConversationPorts.deliver(venue, { text: 'hello', problems: [] });
     expect(published.filter((p) => p.room.startsWith('project:'))).toEqual([]);
@@ -84,7 +83,6 @@ describe('the Forge UI adapter · deliver', () => {
     });
   });
 
-  // cm:guard a participant row is not a permission: a person keeps their row after losing the access the room's scope is derived from, and the reads refuse them while a push addressed by kind alone hands them the whole answer (review F1).
   it('publishes to nobody whose access to the room has gone', async () => {
     assertConversationReadable.mockImplementation(async (_id: string, userId: string) => {
       if (userId === 'bob') throw new Error('no role on this project any more');
@@ -130,7 +128,6 @@ describe('the Forge UI adapter · the other three ports', () => {
     expect(speaker).toEqual({ linked: true, userId: 'alice' });
   });
 
-  // cm:guard empty is the ANSWER and not a stub: the store's own rows are this transport's backlog, and a history read here would show the model the transcript `external-chat.ts` already hands it.
   it('fetches no history, because the store is this transport’s history', async () => {
     expect(await webConversationPorts.fetchHistory(venue, 50)).toEqual([]);
     expect(findConversation).not.toHaveBeenCalled();

@@ -1,13 +1,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:guard ISS-669 — `awaiting_release` must NOT close the issue's open pipeline_run, because the release step runs inside it; only the statuses in `RUN_CLOSING_STATUSES` close a run, and these cases assert `closeOpenRunForIssue` fires on exactly those and no others.
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const txExecute = vi.fn(async () => undefined);
-// cm:why the EMPTY row set is the point — `markMergedIfLeavingBase` reads `projects` before deciding to stamp `merged_at`, and no row resolves the default merge states and short-circuits it
 const selectLimit = vi.fn(async () => [] as unknown[]);
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));

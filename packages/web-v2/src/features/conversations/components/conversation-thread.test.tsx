@@ -61,7 +61,6 @@ describe("ConversationThread", () => {
     expect(screen.queryByTestId("thread-silence")).toBeNull();
   });
 
-  // cm:guard a message row carrying `silence_reason` is a turn that RAN and declined, and it is a THIRD state beside the two above — the window may well be `answered`, because the silence itself was the answer. Rendering it as an empty assistant bubble is how it used to be invisible.
   it("renders a recorded silence as a silence rather than an empty bubble", () => {
     render(
       <ConversationThread
@@ -75,7 +74,6 @@ describe("ConversationThread", () => {
     expect(screen.getByText(/The agent said nothing here/)).toBeInTheDocument();
   });
 
-  // cm:guard asserted by test id AND by the absence of the assistant renderer's text: a system line that came out as a bubble would still contain the text, so the text alone proves nothing (ISS-1034 criterion 48).
   it("renders a system row as one muted line, not as an assistant bubble", () => {
     const joined: ConversationMessage = {
       ...asked,

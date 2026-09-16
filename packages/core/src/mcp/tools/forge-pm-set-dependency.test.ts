@@ -33,7 +33,6 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-// cm:guard stub `detectCycle` rather than letting it run — it walks the graph through its OWN db.select, and the queue mock above is shaped for the write's calls only, so a real walk silently consumes the row staged for the insert and every assertion drifts by one. Cycle detection has its own tests in issues/cycle-detect.test.ts.
 vi.mock('../../issues/cycle-detect.js', () => ({
   detectCycle: vi.fn(async () => null),
 }));
@@ -64,7 +63,6 @@ const ctx = {
   projectSlug: null,
 };
 
-// cm:guard ONE queued row, not two: `assertDeviceOwnerIsMember` selects `projects.ownerId` and short-circuits as member+admin when the device owns the project, never reaching `projectMembers`. Queue a second row here and every later case reads the queue off by one (ISS-131 relaxed this from `assertPmActor`).
 function pushMemberOk() {
   queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
@@ -113,7 +111,6 @@ describe('forge_pm.set_dependency', () => {
       { id: FROM_ID, projectId: PROJECT_ID },
       { id: TO_ID, projectId: PROJECT_ID },
     ]);
-    // cm:guard `detectCycle` is module-mocked and consumes NOTHING from the queue, so the next entry is the insert. Un-mock it and every position below shifts, which shows up as unrelated cases failing on shapes they never asked for.
     queue.push([{ id: EDGE_ID }]);
 
     hooks.reset();
@@ -164,7 +161,6 @@ describe('forge_pm.set_dependency', () => {
     expect(depSpy).not.toHaveBeenCalled();
   });
 
-  // cm:edge lockstep -> packages/core/src/issues/dependency-effects.ts — the result's `effects` is the only place a caller learns what the edge it just wrote does; ISS-935 shipped it because `created:true` on a `decomposes` edge said nothing about the work-evidence gate it had just opened.
   it('a decomposes edge reports the work-evidence waiver it just applied', async () => {
     const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
@@ -210,7 +206,6 @@ describe('forge_pm.set_dependency', () => {
     expect(result.effects.waivesWorkEvidence).toBe(false);
   });
 
-  // cm:guard the `runners` table must NOT be consulted here. Re-adding a `capabilities.pm` requirement locks out exactly the caller this tool exists for — a plan-pipeline agent on a claude-code runner, which never carries the PM flag — and it fails as FORBIDDEN, which reads as a permissions problem rather than a gate that should not be there (ISS-131).
   it('admits a project owner with no PM capability (ISS-131 gate relaxation)', async () => {
     const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
@@ -231,7 +226,6 @@ describe('forge_pm.set_dependency', () => {
     expect(result.id).toBe(EDGE_ID);
   });
 
-  // cm:guard the relaxed gate still REFUSES a stranger — this is the FORBIDDEN branch of `loadDeviceProjectRole`, and it is the assertion that stops "relaxed from assertPmActor" from quietly meaning "open to any device"
   it('rejects a caller who is not a project member', async () => {
     const tool = forgePmSetDependencyTool(ctx);
     queue.push([{ ownerId: 'ffffffff-ffff-4fff-8fff-ffffffffffff' }]);
@@ -249,7 +243,6 @@ describe('forge_pm.set_dependency', () => {
 });
 
 describe('forge_pm.set_dependency — retracting an existing edge', () => {
-  // cm:guard expiring an edge is the ONLY agent-reachable retraction (DELETE is JWT-only REST), so the conflict path must APPLY `validUntil` rather than discard it — a dropped blocker never stamps `merged_at`, and the discard wedged getcontent ISS-455/457 for 53h behind dropped ISS-463
   it('applies validUntil on conflict and emits dependencyChanged so the gated side can dispatch', async () => {
     const tool = forgePmSetDependencyTool(ctx);
     pushMemberOk();
@@ -284,10 +277,8 @@ describe('forge_pm.set_dependency — retracting an existing edge', () => {
     });
   });
 
-  // cm:guard the pair below is the whole exemption: the first says a retraction is not refused for the loop it retracts, the second says nothing else got cheaper. Drop the second and a "skip the walk whenever validUntil is set at all" regression passes, which lets a caller declare a cycle by attaching a far-future expiry to it.
   it('does not run the cycle walk for a retraction, so a loop that exists can be undone', async () => {
     const tool = forgePmSetDependencyTool(ctx);
-    // cm:guard restore the walk's default before leaving, and never stage it with `mockResolvedValueOnce` — this case asserts the walk is NEVER CALLED, so a queued `once` value is not consumed here and leaks into whichever test runs next; measured, it surfaced as `deferHealthPublish > publishes the health refresh` failing on CYCLE_DETECTED, a case that says nothing about cycles.
     const cycleWalk = vi.mocked(detectCycle);
     cycleWalk.mockResolvedValue('cycle');
     pushMemberOk();
@@ -334,7 +325,6 @@ describe('forge_pm.set_dependency — retracting an existing edge', () => {
   });
 });
 
-// cm:guard these two tests are the ONLY gate on `deferHealthPublish`'s default — the flag suppresses a WS refresh a caller then owes itself (see issues/relations-service.ts), so a refactor that flips the default to "always defer" is invisible without the first of them and every relations caller silently stops refreshing the dependent's waiting banner
 describe('forge_pm.set_dependency — deferHealthPublish', () => {
   function queueFreshBlocksInsert() {
     pushMemberOk();

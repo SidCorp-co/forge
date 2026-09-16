@@ -1,7 +1,6 @@
 import Link from "next/link";
 import { Button, Kicker } from "@/design";
 
-// cm:guard the delay is the point — without it neither this route's loading.tsx (Suspense) nor the top RouteProgress bar is demonstrable when navigating here from /kit
 async function slowData() {
   await new Promise((r) => setTimeout(r, 1100));
   return { ok: true };

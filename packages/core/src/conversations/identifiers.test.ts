@@ -22,7 +22,6 @@ describe('what a message names', () => {
     expect(identifiersIn('TurnRunner').has('turnrunner')).toBe(true);
   });
 
-  // cm:guard the failure this is planted to catch: with a bare-number pattern, "retry 1" and "retry 2" each name something new and the loop breaker never fires, which is the cost bound that replaced the mention gate failing open (ISS-1004 review F4).
   it('names nothing for a bare counter', () => {
     expect(ids('retry 1')).toEqual([]);
     expect(ids('retry 2')).toEqual([]);
@@ -34,7 +33,6 @@ describe('what a message names', () => {
     expect(ids('ok will do')).toEqual([]);
   });
 
-  // cm:guard the failure this is planted to catch: making the classes disjoint against the ReDoS finding also made `_` a separator rather than a token character, and a separator that could not repeat, so `foo__bar` and `foo_bar_` — both named by the pattern this replaced — stopped being named at all. The direction is the dangerous one: fewer identifiers means the loop breaker fires EARLIER and cuts an exchange that was doing work (ISS-1004, triage of the landed head).
   it('names a token whose underscores repeat, and one that ends on an underscore', () => {
     expect(identifiersIn('foo__bar').has('foo__bar')).toBe(true);
     expect(identifiersIn('foo_.bar').has('foo_.bar')).toBe(true);
@@ -43,7 +41,6 @@ describe('what a message names', () => {
     expect(identifiersIn('a__b__c').has('a__b__c')).toBe(true);
   });
 
-  // cm:guard the other half of the same rule, and the reason `_` and `.` are not interchangeable here: `.` is the ONE separator and it never repeats, so an ellipsis joining two prose words stays prose. Widening the separator class to `[_.]+` is the obvious fix to the case above, and it buys exactly this regression.
   it('still names nothing for words an ellipsis joins', () => {
     expect(ids('wait...maybe')).toEqual([]);
     expect(ids('foo..bar')).toEqual([]);
@@ -67,7 +64,6 @@ describe('introducesSomethingNew', () => {
   });
 });
 
-// cm:guard the budget below is a FLOOR and not the proof, and saying so is the point: CodeQL called the first version of these patterns exponentially backtrackable, and it was right about the ambiguity and wrong about the danger — measured 2026-09-14 at 20, 24, 28 and 32 repetitions of `0_`, the old pattern ran in under a tenth of a millisecond, because it can always SUCCEED and a `\b` after a word character never forces the failure that backtracking needs. The ambiguity was removed anyway, by making every class disjoint from the one beside it, and this case exists so an edit that makes it reachable is caught rather than argued about.
 describe('a hostile string', () => {
   const BUDGET_MS = 200;
 

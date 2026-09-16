@@ -106,7 +106,6 @@ export async function ensureAgentSessionForJob(
     const title = buildTitle(skillName, job.type, issueTitle);
 
     const metadata: Record<string, unknown> = {
-      // cm:edge contract -> packages/core/src/agent-sessions/routes.ts — the two words `pm` and `pipeline` are what that file's `metadataType` filter matches, and nothing type-checks the pair. A third job type written through here as its own word disappears from every session list rather than failing.
       type: job.type === 'pm' ? 'pm' : 'pipeline',
       jobId: job.id,
       jobType: job.type,
@@ -118,13 +117,10 @@ export async function ensureAgentSessionForJob(
     if (issueIssSeq !== null) metadata.issSeq = issueIssSeq;
     if (skillName) metadata.skillName = skillName;
     if (job.deviceId) metadata.deviceId = job.deviceId;
-    // cm:guard ISS-887 — the ONLY durable answer to "did this attempt continue the prior transcript, and if not why not". It belongs on this row because the row is the attempt (a retry clone never carries `agentSessionId`, so every attempt mints its own) and it joins the linkage cluster below. Do NOT move it to a `job_events` row: `NOT EXISTS (SELECT 1 FROM job_events WHERE job_id = j.id)` is the never-claimed predicate in loop-monitor.ts#reapAckMisses and sweeper.ts#alarmNeverClaimedDispatches, so a dispatch-time server row silences the ack-miss reaper fleet-wide.
     metadata.resume = context.resume;
-    // cm:why the stage status is stamped so a reader can tell which state's policy an attempt ran under without re-parsing job.type — the sessionGroup that used to sit beside it left with the config key (ISS-897)
     const payloadStageStatus = deriveStageStatus(job.payload);
     if (payloadStageStatus) metadata.stageStatus = payloadStageStatus;
 
-    // cm:why rootSessionId inherits from the parent's OWN metadata (not just parentSession.id) so the whole retry chain resolves to one root regardless of attempt count
     if (job.retryOf) {
       metadata.attempt = job.attempts;
       metadata.retryOfJobId = job.retryOf;
@@ -155,7 +151,6 @@ export async function ensureAgentSessionForJob(
         dispatchedAt: new Date(),
         repoPath: context.repoPath,
         metadata: metadata as never,
-        // cm:why carry pipelineHealth (recoveryStats/autoRetries) forward so it accumulates across a retry chain instead of resetting per row
         ...(parentSession?.pipelineHealth
           ? { pipelineHealth: parentSession.pipelineHealth as never }
           : {}),
@@ -186,8 +181,6 @@ export async function ensureAgentSessionForJob(
  * death some other row already diagnosed. They are the only job errors that
  * must not overwrite a session's own reason.
  */
-// cm:edge contract -> packages/core/src/jobs/lifecycle-routes.ts — the late-report reconcile reads the same set to decide a lost success is reconcilable rather than a conflict; a marker added to one half and not the other splits that judgement in two
-// cm:edge contract -> packages/core/src/jobs/session-lost-cause.ts — `park_unanswered` is written to `jobs.error` by the session-lost hop and MUST be a member here: it is the consequence of a death the question row already diagnosed, so without it the sync writes the job's cause back over the session's own `park_unanswered` (ISS-964 criterion 34).
 export const SYNTHETIC_REAP_ERRORS = new Set([
   'session_lost',
   'dispatch_unclaimed',
@@ -213,7 +206,6 @@ export const SYNTHETIC_REAP_ERRORS = new Set([
  * `error` and leaves the other holding a sentence. When both name a cause,
  * `CAUSE_RULES` order decides, most-specific-first — not the column.
  */
-// cm:edge contract -> packages/core/src/pipeline/failure-classifier.ts — one classifier for both lanes is what stops the job row and the session row disagreeing about the same death
 function deriveSessionFailure(job: JobRow): {
   failureReason: FailureCause;
   failureDetail: string | null;
@@ -261,12 +253,10 @@ export async function syncAgentSessionLifecycle(
     await applyKernelTransition(db, {
       entity: 'session',
       to: status,
-      // cm:guard the completed branch MUST clear failureReason AND failureDetail — the I1 trigger (migrations 0113/0118) stamps `orphan_under_terminal_run` on an ACTIVE session when its run goes terminal, and a late runner report then lands here and flips the row to `completed`; leaving the reason behind produces a completed-and-failed row (ISS-759, `VISION: state-never-lies`). Same contract as runs-cascade.ts's completedSuccess branch.
       set:
         status === 'failed'
           ? { ...deriveSessionFailure(job), updatedAt: new Date() }
           : { failureReason: null, failureDetail: null, updatedAt: new Date() },
-      // cm:guard a SYNTHETIC error must not overwrite a reason already on the row, and the discriminator is the marker set — NOT the branch. A sweeper's `session_lost` is the consequence of a death some other row diagnosed, so writing it back erases the cause (measured on epodsystem 2026-09-05: 61 sessions read `session_lost` while `kernel_transitions` held `queue_timeout` from 90s earlier). Widening this to every failed sync is the opposite bug: it also blocks ISS-877's real diagnoses — `provider_spend_cap` and friends arriving from the job row are exactly what that recovery reads, and they must still land on an already-failed session.
       where:
         status === 'failed' && SYNTHETIC_REAP_ERRORS.has(job.error ?? '')
           ? and(eq(agentSessions.id, job.agentSessionId), ne(agentSessions.status, 'failed'))

@@ -4,23 +4,11 @@
  * Text and its header only; `layer.ts` is the one reader.
  */
 
-// cm:guard the one-reply rule may NOT be hoisted into `base.ts`: a room turn is one message with no
-// follow-up, and the Forge web app is multi-turn, so the same sentence read at the web door forbids
-// a clarifying question that surface is built to allow (ISS-1007).
-// cm:guard `rocketchat_history` is named here and only here because it is this adapter's own tool;
-// a door that does not have it reading an instruction to call it is told to use a tool it was never
-// given (ISS-1007).
 import type { PromptLayer } from './layer.js';
 
 /**
  * This layer's lines, one string each.
  */
-// cm:guard the ONLY layer whose text is a joined array rather than one template literal, and the
-// reason is the language gate rather than taste: two of these lines must carry the Vietnamese they
-// govern — the self-reference style and the first-person pronouns a room turn resolves — and
-// `check-source-language` reads line by line, so the `i18n-allow` directive it needs has to sit on
-// the same line. A comment cannot go inside a template literal. This is a join and not a reader:
-// the layer still exports no function and `compose.ts` is still the only thing that reads the text.
 const LINES: readonly string[] = [
   // cm:ignore CM001 — the literal must carry the Vietnamese self-reference style being mandated
   '- Your name in this channel is {botName}. Refer to yourself as "{botName}" (e.g. "{botName} đã kiểm tra…"), never as "hệ thống" or "the system".', // i18n-allow: shows the Vietnamese self-reference style being mandated
@@ -33,9 +21,6 @@ const LINES: readonly string[] = [
 
 export const ROCKETCHAT_DOOR_LAYER: PromptLayer = {
   id: 'door-rocketchat',
-  // cm:guard EMPTY on purpose, and the field below says why rather than borrowing a task id from
-  // another door: `bench:assistant` walks the browser door only (ISS-1051 D1), so any task named
-  // here would be a measurement claim nobody can take (ISS-1057, codex F2).
   benchTasks: [],
   whyUnmeasured:
     'the benchmark walks the browser door only, so no shipped task sends a turn through this one',

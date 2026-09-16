@@ -51,7 +51,6 @@ export function patPrefixOf(token: string): string {
   return token.slice(0, PAT_PREFIX_LEN);
 }
 
-// cm:guard a box credential is named after its box so a re-pair can find and rotate the SAME row. The name is a LABEL and nothing reads behaviour off it: `agency` comes from the owner's `users.kind` (ISS-932 wave 4), so a person's token called `device:...` is inert and buys nothing.
 const DEVICE_TOKEN_NAME_PREFIX = 'device:';
 
 export const deviceTokenNameFor = (deviceId: string) => `${DEVICE_TOKEN_NAME_PREFIX}${deviceId}`;

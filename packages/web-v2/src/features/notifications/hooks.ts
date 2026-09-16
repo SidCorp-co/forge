@@ -1,10 +1,8 @@
 "use client";
 
-// cm:guard the keys MUST be exactly ["notifications"] and ["notifications-unread"]: lib/ws/event-router.ts invalidates those on `notification.created` and `notification.read`, so keying them this way makes realtime free — and drift silently no-ops the realtime path with nothing red anywhere.
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { invitationsApi, notificationsApi } from "./api";
 
-// cm:guard `enabled` gates the LIST, never `useUnreadCount` below: the favicon and document-title indicator reads the count while the bell is closed, and the toast bridge reads the socket directly, so gating those two would take a surface away rather than a request (ISS-1019).
 export function useNotifications(enabled = true) {
   return useQuery({
     queryKey: ["notifications"],

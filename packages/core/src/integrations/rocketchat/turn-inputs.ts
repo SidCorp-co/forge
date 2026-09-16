@@ -75,7 +75,6 @@ export interface RocketChatTurnArgs {
   /**
    * Make this turn's right to answer durable before a dispatch somebody else finishes.
    */
-  // cm:guard both diversions hand the answer to a session whose reply arrives LATER, out of this turn's reach and out of the delivery key's: so the intent is written down before the dispatch, and a window re-claimed after a crash reads that stamp and dispatches nothing. Without it the reclaim started a second session, whose in-flight dedup posted a "already working on it" line into the room the first session was about to answer (ISS-1004 rule 2, review pass 2 F1).
   beforeDivert?: () => Promise<boolean>;
 }
 
@@ -92,7 +91,6 @@ interface Seed {
 /**
  * Build the request the neutral runner takes for one Rocket.Chat message.
  */
-// cm:guard the seed is read ONCE and shared by both diversions and the model turn: agent mode, escalation and the fast path all need the same persona and the same room context, and re-reading it per branch is three round trips for one answer.
 export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
   const { bot, route, subject } = args;
   const restAuth: RocketChatRestAuth = {
@@ -103,7 +101,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
   let seed: Seed | undefined;
   let external: ExternalMcpToolsets | undefined;
 
-  // cm:why the turn is seeded with the recent room discussion, and the full thread when threaded, because deeper recall stays agentic through the bounded history tool rather than being paid for on every turn (ISS-609).
   const readSeed = async (): Promise<Seed> => {
     if (seed) return seed;
     const [conversationContext, projectRow] = await Promise.all([
@@ -144,7 +141,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       projectId: route.projectId,
     },
 
-    // cm:guard `agent` mode routes the WHOLE turn to a runner-hosted session and sends nothing but an ack synchronously — the reply lands later through the completion bridge (ISS-727).
     divertBeforeTurn: async ({ setPhase }): Promise<TurnReply | null> => {
       setPhase('context');
       const s = await readSeed();
@@ -164,13 +160,11 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         persona: s.persona,
         conversationContext: s.conversationContext,
       });
-      // cm:guard send NOTHING when the dispatch started: only a genuinely slow turn gets an interim ack, scheduled by startAgentChat itself (scheduleDelayedAck). Acking here would put a promise in front of an answer that usually arrives first.
       if (started.started) return { send: false, reason: 'agent-chat-dispatched' };
       if (started.reason === 'deduped')
         return { send: true, message: codeAuthored(AGENT_CHAT_DEDUP_REPLY(bot.botName)) };
       if (started.reason === 'no-device')
         return { send: true, message: codeAuthored(AGENT_CHAT_NO_DEVICE_REPLY(bot.botName)) };
-      // cm:guard 'dispatch-failed' sends nothing either — the session was created then marked failed, so the completion bridge already delivers the one honest fallback over REST; replying here too double-posts.
       return { send: false, reason: 'agent-chat-dispatch-failed' };
     },
 
@@ -203,7 +197,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       };
     },
 
-    // cm:guard escalation short-circuits the screen deliberately: the ACK it posts is code-authored, and the real follow-up lands through the completion bridge (ISS-675).
     divertAfterTurn: async (result, { setPhase, principalUserId }): Promise<TurnReply | null> => {
       const escalateCall = result.toolCalls.find((t) => t.name === ESCALATE_TOOL_NAME);
       if (!escalateCall) return null;
@@ -229,7 +222,6 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         return { send: true, message: codeAuthored(ESCALATION_DEDUP_REPLY(bot.botName)) };
       if (started.reason === 'no-device')
         return { send: true, message: codeAuthored(ESCALATION_NO_DEVICE_REPLY(bot.botName)) };
-      // cm:guard same as agent mode: on 'dispatch-failed' the bridge delivers the single fallback, so this turn must post nothing.
       return { send: false, reason: 'escalation-dispatch-failed' };
     },
 
@@ -245,7 +237,6 @@ function escalationQuestion(rawArguments: string, fallback: string): string {
     if (typeof parsed.question === 'string' && parsed.question.trim())
       return parsed.question.trim();
   } catch {
-    // cm:why a malformed tool-call argument is not worth failing the turn over — the escalation still carries the user's own message text, which is what a research agent needs
   }
   return fallback;
 }

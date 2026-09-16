@@ -80,7 +80,6 @@ async function backfillMemories(): Promise<{ reembedded: number; aborted: boolea
   return { reembedded, aborted };
 }
 
-// cm:guard knowledge_entries is swept by the SAME job as memories — knowledge/service.ts stores `embedding = NULL` on a degraded upsert and logs "storing degraded row for backfill", and until 2026-09-05 no backfill read that table, so an entry written during an embeddings outage stayed keyword-only until its body changed (live: anhome 6 of 56, pixelight 5 of 9, sid-desk 4 of 5 entries without a vector). The text embedded is knowledge/service.ts:knowledgeEmbedInput, the upsert's own
 async function backfillKnowledge(): Promise<{ reembedded: number; aborted: boolean }> {
   const rows = await db
     .select({ id: knowledgeEntries.id, title: knowledgeEntries.title, body: knowledgeEntries.body })
@@ -132,7 +131,6 @@ export async function selectUnchunked(limit: number, projectId?: string) {
     .limit(limit);
 }
 
-// cm:guard the chunk backfill only takes rows whose whole-document `embedding` is already there — a degraded row is completed by runEmbeddingBackfill first, in the same sweep, and chunking it before that would spend a second batch of calls against a service the first query just found down
 export async function runChunkBackfill(): Promise<{
   chunked: number;
   aborted: boolean;

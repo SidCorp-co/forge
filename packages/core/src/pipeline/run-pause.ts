@@ -60,13 +60,11 @@ async function emitRunPauseTransition(
  * Machine pause kinds a MACHINE clears: something in this build watches for the
  * condition and resumes the run without anyone being asked.
  */
-// cm:guard EMPTY, and empty is the correct state, not an oversight. A kind here is a PROMISE that code resumes it, and `missing_skill` was that promise until ISS-895 deleted `missing-skill-resume.ts` with the staged lane — a run still paused on it is now freed by `resumeOrphanedPauses`, which frees every kind ABSENT from `LIVE_PAUSE_REASON_KINDS`, and that is the whole reason it exists. RFC 0002 removed the reopen cap and left `reopen_cap:*` runs frozen with no owner: measured 2026-08-14, forge-dev ISS-576 and ISS-652 had been paused since 2026-08-11, their queued triage jobs invisible to the picker (which requires `r.status='running'`), so clicking "open" did nothing and no alarm fired. Add a kind here only together with its resume path.
 export const MACHINE_RESUMED_PAUSE_KINDS: readonly string[] = [];
 
 /**
  * Machine pause kinds only a PERSON clears.
  */
-// cm:guard `stage_stalled` stays listed even though ISS-895 deleted the guard that wrote it: it is what keeps a run ALREADY paused on it out of `resumeOrphanedPauses`, which would otherwise resume a stall an operator was still looking at. Measured 2026-08-30, a getcontent run had been paused 23 days on one. Being here is also what makes `alarmPausedRunsWithQueuedWork` say "a person must act" rather than promising a resume nothing performs.
 export const HUMAN_RESUMED_PAUSE_KINDS = ['stage_stalled'] as const;
 
 /**
@@ -75,7 +73,6 @@ export const HUMAN_RESUMED_PAUSE_KINDS = ['stage_stalled'] as const;
  * `pauseReason` is written as `<kind>:<detail>`. {@link resumeOrphanedPauses}
  * frees any run whose kind is absent here.
  */
-// cm:guard derive this from the two lists above, never hand-list it — `resumeOrphanedPauses` frees every kind ABSENT here, so a kind added to one half and forgotten here is auto-resumed one sweep later, overriding the mechanism that paused it
 export const LIVE_PAUSE_REASON_KINDS = [
   ...MACHINE_RESUMED_PAUSE_KINDS,
   ...HUMAN_RESUMED_PAUSE_KINDS,
@@ -102,8 +99,6 @@ export function isLivePauseReason(reason: string | null | undefined): boolean {
  * can promise a resume this build will not perform. False for an operator
  * pause (no reason at all) and for a retired kind — neither resumes itself.
  */
-// cm:why the twin of `holdResumesItself` in jobs/hold.ts, deliberately the same shape on the run axis: both answer "is a person being waited on here?", and the aged-hold wedge already proved that a surface guessing this instead of asking tells an operator "no action needed" about a wait that is entirely theirs
-// cm:edge contract -> packages/core/src/pipeline/inv7-alarms.ts — `alarmPausedRunsWithQueuedWork` picks its nextStep from this; a kind that changes list above and not here would promise a resume nothing performs
 export function pauseResumesItself(reason: string | null | undefined): boolean {
   if (!reason) return false;
   const kind = reason.split(':', 1)[0] ?? '';
@@ -127,15 +122,12 @@ export interface PauseDescription {
  * Read a `pauseReason` as the three things a banner needs: which kind holds the
  * run, what its detail names, and who ends it.
  */
-// cm:guard the ONLY place a `pauseReason` is taken apart for display — every surface asks this rather than splitting the string itself, because the three answers below are decided by the two kind lists above and a second reader of the raw string is a second vocabulary that goes stale the next time a kind is retired
-// cm:edge contract -> packages/web-v2/src/features/issues/waiting.ts — `PAUSED_RUN_COPY` keys its copy on `resumer` and on nothing else; a fourth resumer added here without a line there renders as the sweeper case, which is the one that tells the reader no action is needed
 export function describePause(reason: string | null | undefined): PauseDescription {
   if (!reason) return { kind: null, detail: null, resumer: 'operator' };
   const separator = reason.indexOf(':');
   const kind = separator === -1 ? reason : reason.slice(0, separator);
   const detail = separator === -1 ? null : reason.slice(separator + 1) || null;
   if (pauseResumesItself(reason)) return { kind, detail, resumer: 'machine' };
-  // cm:guard a kind absent from LIVE_PAUSE_REASON_KINDS reads `sweeper`, not `operator` — `resumeOrphanedPauses` frees exactly those on the next tick, and asking an operator to resume a run the sweeper is about to resume anyway is how a surface earns the reader's distrust
   return { kind, detail, resumer: isLivePauseReason(reason) ? 'operator' : 'sweeper' };
 }
 
@@ -157,7 +149,6 @@ export async function pauseRun(args: {
       .set({
         status: 'paused',
         updatedAt: new Date(),
-        // cm:guard merge in SQL with COALESCE, never read-modify-write — `metadata` carries sibling keys other writers own, and rebuilding the object here drops whichever ones this call never read
         ...(args.pauseReason
           ? {
               metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object('pauseReason', ${args.pauseReason}::text)`,
@@ -219,8 +210,6 @@ export interface OrphanedPauseResult {
  * A run paused with no `pauseReason` is an OPERATOR pause and is never
  * touched — only a human resumes those.
  */
-// cm:guard match on the kind's ABSENCE from LIVE_PAUSE_REASON_KINDS, never on a hardcoded list of retired kinds — a retired-kinds list has to be edited by whoever deletes a pauser, which is exactly the step that got skipped and left `reopen_cap:*` runs frozen. Absence needs no second edit.
-// cm:guard `pauseReason IS NULL` must stay excluded — that is the operator pause, and auto-resuming it overrides a human decision with a sweep
 export async function resumeOrphanedPauses(): Promise<OrphanedPauseResult> {
   const rows = await db
     .select({
@@ -242,7 +231,6 @@ export async function resumeOrphanedPauses(): Promise<OrphanedPauseResult> {
   for (const row of rows) {
     const reason = (row.metadata as Record<string, unknown> | null)?.pauseReason;
     const text = typeof reason === 'string' && reason !== '' ? reason : null;
-    // cm:guard re-check for absence HERE, not only in the WHERE above — an operator pause has no reason, and leaning on the SQL predicate alone means a future edit to that query starts overriding human pauses with a sweep
     if (text === null || isLivePauseReason(text)) continue;
     detected += 1;
     const [freed] = await resumeRunsWhere(eq(pipelineRuns.id, row.id));

@@ -110,7 +110,6 @@ describe('mergeProjects', () => {
     expect(a?.repoPath).toBe('org/a');
     expect(a?.memberCount).toBe(4);
     expect(a?.pinned).toBe(false);
-    // cm:guard a list row with no matching health row must still RENDER, at idle defaults: a just-created project has no rollup yet, and dropping it here is how it vanishes from the console until the next sweep.
     expect(b?.health).toBe('idle');
     expect(b?.openIssues).toBe(0);
     expect(b?.pinned).toBe(true);

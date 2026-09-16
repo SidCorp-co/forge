@@ -60,8 +60,6 @@ describe('0241 reverse — the forward drop is a relocation', () => {
 
       await runForward(db.sql);
 
-      // cm:guard the handle's membership MOVES before the rollback, because the reconstruction must
-      // come off `origin` alone; consult a membership here and this assertion stops proving that.
       const other = await plantProject(db.sql, 'somewhere-else');
       await db.sql.unsafe(
         `UPDATE project_members SET project_id = $1
@@ -93,8 +91,6 @@ describe('0241 reverse — the forward drop is a relocation', () => {
     }
   });
 
-  // cm:guard byte equality on the BLOB, not equivalence: an element with no `ts`, or a key the schema
-  // models nothing for, is what a rebuild from the rows re-synthesizes — the reverse reads `origin`.
   it('rebuilds the stored transcript exactly, keys the new schema models and keys it does not', async () => {
     const db = await freshDb();
     try {
@@ -209,8 +205,6 @@ describe('0241 reverse — the forward drop is a relocation', () => {
 });
 
 describe('0241 reverse — the principals it minted, and the ones it must not take', () => {
-  // cm:guard the reverse REFUSES rather than choosing for whoever minted the token: deleting takes a
-  // live credential, keeping reports a clean reverse that left a principal standing (criterion 41)
   it('refuses by name when a minted handle has since been given an access token', async () => {
     const db = await freshDb();
     try {
@@ -230,11 +224,8 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
       );
 
       await expect(db.sql.unsafe(rollback)).rejects.toThrow(new RegExp(handleId));
-      // cm:why the refusal aborts the transaction the FILE opened, so this connection has to end it
-      // before it can be read from — which is the whole point: nothing the reverse did is committed
       await db.sql.unsafe('ROLLBACK');
 
-      // cm:guard it stopped BEFORE changing anything: the account stands, and so does the schema
       const survivors = await db.sql.unsafe(`SELECT id FROM users WHERE id = $1`, [handleId]);
       expect(survivors).toHaveLength(1);
       const [still] = await db.sql.unsafe(
@@ -246,15 +237,11 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
     }
   });
 
-  // cm:guard compared in SQL and never through a JS `Date`, which truncates to milliseconds and
-  // would report this green whatever the migration stored (ISS-1001)
   it('restores a timestamp to the microsecond it was stored with', async () => {
     const db = await freshDb();
     try {
       const { projectId } = await plantProject(db.sql, 'forge-dev');
       const session = await plantSession(db.sql, { projectId });
-      // cm:guard planted as SQL literals and NOT bound parameters: the driver turns a bound
-      // timestamp into a JS Date, so a parameterised plant arrives already truncated
       await db.sql.unsafe(
         `UPDATE chat_sessions
             SET created_at = '2026-04-01T10:11:12.123456Z'::timestamptz,
@@ -284,8 +271,6 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
     }
   });
 
-  // cm:guard a room migrated and still talking: half two takes `origin IS NULL` only, so without
-  // half one appending the later rows those turns come back missing and the row looks complete
   it('brings back what a migrated room said AFTER the forward run, not only what it was consumed with', async () => {
     const db = await freshDb();
     try {
@@ -300,7 +285,6 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
 
       await runForward(db.sql);
 
-      // cm:why the room goes on talking, which is what appendMessage does to a live conversation
       await db.sql.unsafe(
         `INSERT INTO conversation_messages (conversation_id, seq, role, content, created_at)
          VALUES ($1, 1, 'user', 'said after the deploy', '2026-05-01T00:00:00Z'),
@@ -324,7 +308,6 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
         'said after the deploy',
         'answered after the deploy',
       ]);
-      // cm:guard the consumed element comes back VERBATIM — its own `ts`, not a re-synthesized one
       expect(msgs[0]).toEqual({
         role: 'user',
         content: 'said before the deploy',
@@ -340,8 +323,6 @@ describe('0241 reverse — the principals it minted, and the ones it must not ta
 });
 
 describe('0241 reverse — the two fields the blob does not carry back by itself', () => {
-  // cm:guard `origin` carries EVERY consumed field, title included, while the reverse restores the current title so a rename after the deploy survives exactly as the messages appended after it do.
-  // cm:why a claim that every consumed field is reconstructible from `origin` alone is true by accident when the only copy of one lives in the column being read (ISS-1001).
   it('keeps the consumed title in `origin` and still restores a rename made after the deploy', async () => {
     const db = await freshDb();
     try {
@@ -377,8 +358,6 @@ describe('0241 reverse — the two fields the blob does not carry back by itself
     }
   });
 
-  // cm:guard a silence is neither dropped nor smuggled back into the replayed blob: the reverted code replays `messages` to the provider verbatim and never wrote an element with empty text, so an empty assistant element is a prompt shape it has never produced.
-  // cm:why losing the row outright would delete the one field the new model exists to keep, which is why it is archived rather than filtered away (ISS-1001).
   it('archives a silence instead of discarding it or replaying it as an empty answer', async () => {
     const db = await freshDb();
     try {
@@ -403,7 +382,6 @@ describe('0241 reverse — the two fields the blob does not carry back by itself
         [session.id],
       );
 
-      // cm:guard the archive is keyed by the MESSAGE id: a `(session, seq)` key would name a different message on a second forward-and-back cycle, and `DO NOTHING` would then drop the new silence.
       const [silenceRow] = await db.sql.unsafe(
         `SELECT id FROM conversation_messages WHERE conversation_id = $1 AND seq = 2`,
         [session.id],

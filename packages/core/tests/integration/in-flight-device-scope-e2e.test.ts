@@ -20,7 +20,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard both counts are hand-written `db.execute(sql)`, so the columns they name are invisible to tsc and to any suite that mocks `db.execute`. That is exactly how `AND r.host = 'device'` outlived migration 0200 and 500'd live chat on 2026-09-04. These assertions must keep running against the migrated schema.
 describe('in-flight is counted per device, not per binding', () => {
   let harness: TestDatabase;
   let mods: {
@@ -101,7 +100,6 @@ describe('in-flight is counted per device, not per binding', () => {
     expect(await mods.countInFlightForDevice(other.id)).toBe(0);
   });
 
-  // cm:guard the orphan exclusion is ISS-258 and is NOT a reporting nicety: a job under a terminal `pipeline_run` holds no slot, so counting it reports a box as full that dispatch will happily fill. The per-runner count has excluded these since the 2026-05-27 stall; this one must match or the two numbers disagree about the same box.
   it('excludes a job whose parent pipeline_run is already terminal', async () => {
     const s = await seedOneBoxTwoProjects();
     await harness.db.execute(sql`
@@ -111,7 +109,6 @@ describe('in-flight is counted per device, not per binding', () => {
     expect(await mods.countInFlightForDevice(s.box.id)).toBe(1);
   });
 
-  // cm:guard `queued` and `held` are live jobs that hold NO slot while they wait. Counting them makes a free box read as full, and dispatch rotates work away from a machine that could take it.
   it('counts neither a queued nor a held job', async () => {
     const s = await seedOneBoxTwoProjects();
     for (const status of ['queued', 'held'] as const) {

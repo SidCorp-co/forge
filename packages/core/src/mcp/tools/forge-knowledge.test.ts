@@ -45,7 +45,6 @@ beforeEach(() => {
   vi.clearAllMocks();
 });
 
-// cm:why the outage below is not hypothetical: `runUnifiedSearch` degrades the knowledge arm to keyword, and it is the memory arm at `strategy: semantic` that rejects, because `memory/search-service.ts` degrades `hybrid` only.
 describe('forge_knowledge maps an embeddings outage to UNAVAILABLE', () => {
   it('on search', async () => {
     runUnifiedSearchMock.mockRejectedValueOnce(new EmbeddingUnavailableError('provider down'));

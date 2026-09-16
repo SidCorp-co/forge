@@ -59,7 +59,6 @@ function authVerified() {
   queryQueue.push([{ emailVerifiedAt: new Date() }]);
 }
 
-// cm:why the mock resolves the queue POSITIONALLY, so a bucket a case does not care about still has to occupy its slot — this names that padding instead of repeating `push([])`.
 function emptyBuckets(n: number) {
   for (let i = 0; i < n; i += 1) queryQueue.push([]);
 }
@@ -300,7 +299,6 @@ describe('GET /api/me/attention', () => {
     expect(body.failedJobs[0]?.title).toContain('still failing');
   });
 
-  // cm:why ISS-807 — the mock resolves whatever is queued regardless of the WHERE clause, so this covers the row→response mapping and the `total` roll-up, NOT the admin-scoping or state-predicate SQL
   it('pendingSkillUpdates: an escalated run with no decidedAt falls back to createdAt for `since`', async () => {
     authVerified();
     emptyBuckets(4);
@@ -337,7 +335,6 @@ describe('GET /api/me/attention', () => {
 });
 
 describe('GET /api/me/attention · unseen drafts', () => {
-  // cm:why the mock chain resolves positionally and ignores every `where`, so what these two cases can fail on is the row→item mapping and the two independent numbers. The PREDICATE (agent channel · owned-for-answer · no human comment) is unfalsifiable here and is covered against real Postgres in tests/integration/attention-unseen-drafts-e2e.test.ts.
   it('unseen_draft maps to an issue item and joins `total`', async () => {
     authVerified();
     const updatedAt = new Date('2026-08-27T16:05:13Z');
@@ -375,7 +372,6 @@ describe('GET /api/me/attention · unseen drafts', () => {
     });
   });
 
-  // cm:guard `total` counts rows SENT, `unseenDraftsTotal` counts rows that MATCH. Collapsing them is how a rail badge starts claiming a number the screen cannot show.
   it('reports the unclipped total while `total` counts only the rows sent', async () => {
     authVerified();
     emptyBuckets(5);

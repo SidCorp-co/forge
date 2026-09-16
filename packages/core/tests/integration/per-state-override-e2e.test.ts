@@ -29,7 +29,6 @@ import {
 
 vi.mock('../../src/ws/server.js', () => ({
   roomManager: {
-    // cm:guard 1, never 0 — since ISS-862 the claude-code adapter reads this return as the number of OPEN sockets and reports `failed` for 0, so a stub answering 0 makes every dispatch in this file fail for a reason the file is not about. The stub exists so the `job.assigned` envelope can be asserted without a real socket layer; it must still answer like one that has a reader.
     publish: vi.fn(() => 1),
   },
 }));
@@ -106,7 +105,6 @@ describe('ISS-194 per-state override end-to-end', () => {
     const project = await createTestProject(harness.db, owner.id);
     const device = await createTestDevice(harness.db, owner.id, { status: 'online' });
     await harness.db.execute(sql`UPDATE devices SET last_seen_at = now() WHERE id = ${device.id}`);
-    // cm:why the runner must be online AND bound to the device or the candidate query returns nothing, and the override under test would pass for the wrong reason
     const runnerId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO runners (id, project_id, type, device_id, name, capabilities, status, last_seen_at)
@@ -157,7 +155,6 @@ describe('ISS-194 per-state override end-to-end', () => {
       VALUES (${runId}, ${args.projectId}, ${args.issueId}, 'issue', 'running')
     `);
     const id = randomUUID();
-    // cm:guard `stageStatus` is stamped here by hand, mirroring `enqueueDriveJob`, so the test stays on the resolve -> forward -> surface contract; drop it and `resolveStageOverrides` returns EMPTY and every assertion below reads a default it never overrode.
     const payload = JSON.stringify({ promptString: 'noop', stageStatus: 'open' });
     await harness.db.execute(sql`
       INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, type, status, payload, created_by)
@@ -187,8 +184,6 @@ describe('ISS-194 per-state override end-to-end', () => {
   it('forwards `model` + `permissionMode` from config to WS envelope and Inspector', async () => {
     const { ownerId, projectId, deviceId, token } = await seedOwnerProjectDevice();
 
-    // cm:guard the override tier MUST differ from DEFAULT_STAGE_MODELS['open'] — pick one equal to the default and this test passes even when override forwarding is broken
-    // cm:edge lockstep -> packages/core/src/jobs/stage-overrides.ts — DEFAULT_STAGE_MODELS['open'] is 'sonnet'; if it ever becomes 'opus', both tests in this file must switch to a different override tier
     const patchRes = await patchPipelineConfig(projectId, token, {
       states: {
         open: {
@@ -269,7 +264,6 @@ describe('ISS-194 per-state override end-to-end', () => {
     const jobId1 = await insertCodeJob({ projectId, issueId: issueId1, ownerId });
     expect(preparedFlags(await prepareClaimedJob({ jobId: jobId1, deviceId })).model).toBe('opus');
 
-    // cm:guard the revert works by REPLACEMENT, not by omission: `updatePipelineConfig` shallow-merges at the `pipelineConfig` level, so sending `states.open` without `model` replaces that whole entry and drops the key. Send a narrower patch expecting a per-key merge and the override survives while this reads as reverted.
     roomManager.publish.mockClear();
     const revertPatch = await patchPipelineConfig(projectId, token, {
       states: {
@@ -297,7 +291,6 @@ describe('ISS-194 per-state override end-to-end', () => {
     const issueId2 = await insertIssue(projectId, ownerId);
     const jobId2 = await insertCodeJob({ projectId, issueId: issueId2, ownerId });
     const data2 = preparedFlags(await prepareClaimedJob({ jobId: jobId2, deviceId }));
-    // cm:why with the override cleared `model` falls back to DEFAULT_STAGE_MODELS rather than dropping out of the prepared flags (ISS-535); `permissionMode` has no default policy, so buildOverridesPayload omits it entirely
     expect(data2.model).toBe('sonnet');
     expect(Object.keys(data2)).not.toContain('permissionMode');
     expect(data2.stageStatus).toBe('open');
@@ -314,7 +307,6 @@ describe('ISS-194 per-state override end-to-end', () => {
         permissionMode: string | null;
       };
     };
-    // cm:why persistPromptSnapshot writes `model_used` from the RESOLVED default, so the Inspector reports a concrete tier even with no override left
     expect(body.resolvedFlags.state).toBe('open');
     expect(body.resolvedFlags.model).toBe('sonnet');
     expect(body.resolvedFlags.permissionMode).toBeNull();

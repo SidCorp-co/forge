@@ -21,8 +21,6 @@ export interface SankeyFlowProps {
 /**
  * The pipeline drawn as what flows through each of its job types.
  */
-// cm:guard a `loop` node is drawn on its OWN path back into the chain and never as one more link in it: `fix` is work that re-enters the pipeline, and laying it inline says the pipeline has one more forward stage than it does (ISS-988 criterion 38).
-// cm:guard the same figures are carried in the table below the drawing rather than in a tooltip — a tooltip is not an equivalent for a reader who cannot see the drawing, and criterion 38 asks for the figures in text (ISS-988).
 export function SankeyFlow({ nodes, label, formatDuration, className }: SankeyFlowProps) {
   if (nodes.length === 0) return null;
 

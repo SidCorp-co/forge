@@ -25,7 +25,6 @@ const projectInputSchema = z
     projectId: z.uuid(),
     days: z.number().int().min(1).max(90).optional().default(30),
     step: stepEnum.optional(),
-    // cm:why with a per-state runner pool one step's samples span several boxes/model tiers, so the step-only grouping averages the very difference the operator pinned the pool to measure
     breakdown: z.enum(['device', 'model']).optional(),
   })
   .strict();

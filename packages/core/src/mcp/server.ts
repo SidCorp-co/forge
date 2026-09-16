@@ -46,7 +46,6 @@ import {
 } from './tools/forge-metrics.js';
 import { forgeOrgsListTool, forgeOrgsMembersTool } from './tools/forge-orgs.js';
 import { forgePhaseTool } from './tools/forge-phase.js';
-// cm:guard ISS-483 §E#3 unregistered the 9 zero-reference `forge_pipeline_runs.*` / `forge_pm.*` shims and 2026-08-31 deleted their factories and deprecation notices, but the per-action HANDLERS in those same files are NOT shims — `forge_project_pm` and `forge_project_pipeline_runs` dispatch into every one of them, so deleting a `forge-pm-*.ts` file along with its retired factory breaks the dispatcher, and those five test files remain the only coverage runner_load, dispatch and write_decision have. Only `forge_pipeline_runs.get` (forge-skill-audit) and `forge_pm.set_dependency` (forge-plan, forge-triage, forge-build) are still registered, each because a live skill calls it by name.
 import { forgePipelineRunsGetTool } from './tools/forge-pipeline-runs.js';
 import { forgePmSetDependencyTool } from './tools/forge-pm-set-dependency.js';
 import { forgeProjectPipelineRunsTool } from './tools/forge-project-pipeline-runs.js';
@@ -208,7 +207,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeJobsCancelTool(ctx),
     forgeAgentSessionsListTool(ctx),
     forgeAgentSessionsGetTool(ctx),
-    // cm:guard a surviving shim is registered IMMEDIATELY after the dispatcher that supersedes it — `tools/list` order is positional for callers that pin to it, so inserting elsewhere silently moves every tool after it (ISS-145)
     forgeProjectPipelineRunsTool(ctx),
     forgePipelineRunsGetTool(ctx),
     forgeProjectsListTool(ctx),
@@ -221,10 +219,8 @@ export function createMcpServer(ctx: McpContext): Server {
     forgePmSetDependencyTool(ctx),
     forgeHealthTool(ctx),
     forgeReconcileTool(ctx),
-    // cm:guard append new tools HERE, immediately above the last one — every position shifts the indices below it, so the tail is the only insertion point that leaves all existing tools where callers pinned them
     forgeJobsResumeTool(ctx),
     forgeMetricsSessionFailuresTool(ctx),
-    // cm:guard keep this registration LAST — callers pin to `tools/list` ordering, so inserting above it shifts every index they rely on
     forgeGuideTool(ctx),
   ];
   const toolMap = new Map(tools.map((t) => [t.name, t]));
@@ -234,7 +230,6 @@ export function createMcpServer(ctx: McpContext): Server {
     { capabilities: { tools: {}, prompts: {} }, instructions: FORGE_MCP_INSTRUCTIONS },
   );
 
-  // cm:guard precedence is slug > boundProjectId, the SAME order the tool resolver uses — meta skills are served live as prompts rather than synced to disk, so the two resolvers disagreeing means a session reads one project's tools and another project's guidance in the same breath, with nothing on disk to compare against (ISS-497)
   const metaProjectId = async (): Promise<string | null> => {
     if (ctx.projectSlug) {
       try {
@@ -273,7 +268,6 @@ export function createMcpServer(ctx: McpContext): Server {
     const { name, arguments: rawArgs } = request.params;
     const args = (rawArgs ?? {}) as Record<string, unknown>;
     const tool = toolMap.get(name);
-    // cm:guard `deviceId` stays NULL on every row this writes, and the column stays in the shape rather than being dropped: `agent-surface.md` reads `mcp_audit_log` split on `device_id IS NOT NULL` to decide which tools ISS-894 may delete, and a schema with no device column would answer that question with silence instead of a zero. Since ISS-931 the only writer of a non-null `device_id` is history.
     const auditBase = {
       userId: principal.userId,
       tokenId: principal.tokenId,
@@ -295,7 +289,6 @@ export function createMcpServer(ctx: McpContext): Server {
       };
     }
 
-    // cm:guard 404 and NOT 403 when a caller probes a project outside its token's scope — 403 confirms the project exists, which turns this tool into an existence oracle for every project the caller cannot see. This fences the explicit-arg path only; the slug-resolved path is fenced inside the assertPrincipalIs* helpers (ISS-497).
     const allow = patEffectiveProjectIds(principal);
     const target = auditBase.projectId;
     if (allow !== null && target && !allow.includes(target)) {
@@ -313,7 +306,6 @@ export function createMcpServer(ctx: McpContext): Server {
     } catch (err) {
       const { code, message } = classifyError(err);
       writeMcpAudit({ ...auditBase, resultCode: code });
-      // cm:edge contract -> packages/core/src/mcp/tools/lib.ts — the prefix is how a thrown error carries its class to `classifyError`; it is consumed HERE and must not reach the caller, who would read `FORBIDDEN: ...` as part of the message
       const text = message.replace(/^(?:FORBIDDEN|NOT_FOUND|BAD_REQUEST):\s*/, '');
       return {
         content: [{ type: 'text', text: `Error: ${text}` }],

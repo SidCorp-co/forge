@@ -17,7 +17,6 @@
  * why the 8 detail-free rows keep no member.
  */
 
-// cm:guard every member needs live rows or a named writer, and the line must say which — a cause nobody emits is indistinguishable from one nobody looked for, and it is what lets a taxonomy rot the way `job_failed` rotted
 export const FAILURE_CAUSES = [
   /** org/account monthly spend cap. 4,412 jobs/60d; 7 of the 8 ISS-871 sessions. */
   'provider_spend_cap',
@@ -118,7 +117,6 @@ export type FailureOrigin =
   | 'user'
   | 'unknown';
 
-// cm:guard exhaustive by construction — `Record<FailureCause, …>` makes a new cause without an origin a compile error, which is the only thing stopping a member from silently counting as `unknown`
 export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   provider_spend_cap: 'provider',
   provider_usage_limit: 'provider',
@@ -167,7 +165,6 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
  * IS the unclassified era, and pretending otherwise would trade an admitted
  * lie for a confident one.
  */
-// cm:edge lockstep -> packages/contracts/src/failure-causes.ts — web-v2 cannot import this file (core is not on its dependency path) and core cannot VALUE-import contracts (the prod image ships no contracts package — see contracts-runtime-boundary.test.ts, and ISS-510's boot crash). So the list and this alias table exist TWICE on purpose, exactly as NOTIFICATION_TYPES does, and `failure-causes-parity.test.ts` is what keeps the copies identical. Edit both.
 export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
   job_failed: 'unclassified',
   usage_limit: 'provider_usage_limit',
@@ -175,7 +172,6 @@ export const LEGACY_CAUSE_ALIAS: Readonly<Record<string, FailureCause>> = {
 };
 
 const CAUSE_SET: ReadonlySet<string> = new Set(FAILURE_CAUSES);
-// cm:guard a Map, not the object literal — `raw` comes from a free-text column, and a plain object answers `toString`, `constructor` and `valueOf` off its PROTOTYPE, so a bare `LEGACY_CAUSE_ALIAS[raw]` hands back a function typed `FailureCause` for a row holding any of those words
 const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(Object.entries(LEGACY_CAUSE_ALIAS));
 
 /**
@@ -192,7 +188,6 @@ const ALIAS_LOOKUP: ReadonlyMap<string, FailureCause> = new Map(Object.entries(L
  * `{ enum }` on the column, and `patchSchema` staying `.strict()` without a
  * `failureReason` field so no request body can supply one past the type.
  */
-// cm:guard read the column through this, never by comparing the raw string — pre-ISS-877 rows carry `job_failed`, `usage_limit` and `ws-publish-failed`, and a literal comparison silently stops matching them
 export function resolveFailureCause(raw: string | null | undefined): FailureCause {
   if (!raw) return 'unclassified';
   if (CAUSE_SET.has(raw)) return raw as FailureCause;

@@ -60,10 +60,6 @@ interface ComposerProps {
   /**
    * Accept a send while `busy`, for a caller that queues rather than refuses.
    */
-  // cm:guard OPT-IN, and the session screen deliberately does not set it: this changes what Enter
-  // does mid-turn, and the two screens answer that differently — a conversation queues the question
-  // and shows it, a runner session does not. Defaulting it on would have changed the session screen
-  // by side effect, in a diff that never named it (ISS-1031).
   queueWhileBusy?: boolean;
   placeholder?: string;
   /** Enable file attachment UI (Chat / "My conversations" only, ISS-499). */
@@ -129,21 +125,13 @@ export function Composer({
   const rowRef = useRef<HTMLDivElement>(null);
   const slashPanelRef = useRef<HTMLDivElement>(null);
   // Sendable when there's text OR at least one staged file.
-  // cm:guard `busy` stops a send ONLY where the caller has not said it queues. It used to stop every
-  // one, and `submit` below opened with a bare `if (!canSend) return;`, so Enter mid-turn reached a
-  // silent early return while the textarea stayed editable and the caret stayed blinking — an
-  // interface whose shape promised a thing it would not do (ISS-1031).
   const canSend =
     !disabled && (queueWhileBusy || !busy) && (value.trim().length > 0 || files.length > 0);
 
-  // cm:guard `slashOpen` must stay a separate flag from "a token exists" (ISS-718) — a token remains under the caret after Escape, so deriving openness from the token alone re-opens the panel the user just dismissed and makes Escape look broken
   const [slashOpen, setSlashOpen] = useState(false);
   const [slashHighlight, setSlashHighlight] = useState(0);
   const [slashCaret, setSlashCaret] = useState(0);
-  // cm:guard Escape has to be remembered against the DISMISSED TOKEN's start offset, not just as `slashOpen=false` — keeping on typing inside the same token calls syncSlash again, which would re-open the panel the user just dismissed and cost an Escape per keystroke. A new token (different start) is a new question and does re-open.
-  // cm:guard a REF, not state: React dispatches onSelect during the same keydown that pressed Escape, so a state value read from syncSlash's closure is the PRE-Escape render's and wipes the dismissal it just recorded. Nothing renders from this, so a ref is the right tool and the staleness cannot come back.
   const slashDismissedAt = useRef<number | null>(null);
-  // cm:guard the trigger exists only once there is something to insert, but loading AND error keep it visible — otherwise the button appears and vanishes as the query settles, and a failed fetch becomes invisible instead of offering its retry
   const skillsKnown = !!slashSkills;
   const hasSkills =
     skillsKnown &&
@@ -183,7 +171,6 @@ export function Composer({
       setValue(next.value);
       setSlashOpen(false);
       setSlashCaret(next.caret);
-      // cm:why the caret is restored after React commits the new value — set synchronously, the browser parks it at the end of the whole message instead of just past the inserted name
       requestAnimationFrame(() => {
         const node = textareaRef.current;
         if (!node) return;
@@ -206,7 +193,6 @@ export function Composer({
       el?.focus();
       return;
     }
-    // cm:guard keep the token rule true — a `/` glued to the previous word is not a command, so the trigger has to insert a separating space or the menu it just opened would immediately close
     const before = value.slice(0, caret);
     const needsSpace = before.length > 0 && !/\s$/.test(before);
     const insert = `${needsSpace ? " " : ""}/`;
@@ -302,13 +288,6 @@ export function Composer({
     setWarnings([]);
   };
 
-  // cm:guard WHICH clear a caller gets follows from whether it queues, and the two are one decision.
-  // A caller that queues (`queueWhileBusy`) never reports a refusal by throwing — it owns a row that
-  // keeps the words — so clearing before the await is free, and it is the whole point: the words
-  // leave the box the instant Enter is pressed rather than sitting there for the length of the
-  // answer, which is what `POST /conversations/:id/messages` not returning until the turn is over
-  // used to cost. A caller that does NOT queue reports refusals by throwing, and for it the clear
-  // stays where ISS-462 put it: on success only.
   //
   // Clearing early for BOTH and restoring in the catch was the first shape of this and it lost
   // text — submit A, type B into the now-empty box, A is refused, and the restore overwrites B with
@@ -339,7 +318,6 @@ export function Composer({
   };
 
   const onKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    // cm:guard the slash menu owns ↑/↓/Enter/Escape ONLY while it is open — widening that would regress Enter-to-send and Shift+Enter-for-newline (ISS-462 / ISS-714), which are the composer's oldest contracts
     if (slashMenuOpen) {
       if (e.key === "ArrowDown" || e.key === "ArrowUp") {
         e.preventDefault();
@@ -350,7 +328,6 @@ export function Composer({
         );
         return;
       }
-      // cm:guard Tab has to be redirected INTO the panel while it is showing its error state, or the error's Retry is mouse-only: the next tabbable element is the send button, whose focus blurs the textarea and unmounts the panel before Tab arrives — and the panel deliberately refuses mouse focus (see slash-skills-menu.tsx). The skills query lives in the parent and never remounts, so without this a keyboard user's only recovery is to navigate away and back.
       if (e.key === "Tab" && !e.shiftKey && slashSkills?.error) {
         const focusable = slashPanelRef.current?.querySelector<HTMLElement>("button");
         if (focusable) {
@@ -366,10 +343,8 @@ export function Composer({
           insertSkill(picked);
           return;
         }
-        // cm:why no match to insert, so this falls through to the send below and the typed text goes as-is
       }
       if (e.key === "Escape") {
-        // cm:guard Escape dismisses the menu ONLY — the typed text stays, which is the whole point of it here
         e.preventDefault();
         setSlashOpen(false);
         slashDismissedAt.current = slashToken?.start ?? null;
@@ -467,7 +442,6 @@ export function Composer({
               aria-haspopup="listbox"
               aria-expanded={slashMenuOpen}
               className="h-11 w-11 flex-none"
-              // cm:guard NOT disabled by `busy` — the menu only edits the draft, the textarea stays editable while the agent works, and a control disabled with no stated reason is what the UX contract forbids
               disabled={disabled}
               onClick={openSlashMenu}
             />
@@ -481,12 +455,10 @@ export function Composer({
               syncSlash(e.target.value, e.target.selectionStart ?? 0, true);
             }}
             onKeyDown={onKeyDown}
-            // cm:guard re-read the token on selection changes too — a click or an arrow key moves the caret out of (or into) a token without changing the text, so keying only off onChange leaves the menu stale
             onSelect={(e) => {
               const el = e.currentTarget;
               syncSlash(el.value, el.selectionStart ?? 0, false);
             }}
-            // cm:guard a focus move INTO the panel must not close it — closing here detaches the node the pointer is pressing, so its `click` never lands. The panel also cancels mousedown's focus default (slash-skills-menu.tsx), which is what covers Safari, where this relatedTarget is null.
             onBlur={(e) => {
               if (slashPanelRef.current?.contains(e.relatedTarget as Node | null)) return;
               setSlashOpen(false);

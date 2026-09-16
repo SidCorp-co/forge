@@ -36,7 +36,6 @@ const RUNNER_ID = '55555555-5555-4555-8555-555555555555';
 const TOKEN_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '66666666-6666-4666-8666-666666666666';
 
-// cm:guard `admin` is in these scopes because the ACTIONS under test are admin-gated, and it is the one thing a device token never had to carry. Until ISS-931 a paired device reached `assertPrincipalIsAdmin` with no scopes at all — the check reads `principal.scopes` and a device had none, so the scope half was skipped and only the project role was asked. Drop `admin` here and every write case below fails `this token lacks the admin scope`, which is the new, correct answer for a machine token.
 const fakePrincipal = makeFakePrincipal(TOKEN_ID, OWNER_ID, {
   scopes: ['read', 'write', 'admin'],
 });
@@ -298,7 +297,6 @@ describe('forge_runners', () => {
 });
 
 describe('forge_runners, the inverse of retire and the collision refusal', () => {
-  // cm:guard `restore` is asserted on the status it WRITES, never on the row the mock returns — the handler's whole job here is the value it puts in that `set`, and a test reading the returned fixture passes whatever it writes (ISS-990).
   it('restore writes `online`, the status the dispatch picker requires', async () => {
     mockLimitOnce([{ projectId: PROJECT_ID }]);
     mockLimitOnce([adminAccessRow]);
@@ -313,7 +311,6 @@ describe('forge_runners, the inverse of retire and the collision refusal', () =>
     expect(res.runner.status).toBe('online');
   });
 
-  // cm:guard the transition must reach `runner_events` — the Activity panel is what answers "why is this box back", and a restore that writes only the column leaves the operator's own action the one thing missing from the timeline (ISS-990).
   it('restore appends the audited transition, it does not just set the column', async () => {
     mockLimitOnce([{ projectId: PROJECT_ID }]);
     mockLimitOnce([adminAccessRow]);

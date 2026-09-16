@@ -5,15 +5,12 @@ export const LEGACY_ISSUE_PREFIX = 'ISS';
 const PREFIX_SHAPE = /^[A-Z][A-Z0-9]{1,5}$/;
 const REF_SHAPE = /^\s*(?:([A-Za-z][A-Za-z0-9]{1,5})-)?(\d{1,10})\s*$/;
 
-// cm:guard the bound is int4's own range and NOT a digit count — `issSeq` is int4, so an
-// out-of-range literal reaches Postgres as a 500 on what is a caller's typo (ISS-991)
 export const ISS_SEQ_MAX = 2_147_483_647;
 
 export function formatIssueRef(prefix: string | null | undefined, issSeq: number): string {
   return `${prefix ?? LEGACY_ISSUE_PREFIX}-${issSeq}`;
 }
 
-// cm:guard the form STORED in `pipeline_runs.metadata.runIssues` and matched by string containment in SQL, never parsed — it does not take the project's prefix. Keeping the two apart is why a project renamed to `FD` still gets its issues returned when its run's session ends (ISS-992). cm:edge lockstep -> packages/core/src/devices/admissible.ts — the SQL side of the same key
 export function canonicalIssueKey(issSeq: number): string {
   return `${LEGACY_ISSUE_PREFIX}-${issSeq}`;
 }

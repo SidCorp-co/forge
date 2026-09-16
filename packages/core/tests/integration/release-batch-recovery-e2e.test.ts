@@ -73,15 +73,11 @@ async function recordPromotion(runId: string): Promise<void> {
   await openAttempt({ runId, stage: 'promote', idempotencyKey: 'promote-1', commit: 'abc' });
 }
 
-// cm:guard the gated project is seeded ONCE, at file scope, and every group below inherits it:
-// `resolveProductionDeclaration` needs both halves or each case dies on NO_RELEASE_GATE before
-// reaching what it asserts, and four copies of that seeding is four places it can drift.
 beforeEach(async () => {
   await declareProduction();
   await seedReleaseRunner();
 });
 
-// cm:guard both cases must assert the STATUS and not only the cleared claim — clearing the claim is what the old code already did correctly, so a case that checks only that passes against the bug it was written for.
 describe('a release batch that ends without an outcome', () => {
   it('rescues its issues from `releasing` when the run dies with neither finish nor abort', async () => {
     const { registerReleaseBatchClaimSubscriber } = await import(
@@ -108,13 +104,8 @@ describe('a release batch that ends without an outcome', () => {
 
     for (const id of [a, b]) {
       const after = await stored(id);
-      // cm:guard the project's own gate status and no longer `reopen` (ISS-1042). This run
-      // recorded no promotion, so the issue is still merged, still verified and still waiting for
-      // production — which is what the gate status means. `reopen` said it had come back from a
-      // release that never happened.
       expect(after.status).toBe('awaiting_release');
       expect(after.claim).toBeNull();
-      // cm:guard NOT closed and NOT stamped: a release that died half-way has shipped nothing anyone verified, and a stamp here would unblock every `blocks` dependent as if it had
       expect(after.mergedAt).toBeNull();
     }
   });
@@ -131,7 +122,6 @@ describe('a release batch that ends without an outcome', () => {
       createReleaseBatch({ projectId, issueIds: [b], userId: ownerId }),
     ).rejects.toBeInstanceOf(BatchInFlightError);
 
-    // cm:guard the SECOND batch's issue is the one under test: `createReleaseBatch` moves every claimed issue to `releasing` BEFORE it enqueues, so the conflict throws with the roster already mid-release and a bare claim-clear would leave it there under a run that never ran
     const after = await stored(b);
     expect(after.status).toBe('awaiting_release');
     expect(after.claim).toBeNull();
@@ -139,11 +129,6 @@ describe('a release batch that ends without an outcome', () => {
   });
 });
 
-// cm:guard criteria 30 to 32. The destination is chosen by what the run RECORDED and by nothing
-// else — not by which verb called, not by the run's status. `reopen` for everything was wrong in
-// both directions: over a batch that never promoted it said the issue had come back from a
-// release that did not happen, and over one that DID promote it said there was work to redo on
-// code that is serving production right now.
 describe('where an unfinished batch leaves its roster', () => {
   it('returns a roster that never promoted to the status the release gate gives', async () => {
     const a = await insertIssue();
@@ -155,9 +140,6 @@ describe('where an unfinished batch leaves its roster', () => {
     expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
   });
 
-  // cm:guard the CLAIM has to survive alongside the status. `release_batch_run_id` is the only
-  // index onto these rows, so an issue left at `releasing` with the claim cleared is unreachable
-  // by every reader there is — which is a worse strand than the one this whole module removes.
   it('leaves a roster that promoted at `releasing`, still claimed', async () => {
     const a = await insertIssue();
     const { runId } = await claim([a]);
@@ -169,9 +151,6 @@ describe('where an unfinished batch leaves its roster', () => {
     expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
   });
 
-  // cm:guard a roster nothing moved must not go SILENT. A batch left at `releasing` with nothing
-  // written on it reads as a release still running, which is the state ISS-923 measured 98 times
-  // across 18 projects; the comment is the only thing that makes it findable.
   it('says on each issue why it was left where it is', async () => {
     const a = await insertIssue();
     const { runId } = await claim([a]);
@@ -182,9 +161,6 @@ describe('where an unfinished batch leaves its roster', () => {
     expect(await commentCount(a)).toBe(1);
   });
 
-  // cm:guard criterion 32 — the SWEEP path, not the abort. `recoverStrandedReleasing` is the one
-  // writer of a roster leaving `releasing` without an outcome, and a promotion rule that held
-  // only for the verb would be walked straight past by the machine that arrives later.
   it('leaves a promoted roster at `releasing` on a later stranded-releasing recovery too', async () => {
     const { recoverStrandedReleasing } = await import(
       '../../src/release-batch/releasing-recovery.js'
@@ -199,9 +175,6 @@ describe('where an unfinished batch leaves its roster', () => {
     expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
   });
 
-  // cm:guard an attempt that was DECLARED and never reported back still counts as a promotion.
-  // It is exactly the act that may have landed, and reading an unsettled promote as "nothing
-  // happened" walks a roster back over code that is serving.
   it('counts a promotion whose act never reported back', async () => {
     const a = await insertIssue();
     const { runId } = await claim([a]);
@@ -215,8 +188,6 @@ describe('where an unfinished batch leaves its roster', () => {
     expect((await stored(a)).status).toBe('releasing');
   });
 
-  // cm:guard a non-promote attempt is NOT a promotion. Without this the rule degrades to "the run
-  // did something", and every batch that got as far as one deploy would strand its roster.
   it('does not read a deploy attempt as a promotion', async () => {
     const { openAttempt } = await import('../../src/release-batch/ledger.js');
     const a = await insertIssue();
@@ -229,10 +200,6 @@ describe('where an unfinished batch leaves its roster', () => {
   });
 });
 
-// cm:guard criteria 33 and 34. `closeRunIfOneShot` matches `running|paused` only, so an abort
-// arriving on a run something already concluded wrote nothing and SAID nothing: the row went on
-// reading `completed` about a batch somebody had called off, and the caller was handed a plain
-// success. Routed here from ISS-1032 because this issue owns "a release run cannot lie".
 describe('an abort of a run something already concluded', () => {
   it('takes a `completed` run to `cancelled` and reports that it did', async () => {
     const a = await insertIssue();
@@ -251,9 +218,6 @@ describe('an abort of a run something already concluded', () => {
     expect(await runStatus(runId)).toBe('cancelled');
   });
 
-  // cm:guard the PREVIOUS outcome is the whole point of recording it: whatever that success
-  // closed is still closed, and an operator reading the abort has no other way to learn that this
-  // run had already reported one.
   it('keeps what the run said before the flip, on the run itself', async () => {
     const a = await insertIssue();
     const { runId } = await claim([a]);
@@ -272,8 +236,6 @@ describe('an abort of a run something already concluded', () => {
     });
   });
 
-  // cm:guard the ordinary abort must report the OTHER answer, or `wasAlreadyTerminal` is a field
-  // that is always true and says nothing.
   it('reports a live run as one the ordinary close already cancelled', async () => {
     const a = await insertIssue();
     const { runId } = await claim([a]);
@@ -287,8 +249,6 @@ describe('an abort of a run something already concluded', () => {
     });
   });
 
-  // cm:guard re-aborting must not rewrite `finished_at` or file a second audit row for a flip
-  // that already happened; the predicate excludes `cancelled` for exactly that.
   it('does not flip a run that is already cancelled a second time', async () => {
     const a = await insertIssue();
     const { runId } = await claim([a]);

@@ -9,7 +9,6 @@
 // `/api` is the web origin's, which covers an app route and a static asset alike
 // with no route list to keep in step with `src/app`.
 
-// cm:edge contract -> packages/core/src/index.ts — core's non-`/api` mounts are the health routes, `/mcp`, `installRoutes`, `guideRoutes` and the `/pair` redirect, and none of them serves a file a body can reference. A file route added there outside `/api` makes `CORE_SEGMENT` below wrong, and a body link to it would render in-app instead of against the core.
 import { coreFileUrl } from "./core-url";
 
 /** The one segment that belongs to the core. */

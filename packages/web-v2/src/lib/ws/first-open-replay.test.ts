@@ -28,7 +28,6 @@ afterEach(() => {
 });
 
 describe("replayOnFirstOpen", () => {
-  // cm:guard the query with a REAL gap: its answer was on screen while the socket was not yet delivering, which is the case Codex ruled cannot simply be suppressed — REST completing before the socket connects (ISS-1019).
   it("refetches a query holding data that arrived before the socket opened", async () => {
     const qc = client();
     let calls = 0;
@@ -44,7 +43,6 @@ describe("replayOnFirstOpen", () => {
     expect(calls).toBe(2);
   });
 
-  // cm:guard the socket was already delivering when this answer landed, so nothing can have been missed and a refetch here is the blanket double fetch this replay exists to stop being.
   it("does not refetch a query whose only data arrived after the socket opened", async () => {
     const qc = client();
     const openedAt = Date.now() - 5_000;
@@ -61,7 +59,6 @@ describe("replayOnFirstOpen", () => {
     expect(calls).toBe(1);
   });
 
-  // cm:guard a query holding PRE-open data while a later request of its own is in flight still has the gap, and `invalidateThroughInFlight` is not what covers it — that only handles a FIRST fetch. Without this the refresh could be cancelled or fail and the pre-open answer would stand unrepaired.
   it("refetches a query holding pre-open data while a later request is in flight", async () => {
     const qc = client();
     let calls = 0;
@@ -91,7 +88,6 @@ describe("replayOnFirstOpen", () => {
     expect(calls).toBe(3);
   });
 
-  // cm:guard `questions` is unconditional, whatever its state, because its own guard in event-router.ts says the replay is the ONE recovery an empty decision panel has.
   it("refetches a questions query whose data arrived after the socket opened", async () => {
     const qc = client();
     const openedAt = Date.now() - 5_000;
@@ -108,7 +104,6 @@ describe("replayOnFirstOpen", () => {
     expect(calls).toBe(2);
   });
 
-  // cm:guard ONE predicate in ONE call, not two passes: a questions query holding pre-open data matches the unconditional arm AND the pre-open arm, and two passes would spend two requests on it.
   it("refetches a questions query holding pre-open data exactly once", async () => {
     const qc = client();
     let calls = 0;
@@ -124,7 +119,6 @@ describe("replayOnFirstOpen", () => {
     expect(calls).toBe(2);
   });
 
-  // cm:guard each query is judged on ITS OWN data, not on a sibling sharing its prefix. Invalidating the whole prefix when any member is old recreates the blanket refetch on every broad prefix — ['issues'] and ['projects'] each cover many queries.
   it("judges two queries sharing one prefix separately", async () => {
     const qc = client();
     let old = 0;
@@ -149,7 +143,6 @@ describe("replayOnFirstOpen", () => {
     expect(fresh).toBe(1);
   });
 
-  // cm:guard a query under no replay prefix is not this replay's business at all, however old its data is.
   it("leaves a query under no replay prefix alone", async () => {
     const qc = client();
     let calls = 0;

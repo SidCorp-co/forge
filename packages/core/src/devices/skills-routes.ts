@@ -47,14 +47,12 @@ const reportBodySchema = z
             skillId: z.uuid(),
             installedHash: z.string().min(1).max(128),
             installedVersion: z.number().int().nonnegative().optional(),
-            // cm:why both absent below runner 0.7.1 — server treats a null observedSha as `unknown`, never `synced`. NOT 0.7.0: that version shipped BEFORE observation, so two different 0.7.0 builds exist and the version string alone cannot discriminate — the presence of the fields is the only reliable signal
             observedSha: z.string().min(1).max(128).optional(),
             shadowedBy: z.string().max(1024).optional(),
           })
           .strict(),
       )
       .max(500),
-    // cm:why NAMES, not ids — the runner has no id for a manifest entry that no longer exists
     pruned: z.array(z.string().min(1).max(128)).max(500).optional(),
   })
   .strict();
@@ -65,7 +63,6 @@ function truthy(v: string | undefined): boolean {
 
 export const deviceSkillRoutes = new Hono<{ Variables: DeviceVars }>();
 
-// cm:guard hashes ONLY by default. The runner diffs this against its local cache and fetches just the changed skills; `?includeFiles=1` is the cold-cache path and sending bodies unconditionally would put every project's whole skill tree on every poll.
 deviceSkillRoutes.get(
   '/me/skills',
   requireDevice(),
@@ -170,7 +167,6 @@ deviceSkillRoutes.post(
 
 const syncFailedBodySchema = z.object({ error: z.string().min(1).max(2000) }).strict();
 
-// cm:why separate from /report — a manifest/content pull failure has no installed skills to report, so the success schema doesn't fit.
 deviceSkillRoutes.post(
   '/me/skills/sync-failed',
   requireDevice(),
@@ -188,7 +184,6 @@ deviceSkillRoutes.post(
     await assertDeviceBoundToProject(device.id, projectId);
 
     await db.transaction(async (tx) => {
-      // cm:why suppress a repeat of the SAME failure reason — a persistently broken project would otherwise emit one row per poll (~96/device/day at the 15-min auto_pull default), flooding the log with no new information (§7 principle 1).
       const [last] = await tx
         .select({ reason: skillActivityEvents.reason })
         .from(skillActivityEvents)
@@ -296,7 +291,6 @@ async function applyReportedSkill(input: {
         },
       });
 
-    // cm:why resolve packetId unconditionally from installedHash — device.skill.applied describes installing the project-canonical body, which comes from a packet regardless of shadow state. device.skill.shadowed still withholds packetId because the shadow body is user-authored (ISS-798 BLOCKER D).
     const appliedPacketId = await resolvePacketIdForHash(
       tx,
       projectId,

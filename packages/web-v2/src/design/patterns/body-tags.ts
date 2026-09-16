@@ -4,7 +4,6 @@
 // core's `body/plain-tags.ts` allowlist, which is bounded by "exactly what
 // remark-gfm already emits" — so one class per tag covers both.
 
-// cm:edge contract -> packages/core/src/body/plain-tags.ts — that file's `PLAIN_TAGS` is the closed set a stored body may carry, and this map is what draws it. A tag added there without an entry here renders unstyled; an entry here for a tag core refuses is dead.
 export const COMPACT_TAG_CLASS: Record<string, string> = {
   h1: "fg-h3 mt-4 mb-2 first:mt-0",
   h2: "fg-h3 mt-4 mb-2 first:mt-0",

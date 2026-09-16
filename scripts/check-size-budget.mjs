@@ -33,16 +33,13 @@ import { absentPrerequisites, remedyLines } from './lib/prerequisite.mjs';
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const BASELINE_PATH = join(ROOT, '.forge', 'size-baseline.json');
 
-// cm:guard the two rules sit in DIFFERENT biome groups — file length under `style`, function length under `complexity`. Assuming both were `complexity` produced a baseline that silently froze 0 of the 56 file-length violations and still reported clean.
 const FILE_RULE = 'lint/style/noExcessiveLinesPerFile';
 const FN_RULE = 'lint/complexity/noExcessiveLinesPerFunction';
 
-// cm:edge contract -> packages/core/biome.json — reads the two rule categories declared there. Turning either rule off, or renaming it, empties this checker's input and it reports clean; the zero-diagnostics guard below is what turns that into an exit 2 instead of a false pass.
 function collect(scopes) {
   const measured = new Map();
   let sawAnyDiagnostic = false;
 
-  // cm:guard name the absent TOOL before spawning it. Without biome on disk this function reports `biome output in <scope> was not JSON` — a sentence about biome's behaviour, from which a reader concludes the reporter broke rather than that nothing was installed (ISS-938).
   const missing = absentPrerequisites(ROOT, ['deps']);
   if (missing.length > 0) return { error: `could not run — ${remedyLines(missing)[0]}` };
 
@@ -89,7 +86,6 @@ function collect(scopes) {
     }
   }
 
-  // cm:guard biome emitting nothing at all means the scope matched no files or the config stopped loading, NOT a clean tree — this repo has 464 diagnostics at rest. Reporting clean here is the fail-open shape the other checkers exit 2 on.
   if (!sawAnyDiagnostic)
     return { error: 'biome reported zero diagnostics — the scope matched nothing' };
   return { measured };
@@ -134,7 +130,6 @@ if (doc === null) {
 }
 const baseline = doc.files ?? {};
 
-// cm:guard a rule the baseline knows about must still be PRODUCING diagnostics. Freezing 56 file-length violations and then reading zero of them is indistinguishable from a clean tree by count alone, and that is exactly how a wrong rule category (style vs complexity) shipped a baseline that gated nothing. Re-baseline after a genuine cleanup and this self-corrects.
 for (const kind of ['fileLines', 'maxFunctionLines']) {
   const expected = Object.values(baseline).some((v) => v[kind] > 0);
   const seen = [...measured.values()].some((v) => v[kind] > 0);

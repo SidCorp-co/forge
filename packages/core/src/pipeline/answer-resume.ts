@@ -31,7 +31,6 @@ import { AUTONOMOUS_ENTRY_STATUS, AUTONOMOUS_QUESTION_STATUS } from './autonomou
 import { isAutonomousProject } from './autonomous-project.js';
 import type { HooksBus } from './hooks.js';
 
-// cm:guard `needs_info` ONLY, never the other two parks a PERSON entered — `waiting` (which the vocabulary also renders as needs_human) and `on_hold` (which renders as `paused` since ISS-970) are stopped by a person, and a comment on one is discussion, not permission to restart. Since ISS-886 that is true by construction rather than by convention: an agent can no longer reach `waiting` on this mode (issues/autonomous-park.ts rewrites it here), so the only one left on this mode is a human's own pause.
 async function resumableIssue(issueId: string) {
   const [issue] = await db
     .select({
@@ -51,8 +50,6 @@ async function resumableIssue(issueId: string) {
 /**
  * The session that asked this question, if it is alive and still waiting.
  */
-// cm:guard `awaiting_input` is required, not merely a non-terminal session. A session mid-turn has not asked anything yet — the park is what makes an answer the thing it is waiting for — and writing into one would land the reply as the NEXT turn's prompt, answering a question the agent had already moved on from.
-// cm:edge lockstep -> packages/core/src/jobs/events-routes.ts — the column read here is written there and nowhere else on the pipeline path. If that write is removed, every answer silently takes the fallback and duplex loses the one thing it was for.
 async function parkedSessionFor(issueId: string): Promise<string | null> {
   const [row] = await db
     .select({ id: agentSessions.id })
@@ -76,9 +73,6 @@ async function parkedSessionFor(issueId: string): Promise<string | null> {
  * this answer to a runner and must wait for the episode to resolve rather than
  * dispatch.
  */
-// cm:guard the issue stays at `needs_info` when this returns true, and that is load-bearing rather than an omission: `jobs/turn-verdict-routes.ts` reads the SAME status to keep the session resident, so the parked session and the pending answer agree by construction. Moving the issue here would end the session the answer is on its way to.
-// cm:guard NO `actor`, which means no intervention row, and that is the opposite of what a human-initiated send does. Every `job_events kind='intervention'` lands in the `issue_intervention_events` view, i.e. VISION §1 metric ② — and answering a question the AGENT asked is the pipeline working, not someone stepping in. Auditing it would make the north-star metric climb on the exact path meant to lower it, and asymmetrically: the identical answer records nothing when no session happens to be parked, so the number would measure duplex adoption rather than interventions. Provenance is not lost — `intentId` IS the comment id.
-// cm:guard `published: false` is the ONLY synchronous fallback. Anything else — a runner that is silent, an ack that never comes — resolves through `resolveSessionSend`, because acting on a message that was in fact consumed puts a second agent on the same worktree.
 async function deliverToPark(issueId: string, commentId: string, body: string): Promise<boolean> {
   const agentSessionId = await parkedSessionFor(issueId);
   if (!agentSessionId) return false;
@@ -94,9 +88,6 @@ async function deliverToPark(issueId: string, commentId: string, body: string): 
 /**
  * Whether a box registered itself to read THIS answer back.
  */
-// cm:guard keyed on the QUESTION, never on "does this issue carry an open question": by the time this runs the question is `answered` by construction, so an open-question predicate answers false for every box-minted one and core dispatches a second agent onto the worktree the first still holds (ISS-996).
-// cm:guard this is the code behind the `answer-resume-park` protection core advertises at `GET /me/protections`, and `questions/park-protections.test.ts` reads this file for it. A box releases its process on that advertisement; renaming this without moving the proof leaves the promise pointing at nothing (ISS-964 criterion 27).
-// cm:guard the question id and the issue id on this event come from ONE row, so they agree by construction — which is why no project join is needed here and its absence is not the ISS-989 hazard it would be on a predicate keyed off the issue alone.
 export async function aBoxWillReadThisAnswer(questionId: string): Promise<boolean> {
   const [row] = await db
     .select({ id: questionWaiters.id })
@@ -112,8 +103,6 @@ export async function aBoxWillReadThisAnswer(questionId: string): Promise<boolea
  * driver — a staged project takes the early return and pays one issue read.
  */
 export function registerAnswerResume(bus: HooksBus): void {
-  // cm:guard the ONLY way an answer to a park's own question reaches the work. A question the RUNNER minted registers a waiter and the box reads the answer back itself; a park mints its question inside the transition with no box on the other end, so without this the issue sits at the question status with an answered question on it (ISS-996).
-  // cm:guard the same three hops, in the same order, as the comment subscriber above: send to a live session, stand down for a box that will come back, dispatch otherwise. A fourth shape here would be a second answer to what "resumed" means.
   bus.on(
     'questionAnswered',
     async (p) => {
@@ -162,15 +151,10 @@ export function registerAnswerResume(bus: HooksBus): void {
  * answer becomes a dispatch after all — the print behaviour, arrived at late
  * rather than assumed early.
  */
-// cm:guard scoped to issues STILL parked at the question, which is also the whole of its idempotency: the fallback transition moves the issue off `needs_info`, so a row that has been handled stops matching and is never reconsidered. No marker column, and no second dispatch for one answer.
-// cm:guard acts on `gone` ONLY. `unknown` is a lapsed episode with the runner online and silent, and dispatching on it would put a second agent on a worktree whose session may have consumed the answer already — the race RFC 0003's three outcomes exist to keep apart. An `unknown` resolves when the session goes terminal, which the residency deadline guarantees it eventually does.
 export async function resumeLapsedAnswers(
   now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<number> {
-  // cm:guard the person who ANSWERED carries the fallback transition, recovered by joining `agent_questions` on `intentId` — which is the question id, the same idempotency key the send was opened under. This joined `comments` on the comment id until ISS-996 cut the comment lane, and leaving it there would have dropped every row on the one lane that remains: an answer's `intentId` is a question id, and no comment has it.
-  // cm:guard `answeredBy` is read off the LAST step rather than a column, because an answer lives in `steps`. A question with no answered step yields NULL and the row falls out of the INNER join, which is correct — an unanswered question opened no send.
-  // cm:guard the cast is REQUIRED and its absence is a runtime error, not a type error: `intent_id` is `text` because an intent is not always a uuid, and Postgres has no `uuid = text` operator. An INNER join that throws would take the whole hop down, not just this row.
   const rows = await db
     .select({
       inbox: sessionInbox,
@@ -184,7 +168,6 @@ export async function resumeLapsedAnswers(
     .where(
       and(
         eq(sessionInbox.kind, 'answer'),
-        // cm:guard an APPLIED message was read by the model, and it is excluded HERE rather than in the loop below: a second check there would be a line no assertion could turn red, since a row this predicate drops never reaches it. Re-dispatching one would answer the same question twice — once in the session that consumed it, once in a fresh job that has no idea it happened.
         isNull(sessionInbox.appliedAt),
         eq(issues.status, AUTONOMOUS_QUESTION_STATUS),
         scope.projectId ? eq(issues.projectId, scope.projectId) : sql`true`,

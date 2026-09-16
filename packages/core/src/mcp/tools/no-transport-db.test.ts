@@ -34,7 +34,6 @@ function toolsImportingDb(): string[] {
 }
 
 describe('MCP tools reach the database through services (ISS-889)', () => {
-  // cm:guard this list was 28 tools when ISS-889 opened and is empty because every one of them moved its queries into a service under its own domain. It is NOT an allowlist with nothing in it yet — there is no admission process for adding a name back. A tool that needs data needs a service, and the service is where the REST side finds it too.
   it('no MCP tool holds a database handle', () => {
     expect(
       toolsImportingDb(),

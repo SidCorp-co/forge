@@ -26,7 +26,6 @@ pub struct Args {
 }
 
 pub async fn run(ctx: Ctx, args: Args) -> anyhow::Result<()> {
-    // cm:guard storing a PAT returns EARLY and pairs nothing. The two credentials answer different questions — a device token says which machine this is, a PAT says which projects a caller may speak for — and folding the PAT into the pairing flow would make `--pat` mean "pair this box too", which is not what someone reaching for a REST token asked for.
     if let Some(pat) = args.pat.as_deref() {
         let pat = pat.trim();
         if pat.is_empty() {

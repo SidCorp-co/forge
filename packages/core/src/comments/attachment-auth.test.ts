@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:guard build the app the way `index.ts` does, never by mounting one router in isolation. ISS-706 was two sub-apps at the same `/api/comments` prefix whose wildcard middleware Hono flattens into ONE chain, so the strict JWT `use('*')` 401'd ahead of the permissive one for routes only the second router implemented. The old `upload.test.ts` mounted that second router alone and could not see the collision; a test that does the same here is green against the bug.
 
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 const TEST_PEPPER = 'test-pepper-32-chars-long-abcdefghij';
@@ -86,7 +85,6 @@ vi.mock('../storage/index.js', async () => {
 const verifyPatMock = vi.fn();
 vi.mock('../auth/pat.js', async () => {
   const actual = await vi.importActual<typeof import('../auth/pat.js')>('../auth/pat.js');
-  // cm:guard `touchPatUsage` is stubbed OUT, not left real: it fires a `db.update` the moment a PAT verifies, and this file's db mock serves one shared queue, so the real one steals the row the handler was about to read and the failure lands on the handler as a 500. Its own error handling is irrelevant here — the theft happens before anything throws.
   return {
     ...actual,
     verifyPat: (...args: unknown[]) => verifyPatMock(...args),
@@ -185,7 +183,6 @@ describe('GET /api/comments/attachments/:id — auth paths (AC-A)', () => {
     expect(verifyPatMock).toHaveBeenCalledOnce();
   });
 
-  // cm:guard the ISS-927 version of this test asserted `verifyDeviceToken` went UNCALLED, because a 401 alone could also come from a device branch that merely failed. That assertion is now unwritable and does not need writing: ISS-932 deleted `auth/deviceToken.ts`, so there is no device-token verifier in the process to call. What is left to prove is that the opaque credential a pre-ISS-932 box holds gets a 401 here rather than any part of its owner's account.
   it('401 for the opaque token a pre-ISS-932 box holds', async () => {
     const res = await buildApp().request(`/api/comments/attachments/${ATT_ID}`, {
       headers: { authorization: `Bearer ${DEVICE_TOKEN}` },

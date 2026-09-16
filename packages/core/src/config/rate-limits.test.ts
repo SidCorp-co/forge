@@ -32,7 +32,6 @@ describe('config/rate-limits, the PAT pair', () => {
     process.env = { ...originalEnv };
   });
 
-  // cm:guard the read budget must stay strictly ABOVE the write one, because the whole change is that a box of sessions reads more than one session writes. Equal numbers make the split pure overhead, and this is the assertion that says so.
   it('budgets reads for several sessions and writes for one, both keyed by token', async () => {
     const { RULES } = await import('./rate-limits.js');
     expect(RULES.patRead.by).toBe('token');

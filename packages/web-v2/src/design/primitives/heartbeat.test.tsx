@@ -14,7 +14,6 @@ describe("Heartbeat", () => {
     expect(container.querySelector("svg")).toBeNull();
   });
 
-  // cm:guard an all-zero window is the state this figure exists to show — three days of silence. A guard on `some(v > 0)` renders an empty frame here and reads exactly like "no data", so the assertion is that a PATH exists and is flat (ISS-988 criterion 26).
   it("draws a flatline rather than nothing when every day is zero", () => {
     const { container } = render(<Heartbeat days={days([0, 0, 0, 0])} label="nothing ran" />);
     const d = container.querySelector("path")?.getAttribute("d");
@@ -35,7 +34,6 @@ describe("Heartbeat", () => {
     expect(screen.getByRole("img", { name: "Two days of runs." })).toBeTruthy();
   });
 
-  // cm:guard a heartbeat day is a date-windowed aggregate the response cannot list the records behind, so it must not be focusable or look clickable (ISS-988 criteria 42-44)
   it("offers no door: nothing focusable and no button", () => {
     const { container } = render(<Heartbeat days={days([1, 0, 3])} label="x" />);
     expect(container.querySelector("button")).toBeNull();

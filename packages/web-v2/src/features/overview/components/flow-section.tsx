@@ -22,7 +22,6 @@ export function FlowSection({ flow }: FlowSectionProps) {
 
   const first = flow[0];
   const last = flow[flow.length - 1];
-  // cm:guard the window OPENS before its first week, so the starting backlog is reconstructed by undoing that week's own movement — reading `flow[0].backlog` as the start silently drops week one from a figure captioned as covering all twelve, and a week that created 100 then reads as "down 50" while the backlog rose (ISS-988 criterion 36).
   const startBacklog = first.backlog - first.created + first.closed - first.reopened;
   const drift = last.backlog - startBacklog;
 

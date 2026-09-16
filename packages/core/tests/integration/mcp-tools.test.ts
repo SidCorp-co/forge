@@ -12,7 +12,6 @@ import {
 import { connectClientAsPat, parseToolResult } from '../helpers/mcp-harness.js';
 
 const DIM = 1536;
-// cm:edge contract -> packages/core/src/issues/release-record-required.ts — a device close with no releaseNotes is refused, and every close in this file goes over MCP as a device
 const SKIP_NOTE = { section: 'Skip', userFacing: '-' };
 
 function hotVector(hotIdx: number, mag = 1): number[] {
@@ -245,7 +244,6 @@ describe('F4 MCP tools integration', () => {
     }
   });
 
-  // cm:guard the registering token must carry the `admin` SCOPE as well as the project role, and this is the only place in the suite that says so. A paired device carried no scopes at all, so `assertPrincipalIsAdmin`'s scope half was skipped for it and the project role was the whole gate; since ISS-931 every `/mcp` caller is a PAT and both halves apply. Drop `admin` from this mint and the failure is `this token lacks the admin scope`, which is the change working, not a regression.
   it('forge_skills.register: an admin-scoped PAT held by a project admin succeeds', async () => {
     const { user, project } = await seedProject('admin');
     const skillId = await insertSkill(project.id, 'r-skill');
@@ -354,8 +352,6 @@ describe('F4 MCP tools integration', () => {
           data: { status: 'confirmed' },
         },
       });
-      // cm:why mark_merged refuses NO_WORK_EVIDENCE unless a branch or a code/fix handoff is recorded first; this probe is about read-after-write freshness of the list projection, not about the evidence gate, so it satisfies the gate through the public surface
-      // cm:edge contract -> packages/core/src/issues/transition-evidence.ts — the accepted evidence shapes live there; if sessionContext.branch stops counting, this probe silently stops stamping mergedAt and asserts null again
       await ctx.client.callTool({
         name: 'forge_issues',
         arguments: {

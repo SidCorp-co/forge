@@ -57,7 +57,6 @@ function namesOf(names: string[]): string {
 
 /** The stages an editor offers: every ladder status, so a stage with no
  *  override yet can be given one. */
-// cm:guard `PIPELINE_STATUS_ROWS` and nothing else — the same guard `summarizeStageConfig` carries. The extra-status row this used to append was unreachable (core's `statesConfigSchema` is a `strictObject`, so such a document fails to parse at all) and, had one arrived, it was an editable row whose save 400s (ISS-1000).
 function editableRows(config: PipelineConfig): StagePermissionRow[] {
   const states = (config.states ?? {}) as Record<string, PipelineStateConfig | undefined>;
   return PIPELINE_STATUS_ROWS.map(({ status, label }) => ({
@@ -67,7 +66,6 @@ function editableRows(config: PipelineConfig): StagePermissionRow[] {
   }));
 }
 
-// cm:guard this is the editor's React key, and it must change whenever the STORED stage does: `useState` initialisers do not re-run, so an identity key leaves the form showing pre-save values after a successful write.
 function stageEditorKey(config: PipelineStateConfig): string {
   return JSON.stringify(config);
 }
@@ -94,7 +92,6 @@ function StageEditor({
     snapshot(denied, allowed, mcp) !==
     snapshot(stored.disallowedTools ?? [], stored.allowedTools ?? [], stored.mcpServers ?? {});
 
-  // cm:guard an EMPTY list is `undefined`, never `[]`: `stageConfigSchema` accepts both, but a stored `disallowedTools: []` reads on every later screen as "this stage was deliberately given an empty denylist" rather than "this stage has no override", which is the distinction `summarizeStageConfig` renders.
   function save() {
     const patch: PipelineStateConfig = {
       disallowedTools: denied.length > 0 ? denied : undefined,

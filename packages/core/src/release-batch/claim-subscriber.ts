@@ -22,7 +22,6 @@ export function registerReleaseBatchClaimSubscriber(bus: HooksBus): void {
   bus.on('pipelineRunStatusChanged', (p) => {
     if (!TERMINAL_STATUSES.has(p.toStatus)) return;
 
-    // cm:guard route the clear through `recoverStrandedReleasing` and never UPDATE the column here: `finish` and `abort` take their issues off `releasing` BEFORE the run goes terminal, so anything this pass still finds there got no outcome at all — and a bare clear leaves it at `releasing` with the run id gone, which is a status no machine can then exit.
     void recoverStrandedReleasing(p.runId, {
       reason: `The release batch run ended ${p.toStatus} without finishing or aborting`,
     })

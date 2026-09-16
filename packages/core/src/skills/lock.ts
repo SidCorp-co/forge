@@ -34,7 +34,6 @@ export interface SkillLockContext {
  * Reasons compose by UNION and are evaluated most-authoritative first, so the
  * caller can report which rule bit.
  */
-// cm:guard locks only ever ADD — a project declaration can never unlock a Forge-reserved name, or `lockedSkills: []` would become a way to shadow forge-reconcile, the agent that polices the project's own updates
 export function skillLockReason(name: string, ctx: SkillLockContext): SkillLockReason | null {
   if (isMetaSkillName(name)) return 'forge-reserved';
   if (ctx.declared === true) return 'project-declared';

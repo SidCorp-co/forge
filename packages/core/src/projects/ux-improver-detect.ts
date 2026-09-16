@@ -21,7 +21,6 @@ import { sanitizeUntrusted, stripFrameTokens } from '../prompt/sanitize.js';
 /** How far back findings are considered fuel. Older gaps describe a UI that has moved on. */
 export const LOOKBACK_DAYS = 90;
 
-// cm:guard Never lower this to 1 — the whole point of the improver is that one agent's one observation must not become a permanent rule injected into every future prompt. ISS-579's acceptance criterion tests exactly this half: a single non-recurring finding produces nothing.
 export const MIN_RECURRENCE_ISSUES = 3;
 
 /** Jaccard floor over normalized detail tokens for two findings to describe the same gap. */
@@ -152,7 +151,6 @@ interface Cluster {
   tokens: Set<string>[];
 }
 
-// cm:guard Sort by (createdAt, id) before the greedy pass and compare only against each cluster's SEED, never its members — both are what make the clustering deterministic and chain-free. Single-linkage over members would let A~B~C merge while A and C describe different gaps, and the same finding set would cluster differently depending on insertion order.
 function clusterFindings(findings: UxImproverFindingInput[]): Cluster[] {
   const ordered = [...findings].sort(
     (a, b) => a.createdAt.getTime() - b.createdAt.getTime() || a.id.localeCompare(b.id),
@@ -214,12 +212,10 @@ function medoid(cluster: Cluster): UxImproverFindingInput {
   return best;
 }
 
-// cm:guard An APPROVED rule is injected verbatim into every agent prompt on the project, and this text came from an agent-authored ux_findings.detail — so it must go through the same chokepoint as any other untrusted prompt input. The human approving it in the inbox is the second control, not the first.
 function proposedRuleText(detail: string): string {
   return stripFrameTokens(sanitizeUntrusted(detail)).trim();
 }
 
-// cm:guard `already-proposed` is the ONLY refusal `applyUxImproverProposals` acts on — it unions `evidenceIssueIds` onto `targetRuleId`. Emit it without those two fields populated and a proposal's evidence silently freezes at whatever the first run saw, while the inbox keeps showing three issues for a gap that has now hit ten.
 function alreadyProposed(ruleId: string, sample: string, issues: string[]): UxImproverRefusal {
   return {
     kind: 'add',
@@ -400,7 +396,6 @@ export function detectUxImproverCandidates(input: DetectUxImproverInput): UxImpr
   const staleBefore = new Date(now.getTime() - STALE_PROPOSAL_DAYS * DAY_MS);
   for (const rule of rules) {
     if (rule.status !== 'proposed' || rule.source !== 'learned') continue;
-    // cm:guard The admin create route lets a human set `source: 'learned'` by hand, so source alone does not prove the improver authored this. Non-empty evidence does: `ruleCreateSchema` has no evidenceIssueIds field, so only the improver can produce one. Drop this and the improver silently withdraws a human's proposal.
     if (rule.evidenceIssueIds.length === 0) continue;
     if (rule.updatedAt >= staleBefore) continue;
     const ruleTokens = normalizeTokens(rule.text);

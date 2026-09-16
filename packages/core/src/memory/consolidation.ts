@@ -49,7 +49,6 @@ const MAX_SIGNAL_STATUS_CHANGES = 200;
 const SIGNAL_WINDOW_MS = 24 * 60 * 60 * 1000;
 const CONSOLIDATABLE_SOURCES = ['note', 'knowledge'] as const;
 
-// cm:guard one in-flight consolidation per project — the nightly sweep and a manual trigger both call in, and two LLM passes over the same memories would CREATE and ARCHIVE against a set the other is already rewriting
 const runningProjects = new Set<string>();
 
 const CONSOLIDATION_PROMPT = `You are a memory consolidation agent for a software project management AI pipeline.
@@ -131,7 +130,6 @@ interface ScriptRefuser {
  * Both writers here rewrite prose that is already stored rather than admitting
  * new prose, so both compute the allowance the same way and share this.
  */
-// cm:guard the `promptSource` handed in must be the WHOLE prompt, existing memories included — unlike `extraction.ts:refuseForeignScript`, which deliberately excludes them (ISS-962). Consolidation rewrites what is already stored, so narrowing it here would refuse a Russian-speaking team's own memory the moment it was consolidated; nothing NEW enters the store through these two paths, and extraction, where it does, is where the narrow source holds.
 function scriptRefuser(projectId: string, promptSource: string, logName: string): ScriptRefuser {
   let refused = 0;
   return {
@@ -171,7 +169,6 @@ export async function runConsolidationForProject(projectId: string): Promise<Con
   }
 }
 
-// cm:why the CURATED store is searched here and nowhere else — `findNearDuplicate` looks only at `memories` filtered to one source, so a nightly paraphrase of a `knowledge_entries` row was invisible to every guard and landed at roughly one a day (15 rows by 2026-09-12, at least five restating a curated entry or an injected projectFact, all of them vaguer than the record they shadowed)
 async function alreadyRecorded(projectId: string, vector: number[]): Promise<string | null> {
   const [curated] = await searchKnowledge(projectId, vector, 1);
   if (curated && curated.score > NEAR_DUPLICATE_THRESHOLD)
@@ -186,7 +183,6 @@ async function alreadyRecorded(projectId: string, vector: number[]): Promise<str
   return null;
 }
 
-// cm:guard skipping is legal HERE and must never move into `indexMemory` — that probe stays report-only because ABSORBING a write onto the duplicate's ref overwrote records nobody named, destroying 4 of 6 dated rows on forge-dev (ISS-876). A skip writes nothing and overwrites nothing; a redirect is what did the damage.
 async function applyCreates(
   projectId: string,
   items: ConsolidationActions['create'],
@@ -344,7 +340,6 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
       continue;
     }
     try {
-      // cm:why the natural key (source, sourceRef) is reused so this is an upsert onto the SAME row rather than a second memory — passing a fresh ref would leave the pre-consolidation text stored beside its own replacement
       await indexMemory({
         projectId,
         source: row.source,
@@ -388,8 +383,6 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
   const counts = `created ${created}, updated ${updated}, archived ${archived}${skippedAsRecorded.length > 0 ? `, skipped ${skippedAsRecorded.length} already recorded` : ''}`;
   const summary = typeof actions.summary === 'string' && actions.summary ? actions.summary : counts;
 
-  // cm:guard the ref must stay unique PER RUN — the natural key is (projectId, source, sourceRef), and while this read `consolidation:<date>` a same-day second run REPLACED the first receipt, losing a run with no trace; a timestamp is not enough either, two runs can share a second
-  // cm:why archived refs are named rather than counted — "archived 3" identifies nothing, so a reader cannot check what went or put it back
   if (created + updated + archived + skippedAsRecorded.length > 0) {
     await indexMemoryBestEffort({
       projectId,
@@ -468,7 +461,6 @@ export const RECONCILE_TOP_K = 15;
 export const RECONCILE_MAX_CANDIDATES = 10;
 const RECONCILE_SOURCES = ['note', 'knowledge'] as const;
 
-// cm:why Concurrency guard, keyed per (project, issue) — a reopen→re-release racing the outbox retry must not run the sweep twice concurrently.
 const runningReconciles = new Set<string>();
 
 const RECONCILE_PROMPT = `You are a memory reconciliation agent for a software project management AI pipeline.
@@ -571,7 +563,6 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
   if (!issueRow) return emptyReconcileResult('issue-not-found', 'issue not found');
 
   const issRef = (await issueRefFormatter(projectId))(issueRow.issSeq);
-  // cm:guard the decision's `sourceRef` is CANONICAL and never the rendered reference — it is the idempotency key of a durable row, so a project that adopts a prefix after one reconcile would otherwise miss its own record, spend a second LLM pass and re-archive the same memories (codex review of ISS-992). `issRef` is presentation only, for the prompt and the evidence.
   const decisionRef = `reconcile:${canonicalIssueKey(issueRow.issSeq)}`;
 
   // Idempotency: skip if this issue was already reconciled (reopen → re-release
@@ -618,7 +609,6 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
     sourceFilter: [...RECONCILE_SOURCES],
   });
 
-  // cm:guard only memories that PRE-DATE this release are candidates — a memory written after it cannot be stale relative to it, and archiving one would destroy the newer record on the older one's evidence
   const mergedAt = issueRow.mergedAt ?? new Date();
   const candidates = hits
     .filter((h) => h.score >= RECONCILE_SCORE_FLOOR && h.embeddedAt < mergedAt)
@@ -717,8 +707,6 @@ async function reconcile(projectId: string, issueId: string): Promise<ReconcileR
   const possiblyStale = staleRefs.length;
   const summary = `reconcile ${issRef}: ${contradicted} contradicted, ${possiblyStale} possibly-stale of ${candidates.length} candidates`;
 
-  // cm:guard this row IS the idempotency guard read at the top of this function — deleting it re-arms the whole reconcile for that issue, re-spending the LLM call and re-stamping rows on the next reopen→release
-  // cm:why the refs are NAMED, not just counted — a receipt saying "5 possibly-stale" identifies nothing, so the stamping it claims can be neither checked nor undone by whoever reads it back
   await indexMemoryBestEffort({
     projectId,
     source: 'decision',
@@ -791,8 +779,6 @@ let reconcileWorkerRegistered = false;
  *  transition (enqueued by `registerMemoryReconcileTrigger`). */
 export async function registerMemoryReconcileWorker(): Promise<void> {
   if (reconcileWorkerRegistered) return;
-  // cm:guard pg-boss v10 refuses a `schedule`/`work` naming a queue that was never created, so this call is not setup noise — drop it and the worker registers against nothing and the pass silently never runs
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(MEMORY_RECONCILE_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
   await (boss as any).work(MEMORY_RECONCILE_QUEUE, { batchSize: 1 }, async (arg: any) => {
@@ -826,8 +812,6 @@ let registered = false;
 
 export async function registerMemoryConsolidation(): Promise<void> {
   if (registered) return;
-  // cm:guard the queue is created HERE before the schedule names it — pg-boss v10 refuses a schedule against a queue that does not exist, and the failure is a pass that silently never fires rather than a startup error
-  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(MEMORY_CONSOLIDATION_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).work(MEMORY_CONSOLIDATION_QUEUE, async () => {

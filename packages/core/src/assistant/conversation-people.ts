@@ -21,7 +21,6 @@ export interface Nameable {
 /**
  * The label to print for each member of a room.
  */
-// cm:guard a HANDLE prints its own address and never the account's label, because an agent IS its address: the handle is unique within its org and is what somebody types to reach it, while the label is a nickname that resolves nothing. A person prints the label, falling back to the address they sign in with and then to whatever their transport called them; with none of the three they are a speaker Forge knows nothing about, which the roster states rather than fills in with an id.
 export async function withDisplayNames<T extends Nameable>(
   rows: readonly T[],
   db: typeof defaultDb = defaultDb,
@@ -47,7 +46,6 @@ export async function withDisplayNames<T extends Nameable>(
 /**
  * The same, for the people an agent would put OUT of the room.
  */
-// cm:guard named here rather than left as ids, for the reason the whole module exists: the screen has to print "Grace and Amir will lose this room", and a list of uuids is a warning nobody can act on. An id that matches no account prints nothing rather than itself — a stranger's uuid on a confirmation is worse than one fewer name (ISS-1011).
 export async function nameLostReaders<T extends { losesReaderIds: string[] }>(
   candidates: readonly T[],
   db: typeof defaultDb = defaultDb,

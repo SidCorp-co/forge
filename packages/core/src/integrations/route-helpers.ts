@@ -127,8 +127,6 @@ export function summarizeBinding(pair: BindingWithConnection) {
     config: effectiveConfig(pair),
     bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
     label: binding.label ?? '',
-    // cm:edge contract -> packages/contracts/src/integrations.ts — BindingSummary is the shape this returns; nothing type-checks the two against each other
-    // cm:why all three flags rather than just the AND: a project admin's binding PATCH can only write `bindingActive`, so a UI toggle bound to the AND writes one tier and reads another — it reports success and snaps back, which is how forge-dev's Rocket.Chat sat unbootable from the UI for two months
     active: binding.active && connection.active,
     bindingActive: binding.active,
     connectionActive: connection.active,
@@ -200,7 +198,6 @@ function str(config: Record<string, unknown>, key: string): string | null {
   return typeof value === 'string' && value.length > 0 ? value : null;
 }
 
-// cm:guard name a connection at CREATE time, never only at render — two credentials of one provider are indistinguishable in every list, drawer and picker that shows them, and a card cannot invent a name the row does not carry. Measured on forge-beta 2026-09-06: 17 of 17 rows had displayName null, so every card read as its provider label.
 /**
  * A name for a connection its owner will recognise, from the non-secret config
  * they just typed. Returns null when the config says nothing distinguishing —

@@ -21,7 +21,6 @@ import {
   resolveProjectRuleId,
 } from './service.js';
 
-// cm:edge contract -> packages/core/src/ux-findings/service.ts — the SAME cap the MCP tool enforced, and it must stay a shared number rather than a per-surface one: the cap is per (issue, run) and both surfaces write the same rows, so two different limits would let a caller alternate surfaces to exceed either.
 const MAX_FINDINGS_PER_ISSUE = 50;
 
 const paramSchema = z.object({ id: z.uuid() });
@@ -58,7 +57,6 @@ uxFindingWriteRoutes.post(
     const access = await loadProjectAccess(projectId, c.get('userId'));
     assertProjectRole(access, 'member', 'not a project member');
 
-    // cm:guard 404, not 403, for an issue outside this project — the caller is already proven a member HERE, so the only thing a distinct status would reveal is whether that issue id exists somewhere they cannot see. A finding is never written against an issue the caller cannot see.
     if (!(await issueBelongsToProject(issueId, projectId))) {
       throw new HTTPException(404, {
         message: 'issue not found in this project',
@@ -66,7 +64,6 @@ uxFindingWriteRoutes.post(
       });
     }
 
-    // cm:guard runId is NULL on this path and that is deliberate, not missing data: a REST caller has no active job to attribute the finding to, and borrowing one would credit the wrong pass. `countFindingsFor` matches it with isNull for the same reason — `eq(col, null)` is never true and would silently stop capping.
     if ((await countFindingsFor(issueId, null)) >= MAX_FINDINGS_PER_ISSUE) {
       throw new HTTPException(429, {
         message: 'too many findings for this issue',
@@ -74,7 +71,6 @@ uxFindingWriteRoutes.post(
       });
     }
 
-    // cm:guard a ruleId from another project is dropped to null, NOT refused — it would FK-fail the insert and lose a real finding over a stale id the agent had no way to check. The finding is the thing worth keeping; the rule link is not.
     const resolvedRuleId = ruleId ? await resolveProjectRuleId(ruleId, projectId) : null;
 
     const id = await insertUxFinding({

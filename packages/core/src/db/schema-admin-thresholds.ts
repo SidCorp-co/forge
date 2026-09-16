@@ -13,11 +13,8 @@ import { check, integer, jsonb, pgTable, real, text, timestamp, uuid } from 'dri
 import { ADMIN_THRESHOLD_DEFAULTS } from '../admin/types.js';
 import { users } from './schema.js';
 
-// cm:why one GLOBAL row rather than an `app_config` row — that table is keyed `project_id UNIQUE` and the Ops Console is cross-tenant, so per-project policy cannot express a fleet-wide threshold
-// cm:guard exactly one row, pinned by the `id = 'singleton'` check — every reader takes the first row it finds and every writer upserts on the primary key, so a second row would make the effective policy depend on scan order.
 export const ADMIN_THRESHOLDS_ID = 'singleton';
 
-// cm:edge lockstep -> packages/core/src/admin/types.ts — every default below is read from ADMIN_THRESHOLD_DEFAULTS rather than written twice, so the empty table and `readThresholds`' fallback are the same numbers by construction.
 export const adminThresholds = pgTable(
   'admin_thresholds',
   {
@@ -51,7 +48,6 @@ export const adminThresholds = pgTable(
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
-    // cm:guard the literal is written INTO the template, never interpolated — drizzle turns `${ADMIN_THRESHOLDS_ID}` into a bind placeholder and drizzle-kit emits `CHECK (id = $1)`, which the migrator applies verbatim and postgres rejects.
     singletonCk: check('admin_thresholds_singleton_ck', sql`${t.id} = 'singleton'`),
   }),
 );

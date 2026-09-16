@@ -22,7 +22,6 @@ import {
   WORK_EVIDENCE_WAIVER_NOTE,
 } from './dependency-effects.js';
 
-// cm:guard the MCP tool modules reach `config/env.js` transitively (via `db/client.js` and `embeddings/index.ts`), which throws at IMPORT without DATABASE_URL/JWT_SECRET. Only the `description` string is under test, so env and the client are stubbed rather than the assertion weakened to a source grep — a grep for the identifier proves it is referenced, never that it lands in the text an agent reads.
 vi.mock('../config/env.js', () => ({
   env: {
     JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
@@ -42,7 +41,6 @@ function read(relative: string): string {
   return readFileSync(resolve(REPO, relative), 'utf8');
 }
 
-// cm:guard the tool factories are context-scoped, and a real `ctx` needs a principal and a DB. Only the `description` is under test, so a cast of the minimum shape is correct here — reaching for the real context would make a string assertion need a live database.
 const fakeCtx = { principal: {}, deprecations: new Set<string>() } as never;
 
 describe('describeDependencyKind', () => {
@@ -69,10 +67,6 @@ describe('describeDependencyKind', () => {
   });
 });
 
-// cm:guard THREE since ISS-1047, and the count is part of the claim: the fourth was the
-// `relations` prompt fact, whose `appliesTo` was `['triage','plan']` — job types
-// `RUNNER_CAPABILITIES` refuses, so it rendered the note for no agent. Removing it took nothing
-// away from a reader; a fifth surface appearing here without the note is still the defect.
 describe('the three surfaces that render the note', () => {
   it('the `issue-dependencies` guide', () => {
     const guide = FORGE_GUIDES.find((g) => g.slug === 'issue-dependencies');
@@ -96,7 +90,6 @@ describe('the three surfaces that render the note', () => {
   });
 });
 
-// cm:guard these read SOURCE rather than behaviour on purpose: the waiver's other half is a `cm:guard` comment and a markdown file, and nothing else in the suite can see either. Assert on the KIND VALUE, never on the literal `decomposes` — an assertion that hard-codes the kind goes green after the very change this test exists to catch.
 describe('the two surfaces that cannot interpolate it', () => {
   const surfaces = ['packages/core/src/db/schema.ts', 'docs/modules/issue-work/README.md'] as const;
 
@@ -107,7 +100,6 @@ describe('the two surfaces that cannot interpolate it', () => {
         .split('\n')
         .filter((line) => /waives the ISS-786 work-evidence gate/.test(line));
       expect(waiverSentences.length).toBeGreaterThan(0);
-      // cm:guard match the kind BACKTICKED, never bare — `schema.ts`'s waiver line also says "the parent lifecycle this kind once drove", so a bare-substring assertion went GREEN when the constant was planted as `parent`. Measured on ISS-935 before this line existed.
       expect(waiverSentences.join('\n')).toContain(`\`${WORK_EVIDENCE_WAIVER_KIND}\``);
     });
   }

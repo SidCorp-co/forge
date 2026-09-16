@@ -1,6 +1,5 @@
 "use client";
 
-// cm:guard every key here starts with `['conversations']`, which is the exact prefix `lib/ws/event-router.ts` invalidates on `conversation.message` and on `replayOnReconnect`. A key under any other prefix looks live on screen and silently never refreshes — the rule `features/sessions/hooks.ts` states for its own prefix, and the reason it states it (ISS-291).
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
@@ -12,10 +11,6 @@ export interface ListedConversation extends ConversationRow {
   projectId: string;
 }
 
-// cm:guard the archived side is a SEPARATE cache key and not a filter over one list: the two are
-// two reads of two disjoint sets, and sharing a key would serve the archived rooms to the default
-// list for as long as the refetch took — which is the moment somebody has just archived one and is
-// looking to see it go (ISS-1028).
 export function useConversations(projectId: string | undefined, archived = false) {
   return useQuery({
     queryKey: ["conversations", "list", projectId, archived ? "archived" : "live"],
@@ -27,22 +22,13 @@ export function useConversations(projectId: string | undefined, archived = false
 /**
  * Every project's rooms, in one list, newest first — the live set, or the archived one.
  */
-// cm:guard the fan-out is N reads and not one, because `/api/conversations` takes a project and the store has no cross-project list: a room's readability is a per-project role question, so a single endpoint would have to authorize every row before it knew what a page held — which is the unbounded read `store.ts:listConversationsInProject` already prices, once per project rather than once for the fleet. The set is the caller's own org projects and each read is cached by project.
 export function useConversationsAcrossProjects(projectIds: string[], archived = false) {
   const results = useQueries({
-    // cm:guard the key and the request are the SAME ones `useConversations` builds for whichever
-    // side is asked for, down to the trailing segment and the page size: the dock's per-project list
-    // and this screen read the same rooms, and two keys over one read would fetch every project
-    // twice and leave one copy stale after an archive. That is why the segment is the same
-    // `archived ? "archived" : "live"` expression rather than a second vocabulary for the same two
-    // sets — a screen that spelled its archived key differently would share the live set with the
-    // dock and silently not share the archived one (ISS-1040).
     queries: projectIds.map((projectId) => ({
       queryKey: ["conversations", "list", projectId, archived ? "archived" : "live"],
       queryFn: () => conversationsApi.list(projectId, 50, archived),
     })),
   });
-  // cm:guard ONE row per room, not one per project it is about, on BOTH sides: a room is listed by every project in its scope, and since ISS-1011 a room can be about more than one — so the same room came back from two of these reads and the list printed it twice, same title, same time, differing only by the project line under it. Two rows that open the same room read as two rooms. The kept row is the first by the sorted project order, which is stable across reads, and a room's projects are named inside the room rather than by repeating it in the list. An archived room is about exactly the same projects it was about before it was filed away, so the archived set needs this every bit as much as the live one (ISS-1040).
   const rows: ListedConversation[] = [];
   const listed = new Set<string>();
   for (const [i, r] of results.entries()) {
@@ -84,7 +70,6 @@ export function useOpenConversation() {
 /**
  * Who this caller could still put in this room.
  */
-// cm:guard it is NOT fetched with the room, because it is a directory read the size of an org and the room's own read is on the path a person waits behind to see a message. It is asked for when a dialogue opens, which is the only moment anybody needs it.
 export function useConversationCandidates(id: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: ["conversations", id, "candidates"],
@@ -105,7 +90,6 @@ export function useProjectCandidates(projectId: string | undefined, enabled: boo
 /**
  * Put what a membership change answered with straight into the room's cache.
  */
-// cm:guard the answer is WRITTEN and not invalidated, for the reason `useSendMessage` gives for the same move: the call already carries the room's whole membership, its shape and its derived scope, so a refetch would throw all three away and render the room as it was for as long as the second request took — which is the moment a person is looking hardest at what they just changed.
 function useMembershipWrite<Args>(
   run: (args: Args) => Promise<ConversationMembership>,
   conversationId: string | undefined,
@@ -152,8 +136,6 @@ export function useRemoveParticipant(conversationId: string | undefined) {
 /**
  * Say something, and put what came back where the thread reads it.
  */
-// cm:guard the room is named PER CALL and never closed over: a draft opens its room and sends in one chain, so a mutation built from the render's `conversationId` still holds `undefined` when the send runs and posts to `/conversations/undefined/messages` — the first message of every new conversation, failing, leaving the room empty behind it (ISS-1004 step 5, review F3).
-// cm:guard the response is WRITTEN into the detail cache, keyed by the id the SERVER answered with, and the room's own read is CANCELLED first: this one request carries the question, the answer and the window's decision, so an invalidate-and-refetch would throw all three away for a second round trip — and a read already in flight when the send landed would otherwise resolve afterwards and put the room back as it was before the answer. A client holding no cached room is not written to and does not need to be: its own `useConversation` is fetching.
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
@@ -192,9 +174,6 @@ export function useDeleteConversation() {
   });
 }
 
-// cm:guard the invalidate is the whole `["conversations"]` prefix rather than the one list the row
-// came from: archiving moves a room from one list to the other, so refreshing only the list it left
-// leaves it missing from both until something else happens to refetch.
 export function useArchiveConversation() {
   const qc = useQueryClient();
   const { toast } = useToast();

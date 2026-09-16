@@ -16,7 +16,6 @@ export interface CoolifyTarget {
    * Absolute URL of this application's own health endpoint. Declared, never
    * derived: Forge cannot know an arbitrary application's health path.
    */
-  // cm:edge contract -> packages/core/src/integrations/coolify/health-gate.ts — a target carrying this is post-deploy health-gated and auto-rolled-back; one without it settles on Coolify's build verdict alone, which is the pre-ISS-971 behaviour. Absence is the off switch, so nothing may default it.
   healthUrl?: string;
 }
 
@@ -83,7 +82,6 @@ export interface CoolifyRollbackImage {
 /**
  * Coolify v4 `GET /api/v1/applications/{uuid}/rollback-images`.
  */
-// cm:guard an EMPTY `images` is NOT "this application has no older builds" — `ApplicationsController::rollback_images` catches every throwable from the remote `docker images` call and answers 200 with `{current:null, images:[]}`, so an unreachable server is byte-identical to a clean one. `assertRollbackTagListed` refuses on an empty list for exactly this reason.
 export interface CoolifyRollbackImagesResponse {
   current?: string | null;
   images?: CoolifyRollbackImage[];
@@ -92,7 +90,6 @@ export interface CoolifyRollbackImagesResponse {
 /**
  * Coolify v4 `POST /api/v1/applications/{uuid}/rollback`.
  */
-// cm:guard `deployment_uuid` is OPTIONAL on a 200 and its absence is a rollback that did NOT happen — `queue_application_deployment` answers `status:'skipped'` with a bare `message` and HTTP 200 when a deployment for that commit is already queued. Reading the 200 alone reports a rollback nobody performed.
 export interface CoolifyRollbackResponse {
   message?: string;
   deployment_uuid?: string;
@@ -142,7 +139,6 @@ export interface CoolifyDeploymentLogLine {
  */
 export interface CoolifyDeploymentResponse {
   deployment_uuid?: string;
-  // cm:edge contract -> packages/core/src/integrations/coolify/confirm.ts — the string values here are classified there, and a Coolify version that renames one is read as non-terminal until the deadline rather than as success.
   status?: string;
   logs?: string | CoolifyDeploymentLogLine[];
   commit?: string;

@@ -3,7 +3,6 @@
 import { LEGACY_ISSUE_PREFIX } from '../lib/issue-ref.js';
 
 /** The reference tokens this project answers to, as a regex. */
-// cm:guard the project's OWN prefixes are passed in, never assumed: a message citing `FD-977` on a project whose prefix is `FD` would match nothing here and sail past the did-you-verify-it rule, which is the one thing these rules exist to catch (ISS-992). This module stays db-free, so they arrive as data.
 export function issueTokenRe(prefixes: readonly string[]): RegExp {
   const alts = [LEGACY_ISSUE_PREFIX, ...prefixes]
     .map((p) => p.toUpperCase().replace(/[^A-Z0-9]/g, ''))

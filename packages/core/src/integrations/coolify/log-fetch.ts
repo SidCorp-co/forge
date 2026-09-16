@@ -17,7 +17,6 @@ export function buildClient(ctx: {
   config: CoolifyConfig;
   secrets: CoolifySecrets;
 }): CoolifyClient {
-  // cm:guard pass previousApiToken ONLY while `isPreviousCredentialValid` still holds — the client tries it as a fallback, so an expired one turns every 401 into two round-trips against a token Coolify has already revoked, and the 24h rotation window is the only thing bounding that
   const opts: ConstructorParameters<typeof CoolifyClient>[0] = {
     baseUrl: ctx.config.baseUrl,
     apiToken: ctx.secrets.apiToken,
@@ -62,11 +61,9 @@ export async function fetchCoolifyDeploymentLogs(
   const extraSecrets = [ctx.secrets.apiToken, ctx.secrets.previousApiToken].filter(
     (s): s is string => typeof s === 'string' && s.length > 0,
   );
-  // cm:guard ISS-412 — redactCoolifyEnvDump MUST run before scrubLogText: only the block pass catches an env name with no secret-shaped suffix (`SOURCE_COMMIT`, `DATABASE_URL`) inside the runtime .env dump, and the generic pass would let those through untouched
   const preRedacted = redactCoolifyEnvDump(raw);
   const scrubbed = scrubLogText(preRedacted, extraSecrets);
   const { text, truncated } = tailLog(scrubbed, lines);
-  // cm:guard take the SHA from the deployment RECORD, never by parsing `SOURCE_COMMIT=` out of `text` — `redactCoolifyEnvDump` replaces every value in the runtime env block by design, so the log can never carry it, and this project's `deploy-policy` fact tells every agent to prove the deployed commit matches its merge.
   return {
     deploymentUuid,
     status: dep.status ?? null,

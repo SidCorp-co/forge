@@ -46,7 +46,6 @@ describe('reapConcludedRuns (ISS-923)', () => {
     dbExecute.mockResolvedValue([]);
   });
 
-  // cm:edge contract -> packages/core/tests/integration/concluded-run-reap-e2e.test.ts — this suite proves the outcome mapping and the per-row behaviour; the WHERE clause that PICKS the rows is SQL and a mocked db.execute is no evidence about it at all, so that file is where the predicate is judged. Neither half is the whole test.
   it.each([
     ['done', 'completed'],
     ['failed', 'failed'],
@@ -60,7 +59,6 @@ describe('reapConcludedRuns (ISS-923)', () => {
     expect(closeRunMock).toHaveBeenCalledWith('run-1', outcome);
   });
 
-  // cm:guard the SELECT is the ONLY db call this module makes — the terminal write belongs to `closeRun`, and a second writer of a run's terminal status is what the ISS-923 invariant forbids on either axis.
   it('writes the terminal status only through closeRun', async () => {
     dbExecute.mockResolvedValue([candidate()]);
 
@@ -113,7 +111,6 @@ describe('reapConcludedRuns (ISS-923)', () => {
   });
 });
 
-// cm:edge contract -> packages/core/tests/integration/jobless-run-reap-e2e.test.ts — this suite proves the outcome mapping only; which rows the pass ADMITS is SQL and a mocked db.execute is no evidence about it.
 describe('reapJoblessRuns outcome mapping (ISS-654)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
@@ -129,7 +126,6 @@ describe('reapJoblessRuns outcome mapping (ISS-654)', () => {
     ...over,
   });
 
-  // cm:guard `cancelled` when nothing ever ran, never `failed` — a fabricated failure lands in every success-rate metric that reads run outcomes.
   it.each([
     [{}, 'cancelled'],
     [{ any_completed: true }, 'completed'],

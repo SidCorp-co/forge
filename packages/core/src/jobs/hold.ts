@@ -34,7 +34,6 @@ type JobRow = typeof jobs.$inferSelect;
  * step. Every one of them used to park the issue at `waiting`; every one of
  * them now holds the job.
  */
-// cm:guard this set is the whole boundary between the two axes — a reason IN it never touches issues.status (RFC 0002 INV-1), a reason OUT of it must be a genuine conclusion (`cancellation_requested`, `completed_via_*`) that needs no successor at all; adding a business outcome here would silently stop asking a human a question that only a human can answer
 export const HOLD_REASONS: ReadonlySet<string> = new Set([
   'all_devices_exhausted',
   'monthly_budget_exhausted',
@@ -57,7 +56,6 @@ export interface HoldState {
  * Reasons whose clearance this module can VERIFY before re-queueing, by
  * re-running the check that failed.
  */
-// cm:why `retry_rounds_exhausted` and `non_retryable_terminal` are deliberately absent: neither names a condition that can be re-checked, so an auto-release would re-dispatch straight back into the same failure and burn a runner slot per pass
 const CONDITION_CHECKED_REASONS: ReadonlySet<string> = new Set([
   'all_devices_exhausted',
   'monthly_budget_exhausted',
@@ -67,14 +65,12 @@ const CONDITION_CHECKED_REASONS: ReadonlySet<string> = new Set([
  * Reasons with nothing to re-check: waiting IS the whole remedy, so the hold
  * simply retries once {@link HOLD_RECHECK_MS} has passed.
  */
-// cm:why `verify_unavailable` means `verifyRecovery`'s own SELECT threw — a DB outage. There is no condition to interrogate (asking the same database is what just failed), and the outage is expected to be brief, so a timer is the honest gate rather than a permanent hold that tells the operator to fix something already fixed.
 const TIME_CHECKED_REASONS: ReadonlySet<string> = new Set(['verify_unavailable']);
 
 /**
  * Every reason that may auto-release. Derived, never hand-listed — a reason
  * has to pick a lane above to get in.
  */
-// cm:guard keep this DERIVED from the two sets — hand-listing it is how `verify_unavailable` came to be documented as self-retrying (HOLD_RECHECK_MS, and `conditionCleared`'s fallback, were both written for it) while the `autoRelease` flag silently blocked the release path for the entire life of the feature
 export const AUTO_RELEASE_REASONS: ReadonlySet<string> = new Set([
   ...CONDITION_CHECKED_REASONS,
   ...TIME_CHECKED_REASONS,
@@ -89,8 +85,6 @@ export const HOLD_RECHECK_MS = 10 * 60_000;
  * The one predicate every surface that describes a hold must ask, so no copy
  * can promise a resume this module will not perform.
  */
-// cm:edge contract -> packages/web-v2/src/features/issues/derive.ts — the `job_held` copy mirrors this predicate; a reason that changes lane here and not there tells the operator "no action needed" about a hold that waits for them
-// cm:edge contract -> packages/core/src/pipeline/inv7-alarms.ts — the aged-hold wedge picks its nextStep from this; a hold that does NOT self-resume must never be surfaced as one that does
 export function holdResumesItself(reason: string | null | undefined): boolean {
   return reason !== null && reason !== undefined && AUTO_RELEASE_REASONS.has(reason);
 }
@@ -101,7 +95,6 @@ export function holdResumesItself(reason: string | null | undefined): boolean {
  * Narrower than {@link holdResumesItself}: it also spends the once-per-lineage
  * bound, so a re-hold answers false even for a self-clearing reason.
  */
-// cm:guard ONE expression with two readers — `holdJobForReason` stamps it and `finalize-failure.ts` decides from it whether the hold is worth a notification. A second copy of `prior === null && AUTO_RELEASE_REASONS.has(...)` is a copy that will disagree, and the disagreement is silent in both directions: a notification for a hold that clears itself, or silence on one that never will.
 export function holdAutoReleases(priorPayload: unknown, reason: string): boolean {
   return readHoldState(priorPayload) === null && AUTO_RELEASE_REASONS.has(reason);
 }
@@ -122,7 +115,6 @@ export function readHoldState(payload: unknown): HoldState | null {
  * the insert lost a race with a concurrent active job for the same issue+type
  * (the `jobs_active_unique` partial index is the arbiter).
  */
-// cm:edge lockstep -> packages/core/src/db/schema.ts — `jobs_active_unique` covers `held`, which is what makes a duplicate insert here fail loudly instead of enqueuing two successors for one issue
 export async function holdJobForReason(job: JobRow, reason: string): Promise<string | null> {
   if (!HOLD_REASONS.has(reason)) return null;
 
@@ -132,7 +124,6 @@ export async function holdJobForReason(job: JobRow, reason: string): Promise<str
     autoRelease: holdAutoReleases(job.payload, reason),
   };
   const basePayload = (job.payload ?? {}) as Record<string, unknown>;
-  // cm:guard the timer belongs to the reasons that USE it — this was inverted, stamping `retry_after_at` on exactly the holds that never auto-release (a permanently-held job advertising a retry 10 minutes out, observed live on 4 jobs 2026-08-14) while the condition-checked ones released on the next tick regardless
   const retryAfterAt = TIME_CHECKED_REASONS.has(reason)
     ? new Date(Date.now() + HOLD_RECHECK_MS)
     : null;
@@ -175,14 +166,12 @@ async function conditionCleared(job: JobRow, reason: string): Promise<boolean> {
   if (reason === 'all_devices_exhausted') {
     const required = (job.payload as { requiredCapabilities?: RequiredCapabilities } | null)
       ?.requiredCapabilities;
-    // cm:guard scope the read to the stage pool exactly as retry.ts does — an unscoped "healthy" set releases the hold onto boxes dispatch will refuse, and the job holds again one attempt later having spent its only auto-release
     const pool = (await resolveStageOverrides(job.projectId, job.payload)).deviceIds;
     const healthy = await onlineCapableDeviceIds(job.projectId, required, {
       allowDeviceIds: pool,
     });
     return healthy.length > 0;
   }
-  // cm:guard fail CLOSED for an unrecognised reason — the `retry_after_at` gate in `releaseHeldJobs` already spent the wait for a time-checked hold, so `true` here is only correct for reasons that declared themselves time-checked. Returning `true` unconditionally would auto-release any reason a future edit adds to AUTO_RELEASE_REASONS without giving it a check.
   return TIME_CHECKED_REASONS.has(reason);
 }
 
@@ -192,7 +181,6 @@ async function conditionCleared(job: JobRow, reason: string): Promise<boolean> {
  * Shared by the automatic release below and the operator resume in
  * `resume-job.ts` — the two must produce an IDENTICAL row.
  */
-// cm:guard `autoRelease: false` is the load-bearing field, and both callers need it: it is what makes a SECOND hold permanent. An operator resume that cleared the flag instead would hand the lineage a fresh auto-release on every button press, which is exactly the unbounded loop the once-per-lineage bound exists to forbid.
 export function buildRequeueUpdate(
   job: JobRow,
   now: Date,
@@ -204,7 +192,6 @@ export function buildRequeueUpdate(
   failureReason: null;
   payload: Record<string, unknown>;
 } {
-  // cm:guard drop the rotation, do not carry it — a fleet that recovered must get a full round budget, and a payload still holding `nextRotation === null` state fails once and holds again with its auto-release already spent
   const { [AUTO_RETRY_PAYLOAD_KEY]: _spentRotation, ...freshPayload } = (job.payload ??
     {}) as Record<string, unknown>;
   return {
@@ -221,8 +208,6 @@ export function buildRequeueUpdate(
 }
 
 /** Clear the requeued job's hold wedge and hand it to the dispatcher. */
-// cm:guard resolve the wedge on the requeued row's OWN id — the wedge that named this hold (`alarmAgedHolds` at 6h) is otherwise unresolvable, and emitPipelineWedge's dedupe now reads `resolvedAt`, so an unresolved key would keep the bell red about a step that is running again. Nothing else observes a release.
-// cm:edge lockstep -> packages/core/src/pipeline/inv7-alarms.ts — that pass is the only emitter keyed on a held job's id; if it ever keys on something else (the issue, the run), this call must follow it
 export async function dispatchRequeuedJob(updated: {
   id: string;
   type: JobType;

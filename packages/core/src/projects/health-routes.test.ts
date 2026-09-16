@@ -148,7 +148,6 @@ describe('GET /api/projects/health', () => {
   });
 
   it('totalActive counts all non-terminal statuses and excludes released/closed/draft (ISS-528)', async () => {
-    // cm:guard the count must include `clarified`, `on_hold` and `needs_info` — the three the old `ACTIVE_STATUSES` allow-list dropped (ISS-528). Asserting only the total would pass against an allow-list that happened to sum the same.
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds
     queryQueue.push([{ id: PROJECT_A_ID, slug: 'alpha', name: 'Alpha', agentConfig: null }]); // visibleProjects
@@ -171,7 +170,6 @@ describe('GET /api/projects/health', () => {
 
     expect(res.status).toBe(200);
     const body = (await res.json()) as Array<{ totalActive: number }>;
-    // cm:why 8 = open(2)+clarified(1)+on_hold(3)+needs_info(1)+tested(1); awaiting_release(5)+closed(100)+draft(4) are excluded as terminal or not-yet-active.
     expect(body[0]?.totalActive).toBe(8);
   });
 
@@ -302,7 +300,6 @@ describe('GET /api/projects/health', () => {
 });
 
 describe('GET /api/projects/health — what it does NOT serve', () => {
-  // cm:guard `agentConfig` is free-form jsonb this repo keeps off every MCP read, and web-v2 never read the `projectMeta` it was served as — serving it whole to every project member on a list route was the exposure, and this is what goes red if the select puts it back (ISS-1018).
   it('serves no projectMeta, so the agentConfig jsonb never reaches a member of the project', async () => {
     authVerified();
     queryQueue.push([{ id: PROJECT_A_ID }]); // loadVisibleProjectIds

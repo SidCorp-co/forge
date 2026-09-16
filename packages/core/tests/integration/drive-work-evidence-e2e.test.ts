@@ -73,7 +73,6 @@ describe('drive handoffs count as code evidence', () => {
     return issueId;
   }
 
-  // cm:why imported inside the test, not at module scope — work-evidence.ts pulls in db/client.js, which validates env at load time and would throw before beforeAll sets DATABASE_URL
   const load = () => import('../../src/pipeline/work-evidence.js');
 
   it('reads commitSha and filesModified out of a drive handoff', async () => {
@@ -98,7 +97,6 @@ describe('drive handoffs count as code evidence', () => {
     expect(await findMissingWorkEvidence(issueId, harness.db as never)).toBeNull();
   });
 
-  // cm:guard the negative half is what stops the fix from degenerating into "any handoff is evidence": an EMPTY handoff is the ISS-105 fabrication shape, and widening the step list must not widen what counts as proof
   it('still refuses a drive handoff that carries no commit and no files', async () => {
     const issueId = await issueWithHandoff('drive', { outcome: 'ok', summary: 'did things' });
 

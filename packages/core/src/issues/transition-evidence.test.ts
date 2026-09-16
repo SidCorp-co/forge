@@ -27,7 +27,6 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-// cm:why the mock returns null (= evidence found) by default because this suite owns the rule's WIRING — status gate, actorType/skip scope, error shape — while `pipeline/work-evidence.test.ts` owns what counts as evidence; a suite that re-tested both would go red twice for one change.
 const findMissingWorkEvidenceMock = vi.fn<() => Promise<string | null>>(async () => null);
 vi.mock('../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: (...args: unknown[]) => findMissingWorkEvidenceMock(...(args as [])),

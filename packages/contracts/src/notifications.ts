@@ -54,10 +54,8 @@ export const NOTIFICATION_CONTRACT: Record<NotificationType, NotificationTypeCon
   intake_pending: { severity: 'info', channels: ['bell', 'toast'] },
   schedule_report: { severity: 'info', channels: ['bell', 'toast'] },
   reconcile_gate_pending: { severity: 'warning', channels: ['bell', 'toast'] },
-  // cm:why ISS-762 — browser-channel because this one is defined by nobody looking: the three known cases sat 7–12 days precisely because a bell nobody opened was the only surface. A type that fires only when a human already stopped watching has to reach past the app.
   issue_stranded: { severity: 'warning', channels: ['bell', 'toast', 'browser'] },
   retry_rescue_threshold: { severity: 'warning', channels: ['bell', 'toast', 'browser'] },
-  // cm:why ISS-652 — browser channel deliberately omitted: an ops alert is checked by someone already watching the console, unlike issue_stranded (defined by nobody looking)
   ops_alert: { severity: 'warning', channels: ['bell', 'toast'] },
 };
 

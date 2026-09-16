@@ -86,7 +86,6 @@ describe("PluginsSection", () => {
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 
-  // cm:guard the empty state must name the CONSEQUENCE, not just the absence: a project with no plugin dispatches a driver that is told to use a skill it does not have, and the session fails with no operator anywhere near it.
   it("shows a first-run empty state naming what a missing plugin costs", () => {
     renderWith({});
 
@@ -103,7 +102,6 @@ describe("PluginsSection", () => {
     expect(screen.getByText("pinned")).toBeInTheDocument();
   });
 
-  // cm:guard the save sends the WHOLE list. A partial send is not a smaller edit against this endpoint, it is a deletion of everything omitted — so an edit to one row must still carry the row beside it.
   it("sends every row, not only the edited one", () => {
     renderWith({ plugins: [PLUGIN, { ...PLUGIN, name: "other", pinnedRef: null }] });
 
@@ -125,12 +123,10 @@ describe("PluginsSection", () => {
     expect(saveButton()).toBeEnabled();
   });
 
-  // cm:guard the same rules the server enforces, stated at the field rather than returned as a 400. A name that is not kebab-case or a ref that is not a SHA reaches a device that then fails to install, so the form must refuse before the write.
   it("blocks the save and says why on an invalid row", () => {
     renderWith({ plugins: [PLUGIN] });
 
     fireEvent.change(screen.getByDisplayValue("forge"), { target: { value: "Forge Plugin" } });
-    // cm:guard TWO on purpose — beside the row that is wrong, and in the summary banner next to the disabled Save. A reader who scrolled to the button has to be told why it is dead without hunting for the row.
     expect(screen.getAllByText("Name must be kebab-case.")).toHaveLength(2);
     expect(saveButton()).toBeDisabled();
 
@@ -140,7 +136,6 @@ describe("PluginsSection", () => {
     expect(saveButton()).toBeDisabled();
   });
 
-  // cm:guard removing a plugin drops it from every device serving this project on their next poll — destructive and not obviously so from the button, which is why it confirms first.
   it("confirms before removing rather than removing on the click", () => {
     renderWith({ plugins: [PLUGIN] });
 

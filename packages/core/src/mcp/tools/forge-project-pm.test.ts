@@ -12,7 +12,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { makeFakePrincipal } from '../fake-principal.fixture.js';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('../../issues/issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -74,7 +73,6 @@ describe('forge_project_pm (action=snapshot)', () => {
     const queuedCount = [{ n: 0 }];
     const recentFailures: unknown[] = [];
     const runners: unknown[] = [];
-    // cm:guard the queue is POSITIONAL — each entry answers the next query `readPmSnapshot` runs, in its order. Reorder these bindings without reordering the service and every assertion still runs, against the wrong rows.
     queue.push(memberCheck, counts, activeJobs, stalled, queuedCount, recentFailures, runners);
 
     const result = (await tool.handler({ action: 'snapshot', projectId: PROJECT_ID })) as {
@@ -93,7 +91,6 @@ describe('forge_project_pm (action=snapshot)', () => {
 });
 
 describe('forge_project_pm (action=graph)', () => {
-  // cm:guard `truncated` and `remainingNodes` are a CONTRACT, not a hint: the project-wide branch caps at 200 nodes, and a caller that reads a capped graph as complete draws a dependency conclusion from a subset it cannot tell is a subset (ISS-145)
   it('returns truncated:true + remainingNodes when count exceeds the cap', async () => {
     const tool = forgeProjectPmTool(makeAdminCtx());
     const stubNodes = Array.from({ length: 200 }, (_, i) => ({
@@ -117,12 +114,10 @@ describe('forge_project_pm (action=graph)', () => {
     expect(result.nodes).toHaveLength(200);
   });
 
-  // cm:guard depth=5 must PARSE — the cap was raised from 4 in ISS-145, and a schema that still rejects 5 fails as a validation error the caller reads as their own mistake
   it('accepts depth=5 at the input boundary', async () => {
     const tool = forgeProjectPmTool(makeAdminCtx());
     queue.push(
       [{ orgId: 'org-1', memberRole: 'member', orgRole: null }],
-      // cm:guard five BFS iterations ask FOUR queries each — deps forward, deps reverse, children, parents — so the twenty empty entries below are one per query, not padding. Change the walk's query count without changing this many and the final nodeRows entry is read as an edge list.
       [],
       [],
       [],
@@ -187,7 +182,6 @@ describe('forge_project_pm — required-field validation', () => {
     ).rejects.toThrow(/BAD_REQUEST: fromIssueId is required for set_dependency/);
   });
 
-  // cm:guard `write_decision` is refused on the CREDENTIAL before any field is checked, so there is deliberately no required-field case for it. A refusal naming `summary` to a caller who cannot use the action with every field supplied is the wrong condition (ISS-787/ISS-868).
   it('write_decision refuses on the credential before it asks for summary', async () => {
     const tool = forgeProjectPmTool(makeAdminCtx());
     await expect(
@@ -200,10 +194,8 @@ describe('forge_project_pm — required-field validation', () => {
   });
 });
 
-// cm:guard these cases deliberately BYPASS the server-level gate by calling the factory directly, because the dispatcher must refuse a cross-project PAT on its own. The two gates are defence in depth, and a suite that only ever goes through the outer one cannot tell you the inner one still exists.
 describe('forge_project_pm — action-level auth (cross-tenant)', () => {
   it('snapshot re-applies project-member auth so cross-tenant PAT is rejected', async () => {
-    // cm:why a PAT reaches the dispatcher carrying a stub device whose ownerId IS the PAT user, so the ordinary membership check resolves on that user and FORBIDDEN is the surface a real cross-tenant call would hit
     const tool = forgeProjectPmTool({
       principal: {
         kind: 'pat' as const,

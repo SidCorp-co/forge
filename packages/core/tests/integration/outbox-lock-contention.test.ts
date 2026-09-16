@@ -35,7 +35,6 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
   });
 
   afterAll(async () => {
-    // cm:guard close the app pool BEFORE the container. This file imports the src/db/client singleton to drive a real subscriber and nothing else ever closes it, so a pool still holding sockets when the testcontainer dies emits `write CONNECTION_CLOSED` as an UNHANDLED rejection — vitest then reports THIS file as failed (measured 2026-08-13: red in the full parallel suite, green 3/3 alone).
     const { closeDb } = await import('../../src/db/client.js');
     await closeDb();
     if (harness) await harness.cleanup();
@@ -82,7 +81,6 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
     return new Promise((resolve) => setTimeout(resolve, ms));
   }
 
-  // cm:guard poll with a PLAIN select, never `FOR UPDATE`: the drain claims with SKIP LOCKED, so a probe holding the row lock at that moment makes the drain skip the row and `processed` comes back 0 — a probe that breaks the very thing it measures.
   //   visibility of `claimed_at` IS the ISS-678 signal, because the old code claimed inside the outer transaction it never committed until its subscriber returned; returning at the deadline instead of throwing is deliberate, so the single NOWAIT probe below still reports the historical 55P03 for old code.
   async function waitForClaimCommitted(issueId: string, deadlineMs = 10_000): Promise<void> {
     const started = Date.now();
@@ -103,7 +101,6 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
     const { drainOutboxOnce } = await import('../../src/pipeline/outbox-worker.js');
     const { db } = await import('../../src/db/client.js');
 
-    // cm:why simulates buildAndEnqueueStepJob's core shape: a subscriber that opens its own transaction and blocks on the SAME issue's advisory lock a concurrent process is holding
     unsubscribe = hooks.on('transition', async (payload) => {
       await db.transaction(async (tx) => {
         await tx.execute(
@@ -121,20 +118,17 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
       await releaseSignal;
     });
 
-    // cm:why gives the contending connection time to actually acquire the lock before the drain (and its subscriber) races it
     await sleep(200);
 
     const start = Date.now();
     const drainPromise = drainOutboxOnce();
 
-    // cm:why load-bearing: proves the claim already committed (row lock released) before hooks.emit ran — pre-ISS-678 code would raise 55P03 here since the outer db.transaction still held the row lock for the whole subscriber wait
     await waitForClaimCommitted(issueId);
     try {
       await harness.client.begin(async (tx) => {
         await tx`SELECT id FROM pipeline_outbox WHERE issue_id = ${issueId} FOR UPDATE NOWAIT`;
       });
     } finally {
-      // cm:guard release even when the probe fails: the drain is blocked on this lock, so throwing without releasing leaves the drain and the contending transaction in flight until afterAll closes the pool under them, and the resulting `CONNECTION_CLOSED` unhandled rejection buries the assertion that actually failed.
       releaseContendingLock();
     }
 
@@ -143,7 +137,6 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
     const elapsedMs = Date.now() - start;
 
     expect(result.processed).toBe(1);
-    // cm:why generous margin, not a tight bound — well inside the 60s statement_timeout backstop
     expect(elapsedMs).toBeLessThan(15_000);
 
     const rows = await selectOutbox(issueId);
@@ -151,7 +144,6 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
     expect(rows[0]?.claimed_at).toBeNull();
   }, 20_000);
 
-  // cm:guard this locks the DISCRIMINATING POWER of the wait+probe above, which nothing else can falsify: it proves the pair still reports 55P03 against the pre-ISS-678 observable — claim stamped but never committed, row lock still held.
   //   delete it and a future rewrite of the probe into something that merely WAITS turns the regression above into a no-op that stays green forever.
   it('the wait+probe pair still reports 55P03 when a claim is stamped but never committed (pre-ISS-678 shape)', async () => {
     const { issueId } = await seedIssue('open');
@@ -183,7 +175,6 @@ describe('ISS-678 outbox claim-lease under advisory-lock contention', () => {
     const { issueId } = await seedIssue('open');
     await harness.db.execute(sql`UPDATE issues SET status = 'confirmed' WHERE id = ${issueId}`);
 
-    // cm:why simulates a crash between claim and emit: lease set 10 minutes ago, processed_at still NULL
     await harness.db.execute(sql`
       UPDATE pipeline_outbox SET claimed_at = now() - interval '10 minutes' WHERE issue_id = ${issueId}
     `);

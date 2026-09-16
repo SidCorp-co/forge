@@ -24,7 +24,6 @@ describe("StatusChip's text is bounded and keeps its whole self (ISS-999)", () =
     expect(text.className).toMatch(/max-w-/);
   });
 
-  // cm:guard truncation may not COST the reader the value: the whole string stays in the DOM and in `title`, so it is selectable, searchable and hoverable
   it("keeps the whole step in the DOM and in the title", () => {
     render(<StatusChip status="running" stage={LONG} domain="session" />);
     expect(screen.getByTitle(`running · ${LONG}`)).toHaveTextContent(LONG);

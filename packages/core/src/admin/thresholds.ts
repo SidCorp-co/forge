@@ -12,7 +12,6 @@ import { db } from '../db/client.js';
 import { ADMIN_THRESHOLDS_ID, adminThresholds } from '../db/schema-admin-thresholds.js';
 import { ADMIN_THRESHOLD_DEFAULTS, type AdminThresholds } from './types.js';
 
-// cm:why deliberately NOT cached in-process. The sweeper reads once per 5-minute tick and the GET routes read once per request, so this is a primary-key lookup on a one-row table; a TTL cache would buy nothing measurable and would make "the sweeper reads the config dynamically" (ISS-654 AC 1) true only after an interval nobody can see.
 export async function readThresholds(): Promise<AdminThresholds> {
   const [row] = await db
     .select()

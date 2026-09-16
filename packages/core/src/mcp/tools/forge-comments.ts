@@ -61,11 +61,9 @@ const attachmentInputSchema = z
   })
   .strict();
 
-// cm:edge contract -> packages/core/skills — shipped Markdown templates carry `forge_comments → create` examples an agent copies verbatim; this schema is `.strict()`, so a key in an example that is not here is a hard rejection at the agent's first call. `skills/shipped-templates.test.ts` parses every template against this export.
 export const commentCreateDataSchema = z
   .object({
     body: commentBodyField.optional(),
-    // cm:edge contract -> packages/core/src/body/formats.ts — ISS-898. OPTIONAL on purpose: every shipped template omits it and must keep working, and absent resolves to `markdown` in `prepareBody`. Adding a value here without teaching `prepareBody` a branch accepts a body no reader can render.
     format: z.enum(BODY_FORMATS).optional(),
     issue: z.uuid().optional(),
     parentId: z.uuid().optional(),
@@ -95,12 +93,9 @@ function serialize(
     documentId: row.id,
     issueId: row.issueId,
     authorId: row.authorId,
-    // cm:guard SECOND HALF IN forge-plugin `plugin/src/flow/earned.mjs` — `answered()` asks whether a PERSON replied after a park, and this field is what it asks with now that `is_ai` is gone: non-null means an agent wrote it. Drop it from this projection and every screen the driver parks on becomes unanswerable, because the agent's own comments would read as a person's. Since ISS-931 the value comes from the caller's `job:`/`session:` token rather than from a device principal, which is why a PAT-authored agent comment is marked at all — it never was before.
     authorDeviceId: row.authorDeviceId ?? null,
-    // cm:guard a comment body reaches the agent verbatim over this MCP surface and anyone can post one, so it must stay inside a DATA frame — unframing it turns every commenter into someone who can issue the agent instructions (ISS-532)
     body: markUntrusted(row.body, { source: 'comment.body' }),
     format: row.format,
-    // cm:guard `text` is the projection the agent should reason over, and it goes through markUntrusted for the same reason `body` does: a parsed body is still text the reporter wrote.
     text:
       row.format === 'html'
         ? markUntrusted(bodyText(row.body, row.format), { source: 'comment.text' })
@@ -112,7 +107,6 @@ function serialize(
   };
 }
 
-// cm:guard validate the charset BEFORE decoding, never after: `Buffer.from(s, 'base64')` drops invalid characters silently rather than throwing, so a malformed payload decodes to a short buffer and the only remaining symptom is a truncated blob already written to storage.
 const BASE64_RE = /^[A-Za-z0-9+/]+={0,2}$/;
 function decodeBase64Strict(input: string): Buffer | null {
   const trimmed = input.trim().replace(/\s+/g, '');
@@ -144,9 +138,6 @@ export const forgeCommentsTool: ContextScopedMcpToolFactory = (ctx) => ({
     const input = inputSchema.parse(args);
     const { principal } = ctx;
 
-    // cm:guard a refused body must reach the agent as BAD_REQUEST with the ELEMENT, ATTRIBUTE and legal set still in the message. That named message is the whole reason this gate produces compliance where a guide produced 14-28%: an agent told only "invalid body" has nothing to change on its next call.
-    // cm:guard the same frame carries a refused CLAIM, which is a different refusal from a refused body: `BODY_INVALID` names markup the server will not store, `MESSAGE_REFUSED` names a rule about what the words assert, and an agent that cannot tell them apart rewrites the wrong half (ISS-997).
-    // cm:guard BOTH refusals, and the stage one especially: this is the ONLY door that presents a device token, so `bodyPolicy` (ISS-969) fires here and effectively nowhere else. Left unmapped it reaches the agent as a bare error with no `BAD_REQUEST:` frame, which is the shape a client reads as a server fault and retries verbatim.
     try {
       return await run(principal, input);
     } catch (err) {
@@ -176,7 +167,6 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
       const projectId = await loadIssueProjectId(issueId);
       await assertPrincipalIsWriter(principal, projectId);
 
-      // cm:guard decode and size-check every attachment BEFORE the comment INSERT, never after — a PAYLOAD_TOO_LARGE raised once the row exists leaves an empty comment behind that the caller was told failed, and nothing deletes it.
       const rawAttachments = input.data?.attachments ?? [];
       const decoded: Array<{ name: string; mime: string; bytes: Buffer }> = [];
       if (rawAttachments.length > 0) {
@@ -199,7 +189,6 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
         }
       }
 
-      // cm:guard ISS-519 — `authorId` stays the human owner; `authorDeviceId` is the AGENT marker and is resolved from the caller's OWN TOKEN (`job:`/`session:` → the job's or session's `device_id`), never from a principal. A PAT's synthetic device id used to be the hazard here (ISS-638); since ISS-931 there is no synthetic device, and the hazard inverted — a null on an agent's comment makes it read as a person's to `answered()` in forge-plugin.
       const authorDeviceId = principalAuthorDeviceId(principal);
       let inserted: CommentRow | undefined;
       let bodyWarnings: string[] = [];
@@ -216,7 +205,6 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
         inserted = written.row;
         bodyWarnings = written.warnings;
       } catch (err) {
-        // cm:why the branch above should make a 23503 on `author_device_id` unreachable, but a stale device row would surface a raw Postgres error to an agent that can do nothing with it — this maps it to the refusal that names the cause
         if (
           pgErrorCode(err) === '23503' &&
           pgConstraintName(err) === 'comments_author_device_id_devices_id_fk'
@@ -231,7 +219,6 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
         issueId,
         projectId,
         actor: principalHookActor(principal),
-        // cm:guard `agent` unconditionally: this door has no session JWT to distinguish, and a human writing through MCP is still writing through a tool.
         authored: 'agent',
         commentId: inserted.id,
         body: inserted.body,
@@ -261,7 +248,6 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
       }
       const comment = await loadCommentForAccess(input.documentId);
 
-      // cm:guard the membership check is deliberately STRICTER than REST `DELETE /api/comments/:id`, which lets an author who has since left the project delete anyway: an agent's token outlives its owner's membership, so a comment written by an ex-member's credential must not still mutate. Dropping this to match REST is a widening, not a de-duplication.
       await assertPrincipalIsWriter(principal, comment.projectId);
       if (comment.authorId !== principal.userId) {
         await assertCommentDeletePermission(principal.userId, comment.projectId);
@@ -283,8 +269,6 @@ async function run(principal: Principal, input: ToolInput): Promise<unknown> {
 type ToolInput = z.infer<typeof inputSchema>;
 type Principal = Parameters<typeof assertPrincipalIsWriter>[0];
 
-// cm:edge protocol -> packages/core/src/mcp/tools/list-envelope.ts — the ordering pair this surface depends on: `sizeTrimSheds: 'newest'` must be set BEFORE a cursor is offered, and the cursor must be minted from the last KEPT item. Set one without the other and the trim sheds rows the cursor has already gone past, so a walk skips them and nothing says it did (ISS-956).
-// cm:guard the trim unit is a ROOT AND ITS REPLIES, never a bare row. A trim that sheds rows can drop a reply while keeping its root, and then no cursor is correct: resuming after the root skips the reply, resuming before it repeats the root. Shedding whole subtrees leaves the last surviving root's token exact, which is what makes AC 4 (every comment exactly once) hold under the size cap.
 async function listAction(principal: Principal, input: ToolInput): Promise<unknown> {
   const issueId = input.filters?.issue;
   if (!issueId) throw new Error('BAD_REQUEST: filters.issue is required for list');
@@ -306,7 +290,6 @@ async function listAction(principal: Principal, input: ToolInput): Promise<unkno
   const page = await listIssueCommentPage(issueId, { after, limit: commentsLimit });
   const attachmentsByCommentId = await listCommentAttachmentsForIssue(issueId);
 
-  // cm:guard the trim item carries the root's ID and NOT the root ROW — `trimToBudget` sizes each item with `JSON.stringify`, so an item holding both the raw row and its serialized twin measures its body twice and sheds a page at roughly half the declared budget. Measured on ISS-958: a 25,235-character thread came back cut to 2 of 7 comments under a 38,000 budget.
   const subtrees = groupBySubtree(page.rows, page.roots).map((rows) => ({
     rootId: (rows[0] as CommentThreadRow).id,
     rows: rows.map((r) => serialize(r as CommentRow, attachmentsByCommentId.get(r.id) ?? [])),
@@ -328,7 +311,6 @@ async function listAction(principal: Principal, input: ToolInput): Promise<unkno
         }),
     },
   });
-  // cm:guard `returned` counts the COMMENTS under `comments`, not the subtrees the size trim shed by — `limit` bounds top-level comments, so the two numbers differ on any page carrying a reply, and leaving `returned` at the subtree count states a length the array it names contradicts. That is exactly what `buildNotice`'s own guard refuses one layer up, so it is overwritten here rather than inside the envelope, whose trim unit legitimately is the subtree.
   const flat = (envelope.comments as typeof subtrees).flatMap((s) => s.rows);
   envelope.comments = flat;
   envelope.returned = flat.length;
@@ -353,7 +335,6 @@ function groupBySubtree(rows: CommentThreadRow[], roots: CommentThreadRow[]): Co
   return roots.map((r) => groups.get(r.id) ?? [r]);
 }
 
-// cm:why `update` exists so an agent can place a `<forge-artifact id>` at all (ISS-898 UC5): an attachment needs a comment id to target, so the id the body must reference does not exist until after the create. It writes through the comments service rather than REST `PATCH /api/comments/:id`, which is `requireAuth()` and is not on the MCP plane.
 async function updateAction(principal: Principal, input: ToolInput): Promise<unknown> {
   if (!input.documentId) throw new Error('BAD_REQUEST: documentId is required for update');
   const body = input.data?.body;

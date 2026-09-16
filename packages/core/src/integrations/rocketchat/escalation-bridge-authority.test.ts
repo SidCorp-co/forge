@@ -6,7 +6,6 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-// cm:guard this stub must stay, and must stay above the subject's import — `config/env.js` validates EAGERLY and throws at import time without DATABASE_URL / JWT_SECRET / DEVICE_TOKEN_PEPPER, which `escalation-bridge.js` pulls in transitively through escalation.js's chat-turn/lifecycle graph, so removing it turns the whole file into a collection error rather than a failing test (same pattern as agent-sessions/chat-turn.test.ts)
 vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
@@ -26,7 +25,6 @@ vi.mock('../../db/client.js', () => ({
 
 const findConnectionById = vi.fn();
 const decryptConnectionSecrets = vi.fn();
-// cm:why the room-is-still-ours lookup is stubbed true here: this file's fake db answers only the subject's own queries, and that check has its own cases in room-delivery.test.ts and its refusal case in escalation-bridge-transcript.test.ts.
 vi.mock('./room-delivery.js', async (o) => ({
   ...(await o<typeof import('./room-delivery.js')>()),
   roomStillBoundTo: async () => true,

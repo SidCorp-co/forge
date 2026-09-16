@@ -34,7 +34,6 @@ export function invalidateThroughInFlight(qc: QueryClient, filters: QueryFilters
 	let off: (() => void) | undefined;
 	const settle = () => {
 		for (const q of [...outstanding]) {
-			// cm:guard a query GC'd or removed while its first fetch was running drops out here rather than staying in the set: without it the cache subscription below outlives the page, because nothing else ever takes that entry out.
 			const stillCached = cache.get(q.queryHash);
 			if (!stillCached) {
 				outstanding.delete(q);

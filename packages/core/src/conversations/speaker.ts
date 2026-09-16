@@ -14,7 +14,6 @@ export interface LinkedSpeaker {
 /**
  * Who spoke last: the newest `user` message's linked author.
  */
-// cm:guard the NEWEST person message and not the principal: in a group venue the turn runs as the room's execution principal (route-window.ts), and binding a person's preferences or a note's authorship to that would credit one colleague's words to another. Where the newest author is unlinked the answer is null, which every reader treats as "refuse by name", never as "fall back to the principal" (ISS-1034 criterion 62, codex F1).
 export function linkedSpeakerOf(messages: readonly StoredConversationMessage[]): LinkedSpeaker {
   const newest = [...messages].reverse().find((m) => m.role === 'user');
   if (!newest) return { userId: null, label: null };

@@ -23,7 +23,6 @@ vi.mock('../db/client.js', () => ({
     select: vi.fn(() => ({
       from: vi.fn(() => {
         const idx = selectCallIndex++;
-        // cm:why recompileAndPersistUxContract selects uxContractRules before projects, in that fixed order
         if (idx === 0) {
           return { where: vi.fn(() => ({ orderBy: vi.fn(() => Promise.resolve(rulesRows)) })) };
         }

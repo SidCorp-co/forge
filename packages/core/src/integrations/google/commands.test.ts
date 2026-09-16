@@ -352,9 +352,6 @@ describe('the ISS-405 rotation window governs the command path too (criterion 19
     expect(g.issuers).toEqual(['rotated@forge-sheets-1.iam.gserviceaccount.com', OLD_ACCOUNT]);
   });
 
-  // cm:guard the window closing is what ends the fallback. Carrying the retained
-  // key past `previousTokenExpiresAt` would make the 24-hour bound decorative and
-  // leave a revoked account able to read a project's sheet indefinitely (ISS-405).
   it('once the window has closed the retained key is not offered at all', async () => {
     const g = wireGoogleAccepting(OLD_ACCOUNT);
     listBindingsForProjectMock.mockResolvedValue([

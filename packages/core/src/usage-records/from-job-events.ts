@@ -94,7 +94,6 @@ function pickModel(
  * terminal `result` line (e.g. the job died before Claude emitted its result —
  * nothing reliable to record).
  */
-// cm:guard the two halves of a `result` line accumulate DIFFERENTLY, and reading either one the other's way silently misbills every duplex job. Measured on claude 2.1.251, 2026-08-29, two turns of one resident session: `usage` and `num_turns` are PER-TURN (turn 2 read `output_tokens: 3`, not 6), while `total_cost_usd` and `modelUsage` are CUMULATIVE (0.319836 -> 0.3452315). So tokens and turns are summed across every result line and cost is taken from the last — the reverse of what the original one-result-per-job shape suggested. On print there is exactly one result line, where summing and last-wins are the same number.
 export function extractUsageFromEvents(events: UsageEventRow[]): ExtractedUsage | null {
   let resultLine: Record<string, unknown> | null = null;
   let resultTs: Date | null = null;
@@ -131,7 +130,6 @@ export function extractUsageFromEvents(events: UsageEventRow[]): ExtractedUsage 
 
   const { input: inputTokens, output: outputTokens } = totals;
   const { cacheRead: cacheReadTokens, cacheCreation: cacheCreationTokens } = totals;
-  // cm:guard `pickModel` reads the LAST line's `modelUsage` alone, which is right for the same reason the sums above are: that map is cumulative, so it already names the dominant model of the whole session rather than of the final turn.
   const model = pickModel(resultLine, assistantModelTokens, firstAssistantModel);
   const requestCount = totals.turns || 1;
 

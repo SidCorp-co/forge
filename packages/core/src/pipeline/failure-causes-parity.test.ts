@@ -42,7 +42,6 @@ describe('the core and contracts copies of the taxonomy', () => {
     expect(contractResolve(null)).toBe(resolveFailureCause(null));
   });
 
-  // cm:guard a cause with no presentation entry renders neutral-by-accident in web-v2 rather than red, so the exhaustiveness has to be asserted at RUNTIME too: `Record<FailureCause, …>` is checked against the CONTRACTS list, which is the copy that can silently fall behind core's.
   it('give every cause core can write a presentation web-v2 can render', () => {
     for (const cause of FAILURE_CAUSES) {
       expect(FAILURE_CAUSE_PRESENTATION[cause], cause).toBeTruthy();

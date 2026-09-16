@@ -45,7 +45,6 @@ beforeAll(async () => {
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono<{ Variables: import('../../src/middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
-  // cm:edge lockstep -> packages/core/src/index.ts — the mount is `/api/conversations`; this file builds its own app, so the two can disagree about where the router sits and every URL below is absolute.
   app.route('/api/conversations', conversationRoutes);
   app.onError(errorHandler);
 }, 120_000);
@@ -145,7 +144,6 @@ describe('a viewer may look at a room and not change it', () => {
 });
 
 describe('the page is cut from what the caller may see', () => {
-  // cm:guard the hidden room sorts FIRST and the page size is one: filter after paginating and this caller gets an empty page, never reaches the room they can read, and is told there are two.
   it('skips a room the caller cannot read instead of spending their page on it', async () => {
     const readable = await room(projectA);
     const shared = await room(projectA);
@@ -158,7 +156,6 @@ describe('the page is cut from what the caller may see', () => {
       projectId: projectB,
       actorUserId: ownerId,
     });
-    // cm:why the shared room is renamed last, so it sorts ahead of the one this caller may read
     await store.renameConversation(shared.id, 'shared with another project');
 
     const onlyA = await member(projectA, 'member');

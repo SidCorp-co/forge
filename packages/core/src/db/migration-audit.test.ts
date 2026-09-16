@@ -14,7 +14,6 @@ describe('findUnrecordedMigrations', () => {
     expect(findUnrecordedMigrations(journal, [300, 100, 200])).toEqual([]);
   });
 
-  // cm:guard this is the ISS-807 shape: 0166 landed with a `when` above the two entries that followed it, so the migrator skipped them and still reported success. The audit must name them.
   it('catches entries the migrator skipped because an earlier one sits above them', () => {
     const journal = [
       e(0, 100),
@@ -56,7 +55,6 @@ describe('describeUnrecorded', () => {
     expect(text).toContain('reconcile_acknowledge');
     expect(text).toContain('idx 2');
     expect(text).toContain('__drizzle_migrations');
-    // cm:guard the message must NOT assert the migration did not run — on forge-beta three unrecorded entries have all their tables present
     expect(text).toMatch(/does NOT prove their DDL is missing/i);
     expect(text).toMatch(/reports success when it skips/i);
   });
@@ -104,7 +102,6 @@ describe('partitionUnrecorded', () => {
     expect(unexpected).toEqual([]);
   });
 
-  // cm:guard the whole point of the baseline: before it, a fourth unrecorded entry surfaced only as the count going 3 -> 4 in a warning that fired on every boot
   it('surfaces a NEW unrecorded entry alongside the baselined ones', () => {
     const journal = [
       e(41, 1778100000000, '0041_pm_agent'),

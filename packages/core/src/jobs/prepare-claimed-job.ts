@@ -36,8 +36,6 @@ import {
 /**
  * The runner row that will actually host this job, refused by name when absent.
  */
-// cm:guard refuse by NAME rather than falling back to any runner of the project. A prepared job whose session row points at a different box than the process that runs it is the silent substitution `CLAUDE.md` forbids: the operator loses the diff, not ten minutes.
-// cm:guard ONE derivation for both halves of the split claim. `prepareClaimedJob` reads it to build the session row and `startJobForMaster` reads it again to stamp `jobs.runner_id`, and a second copy of this predicate is how the two come to name different boxes for one job.
 export async function resolveRunnerForDevice(
   projectId: string,
   deviceId: string,
@@ -54,7 +52,6 @@ export async function resolveRunnerForDevice(
 }
 
 export interface PreparedJob {
-  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — identity travels WITH the preparation, never from the runner's own pool read. A pool entry is a snapshot the master may have been holding for minutes; rebuilding the job's identity from it is the mismatch `prepareClaimedJob` refuses one guard down, arriving by a different door.
   jobId: string;
   projectId: string;
   issueId: string | null;
@@ -76,7 +73,6 @@ export interface PreparedJob {
  * How long a resident session may sit idle. The process model is no longer sent
  * with it: every job runs duplex, and ISS-941 dropped the constant that said so.
  */
-// cm:guard `pipelineConfig` is not parsed through its Zod schema here on purpose: a config that fails validation for an unrelated key must not stop the job going out.
 async function sessionSettingsOf(projectId: string): Promise<{
   agentConfig: unknown;
   settings: { sessionResidencySeconds?: number };
@@ -93,7 +89,6 @@ async function sessionSettingsOf(projectId: string): Promise<{
   return {
     agentConfig: row?.agentConfig ?? null,
     settings: {
-      // cm:guard a positive number ONLY. The key defaults to 0 and no project has set it, so forwarding 0 would be indistinguishable on the wire from a project asking for no residency at all — the runner resolves absent and 0 to the same default for exactly that reason, and sending nothing keeps the two sides agreeing by construction.
       ...(typeof secs === 'number' && secs > 0 ? { sessionResidencySeconds: secs } : {}),
     },
   };
@@ -131,7 +126,6 @@ async function loadRepoPath(projectId: string): Promise<string | null> {
  * Give a `code`/`fix` job on a skill-maintenance issue its skill-write tools
  * back. Best-effort: an absent label leaves the overrides untouched.
  */
-// cm:guard read the human-applied LABEL, never `issue.category` — the category is LLM-set and mis-classifying it hands skill-write tools to a job nobody meant to grant them to.
 async function applyCarveout(
   job: typeof jobs.$inferSelect,
   overrides: StageOverrides,
@@ -176,12 +170,9 @@ async function applyCarveout(
  * Throws if the box has no runner bound to the job's project — that box cannot
  * run this work and saying so is the whole point.
  */
-// cm:guard call this AFTER the claim transaction commits, never inside it. Both writes at the end go through the module-level `db` rather than a passed `tx`, so a preparation placed inside would survive a rollback and leave a session row plus a prompt snapshot for a hold that never landed.
-// cm:guard the device is an ARGUMENT and is never re-picked here. The master already decided which box runs this, and a second opinion about the device is how the session row and the process that starts end up describing different machines.
 /**
  * Can this box name the agent's worktree, or would it run in the repo root?
  */
-// cm:guard a box below this floor MUST be refused, never served. Core stopped sending `worktreeBranch` on 2026-09-05, so an older runner resolves no branch, takes the `owns_root` path, and runs the agent IN THE REPO ROOT on the project's base branch — committing unreviewed work onto `main` while the job reports success. That is the outcome salvage's root exclusion exists to prevent, reached by a path salvage never sees. Measured the same day, with core deployed against dev1 and forge-vm both on 0.10.5.
 export async function canNameItsAgent(deviceId: string): Promise<boolean> {
   const [device] = await db
     .select({ v: devices.agentVersion })
@@ -202,7 +193,6 @@ export async function prepareClaimedJob(args: {
 
   const overrides = await resolveStageOverrides(job.projectId, job.payload);
   const proposedResume = await resolveResumePolicy({ job, overrides, agentConfig: undefined });
-  // cm:edge ordering -> packages/core/src/jobs/resume-policy.ts — the resume is provisional until a device is known; here the master has already chosen one, so it is finalised against that box rather than against a selector's answer
   const resume = finalizeResumeForDevice(proposedResume, args.deviceId);
 
   const stageOverrides = { ...overrides };
@@ -225,13 +215,11 @@ export async function prepareClaimedJob(args: {
   const basePromptString =
     typeof payloadIn.promptString === 'string' ? payloadIn.promptString : null;
 
-  // cm:why on --resume the Claude CLI may ignore --append-system-prompt (undocumented), so the state's system prompt is embedded redundantly at the head of the user prompt; a fresh start gets it through the flag and needs no copy
   const resumedPromptString =
     resume.priorClaudeSessionId && basePromptString
       ? injectTurnLevelRules(basePromptString, systemPrompt)
       : basePromptString;
 
-  // cm:edge contract -> packages/core/src/jobs/prior-attempts.ts — spliced HERE, at preparation, not by `buildJobPromptString` at enqueue: `retry.ts` copies the parent's `payload.promptString` verbatim, so a block added at enqueue time would describe the parent's own attempt rather than the one that just failed
   const promptString =
     resume.isRetry && resumedPromptString
       ? injectAfterInvocation(
@@ -250,7 +238,6 @@ export async function prepareClaimedJob(args: {
       : Promise.resolve([]),
     activeIssuePrefix(job.projectId),
   ]);
-  // cm:guard `issueKey` no longer names any checkout. It used to be the agent's branch, and salvage found the tree by matching it; since the master names its own agent the branch is the master's word and salvage matches that exactly, so this is now prompt/display context only. Do not rebuild a branch name from it anywhere — a master that groups two issues into one agent has a branch no issue key predicts.
   const issueKey =
     issueRow[0]?.issSeq == null ? null : formatIssueRef(issuePrefix, issueRow[0].issSeq);
   await persistPromptSnapshot({
@@ -265,7 +252,6 @@ export async function prepareClaimedJob(args: {
     { ...job, runnerId: runner.id, deviceId: args.deviceId },
     { repoPath, resume: resume.record },
   );
-  // cm:guard a job with no session row is work NOBODY CAN WATCH, so refuse it loudly here rather than handing it over. `agent_sessions` is the whole observation channel of this design — a master reads `job_events.seq` standing still to tell a stuck subagent from a slow one, and a subagent with no session writes no events at all, which is indistinguishable from one that finished. `ensureAgentSessionForJob` swallows its own errors and answers null, so this is the only place the gap is visible.
   if (!agentSessionId) {
     throw new Error(`prepare: no agent session could be created for job ${job.id}`);
   }

@@ -343,9 +343,6 @@ describe('runTurnEvents — parallel tool rounds', () => {
       }),
     );
     expect(result.terminal).toBe('done');
-    // cm:guard the result event carries the error flag and the measured duration, not just the
-    // text: the transcript reads them from HERE, and without them a stored turn cannot say which
-    // tool failed or how long it took (ISS-1029 criteria 5 and 6).
     const failed = events.find((e) => e.type === 'tool_result' && e.id === 'c2');
     expect(failed).toMatchObject({
       type: 'tool_result',

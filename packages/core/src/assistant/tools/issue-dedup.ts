@@ -53,7 +53,6 @@ export interface DuplicateMatch {
  * weighted heavier than description — it's the surface a repeat report is
  * most likely to echo verbatim. Fails OPEN on a DB error (returns null).
  */
-// cm:guard the two dials are the DOOR's, never the detector's: a door that wants a wider net or a longer corpus sets them here, and one that names neither gets the chat door's 0.72 over 50 rows unchanged — moving either default moves every door at once, which is the divergence per-door policy exists to stop
 export async function findDuplicateIssue(
   db: Db,
   args: { projectId: string; title: string; description: string },
@@ -84,7 +83,6 @@ export async function findDuplicateIssue(
   for (const row of rows) {
     const titleScore = titleSimilarity(args.title, row.title);
     const descScore = titleSimilarity(args.description, row.description ?? '');
-    // cm:guard a title that clears the threshold ALONE is a duplicate, whatever the description scores — measured 2026-09-04: "Safari 17: login page blank after OAuth redirect" scored 0.727 against the draft filed one turn earlier and still went through as ISS-7, because two LLM-written descriptions of the same chat message share little vocabulary and the 25% description weight dragged the blend under 0.72; the blend still lets a weaker title be rescued by a near-identical description
     const score = Math.max(titleScore, titleScore * 0.75 + descScore * 0.25);
     if (score > bestScore) {
       bestScore = score;

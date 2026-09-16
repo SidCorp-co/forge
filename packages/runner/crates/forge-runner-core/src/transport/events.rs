@@ -33,7 +33,6 @@ const MAX_BATCH: usize = 100;
 const MAX_ATTEMPTS: u32 = 4;
 
 /// Marks the two answers that mean "this job is not yours any more".
-// cm:guard 403 belongs here beside 409, and the caller MUST stop on it. Core gates every job route on `jobs.device_id`, so a 403 says the row no longer points at this box — the job was re-queued, cancelled, or given to someone else — and no amount of retrying changes that. Measured on epodsystem 2026-09-05: two disowned jobs posted a fresh batch every flush tick, each 403, at 2/s with no ceiling, because the caller only logged. The signal is a string rather than a variant so it survives the `Error::Other` shape every transport call already returns.
 pub const DISOWNED: &str = "JOB_DISOWNED";
 
 /// True when core has answered that this runner no longer owns the job.
@@ -142,7 +141,6 @@ mod tests {
             .expect_err("a non-2xx must not report success")
     }
 
-    // cm:guard 403 is the case this pair exists for, and the 400 below is what makes it an assertion rather than a tautology: a predicate that answered true for every client error would abandon jobs on an ordinary bad request.
     #[tokio::test]
     async fn a_forbidden_job_is_disowned() {
         assert!(is_disowned(&post_err("403 Forbidden").await));

@@ -7,10 +7,8 @@
 
 export { type LoginInput, loginSchema } from './auth/login.js';
 export { type RegisterInput, registerSchema } from './auth/register.js';
-// cm:guard only the format union and the node type leak; the scanner and the sanitizer stay core-internal because they are runtime code core executes on every write, and `contracts-runtime-boundary.test.ts` forbids core value-importing anything it hands to contracts
 export { BODY_FORMATS, type BodyFormat, type BodyNode } from './body/index.js';
 export * as schema from './db/schema.js';
-// cm:guard type-only: `capabilitiesFor` and `DEFAULT_CAPABILITIES` stay core-internal, or integration runtime is bundled into every client. The owner / environment / delivery enums are already reachable through the `schema` namespace.
 export type { IntegrationCapabilities, IntegrationProvider } from './integrations/types.js';
 export {
   type ReleaseNotes,

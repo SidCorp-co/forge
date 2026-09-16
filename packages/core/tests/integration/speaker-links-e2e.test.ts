@@ -352,7 +352,6 @@ describe('who may confirm (criteria 6, 7, 8, 9, 10, 11, 12)', () => {
     expect(await linkRowCount()).toBe(0);
   });
 
-  // cm:why the empty directory is the instrument — a check made after the read would answer SPEAKER_NOT_ON_CHANNEL, so the code is what proves the ordering rather than the status
   it('refuses a caller with no project access before the directory is read', async () => {
     directory.clear();
     const out = await confirm(ctx.projectA, ctx.outsider, 'rc-alice');

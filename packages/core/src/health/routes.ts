@@ -42,8 +42,6 @@ publicHealthRoutes.get('/health', async (c) => {
   );
 });
 
-// cm:guard a route of its own, never a field on `/health`: `/health` answers 503 when the DB is down, so folding version into it hands a version check a contract that fails exactly when an operator most needs to know which build is running. Unauthenticated for the same reason `forge_version` carried no project scope — measured on forge-beta 2026-09-01, all 290 of that tool's calls named no project, so there is nothing here for the PAT fence to bite on.
-// cm:edge contract -> packages/core/src/observability/source-commit.ts — `sourceCommit` is that module's value verbatim, and `release-gate` condition 4 is answered by comparing this field to a merge SHA. A build that was not told its commit answers `null` here, never a placeholder: a fabricated identity would make the condition pass on a deploy nobody can name.
 publicHealthRoutes.get('/version', (c) =>
   c.json({
     version: pkg.version,
@@ -78,7 +76,6 @@ opsHealthProjectRoutes.get(
 export const opsHealthMeRoutes = new Hono<{ Variables: AuthVars }>();
 opsHealthMeRoutes.use('/ops-health', requireAuth(), assertEmailVerified());
 
-// cm:edge contract -> packages/core/src/middleware/pat-rest-surface.ts — this lives under `/api/me` and must STAY off PAT_ALLOWED_PREFIXES: it fans out over every project the caller can see, so a token bound to one project would read runners and stuck jobs across all of them. The per-project half above is the PAT-reachable one, and it is reachable only because `/api/projects` fences on the id in the path.
 opsHealthMeRoutes.get(
   '/ops-health',
   zValidator('query', staleQuerySchema, (r) => {

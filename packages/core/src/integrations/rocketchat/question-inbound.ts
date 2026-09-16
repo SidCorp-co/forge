@@ -43,9 +43,6 @@ async function say(transport: ReplyTransport, text: string): Promise<void> {
 /**
  * Answer, or refuse by name. Always consumes the message.
  */
-// cm:guard EVERY return is a consumed message, refusals included — the caller must not fall through to the conversation handler on any of them, which is why this returns void rather than a handled/unhandled flag somebody could forget to read (ISS-978 criterion 20).
-// cm:guard the answer goes through `answerAs` and never `answerQuestion`: the authority gate lives in `answerAs`, and a second caller that skips it is a lock drawn on the screen and nowhere else (ISS-978 criterion 11).
-// cm:guard nothing here writes an issue comment. `answer-resume.ts` reads a comment as a prose resume and would act on the same decision a second time, so a structured answer that also commented would revive the box twice (ISS-978 criterion 29).
 export async function handleQuestionThreadReply(args: {
   questionId: string;
   serverUrl: string;
@@ -69,7 +66,6 @@ export async function handleQuestionThreadReply(args: {
     return;
   }
 
-  // cm:guard a free-text round is answered by the WHOLE message and never goes through the token parser: prose is what that round asked for, and reading it for an option number re-posts a list the person was never shown (ISS-996).
   const choiceRound = isChoiceStep(current);
   let chosenOptionId: string | null = null;
   let token = '';
@@ -88,7 +84,6 @@ export async function handleQuestionThreadReply(args: {
         await say(transport, AMBIGUOUS_ROUND_REPLY);
         return;
       }
-      // cm:guard the options are re-posted rather than inferred from, and never defaulted to the recommended one — a reply nobody can read is a person who has not chosen yet, and choosing for them is the failure a locked option exists to prevent (ISS-978 criterion 18).
       const verdict = screenAtDoor('question-delivery', agentAuthoredSegments(current));
       await (verdict.ok
         ? sendFixedReply(transport, renderOptionsAgain(current, rounds), {
@@ -107,7 +102,6 @@ export async function handleQuestionThreadReply(args: {
       return;
     }
 
-    // cm:guard the round is taken from the REPLY and compared here, so a token naming a superseded round is refused as stale before any option is looked up — resolving it against the latest step would hand somebody an action they never saw offered (ISS-978 criterion 16).
     if (choice.round !== current.round) {
       await say(transport, STALE_ROUND_REPLY(choice.round, current.round));
       return;
@@ -138,7 +132,6 @@ export async function handleQuestionThreadReply(args: {
     label: m.username ?? null,
   };
   const resolution = await resolveSpeaker(ref);
-  // cm:guard an unmapped speaker is refused with ISS-977's own text and not a local rewording: the way out — the two endpoints, and that the person links themselves — is that module's contract, and a second copy of it drifts silently (ISS-978 criterion 12).
   if (!resolution.linked) {
     await say(
       transport,
@@ -177,7 +170,6 @@ export async function handleQuestionThreadReply(args: {
  * The connection manager's half: build the transport, hand the reply over, and
  * say nothing back — the message is consumed either way.
  */
-// cm:guard lives here rather than inside `connection-manager.route()` because that file is over its size budget and this is the whole of what `route` would otherwise hold: the caller returns immediately after calling it, and a `return` it forgets is a refusal delivered as an LLM turn (ISS-978 criterion 20).
 export interface QuestionReplySocket {
   serverUrl: string;
   authToken: string;

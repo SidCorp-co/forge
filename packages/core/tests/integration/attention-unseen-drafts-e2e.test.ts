@@ -33,7 +33,6 @@ import {
 
 const JWT_SECRET = 'test-secret-at-least-32-chars-long-abcdef-123456';
 
-// cm:guard ONE harness for the whole file. `db/client.ts` binds to DATABASE_URL at import time, so a second setupTestDatabase() puts the fixtures on one database and everything the code under test writes on another — the tests then read empty tables and fail for a reason that has nothing to do with the code.
 let harness: TestDatabase;
 let ownerId: string;
 let otherId: string;
@@ -95,7 +94,6 @@ beforeEach(async () => {
     userId: projectAdminId,
     role: 'admin',
   });
-  // cm:guard these two MUST hold real `project_members` rows, or the negative cases below only re-prove what authz.ts already guarantees: measured 2026-08-30, with them absent, deleting `role = 'admin'` from adminsProject left 18 of 18 cases passing.
   await createTestProjectMember(harness.db, {
     projectId,
     userId: plainMemberId,
@@ -103,7 +101,6 @@ beforeEach(async () => {
   });
   await createTestProjectMember(harness.db, { projectId, userId: viewerId, role: 'viewer' });
 
-  // cm:guard a SECOND org holding a SECOND project, with an admin on each side of it. Both correlation clauses in adminsProject (`project_members.project_id = projects.id`, `organization_members.org_id = projects.org_id`) are invisible to a single-project single-org fixture: measured 2026-08-30, deleting either left 591 of 591 integration cases green while every project of every org became readable to anyone holding one admin row anywhere.
   foreignOrgAdminId = (await createTestUser(harness.db)).id;
   foreignProjectAdminId = (await createTestUser(harness.db)).id;
   await harness.db.execute(sql`UPDATE users SET email_verified_at = now()`);
@@ -199,7 +196,6 @@ describe('attention · unseen agent-filed drafts', () => {
     expect(body.total).toBe(1);
   });
 
-  // cm:why the whole point of the bucket: `draft` is not a park, so it must NOT arrive as one. Folding it into awaitingInput would make the parks bucket claim a human was asked a question nobody asked.
   it('does not put it in the awaiting-input parks bucket', async () => {
     await draft();
     expect((await attention()).awaitingInput).toHaveLength(0);
@@ -215,7 +211,6 @@ describe('attention · unseen agent-filed drafts', () => {
     expect((await attention()).unseenDrafts).toHaveLength(0);
   });
 
-  // cm:why this case INVERTED with the routing fix and that is the point: `ownerId` administers the project, and an unowned agent proposal is a triage item for whoever administers it — not only for whichever account happened to be holding the runner's credential.
   it('surfaces an unowned draft the caller did not file, when the caller administers the project', async () => {
     await draft({ createdBy: otherId, assignee: null });
     expect((await attention()).unseenDrafts).toHaveLength(1);
@@ -231,7 +226,6 @@ describe('attention · unseen agent-filed drafts', () => {
     expect((await attentionAs(orgAdminId)).unseenDrafts).toHaveLength(1);
   });
 
-  // cm:guard membership alone must NOT admit anyone, and this is a TENANT boundary, not a preference: the same `adminsProject` predicate gates `pendingSkillUpdates`, so a one-line widening here hands every agent-filed draft AND every skill-update gate to every member of the project.
   it('does not reach a project member at role member', async () => {
     await draft({ createdBy: otherId, assignee: null });
     const body = await attentionAs(plainMemberId);
@@ -246,7 +240,6 @@ describe('attention · unseen agent-filed drafts', () => {
     expect(body.unseenDraftsTotal).toBe(0);
   });
 
-  // cm:guard `organization_members.org_id = projects.org_id`. An org owner is admin over THEIR org's projects and nothing else; without the correlation the clause reads "is an admin of any org at all", and one tenant's proposals land in another tenant's inbox.
   it('does not reach an admin of a different org', async () => {
     await draft({ createdBy: otherId, assignee: null });
     const body = await attentionAs(foreignOrgAdminId);
@@ -254,7 +247,6 @@ describe('attention · unseen agent-filed drafts', () => {
     expect(body.unseenDraftsTotal).toBe(0);
   });
 
-  // cm:guard `project_members.project_id = projects.id`. Same failure one level down: a project admin somewhere must not be a project admin everywhere.
   it('does not reach a project admin of a different project', async () => {
     await draft({ createdBy: otherId, assignee: null });
     const body = await attentionAs(foreignProjectAdminId);
@@ -262,13 +254,11 @@ describe('attention · unseen agent-filed drafts', () => {
     expect(body.unseenDraftsTotal).toBe(0);
   });
 
-  // cm:guard the creator half of the owner rule, tested on someone who is NOT also an admin — `ownerId` is the org owner, so every case using it passes on the admin clause alone and says nothing about this one. A member who files a proposal with their own credential must keep seeing it.
   it('reaches the creator even when they administer nothing', async () => {
     await draft({ createdBy: plainMemberId, assignee: null });
     expect((await attentionAs(plainMemberId)).unseenDrafts).toHaveLength(1);
   });
 
-  // cm:guard assignment wins over BOTH fallbacks. An assigned proposal in the project admin's list as well means two people each assume the other triaged it.
   it('does not reach the project admin once someone is assigned', async () => {
     await draft({ createdBy: otherId, assignee: otherId });
     expect((await attentionAs(projectAdminId)).unseenDrafts).toHaveLength(0);
@@ -280,7 +270,6 @@ describe('attention · unseen agent-filed drafts', () => {
     expect((await attention()).unseenDrafts).toHaveLength(0);
   });
 
-  // cm:why legacy rows predate `created_via` and read as human backlog, matching buildOriginCondition in issues/creator.ts. Reading NULL as agent-filed would dump every pre-column draft into one inbox at once.
   it('ignores a legacy draft with no recorded channel', async () => {
     await draft({ via: null });
     expect((await attention()).unseenDrafts).toHaveLength(0);
@@ -300,21 +289,18 @@ describe('attention · unseen agent-filed drafts', () => {
     expect(await statusOf(id)).toBe('draft');
   });
 
-  // cm:guard a DEVICE comment must never acknowledge for a human — a device-authored comment carries the owner's user id in author_id, so `author_id` alone is not the test and `author_device_id IS NULL` is.
   it('is not cleared by a device comment', async () => {
     const id = await draft();
     await comment(id, { device: true });
     expect((await attention()).unseenDrafts).toHaveLength(1);
   });
 
-  // cm:guard this is the PRICE of dropping `comments.is_ai` (2026-09-04), asserted so it is a decision on the record and not a silent regression: an agent holding a person's PAT clears this bucket AS that person, because identity follows the token and a PAT-lane comment is indistinguishable from one the person typed. The fix is agent identity, not a self-declared flag — until then the receipt means "something on a human credential replied", not "a human read it".
   it('IS cleared by an agent holding a human credential, as that human', async () => {
     const id = await draft();
     await comment(id);
     expect((await attention()).unseenDrafts).toHaveLength(0);
   });
 
-  // cm:why the receipt means A PERSON saw it, not that the owner replied. A teammate reading the draft and answering in the thread is exactly the routing this bucket exists to produce.
   it("is cleared by any human comment, not only the owner's", async () => {
     const id = await draft();
     await comment(id, { author: otherId });
@@ -327,7 +313,6 @@ describe('attention · unseen agent-filed drafts', () => {
     expect((await attention()).unseenDrafts).toHaveLength(0);
   });
 
-  // cm:guard priority outranks recency here, or a fleet-deep backlog hands all 20 rows to whichever project wrote last. Measured: under plain recency ISS-871 sat at rank 28 of 428 and this bucket could not show its own reason for existing.
   it('orders by priority before recency', async () => {
     await draft({ priority: 'low' });
     await draft({ priority: 'critical' });
@@ -338,7 +323,6 @@ describe('attention · unseen agent-filed drafts', () => {
     expect(seqs[0]).toBe(`ISS-${seq - 1}`);
   });
 
-  // cm:guard the count must be measured through the SAME predicate as the list. Only the cap half of that guard is covered by the case below: if the count were wider, a total of 3 over a list of 1 would go unnoticed, which is the surface lying in the same breath it was added to stop a surface from lying.
   it('counts only what the predicate matches, not every draft', async () => {
     await draft();
     const seen = await draft();
@@ -351,7 +335,6 @@ describe('attention · unseen agent-filed drafts', () => {
     expect(body.unseenDraftsTotal).toBe(1);
   });
 
-  // cm:guard the cap bounds the SCREEN, never the truth. A total computed from the capped list instead of the predicate is how a 22-deep backlog renders as "20" and stops being a backlog anyone chases.
   it('caps the list at 20 and still reports the full count', async () => {
     for (let i = 0; i < 22; i += 1) await draft();
     const body = await attention();

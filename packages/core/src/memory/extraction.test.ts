@@ -17,7 +17,6 @@ vi.mock('./indexer.js', () => ({
   indexMemory: (input: unknown, opts: unknown) => indexMemoryMock(input, opts),
 }));
 
-// cm:guard results are keyed off the TABLE REFERENCE passed to `.from()`, and every read chain must end at `.limit()` — a query added to the subject that ends anywhere else resolves to `[]` here rather than failing where the gap is
 type Row = Record<string, unknown>;
 const tableResults = new Map<unknown, Row[]>();
 const insertedValues: Array<{ table: unknown; values: Row }> = [];

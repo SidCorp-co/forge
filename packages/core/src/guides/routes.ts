@@ -30,7 +30,6 @@ import { getGuide, listGuides } from './registry.js';
  */
 export const guideRoutes = new Hono();
 
-// cm:guard the two public GETs serve the CODE tier only — this router is unauthenticated, so layering an org's guide into them would publish tenant bytes to anyone who can guess an org id
 const upsertSchema = z.object({
   title: z.string().trim().min(1).max(200),
   summary: z.string().trim().min(1).max(500),
@@ -124,10 +123,7 @@ guideRoutes.get('/guides', (c) => {
   return c.json({ guides: listGuides() });
 });
 
-// cm:guard emit every URL relative to THIS request's own mount prefix — the router is mounted at both `/` and `/api` and the hosted edge forwards only `/api/*`, so a hardcoded prefix publishes links that 404 for half the audience
-// cm:why the /llms.txt convention is the entry point this surface lacked — /guides has been public since ISS-746, but a reader had to already know a slug, so nothing was discoverable from a bare hostname
 guideRoutes.get('/llms.txt', (c) => {
-  // cm:guard honour x-forwarded-proto — the edge terminates TLS and forwards plain http, so c.req.url alone publishes http:// links for an https-only host
   const url = new URL(c.req.url);
   const proto = c.req.header('x-forwarded-proto')?.split(',')[0]?.trim();
   if (proto === 'https' || proto === 'http') url.protocol = `${proto}:`;

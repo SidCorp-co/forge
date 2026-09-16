@@ -56,7 +56,6 @@ const badRequest = (message: string, code: string) =>
  * Create the agent and mint its one token. The plaintext is returned exactly
  * once, the same contract `POST /api/pat` has.
  */
-// cm:guard one transaction, and the token is minted INSIDE it. An agent row that exists without its memberships is a principal with no authority and no way to be given any through this route (the handle is taken), while memberships without a row are an FK error; both are states an operator has to clean up by hand. `mintPat` writes to `personal_access_tokens` on the ambient `db`, so it is called after the tx commits and its failure leaves a tokenless agent the revoke route can remove — the one partial state that is recoverable through the API.
 /**
  * Turn `(org_id, handle)`'s refusal into one a caller can act on.
  */
@@ -105,7 +104,6 @@ export async function createAgentAccount(
   const projectRole: ProjectMemberRole = input.projectRole ?? 'member';
   const email = synthesizeAgentEmail(input.handle);
 
-  // cm:guard the `(org_id, handle)` index is the authority on uniqueness (criterion 12) and this turns its refusal into an ANSWER rather than a 500. Before the handle had a column two agents of one name both succeeded, so the constraint is new here and its bare `INTERNAL_ERROR` would be new too — a caller told nothing about the one field they must change. Caught around the transaction and not inside it, because the insert that violates it aborts the transaction whole: nothing partial is left to clean up, which is why this can name the handle and stop.
   const created = await mapHandleCollision(input, () =>
     db.transaction(async (tx) => {
       const [row] = await tx
@@ -114,15 +112,12 @@ export async function createAgentAccount(
           email,
           kind: 'agent',
           passwordHash: null,
-          // cm:guard stamped verified at creation, because `assertEmailVerified` gates the whole PAT-authenticated REST surface and an agent has no mailbox to verify through. It is safe only because `signUserToken` refuses `kind:'agent'` outright — the verified stamp buys REST access, never a session.
           emailVerifiedAt: new Date(),
           displayName: input.handle,
         })
         .returning({ id: users.id, createdAt: users.createdAt });
       if (!row) throw new Error('createAgentAccount: user insert returned no row');
 
-      // cm:guard `member`, never `admin`. Org admin is what MANAGES agents (mint, revoke); an agent holding it could create further agents and grant them anything, which is the credential-mints-credential hole `/api/pat`'s absence from `PAT_ALLOWED_PREFIXES` closes on the other side.
-      // cm:guard the handle goes in with the membership, in one statement, because `(org_id, handle)` is the index that refuses a second `@forge-dev` in this org — a membership inserted first and named afterwards is a window in which that index has nothing to refuse (ISS-1003 criterion 12).
       await tx.insert(organizationMembers).values({
         orgId: input.orgId,
         userId: row.id,
@@ -167,7 +162,6 @@ export async function createAgentAccount(
  * One query. The per-agent token count used to be a second query inside the
  * loop, so listing an org of forty agents cost forty-one round trips.
  */
-// cm:guard `canAct` is the live-credential predicate and NOT `revoked_at IS NULL`: an agent holding one unrevoked but EXPIRED token counted as able to act here while `verifyPat` turned that same token away, so the console said yes about an account the door said no about. `patIsLive` is the single spelling both sides now read (ISS-1003 criteria 2, 7).
 export async function listAgentAccounts(orgId: string): Promise<AgentAccount[]> {
   const live = db
     .select({ userId: personalAccessTokens.userId, n: count().as('n') })
@@ -205,7 +199,6 @@ export async function listAgentAccounts(orgId: string): Promise<AgentAccount[]> 
       projectRole: row.projectRole ?? 'member',
       createdAt: row.createdAt,
       activeTokens,
-      // cm:guard BOTH halves, because a live credential is only half of being able to act: the token is fenced to one project and `effectiveProjectRole` is what answers on the other side, so an agent whose project membership was removed after its token was minted holds a credential that opens nothing. Reported as the credential fact alone, `reachOf`'s "belongs to no project" branch is unreachable and the console tells an admin to mint a second credential that will not help either (ISS-1003 criteria 2, 6, 7).
       canAct: activeTokens > 0 && row.projectId != null,
     };
   });
@@ -244,7 +237,6 @@ export async function loadOrgAgent(
  * {@link createAgentAccount} cannot reach because it only ever mints beside a
  * creation.
  */
-// cm:guard the token is bound to the project the agent is a member of, never unbound, because `createAgentAccount` binds the one it mints and an agent credentialed through this route would otherwise reach every project its owner does. An agent with no project membership is refused here rather than given an unbound token: a credential whose fence resolves to nothing is the account-scoped token `boundProjectId` exists to prevent (ISS-497).
 export async function mintAgentCredential(
   orgId: string,
   agentUserId: string,
@@ -280,7 +272,6 @@ export async function mintAgentCredential(
  * credentials the same agent — which is the ordinary case, since taking the
  * credential away and giving a new one is what this pair of routes is for.
  */
-// cm:guard three attempts and then a REFUSAL, never a loop and never a silent skip: the caller never types this name, so a collision is ours to resolve, but a retry with no bound turns a constraint nobody can satisfy into a request that never returns. The escalation is deterministic first (the timestamp, which reads well in a token list) and random only as the last step, so the common second mint gets a name a person can still recognise.
 async function mintDistinctlyNamed(
   userId: string,
   base: string,
@@ -310,7 +301,6 @@ async function mintDistinctlyNamed(
  * Distinct from {@link revokeAgentAccount}, which also drops the memberships:
  * this is "it may not act right now", that is "it is retired".
  */
-// cm:guard revoking a credential may not fail on anything conversational, and this writes to ONE table for that reason — removing authority is a security action and issue rule 4 says it always succeeds. A room that loses its only able handle stays readable and reports the handle unreachable; that is `conversations/scope.ts`'s job and never a reason to refuse here (ISS-1003 criteria 5, 18).
 export async function revokeAgentCredentials(
   orgId: string,
   agentUserId: string,
@@ -330,7 +320,6 @@ export async function revokeAgentCredentials(
  * Retire an agent: every token revoked, every membership dropped. The `users`
  * row STAYS.
  */
-// cm:guard the row is never deleted, and that is not tidiness deferred. `activity_log.actor_id`, `kernel_transitions.actor_id`, `issue_activity` and `jobs.created_by` all point at it, so deleting it either cascades away the record of what the agent did or fails on a restrict — and the whole reason an agent is a real principal is so "who made this write" keeps a true answer after the agent is gone. Authority is what is removed: no live token and no membership is no reach, which `effectiveProjectRole` already returns `null` for.
 export async function revokeAgentAccount(orgId: string, agentUserId: string): Promise<boolean> {
   const [row] = await db
     .select({ id: users.id })
@@ -369,7 +358,6 @@ export async function revokeAgentAccount(orgId: string, agentUserId: string): Pr
  * `null` clears it back to having none, which is a state the renderers already
  * have a branch for.
  */
-// cm:guard this writes `users.display_name` and NEVER `organization_members.handle`: the two are a label and an address, and the whole point of splitting them is that the label may be re-typed freely while the address is a key somebody's mention resolves against. A setter that moved both would hand `@old-name` to whoever takes the name next — the thing `assistant_speaker_links` already refuses one table over (ISS-1003 criterion 8).
 export async function setAgentDisplayName(
   orgId: string,
   agentUserId: string,

@@ -9,9 +9,6 @@ import type { AgentMessage, ContentBlock, ToolCall } from '../lib/agent-stream-p
 import type { StoredConversationMessage } from './store.js';
 
 /** The blocks column, read back as blocks or as nothing. */
-// cm:guard validated on the way OUT for the same reason `asImages` is, and a row whose column holds
-// something this cannot read comes back null — which `toCanonicalEntry` answers from `content`,
-// so an illegible column degrades to the legacy reading rather than to an empty turn.
 export function asBlocks(value: unknown): ContentBlock[] | null {
   if (!Array.isArray(value)) return null;
   const out: ContentBlock[] = [];
@@ -28,13 +25,6 @@ export function asBlocks(value: unknown): ContentBlock[] | null {
  * (ISS-1029) — the same `AgentMessage` shape `lib/agent-stream-parser.ts`
  * produces for the Claude Code CLI path, so one formatter renders both.
  */
-// cm:guard `type` is DERIVED from `role` and `timestamp` from `created_at` rather than stored a
-// second time: the row already answers both, and a column repeating them is a copy nothing keeps in
-// step. This is the whole of the mapping, in one place, so a stored row and a streamed entry cannot
-// disagree about what they are.
-// cm:guard a row with no blocks becomes ONE text block off `content` and never an empty entry: every
-// row written before ISS-1029 is that row, and an empty `blocks` would render them all as turns
-// nobody answered.
 export function toCanonicalEntry(row: StoredConversationMessage): AgentMessage {
   const blocks: ContentBlock[] =
     row.blocks ?? (row.content.length > 0 ? [{ type: 'text', text: row.content }] : []);

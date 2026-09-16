@@ -1,7 +1,5 @@
 "use client";
 
-// cm:guard the save REPLACES `agentConfig.plugins` whole — the draft this section holds must always start from the fetched list and always be sent complete. A partial send is not a smaller edit here, it is a deletion of everything omitted.
-// cm:edge contract -> packages/core/src/projects/routes.ts — `PATCH /:id/plugins` takes `{ plugins }` and validates each against `pluginDesignationSchema`: kebab-case name, `pinnedRef` a 7-40 char git SHA or null
 
 import { useEffect, useRef, useState } from "react";
 import {
@@ -91,7 +89,6 @@ export function PluginsSection({
     </div>
   );
 
-  // cm:guard the error branch must sit BEFORE the loading one. `draft` is seeded from `projectQ.data`, so on a failed fetch it stays null forever — ordering these the other way round renders a skeleton that never resolves, which is the dead end §2 of the UX contract exists to forbid.
   if (projectQ.isError) {
     return (
       <div className="mt-6 border-t border-line pt-5">

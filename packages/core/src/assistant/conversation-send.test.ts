@@ -111,7 +111,6 @@ const send = () =>
   });
 
 describe('a send', () => {
-  // cm:guard the venue prefix is what keeps one person's request off another room's window; without it this call takes whatever the adapter owes and answers it under this request's timing.
   it('claims only this room’s window, and does not wait out the settle', async () => {
     await send();
     expect(claimDueWindows).toHaveBeenCalledTimes(1);
@@ -123,7 +122,6 @@ describe('a send', () => {
     });
   });
 
-  // cm:guard the settle event is published AFTER `routeWindow` returns, which is the whole reason it exists beside the delivery event: the delivery goes out before the reply row commits, so a second tab that refetched on that alone reads the room back without the answer in it (review F2).
   it('tells the room it has settled, after the window closed and whatever it decided', async () => {
     routeWindow.mockImplementation(async () => {
       expect(published).toEqual([]);
@@ -196,7 +194,6 @@ describe('the recovery drain', () => {
 });
 
 describe('the persona', () => {
-  // cm:guard the Forge UI chat WAS a runner-hosted session with the repository checked out and is now a conversation turn with neither; a persona that did not say so would answer a question about a file as though it had looked (ISS-1004 step 5).
   it('says it has no checkout and no shell', () => {
     const persona = webConversationPersona('Alpha', 'alpha', 'Alice');
     expect(persona).toMatch(/no checkout of the repository and no shell/);

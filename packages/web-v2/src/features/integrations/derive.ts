@@ -134,7 +134,6 @@ export function groupCardsByProvider(cards: StatusCard[]): ProviderCardGroup[] {
  * unconfigured card stays `not_connected`.
  */
 export function deriveDirectoryStatus(card: Pick<StatusCard, "status" | "meta">): DirectoryStatus {
-  // cm:guard both credential states are read from the RAW lastHealthStatus and win over the server bucket and the breaker — the bucket collapses them to `attention` and cannot be un-collapsed here, and they name two different operator actions (ISS-408/F3, ISS-409/F4, ISS-924)
   if (card.meta?.lastHealthStatus === "needs_reauth") return "needs_reauth";
   if (card.meta?.lastHealthStatus === "needs_scope") return "needs_scope";
   const breakerOpen = card.meta?.breakerOpen === true;
@@ -200,8 +199,6 @@ export const DIRECTORY_STATUS_META: Record<
     fg: "var(--amberw-700)",
     bg: "var(--amberw-50)",
   },
-  // cm:guard needs_scope must never share needs_reauth's label — one says replace the credential, the other says the credential is fine and its permissions are not, and an operator who reads the wrong one does work that reproduces the state exactly (ISS-924)
-  // cm:guard the label says PERMISSION and not "scope", and it is shared by three providers whose remedies are not the same page: Coolify wants a token ability, GitHub an App permission, and Google the spreadsheet shared with the service account. "Needs wider scope" sent a Google operator hunting an OAuth setting that does not exist for them (ISS-1036). The precise sentence belongs on the provider's own panel, which is the only place that knows which of the three this is.
   needs_scope: {
     icon: "lock",
     label: "Permission needed",
@@ -236,7 +233,6 @@ export function getCapabilities(card: Pick<StatusCard, "meta"> | undefined | nul
 
 /** Keys whose values must never reach the DOM (ADR 0013). Matched
  *  case-insensitively against object keys when redacting free-form payloads. */
-// cm:guard `private[-_]?key` and `service[-_]?account` are NOT covered by the `token`/`secret` alternatives beside them — a GitHub App PEM and a Google service-account key file carry neither word, so before ISS-1036 either would have rendered into the DOM verbatim. Adding a credential shape to the vault means adding its key name here.
 const SECRET_KEY_RE = /(api[-_]?key|api[-_]?token|private[-_]?key|service[-_]?account|secret|webhook[-_]?secret|password|authorization|token|bearer|credential)/i;
 
 export const REDACTED = "[redacted]";

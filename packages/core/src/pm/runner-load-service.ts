@@ -38,6 +38,5 @@ export async function readRunnerLoad(projectId: string): Promise<RunnerLoad[]> {
 
   const inFlightById = await countInFlightByRunner(runnerRows.map((r) => r.id));
 
-  // cm:guard `inFlight` is a raw count and must stay one — no capacity, no headroom, no "slots free". Core enforces no ceiling since the master began claiming from the pool, so any number derived here would be a limit nothing applies; the reader concludes, this does not conclude for it. Same rule as `devices/load.ts`.
   return runnerRows.map((r) => ({ ...r, inFlight: inFlightById.get(r.id) ?? 0 }));
 }

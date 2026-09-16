@@ -65,7 +65,6 @@ const forkBodySchema = z
   })
   .strict();
 
-// cm:guard no auth middleware here on purpose — `routes.ts` applies it once for the whole `/api/agent-sessions` surface before mounting this router. Adding a second layer here would double-charge every request; removing the aggregator's would leave this one unauthenticated with nothing saying so.
 export const agentSessionTurnsRoutes = new Hono<{ Variables: AuthVars }>();
 
 agentSessionTurnsRoutes.get(

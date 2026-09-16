@@ -99,9 +99,6 @@ describe('an issue asserting work with no live run behind it', () => {
       'retraction here would be a guess: an issue reaches in_progress by a baseline record a person wrote, not only by a run session',
     ).toBe('in_progress');
 
-    // cm:guard the SECOND sweep is the assertion, not a repeat of the first. A warning repeated
-    // every minute for the life of a disagreement is a warning nobody reads, which is the same
-    // silence this pass exists to break (ISS-1050 criterion 32).
     const second = await mods.detectOrphanedRunAssertions();
 
     expect(second.detected, 'the disagreement has not gone away, so it still matches').toBe(1);

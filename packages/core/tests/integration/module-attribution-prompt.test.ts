@@ -83,7 +83,6 @@ describe('ISS-595 · the taxonomy reaches the prompt', () => {
   it('names each module and its parent, and no plain label', async () => {
     const billing = await insertLabel(project.id, 'billing', 'module');
     await insertLabel(project.id, 'invoices', 'module', billing);
-    // cm:why a name that appears nowhere in the fact's own example payload, so the assertion below fails on a leaked plain label rather than on the instruction text quoting one
     await insertLabel(project.id, 'wontfix-ux', 'label');
 
     const text = await promptFor(project.id);
@@ -101,8 +100,6 @@ describe('ISS-595 · the taxonomy reaches the prompt', () => {
     expect(text).toContain('is NOT the attribution and nothing reads it');
   });
 
-  // cm:guard the whole no-op claim rests on THIS case: a project that keeps only plain labels
-  // must get no section, or every project on the deployment is told to attribute to nothing
   it('adds nothing for a project whose labels are all plain', async () => {
     await insertLabel(project.id, 'wontfix-ux', 'label');
     await insertLabel(project.id, 'bug', 'label');

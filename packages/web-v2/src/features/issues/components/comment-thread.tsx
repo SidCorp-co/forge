@@ -34,10 +34,8 @@ import type { CommentNode, ProjectMember } from "../types";
 import { AttachmentList } from "./attachment-list";
 import { BodyEditor } from "./body-editor";
 
-// cm:edge lockstep -> packages/core/src/lib/attachment-mime.ts#allowedSetForTarget — this list must mirror the server's `comment` target, which is narrower than `issue` (no video); a client that stages what the server refuses turns a preventable client-side rejection into a 400 after the bytes are sent. The note this replaces pointed at `attachment-service.ts ALLOWED_MIMES`, which no longer exists — the three per-target sets are now one table in that module.
 const MAX_BYTES = 10 * 1024 * 1024;
 const MAX_FILES = 10;
-// cm:edge lockstep -> packages/core/src/comments/attachment-service.ts — this set exists only to reject before an upload round-trip, so a mime core accepts and this omits is invisible: the picker silently filters the file and the person is told the type is unsupported, while an agent posting the same file through forge_uploads succeeds. `image/svg+xml` is knowingly still missing here — see the note on the issue-side twin.
 const ALLOWED_MIMES = new Set([
   "image/png",
   "image/jpeg",
@@ -55,7 +53,6 @@ const ALLOWED_MIMES = new Set([
 const ACCEPT_ATTR =
   "image/png,image/jpeg,image/gif,image/webp,application/pdf,text/html,text/plain,text/markdown,text/csv,application/vnd.openxmlformats-officedocument.wordprocessingml.document,application/vnd.ms-excel,application/vnd.openxmlformats-officedocument.spreadsheetml.sheet,.png,.jpg,.jpeg,.gif,.webp,.pdf,.html,.txt,.md,.csv,.docx,.xls,.xlsx,.log,.sql,text/*";
 
-// cm:guard the browser reports `""` for a `.log` or `.sql` and cannot read the bytes, so this must let an unknown type through to the server rather than filter it — core resolves the type from the bytes now and refuses only what is not UTF-8 text (ISS-957)
 function isStageable(mime: string): boolean {
   return ALLOWED_MIMES.has(mime) || mime === "" || mime.startsWith("text/");
 }
@@ -131,7 +128,6 @@ function AddCommentBox({
     [acceptFiles],
   );
 
-  // cm:guard only image FILE blobs are pulled in — pasted text must fall through to the editor untouched or it is inserted twice. A clipboard image usually arrives with an empty name, so one is supplied here.
   const onPaste = useCallback(
     (e: ClipboardEvent) => {
       const blobs: File[] = [];
@@ -299,7 +295,6 @@ function CommentItem({
   const [replying, setReplying] = useState(false);
   const { kind } = deriveCommentKind(node);
   const meta = COMMENT_KIND_META[kind];
-  // cm:why the members lookup is a fallback for payloads that predate `author`, not a second source of truth — without it those rows render a raw UUID, which is what ISS-519 was filed about
   const isAgent = node.author?.isAgent ?? false;
   const author = node.author?.displayName ?? memberLabel(node.authorId, members);
   const ownerEmail = node.author?.ownerEmail;

@@ -32,7 +32,6 @@ let resolveManagedMetaPrompts: typeof import('../../src/skills/effective.js').re
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
-  // cm:guard the modules under test are imported AFTER this assignment, never at the top of the file: `src/db/client.js` reads `DATABASE_URL` once at module load, so a static import binds the pool to the base database and every query lands in a schema the migrations never touched.
   process.env.DATABASE_URL = harness.url;
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
@@ -52,7 +51,6 @@ beforeEach(async () => {
 });
 
 describe('the message screen, against a real database', () => {
-  // cm:guard the prefix is READ BACK rather than set: `issue_prefix_aliases_immutable_trg` refuses a prefix change outright, so a fixture that wrote one would fail on the trigger and read as a screen fault.
   async function seed() {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
@@ -64,7 +62,6 @@ describe('the message screen, against a real database', () => {
     const rows = await harness.db.execute<{ issue_prefix: string | null }>(sql`
       SELECT issue_prefix FROM projects WHERE id = ${project.id}
     `);
-    // cm:guard `?? LEGACY_ISSUE_PREFIX` is the fixture agreeing with `formatIssueRef`, not a convenience: a fresh project stores NULL and still renders `ISS-n`, so a fixture reading the column literally would build a key nobody writes and watch the screen abstain — which is how this lane found the screen doing exactly that.
     const prefix = (rows[0] as { issue_prefix: string | null }).issue_prefix ?? LEGACY_ISSUE_PREFIX;
     return { owner, project, prefix };
   }
@@ -137,7 +134,6 @@ describe('the message screen, against a real database', () => {
     expect(await commentCount(target.id)).toBe(1);
   });
 
-  // cm:guard the edit is judged on the STORED `author_agency`, never on who is editing: an agent's comment edited into a false claim is the same false claim, and reading the editor would let one route around the screen the create path applied.
   it('screens an edit of an agent comment, and leaves the stored body untouched when it refuses', async () => {
     const { owner, project, prefix } = await seed();
     const target = await issue(project.id, owner.id, 'in_progress');
@@ -174,7 +170,6 @@ describe('the message screen, against a real database', () => {
     ).resolves.toBeTruthy();
   });
 
-  // cm:guard this compares against `prepareBody`'s OWN output, not against the raw string, and that is the point: markup sanitising is `prepareBody`'s job and it may legitimately change bytes. What must be true is that the screen added nothing to that — it refuses or it passes, and there is no third outcome where it hands back edited text.
   it('substitutes nothing — a markdown body that passes reaches prepareBody as the agent sent it', async () => {
     const { prepareBody } = await import('../../src/body/prepare.js');
     const { owner, project } = await seed();
@@ -200,7 +195,6 @@ describe('the message screen, against a real database', () => {
     expect(written.row.body).toBe(prepareBody({ raw: body }).body);
   });
 
-  // cm:guard a reference belonging to ANOTHER project must not be judged here: CLAUDE.md's carve-out requires an agent that finds a defect in `forge-plugin` to name that project's key in its comment, and a screen that refused the mandated behaviour would be worse than none.
   it('abstains on a key this project does not hold', async () => {
     const { owner, project, prefix } = await seed();
     const target = await issue(project.id, owner.id, 'in_progress');
@@ -218,7 +212,6 @@ describe('the message screen, against a real database', () => {
 });
 
 describe('the shape document over the prompt channel', () => {
-  // cm:guard the built-in copy is put there by the REAL seeder reading the real `skills/` folder, not by a hand-written INSERT: the thing under test is that the shipped document reaches the prompt channel, and a fixture body would have proven only that the resolver returns rows.
   async function seedTheShippedDocument() {
     const { seedBuiltinSkills } = await import('../../src/skills/builtin-seed.js');
     await seedBuiltinSkills(harness.db as never);
@@ -234,7 +227,6 @@ describe('the shape document over the prompt channel', () => {
     expect(shape?.body).toContain('`comment-write`');
   });
 
-  // cm:guard the adopted copy WINS, and that is the whole reason this document is served over the prompt channel rather than synced to disk: a project that has tightened its own rules must not be handed the built-in text describing rules it does not run.
   it('serves a project its own copy once it adopts the document', async () => {
     await seedTheShippedDocument();
     const owner = await createTestUser(harness.db);

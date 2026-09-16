@@ -14,7 +14,6 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 expect.extend(matchers);
 
-// cm:why jsdom implements no scrolling at all, and the thread pins itself to its newest message on every mount — without this stub the component throws before any assertion here is reached
 Element.prototype.scrollIntoView = vi.fn();
 
 const open = vi.fn();
@@ -34,10 +33,6 @@ vi.mock("../api", () => ({
 vi.mock("@/features/projects/hooks", () => ({
   useProjects: () => ({ data: [{ id: "p1", name: "Alpha", slug: "alpha", role: "member" }] }),
 }));
-// cm:guard the double takes the message as an ARGUMENT so a test can send two different ones, and
-// it never reads `busy`: the real composer accepts a send while busy only when the caller passes
-// `queueWhileBusy`, and this chat does. A double that refused while busy would make the queue below
-// untestable and would have passed against the defect (ISS-1031).
 let nextMessage = "is the release ready?";
 vi.mock("@/features/session/components/composer", () => ({
   Composer: ({ onSend }: { onSend: (m: string) => Promise<void> }) => (
@@ -97,7 +92,6 @@ beforeEach(() => {
       { id: "w1", firstSeq: 0, lastSeq: 0, closedAt: "2026-09-14T00:00:01.000Z", decision: "answered", decisionDetail: null },
     ],
   });
-  // cm:why the room reads back with what the send left in it, because that is what the server holds by the time any read of it lands — a mock returning an empty room would be asserting a race rather than the behaviour
   detail.mockImplementation(async () => ({
     id: "c1",
     adapter: "web",
@@ -142,10 +136,6 @@ describe("ConversationChat · the first message of a draft", () => {
   });
 });
 
-// cm:guard ISS-1031 — `POST /conversations/:id/messages` does not return until the agent turn is
-// over, so before this the thread could not show a person's own question until the answer arrived
-// with it: the words sat in the box and the room looked untouched for the whole wait. These four
-// cases are that behaviour, and each was watched failing against the code as it stood.
 describe("ConversationChat \u00b7 what a person sees between pressing send and being answered", () => {
   it("shows the message in the thread before the server has answered", async () => {
     let answer: (v: unknown) => void = () => undefined;
@@ -230,8 +220,6 @@ describe("ConversationChat \u00b7 what a person sees between pressing send and b
     });
     await waitFor(() => expect(screen.getByText("two issues left")).toBeInTheDocument());
 
-    // cm:why the heading renders the first message's text too, so the count is taken inside the
-    // thread rather than over the document — asserting over the whole screen counts the title.
     expect(screen.queryByTestId("thread-outbox-sending")).not.toBeInTheDocument();
     expect(screen.queryByTestId("thread-outbox-queued")).not.toBeInTheDocument();
     expect(screen.queryByTestId("thread-outbox-failed")).not.toBeInTheDocument();
@@ -242,7 +230,6 @@ describe("ConversationChat \u00b7 what a person sees between pressing send and b
   });
 });
 
-// cm:guard ISS-1011 review F6 — whether this caller may change the membership is the SERVER's answer, and the mock here holds a caller who is a `member` on the project and still may not: that is a real combination, because changing membership also takes being a live person in the room, which no project role implies. A screen inferring the capability from the project role offers the control and the server refuses it, which reads as a broken button rather than as a rule.
 describe("ConversationChat · who may change who is in the room", () => {
   const roomWith = (extra: Record<string, unknown>) => ({
     id: "c1",
@@ -292,7 +279,6 @@ describe("ConversationChat · who may change who is in the room", () => {
     expect(await screen.findByRole("button", { name: /add agent/i })).toBeInTheDocument();
   });
 
-  // cm:guard an ANSWER that carried no such field is read as "may not", not as "may": a tab open across the deploy of the half that added it would otherwise show controls whose every use the server refuses.
   it("offers nothing where the room's answer does not carry the capability at all", async () => {
     detail.mockResolvedValue(roomWith({}));
     await openRoster();

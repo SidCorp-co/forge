@@ -27,7 +27,6 @@ export const MAX_CLUSTERS_PER_DIGEST = 10;
 export const FEEDBACK_LIST_LIMIT = 200;
 
 /** `detectorKey` every digest issue carries, so the kernel keeps at most one open. */
-// cm:guard this string is the dedupe identity and must never change or be varied per run — the kernel guarantees at most one non-closed issue per (project, detectorKey), and a key that drifts by date or window silently turns that guarantee off. Prose dedupe was tried here first and measurably failed on the same schedule family: Dream's own prompt records 7 near-identical CHANGELOG drafts between 2026-07-15 and 2026-08-04, and this builder repeated the mistake — its first real run on 2026-09-05 filed a digest with `detector_key: null`.
 export const DIGEST_DETECTOR_KEY = 'feedback-digest/fleet-backlog';
 
 // ── Prompt builder ────────────────────────────────────────────────────────────

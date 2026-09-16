@@ -31,7 +31,6 @@ const facts = (over: Partial<HeartbeatFacts> = {}): HeartbeatFacts => ({
 });
 
 describe('heartbeatDue', () => {
-  // cm:guard the range is asserted as the FIRST unanswered person message to the newest — two person messages after the agent's last word, both in the window — because a range read from the collector's watermark would hold none of them (ISS-1034 criterion 36).
   it('is due over every person message since the agent last spoke', () => {
     const f = facts();
     const [, first, newest] = f.messages;
@@ -69,7 +68,6 @@ describe('heartbeatDue', () => {
     expect(heartbeatDue(f)).toEqual({ due: false, reason: 'agent-spoke-recently' });
   });
 
-  // cm:guard the interval is measured against the LAST heartbeat as well as the last agent message: a heartbeat window that decided nothing-to-say left no agent message, and without this clause the next tick would open another every time (ISS-1034 criterion 36).
   it('is not due while the last heartbeat is within the interval', () => {
     expect(heartbeatDue(facts({ lastHeartbeatAt: ago(30 * 60 * 1000) }))).toEqual({
       due: false,

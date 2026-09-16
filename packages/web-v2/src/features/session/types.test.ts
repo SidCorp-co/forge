@@ -289,8 +289,6 @@ describe("tool labels + kinds", () => {
  * toCanonicalEntry` returns for an assistant `conversation_messages` row, and
  * they exist to fail if that shape and this reader ever drift apart.
  */
-// cm:guard nothing in `types.ts` was changed to make these pass, and nothing may be: the whole
-// point of the issue is that the assistant path was made to fit the reader that already existed.
 describe("parseMessages over an assistant conversation row", () => {
   /** What `toCanonicalEntry` returns for a turn that wrote prose, called a failing tool, wrote more. */
   const assistantEntry = {
@@ -338,8 +336,6 @@ describe("parseMessages over an assistant conversation row", () => {
     expect(block?.type).toBe("tool");
     if (block?.type !== "tool") throw new Error("expected a tool block");
     expect(block.tool.name).toBe("forge_issues");
-    // cm:guard `result ?? output` is the field-drift normalisation this formatter already carried;
-    // the assistant path writes `output`, like the CLI derive does, so it needs no new branch.
     expect(block.tool.result).toBe("boom");
     expect(block.tool.isError).toBe(true);
     expect(block.tool.durationMs).toBe(12);

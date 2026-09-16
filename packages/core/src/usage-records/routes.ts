@@ -51,7 +51,6 @@ const recordCreateSchema = z
 
 const bulkSchema = z
   .object({
-    // cm:guard `projectId` is REQUIRED here and on the ingest-cli twin, and widening it to optional is the whole defect: the per-record gate below authorises by iterating the distinct projectIds, so a null one is filtered out of that loop, authorised by nobody, and inserted as a global-pool row.
     records: z
       .array(recordCreateSchema.extend({ projectId: z.uuid() }))
       .min(1)
@@ -193,7 +192,6 @@ usageRecordRoutes.get(
     const [row] = await db.select().from(usageRecords).where(eq(usageRecords.id, id)).limit(1);
     if (!row) throw notFound('usage record not found');
 
-    // cm:guard a null-projectId row is the internal/global pool and must 404 here with the SAME shape as a missing row — any other status makes this route an enumeration oracle for internal usage; internal writers read those rows off the DB, never over HTTP (ISS-492)
     if (!row.projectId) throw notFound('usage record not found');
 
     const access = await loadProjectAccess(row.projectId, userId);
@@ -212,7 +210,6 @@ usageRecordRoutes.post(
     const input = c.req.valid('json');
     const userId = c.get('userId');
 
-    // cm:guard refuse a missing `projectId` here rather than defaulting it — an unscoped row is a global-pool row, and this is a user-facing route. The internal writers that legitimately create them are `materializeJobUsage` and friends, which insert directly and never come through HTTP (ISS-492).
     if (!input.projectId) {
       throw badRequest({ projectId: 'required' });
     }
@@ -304,7 +301,6 @@ usageRecordRoutes.post(
     if (!r.success) throw badRequest(z.flattenError(r.error));
   }),
   async (c) => {
-    // cm:why this exists beside /bulk only to tag the source: desktop runners post their local JSONL parses here, and the ingest path has to be distinguishable from an API caller's bulk upload after the fact
     const { records } = c.req.valid('json');
     const userId = c.get('userId');
 

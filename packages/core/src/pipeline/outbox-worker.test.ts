@@ -16,7 +16,6 @@ interface FakeRow {
   created_at: Date;
 }
 
-// cm:why claimQueue backs the UPDATE...RETURNING branch of dbExecute; updateCalls captures every subsequent processed/failed UPDATE so tests can assert outcomes without a real DB
 const claimQueue: FakeRow[][] = [];
 const updateCalls: Array<{ kind: 'processed' | 'failed' | 'unknown'; chunks: unknown[] }> = [];
 
@@ -25,7 +24,6 @@ function sqlTextOf(q: unknown): string {
   let text = '';
   for (const c of chunks) {
     if (typeof c !== 'object' || c === null) continue;
-    // cm:why nested sql.raw(...) calls surface as their own SQL wrapper (with its own queryChunks) rather than a flat StringChunk — recurse into it
     if ('queryChunks' in c) {
       text += sqlTextOf(c);
       continue;
@@ -74,14 +72,11 @@ vi.mock('../db/client.js', () => ({
   db: { execute: dbExecute, transaction: transactionMock },
 }));
 
-// cm:why the regression guard: emitMock asserts no transaction is ever opened while a hook is in flight — fails against pre-ISS-678 code, which awaits hooks.emit from inside an open db.transaction
-// cm:guard the return type is annotated, not inferred: without it `failures: []` widens to never[]
 //   and every per-test override that reports a real subscriber failure stops type-checking
 const emitMock = vi.fn(async (): Promise<EmitResult> => {
   expect(transactionMock).not.toHaveBeenCalled();
   return { topic: 'transition', delivered: 1, failures: [] };
 });
-// cm:why importOriginal keeps assertHookDelivered/HookDeliveryError real — only emit/on need mocking, since drainOutboxOnce's failure path now runs through the real scoping logic
 vi.mock('./hooks.js', async (importOriginal) => {
   const actual = await importOriginal<typeof import('./hooks.js')>();
   return { ...actual, hooks: { emit: emitMock, on: vi.fn() } };
@@ -317,7 +312,6 @@ describe('outbox-worker', () => {
   });
 
   it('raises a pipeline_wedge when a row at the redelivery cap fails again', async () => {
-    // cm:why 3 == MAX_REDELIVERIES in outbox-worker.ts — the row's `attempts` here models claimBatch's RETURNING value (post-increment), i.e. this claim was the 3rd redelivery, the last one `attempts < MAX_REDELIVERIES` will ever admit
     const r = row({ id: '11111111-2222-4333-8444-555555555555', attempts: 3 });
     claimQueue.push([r]);
     emitMock.mockImplementationOnce(async () => {

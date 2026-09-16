@@ -151,11 +151,9 @@ export async function finalizeScheduleSessionFailure(opts: {
   /** Post-write schedule failover; no-op unless the classifier said `failover`. */
   recoverAfterWrite: (metadata: unknown) => Promise<void>;
 }> {
-  // cm:guard classify runner-authored text ONLY. A schedule session's transcript opens with the schedule's own prompt as a `user` message, so an unfiltered blob is fed to the classifier AS IF it were the error: every pattern runs against the prompt, and a prompt that merely says "usage limit" or "rate limit" is classified `failover` and triggers a real cross-account schedule failover. Measured live on forge-beta 2026-08-13: `improve:optimize-skills` and `improve:product-map-refresh` both stored 198 chars of their own prompt as `agent_sessions.failure_reason`.
   const text = extractSessionFailureText(opts.messages, opts.note, { excludeRoles: ['user'] });
   const classified = classifyFailure({ error: text });
 
-  // cm:guard ISS-877 — `failureReason` takes the CAUSE token and `failureDetail` takes the sentence. This assignment used to put `classified.reason` (a sentence) into the column `queue_timeout` and `user_cancelled` use as a token, which is how 55 live rows came to hold prose — including 9 that hold the agent's own prompt as its reason for failing. Never widen `failureReason` back to free text; add a member to `FAILURE_CAUSES` instead.
   opts.set.failureReason = classified.cause;
   opts.set.failureDetail = classified.reason || null;
 
@@ -166,7 +164,6 @@ export async function finalizeScheduleSessionFailure(opts: {
       ...base,
       ...(reset ? { limitResetAt: reset.toISOString() } : {}),
     };
-    // cm:guard the predicted `→ cross-device failover` may only stand where SOME failover path can act on the row. A schedule run gets its true disposition stamped post-write by redispatchScheduleSessionOnFailover; an agent-chat session has its own copy of that machinery (integrations/rocketchat/agent-chat.ts) which runs on its own trigger, so its disposition is not ours to state. What is left — a plain chat session — has no failover path at all, and settles here.
     if (base.source !== 'schedule.run' && base.agentChat == null) {
       opts.set.failureDetail = `${failureClassOf(classified.reason)} → no failover (plain chat session)`;
     }

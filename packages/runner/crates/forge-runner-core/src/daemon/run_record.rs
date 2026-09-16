@@ -18,7 +18,6 @@ use crate::runner::ledger::Ledger;
 use crate::transport::{run_sessions, CoreClient};
 
 /// What this pass needs of core, so a test can answer it without a network.
-// cm:guard a port rather than the client, because the whole value of this pass is what it does when core REFUSES: the row stays as it is and the next sweep tries again. A test that cannot produce a refusal cannot show that.
 #[allow(async_fn_in_trait)]
 pub trait SessionOpener {
     async fn open(
@@ -47,8 +46,6 @@ impl SessionOpener for CoreSessions<'_> {
 /// Open a core run session for every row this boot declared and core has not seen.
 ///
 /// Answers how many it opened, which is what the caller logs.
-// cm:guard the session id is written back BEFORE anything else happens to the row, and a failure to write it back is louder than a failure to open: a core session whose id this box lost is a session nothing will ever beat and nothing here can ever close, so it is reaped in ten minutes and its issues come back from under a run that is still working. Losing the id is worse than never opening the session.
-// cm:guard one refusal does NOT stop the pass. Each row is independent, and a project core has since forgotten must not hold up every other project's declarations on this box.
 pub async fn open_declared_runs(
     opener: &impl SessionOpener,
     ledger: &mut Option<Ledger>,
@@ -118,8 +115,6 @@ pub async fn open_declared_runs(
 /// rather than in ten minutes.
 ///
 /// Answers how many it closed.
-// cm:guard the outcome is `Ended` and never `Died`, and the difference is the whole point: a run whose subagent reported `SubagentStop`, or whose master closed a declaration it never dispatched, FINISHED. Reporting it as `died` would send core's `returnIssuesForRun` over issues an agent had deliberately advanced and pull them back to the status they held when the run opened (ISS-1050 criteria 8, 9).
-// cm:guard the mark is written only when core ANSWERED, so a box that could not reach core reports the same run again on its next sweep. The alternative — marking first — turns one unreachable minute into a run whose issues nothing ever releases, which is the failure this whole issue is about, arriving from inside the fix.
 pub async fn close_ended_runs(
     closer: &impl SessionCloser,
     ledger: &mut Option<Ledger>,
@@ -144,13 +139,6 @@ pub async fn close_ended_runs(
             continue;
         };
         let detail = run.ended_reason.clone().unwrap_or_default();
-        // cm:guard reconstructed HERE, at the close, and not when the run ended. The worktree is
-        // the evidence and it is still on disk at this moment; a checkpoint taken at
-        // `SubagentStop` and stored would be a second copy of a fact the disk already holds, and
-        // the two would disagree the first time a salvage committed after the stop.
-        // cm:edge contract -> packages/core/src/devices/run-evidence.ts — that module prints this
-        // payload under "reconstructed from the box" and refuses one that does not declare its
-        // `source`.
         let checkpoint = Some(checkpoint::reconstruct_within_budget(&run).await.to_json());
         match closer.close(&session_id, &detail, checkpoint).await {
             Ok(()) => match led.mark_session_terminal_observed(&run.run_id) {
@@ -282,8 +270,6 @@ mod tests {
         );
     }
 
-    // cm:guard the row must be left exactly as it was, because the next sweep is the whole recovery
-    // and a row marked in any way by a failed attempt is one that sweep would skip.
     #[tokio::test]
     async fn a_core_that_refuses_leaves_the_row_for_the_next_sweep() {
         let mut led = Some(Ledger::open_in_memory().unwrap());
@@ -313,10 +299,6 @@ mod tests {
         assert!(s2.seen.borrow().is_empty());
     }
 
-    // cm:guard a declaration the master cancelled before its subagent started must NOT reach core.
-    // A session opened for it would be one nothing ever beats, so core would fail it
-    // `runner_unreachable` ten minutes later and return issues no run was ever working — a false
-    // death report manufactured by the recovery path itself (ISS-1050 criteria 3, 4).
     #[tokio::test]
     async fn a_declaration_its_master_cancelled_is_never_told_to_core() {
         let mut led = Some(Ledger::open_in_memory().unwrap());
@@ -330,8 +312,6 @@ mod tests {
         assert!(s.seen.borrow().is_empty());
     }
 
-    // cm:guard a row from ANOTHER boot names a master this box no longer has, so a session opened
-    // for it is one nothing will ever beat. Same rule as every other boot-scoped read here.
     #[tokio::test]
     async fn a_row_from_a_previous_boot_is_never_told_to_core() {
         let mut led = Some(Ledger::open_in_memory().unwrap());
@@ -413,9 +393,6 @@ mod tests {
         assert!(again.seen.borrow().is_empty());
     }
 
-    // cm:guard the mark must NOT land when core refused, because a run marked closed that core still
-    // believes is running is one whose issues nothing releases — the failure this whole issue is
-    // about, arriving from inside the fix.
     #[tokio::test]
     async fn a_core_that_will_not_take_the_close_leaves_the_run_to_be_reported_again() {
         let mut led = Some(Ledger::open_in_memory().unwrap());

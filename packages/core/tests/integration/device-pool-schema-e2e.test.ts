@@ -10,7 +10,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard both picks are hand-written `db.execute(sql)` strings, so the columns they name are invisible to tsc and to `src/lib/device-pool.test.ts`, which mocks `db.execute` and cannot represent a schema mismatch at all — that is how `AND r.host = 'device'` outlived migration 0200 dropping the column and 500'd `POST /api/agent-sessions/send` on forge-beta (2026-09-04). A dropped or renamed runners/devices column must fail HERE; do not move these assertions onto a mocked db.
 describe('device-pool picks run against the migrated schema', () => {
   let harness: TestDatabase;
   let findAvailableDeviceForProject: typeof import('../../src/lib/device-pool.js').findAvailableDeviceForProject;

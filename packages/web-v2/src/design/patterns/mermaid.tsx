@@ -24,12 +24,10 @@ async function initMermaid() {
 /** Client-only Mermaid diagram renderer. Never enters the SSR bundle (dynamic import). */
 export function MermaidDiagram({ code, className }: MermaidDiagramProps) {
   const rawId = useId();
-  // cm:guard strip the colons `useId` emits — mermaid uses this string as an element id and a colon makes its own querySelector throw, so the diagram fails on a value React is free to produce.
   const id = `mermaid-${rawId.replace(/:/g, "")}`;
   const [svg, setSvg] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
 
-  // cm:guard no "same code, already done" ref guard here. React's dev double-invoke runs the effect, cancels it, and runs it again — a ref set on the first pass makes the second return early, so the cancelled render is the only one that ever happened and the skeleton never resolves. `[code, id]` already prevents the redundant work this was reaching for.
   useEffect(() => {
     let cancelled = false;
     setSvg(null);

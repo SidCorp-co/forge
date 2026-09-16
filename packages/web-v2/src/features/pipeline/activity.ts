@@ -62,7 +62,6 @@ function deviceLabel(a: PipelineRunAttempt): string {
   return "unassigned";
 }
 
-// cm:guard a `failed` attempt ALWAYS resolves to a cause, and `unclassified` is the honest one — never return null here to keep a row quiet, because an invisible unclassified rate is exactly how `job_failed` rotted unnoticed for 1,787 rows (ISS-877 invariant)
 function causeOf(a: PipelineRunAttempt): FailureCause | null {
   if (a.failureCause) return resolveFailureCause(a.failureCause);
   if (a.status !== "failed" && a.status !== "cancelled") return null;

@@ -33,7 +33,6 @@ const STALE_OUTBOX_INTERVAL = '5 minutes';
 const STUCK_ISSUE_INTERVAL = '60 seconds';
 const STUCK_ISSUE_LIMIT = 100;
 
-// cm:guard the ISS-598 in-flight wedge pass was deleted here by ISS-895, and re-adding one is re-adding the staged lane. It keyed on `PIPELINE_STEPS.workingStatus` — the code/fix trigger→working edge — and `drive` never had one. `resetAutonomousWedgesOnce` below is the net that covers this lane, and it is the only one; a second pass keyed on a step table would find nothing and report the same zero as a pass that is switched off.
 const WEDGE_GRACE = '10 minutes';
 const WEDGE_RESET_LIMIT = 50;
 
@@ -48,9 +47,6 @@ export async function runReconcilerOnce(): Promise<{
   let stale = 0;
   let autonomousReset = 0;
 
-  // cm:guard `merged_at IS NULL` is a REFUSAL, not a filter: an issue at `open` carrying the mark has already shipped and the close it owed died with its run, so re-dispatching it hands a runner work that is live in production. Measured 2026-09-06 on ISS-920 and ISS-931 (ISS-940). It is silent here on purpose — `detectOwedCloses` in pipeline/stranded-issues.ts is what tells a human, deduped, and a warn on a 60s tick would print the same ids every minute instead.
-  // cm:edge lockstep -> packages/core/src/pipeline/stranded-issues.ts — this exclusion and `detectOwedCloses` are one decision split across two passes: drop the detector and the exclusion becomes a silent skip
-  // cm:guard the entry status is the WHOLE rescue set now. This used to embed `AUTO_DISPATCH_STATUSES` — the nine `PIPELINE_STEPS` trigger statuses — and ISS-895 left one, so a stuck issue is by definition one sitting at `open` with nothing working it. Widening this back to the staged rungs would re-scan the statuses migration 0208 emptied, and `dispatchAutonomous` enqueues at the entry status only, so every row it found would be re-read every 60s and produce nothing.
   const stuck = await db.execute<{
     id: string;
     project_id: string;
@@ -74,7 +70,6 @@ export async function runReconcilerOnce(): Promise<{
 
   for (const row of stuck) {
     try {
-      // cm:guard this cap is the ONLY thing bounding re-dispatch on this path since ISS-895 removed the ISS-626 stage-stall guard, which counted `done` jobs of a stage's job type and could never see `drive` (it had no step entry, so the type it counted never existed). Removing this check restores an unbounded re-dispatch loop on every project — the ISS-626 incident with a different job type.
       const cap = await checkAutonomousRescueCap({
         projectId: row.project_id,
         issueId: row.id,
@@ -84,14 +79,12 @@ export async function runReconcilerOnce(): Promise<{
       if (cap.capped) continue;
       const autonomousRunId: string | null = cap.runId;
 
-      // cm:guard the repair is a WAKE, never an enqueue, since ISS-933 — core mints no `drive` work, so an issue at a live status with nothing running is not missing a job, it is waiting for a master to look. `ws/master-wake.ts` says in its own guard that a wake published while a box's socket is down is gone with no record, and this pass is the backstop that makes that cost latency instead of the work.
       const { boxes } = await wakeMastersForProject({
         projectId: row.project_id,
         issueId: row.id,
         status: row.status as IssueStatus,
       });
 
-      // cm:guard count BOXES BOUND, not sockets delivered. A wake is a hint the 30s sweep already duplicates, so a disconnected box is not a failed rescue; a project with NO box bound is, and it is the one an operator has to act on. Counting the attempt instead made this loop indistinguishable from productive work and fired the breadcrumb every minute for it.
       if (boxes === 0) continue;
 
       if (autonomousRunId) await recordAutonomousRescue(autonomousRunId);
@@ -173,11 +166,6 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
     sql`, `,
   );
 
-  // cm:guard TWO disjoint shapes, and the second is not a relaxation of the first. (A) the agent's drive job ended CLEANLY and left the issue behind while its run is still open — the ISS-880 shape. (B) the run itself is terminal or absent, so neither a retry nor a master can ever come back for this issue, whatever its last job's outcome was. Keeping them separate is what preserves every decision already tested here — a FAILED last job under a RUNNING run is still left alone, because the retry machinery owns that one and shape A does not admit it.
-  // cm:guard `merged_at IS NULL` sits on shape B and is a REFUSAL, not a filter — the same one the rescue above carries (ISS-940). Shape A inherits it from the running run it requires; B has no such implication, so without that line a run that died after its work shipped is rolled back to the entry status and re-dispatched into code that is live. `detectOwedCloses` in pipeline/stranded-issues.ts is what tells a human about those instead. Measured on sidpeak 2026-09-11: of eleven issues stranded at `in_progress`, one carried the mark.
-  // cm:edge lockstep -> packages/core/src/pipeline/stranded-issues.ts — shape B's `merged_at` refusal and `detectOwedCloses` are one decision in two halves, the SECOND pair on this file: what this pass declines to re-dispatch is exactly what that detector owes a human. Drop the detector and a run that died after shipping its work goes quiet in both places.
-  // cm:guard a PAUSED run excludes shape B as well as shape A. A pause is a person's decision and it outlives the run's own liveness, so a terminal sibling run must not licence the rollback that pause was holding.
-  // cm:guard NO project filter, and adding one back is how this net gets switched off for the fleet. It used to carry `coalesce(...->>'mode','autonomous') <> 'staged'` — the last reader of a stored column ISS-897 had already stripped from all 38 rows and ISS-895 removed the concept of. There is one lane, so every project is in scope; a filter that finds nothing and a pass that is switched off report the same number.
   const wedged = await db.execute<{
     id: string;
     project_id: string;
@@ -247,7 +235,6 @@ export async function resetAutonomousWedgesOnce(): Promise<number> {
         { reason: 'reconciler_autonomous_wedge_reset', skip: true },
       );
 
-      // cm:guard charge the rescue only AFTER the rollback lands. This pass fires only when the previous cycle's drive job is already `done`, so every charge is an observed outcome, never an attempt — and a throwing transition must not spend an allowance the issue never got.
       if (runId) await recordAutonomousRescue(runId);
 
       reset++;

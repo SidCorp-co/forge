@@ -78,7 +78,6 @@ export function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatInco
   return {
     id: m._id,
     rid,
-    // cm:why attachment text is included: a reply-quote's quoted content, and a webhook bot's entire body, live in `attachments` rather than in `msg`, so reading `msg` alone loses the whole message for a webhook post.
     text: extractMessageText(m as Parameters<typeof extractMessageText>[0], serverUrl),
     userId: u._id,
     username: u.username,
@@ -241,7 +240,6 @@ export class RocketChatDdpClient {
       case 'nosub':
         if (frame.id !== this.subId) return;
         if (this.state === 'live') {
-          // cm:guard a `nosub` after the subscription went live must CLOSE the socket, never be a no-op: the socket stays open and server pings keep flowing, so the watchdog never fires while no room message arrives again — the bot goes silently deaf ("replies once then goes quiet").
           this.opts.onError?.(
             new Error(`DDP subscription lost (nosub): ${JSON.stringify(frame.error)}`),
           );
@@ -307,7 +305,6 @@ export class RocketChatDdpClient {
   }
 
   /** Post a message to a room (optionally inside a thread). Resolves on RC ack with the message id. */
-  // cm:guard the resolved id is the `_id` sent in `params`, and RC's ack is what makes it a receipt rather than a guess: a caller that stores it as a thread id before the ack would register a thread the server never accepted (ISS-978 criterion 7).
   sendMessage(rid: string, text: string, tmid?: string): Promise<string> {
     const id = this.nextId();
     const messageId = randomUUID().replace(/-/g, '');

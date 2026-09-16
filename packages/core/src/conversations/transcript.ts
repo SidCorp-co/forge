@@ -20,21 +20,16 @@ export interface DeliveredReply {
   /**
    * The stable key this delivery answers, where the caller has one.
    */
-  // cm:guard stored INSIDE the proof rather than beside it, because the proof is what a reader trusts: a key recorded on a row whose delivery failed would tell the next attempt the room already has an answer it never saw (ISS-1004 rule 2).
   deliveryKey?: string | undefined;
   /**
    * Which decision this delivery WAS, where it was not an ordinary answer.
    */
-  // cm:guard it travels with the proof because the proof is what a later claimant reads: a core that delivered an authority refusal and died before closing its window left the next one able to see that something was sent, and nothing to say what — so it wrote `answered` over a room that had been refused (ISS-1004 rule 4).
   decision?: string | undefined;
 }
 
 /**
  * Append what the venue was shown, as the assistant's own row.
  */
-// cm:guard the row holds the sentence that WENT OUT and not the one the model first wrote: a screened path replaces a failing answer with a retry or a fixed fallback, and a transcript holding the rejected text is a record of a conversation nobody had (ISS-1001 criterion 15).
-// cm:guard the row is BY the project's handle and never by nobody — an answer is the assistant speaking, whichever path composed it.
-// cm:guard failures here are logged and never thrown: the venue HAS the message by the time this runs, and turning a delivered answer into an error is a lie in the other direction.
 export async function recordDeliveredReply(reply: DeliveredReply): Promise<void> {
   try {
     await appendMessage({
@@ -61,7 +56,6 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
 /**
  * A turn that chose to say nothing, recorded as the reason rather than as nothing.
  */
-// cm:guard written HERE and nowhere else for a declined turn, and never for an empty or errored one: `external-chat.ts` already files those with their own reason, and two writers would give one silence two rows saying different things (ISS-1004 rule 4).
 export async function recordSilence(args: {
   conversationId: string;
   projectId: string;
@@ -86,7 +80,6 @@ export async function recordSilence(args: {
 /**
  * The same, for a caller holding a venue's external id rather than a conversation.
  */
-// cm:guard a venue with no conversation row records NOTHING and opens none: this door is for an answer arriving late to a room that was already talking, and opening a conversation here would file a transcript whose only row is an answer to a question it does not hold.
 export async function recordDeliveredReplyToVenue(args: {
   adapter: ConversationAdapter;
   externalId: string;

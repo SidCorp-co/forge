@@ -23,7 +23,6 @@ export type RepairOutcome =
 /**
  * Run a door's repair budget over an attempt.
  */
-// cm:guard `rewrite` hands back what the WRITER produced and this function never touches a string: a layer that edited the text could turn `blocked: condition 3 was not met` into something friendlier and destroy the one fact the reader needed, which is the rule ISS-997 makes structural in `MessageVerdict` and keeps here.
 export async function withRepairs(
   door: DoorId,
   first: readonly string[],

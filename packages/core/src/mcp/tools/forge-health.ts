@@ -32,7 +32,6 @@ export const forgeHealthTool: ContextScopedMcpToolFactory = () => ({
           inserted: seed.inserted,
           updated: seed.updated,
           unchanged: seed.unchanged,
-          // cm:why serialise to ISO here rather than at the transport: `structuredContent` forwards the raw value, so a caller reading the JSON `content` field and one reading the structured field would otherwise see two different shapes for the same timestamp
           at: seed.at.toISOString(),
         }
       : null;

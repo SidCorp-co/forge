@@ -11,8 +11,6 @@ import { type SQL, sql } from 'drizzle-orm';
  * matches nothing and the series gap-fills to zero with no error (ISS-942).
  */
 
-// cm:guard every `date_trunc` over a timestamptz in core goes through this — a bare one floors in the session TimeZone, and its rows then miss the UTC boundaries `bucketTimestamps` / `bucketBoundaries` generate, so the chart reads empty instead of wrong
-// cm:why the inner `AT TIME ZONE 'UTC'` yields the naive UTC wall clock to floor; the outer one returns a timestamptz at that instant, so the driver's rendering stays correct under any session TimeZone
 export function utcDateTrunc(unit: SQL | string, column: SQL): SQL {
   return sql`date_trunc(${unit}, ${column} AT TIME ZONE 'UTC') AT TIME ZONE 'UTC'`;
 }
@@ -27,7 +25,6 @@ export function utcDayText(column: SQL): SQL {
   return sql`to_char(${column} AT TIME ZONE 'UTC', 'YYYY-MM-DD')`;
 }
 
-// cm:edge contract -> packages/core/src/metrics/queries.ts#bucketTimestamps — this must produce the same ISO key that generator does, or every bucketed series densifies to its defaults
 export function bucketIso(x: unknown): string {
   if (x instanceof Date) return x.toISOString();
   return new Date(x as string).toISOString();

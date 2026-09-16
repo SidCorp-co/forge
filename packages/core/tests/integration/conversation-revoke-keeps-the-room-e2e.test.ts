@@ -26,7 +26,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard ONE harness for the whole file: `db/client.ts` binds to DATABASE_URL at import time, so a second setupTestDatabase() puts the fixtures on one database and the code under test on another.
 let harness: TestDatabase;
 let scope: typeof import('../../src/conversations/scope.js');
 let participants: typeof import('../../src/conversations/participants.js');
@@ -74,7 +73,6 @@ async function openRoom(projectId: string) {
 }
 
 describe('removing an agent’s authority', () => {
-  // cm:guard this asserted the OPPOSITE until ISS-1003 — that a revoke narrowed the scope to nothing — and the flip is the defect being fixed rather than a relaxed expectation. Scope was read off `project_members`, the row a revoke deletes, so revoking an agent emptied the scope of every room where it was the only handle; an empty scope is refused to every reader and the last handle may not be removed, so the room became unreadable by everyone and repairable by nobody. Removing authority is a security action that must always succeed, and it may not also close a room. Point `derivedScope` back at `project_members` and this case goes red.
   it('keeps its scope when a handle loses its project role, and reports the handle unreachable', async () => {
     const room = await openRoom(projectA);
     const [handle] = await participants.listParticipants(room.id);
@@ -91,7 +89,6 @@ describe('removing an agent’s authority', () => {
     expect(after?.reachable).toBe(false);
   });
 
-  // cm:guard the OTHER half of what a revoke must not do: an agent given a second project membership after it joined a room must not widen that room, because the row records the project the handle was added FOR and not the set the agent happens to hold. Derive the scope from memberships again and this goes red with projectB in the set (ISS-1003 criterion 21).
   it('does not widen when the handle is later given a second project membership', async () => {
     const room = await openRoom(projectA);
     const [handle] = await participants.listParticipants(room.id);
@@ -105,7 +102,6 @@ describe('removing an agent’s authority', () => {
 });
 
 describe('the opening door checks the one thing it can', () => {
-  // cm:guard `attachOpeningHandle` authorizes nobody by design — a message arriving opens the room and there is no caller to hold a role. That is not a licence to write ANY project into the participant: `project_id` is what `derivedScope` reads, so a handle recorded against a project it is no member of gives the room a scope its only handle can never act within, and no later reader compares the two. Found by review, F1. Drop the membership check and this goes green while writing that room.
   it('refuses to record a handle against a project it is not a member of', async () => {
     const roomA = await openRoom(projectA);
     const [handle] = await participants.listParticipants(roomA.id);

@@ -131,7 +131,6 @@ export function PropertiesRail({
   onEditModules,
   canMarkMerged,
 }: PropertiesRailProps) {
-  // cm:why modules and plain labels arrive in ONE `labels[]` told apart by `kind` (ISS-593), and split into two rows here because they answer two different questions
   const modules = (issue.labels ?? []).filter((l) => l.kind === "module");
   const plainLabels = (issue.labels ?? []).filter((l) => l.kind !== "module");
   const primaryModule = modules.find((m) => m.isPrimary);
@@ -141,7 +140,6 @@ export function PropertiesRail({
   const isDecompose = (e: IssueDependencyEdge) => e.kind === "decomposes" || e.kind === "parent";
   const blockedBy = incoming.filter((e) => e.kind === "blocks");
   const blocks = outgoing.filter((e) => e.kind === "blocks");
-  // cm:why a decompose edge runs parent→child, so INCOMING is this issue's epic and OUTGOING is a child — reading the direction the other way swaps Parent and Subtasks on the screen
   const parents = incoming.filter(isDecompose);
   const subtasks = outgoing.filter(isDecompose);
   const duplicates = [...incoming, ...outgoing].filter((e) => e.kind === "duplicates");

@@ -1,7 +1,5 @@
 "use client";
 
-// cm:why no utilization% and deliberately not the rich fleet strip — utilization is not stored (ISS-378) and the detail belongs on the two screens this card links out to
-// cm:edge contract -> packages/web-v2/src/features/project-dashboard/derive.ts — `runnersSummary` decides WHOSE runners these are; its guard is the one that keeps this card from claiming a project has none
 import { useRouter } from "next/navigation";
 import { Badge, Card, CardContent, HealthDot, Icon } from "@/design";
 import type { RunnersSummary } from "../derive";

@@ -54,7 +54,6 @@ describe("the busy device's detail row (ISS-999)", () => {
     expect(screen.getByText("ISS-42")).toBeInTheDocument();
   });
 
-  // cm:guard the defect this row could not have before: a busy session with no recorded step left a blank span, and with an issue ref beside it a dangling separator in front of the tag
   it("renders no separator in front of the issue reference when no step was recorded", async () => {
     await renderStrip(row({ metadata: { type: "pipeline" }, title: "ISS-42 a title" }));
     expect(screen.getByText("ISS-42")).toBeInTheDocument();

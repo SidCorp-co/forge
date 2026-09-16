@@ -1,8 +1,3 @@
-// cm:why criterion 44 makes an answer a trigger source for `master.wake`, and the
-// claim is about the CALL SITE rather than the publisher: `ws/master-wake.test.ts`
-// proves the frame is right, and deleting the one line in `answerQuestion` leaves
-// that suite entirely green while every box learns of the answer only on its next
-// 30-second sweep.
 //
 // The transaction is modelled with the callback finishing and the transaction
 // RESOLVING as two separate events, because that gap is exactly where a wake
@@ -51,7 +46,6 @@ let releaseCommit: () => void;
 let rejectCommit: (e: Error) => void;
 const update = vi.fn(async () => undefined);
 
-// cm:guard `transaction` awaits the callback and THEN awaits `commit` — that second await is the whole point of this mock. Collapse it and a wake published inside the callback is indistinguishable from one published after the row is durable, which is the failure criterion 38 names.
 vi.mock('../db/client.js', () => ({
   db: {
     transaction: async (fn: (tx: unknown) => Promise<unknown>) => {
@@ -112,7 +106,6 @@ describe('answering a question', () => {
     expect(out.status).toBe('answered');
   });
 
-  // cm:guard the ORDER, which a `toHaveBeenCalledWith` cannot see: a wake published before the row is durable sends the box to read an answer that is not there, and it then waits out the full sweep anyway — worse than not publishing, because the read comes back empty and looks authoritative.
   it('publishes nothing until the transaction resolves, not merely until its callback returns', async () => {
     const pending = answer();
     await Promise.resolve();
@@ -217,7 +210,6 @@ describe('a refusal writes nothing and wakes nobody', () => {
     });
   }
 
-  // cm:guard the EQUALITY case, which no wall-clock plant can reach: `<` rather than `<=` in the deadline check passes every other case in this file and lets exactly the answer that arrived on the deadline through (ISS-980 criterion 29).
   it('refuses an answer arriving exactly on the park deadline', async () => {
     vi.useFakeTimers();
     try {

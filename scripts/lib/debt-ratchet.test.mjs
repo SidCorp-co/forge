@@ -57,7 +57,6 @@ describe('freeze', () => {
     expect(faults[0].reasons).toEqual(['declaration: 15 (baseline allowed 0)']);
   });
 
-  // cm:guard the reviewer's finding on ISS-848, made executable: this is the ONE input where the shared freeze is looser than the bespoke check-test-signal it replaced, which faulted on any unbaselined file unconditionally. It is unreachable while both test-signal ratios exceed 0, and the assertion below is what turns tuning one to 0 from a silent loosening into a red test.
   it('does not fault an all-zero entry, which is the bound on the rule above', () => {
     expect(freezeFaults({ 'a.ts': { declaration: 0, mock: 0 } }, {})).toEqual([]);
     expect(freezeFaults({ 'a.ts': { declaration: 0, mock: 1 } }, {})).toHaveLength(1);
@@ -69,7 +68,6 @@ describe('freeze', () => {
     expect(faults.map((f) => f.file)).toEqual(['b.ts']);
   });
 
-  // cm:why the two-metric case is check-test-signal's whole shape — a file may improve on declaration while regressing on mock, and reporting only the first metric that moved would let the second land silently
   it('names every metric that rose, not the first', () => {
     const faults = freezeFaults(
       { 'a.ts': { declaration: 1, mock: 40 } },
@@ -91,7 +89,6 @@ describe('readManifest', () => {
     expect(readManifest(root, { required: true }).error).toBeDefined();
   });
 
-  // cm:guard `required: false` must NOT also swallow an unparseable file. A checker that degrades to its defaults on a manifest someone half-edited runs the built-in scope rather than the declared one and reports clean over it — the absent-file case is a documented degrade, a corrupt one never is.
   it('still refuses an unparseable file when absence is allowed', () => {
     expect(readManifest(repo('{ not json'), { required: false }).error).toMatch(/not valid JSON/);
   });
@@ -109,7 +106,6 @@ describe('scopeConfig', () => {
     expect(scopeConfig(repo({ checkers: { x: { scopes: [] } } }), 'x').error).toMatch(/empty x/);
   });
 
-  // cm:guard an absent manifest is a broken checkout for a scope list, never a degrade. Falling back here would measure a built-in directory the manifest never declared, which is how check-lint-budget once demoted itself to web-v2-only at exit 0.
   it('refuses an absent manifest rather than inventing a scope', () => {
     expect(scopeConfig(repo(), 'lint-budget').error).toMatch(/could not be read/);
   });
@@ -122,7 +118,6 @@ describe('tunedConfig', () => {
     expect(config).toEqual({ minAssertions: 5, mockRatio: 0.7 });
   });
 
-  // cm:edge contract -> .forge/conformance.json — that file's own `$comment` promises deleting a checker's block degrades to its built-in behaviour; this is the reader that keeps the promise, so removing it makes the manifest describe something no code does
   it('degrades to the defaults when the block or the whole manifest is absent', () => {
     const defaults = { minAssertions: 20 };
     expect(tunedConfig(repo({ checkers: {} }), 'test-signal', defaults).config).toEqual(defaults);
@@ -192,7 +187,6 @@ describe('stagedFiles', () => {
     expect(stagedFiles(root).files).toEqual(new Set(['a.ts']));
   });
 
-  // cm:guard a git failure must NOT read as an empty stage. Every caller skips files outside the set, so an empty one makes `--staged` report clean over nothing — a pre-commit hook recorded as having passed because git broke is worse than one that did not run.
   it('reports an error rather than an empty set when git cannot answer', () => {
     const result = stagedFiles(repo({}));
     expect(result.files).toBeUndefined();

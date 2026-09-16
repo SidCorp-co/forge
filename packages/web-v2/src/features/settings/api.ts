@@ -29,7 +29,6 @@ export const settingsApi = {
       method: "PATCH",
       body: JSON.stringify(patch),
     }),
-  // cm:guard the four calls below go to `/auth/preferences`, NOT `/auth/me/preferences`: the two routes are different files in core, and `/me/preferences` refuses `answerStyle` under a strict schema — a card wired to it saved nothing and listed nothing (codex F1).
   /** `GET /api/auth/preferences` — the full row, the assistant fields included (ISS-1034). */
   getAssistantPreferences: () =>
     apiClient<Preferences & AssistantPreferences>(`/auth/preferences`),

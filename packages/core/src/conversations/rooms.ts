@@ -45,9 +45,6 @@ export interface ConversationListFilter {
   archived?: boolean;
 }
 
-// cm:guard a room is on exactly ONE side of this and never on both, which is what makes the toggle
-// in the panel a way BACK rather than a second copy: a list that filtered on nothing would put an
-// archived room straight back into the default list, and archiving would mean nothing (ISS-1028).
 const archiveSide = (archived: boolean | undefined) =>
   archived ? isNotNull(conversations.archivedAt) : isNull(conversations.archivedAt);
 
@@ -105,8 +102,6 @@ export async function listConversationsInProject(
   return bounded.limit(opts.limit).offset(opts.offset ?? 0);
 }
 
-// cm:guard the SAME `archiveSide` the list uses, and not a second predicate that says the same
-// thing: a count that disagreed with its list would page a screen past rooms it never showed.
 export async function countConversationsInProject(
   projectId: string,
   opts: ConversationListFilter = {},
@@ -147,13 +142,6 @@ export async function renameConversation(
   return row ?? null;
 }
 
-// cm:guard archiving STAMPS and never deletes, and unarchiving clears the stamp rather than writing
-// a second row: the transcript is what a room is, and a "clean up my list" gesture that destroyed
-// one would be the loss this issue was filed about, under a friendlier verb (ISS-1028).
-// cm:guard `updatedAt` is left ALONE, unlike the rename above: the list is ordered by it, and
-// archiving a room is not something being said in it — bumping it would float a room to the top of
-// the archived list for having been put there, and drop it to the bottom of the live list on the
-// way back.
 export async function setConversationArchived(
   conversationId: string,
   archived: boolean,

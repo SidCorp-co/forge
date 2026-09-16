@@ -30,7 +30,6 @@ beforeEach(() => {
 });
 
 describe('stampRunnerLimit', () => {
-  // cm:why the measured gap: device dev1-ai013 sat auth-dead for 5.5h across 421 jobs, excluded from dispatch by name, with nothing anywhere telling its owner
   it('alarms on an auth limit, which nothing else can clear', async () => {
     await stampRunnerLimit(RUNNER_A, PROJECT_A, {
       reason: 'auth',
@@ -80,7 +79,6 @@ describe('stampRunnerLimit', () => {
 });
 
 describe('clearRunnerLimit', () => {
-  // cm:why a job succeeding is the only proof the box is well again, and it is also the only thing that can clear an auth stamp
   it('resolves the runner alarm when a row was actually cleared', async () => {
     returning.mockResolvedValueOnce([{ id: RUNNER_A }]);
     await clearRunnerLimit(RUNNER_A, PROJECT_A);

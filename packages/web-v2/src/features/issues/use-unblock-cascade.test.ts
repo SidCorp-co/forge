@@ -29,7 +29,6 @@ describe("describeCascade", () => {
 		).toBe("ISS-12 +4 more");
 	});
 
-	// cm:why ISS-992 — the name comes off the payload, not off `issSeq`: a project whose prefix is `FD` must read `FD-12` here, and a browser rebuilding it from the sequence number cannot know that.
 	it("renders the project's own prefix, which only the server knows", () => {
 		expect(
 			describeCascade({

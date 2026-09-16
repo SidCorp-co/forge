@@ -34,7 +34,6 @@ vi.mock('../../storage/index.js', () => ({
   isEnoent: () => false,
 }));
 
-// cm:guard this stub must keep `details` on the class — the request path's whole refusal contract is that `code`, `message` AND `details` reach the caller in one string, and a stub without the field lets that regress green (ISS-957)
 class StubUploadTicketError extends Error {
   readonly code: string;
   readonly details: unknown;

@@ -121,7 +121,6 @@ function GitConfigCard({
 	const [detachConfirmOpen, setDetachConfirmOpen] = useState(false);
 
 	const urlDirty = url.trim() !== (repoUrl ?? "");
-	// cm:edge contract -> packages/core/src/db/schema.ts — the Workspace setup field below writes `projects.workspace_setup`, which the runner's setup agent follows verbatim; blank is not a neutral default, it is the agent deriving the procedure at a paid model's rates on every job that lands in a broken workspace
 	const setupDirty = setup.trim() !== (workspaceSetup ?? "");
 	const credData = cred.data;
 	const poolKeys = pool.data ?? [];
@@ -501,7 +500,6 @@ function RunnerRow({
 	const clearError = useClearRunnerError(projectId);
 	const [confirmRemove, setConfirmRemove] = useState(false);
 	const [showActivity, setShowActivity] = useState(false);
-	// cm:guard a disabled device keeps heartbeating, so `deviceStatus` stays "online" — this flag is the only thing between the operator and a healthy green dot on a box that pool admission excludes and every claim refuses `device_disabled`. It named the central dispatcher until that was deleted; the exclusion now lives in devices/pool-admission.ts.
 	const deviceDisabled = Boolean(runner.deviceDisabledAt);
 	const online = runner.deviceStatus === "online" && !deviceDisabled;
 	// Tick once a second while this runner is limited (live reset countdown) OR
@@ -510,7 +508,6 @@ function RunnerRow({
 	const limit = runnerLimitDisplay(runner, now);
 	const elapsed = current ? formatElapsed(current.startedAt, now) : null;
 
-	// cm:why offered on a LIVE cooldown too — an operator who raised the cap or fixed the box knows something the recorded fault does not, and a still-real fault re-stamps itself on the next failure
 	const clearFaultButton = canEdit ? (
 		<Button
 			variant="secondary"

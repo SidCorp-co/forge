@@ -13,7 +13,6 @@ export interface WorkSittingProps {
 }
 
 /** Section 2 — where is the work sitting? */
-// cm:guard the age dots carry NO door: `work.humanBlockedAges` is ages alone, so no exact list of those issues can be opened from here, and a dot that looked clickable would be an affordance over nothing (ISS-988 criteria 42-44). Giving them one means the response carrying their identities first.
 export function WorkSitting({ pulse, nowMs }: WorkSittingProps) {
   const cells = waffleCells(pulse.work.buckets);
   const rows = projectSilenceRows(pulse, nowMs);

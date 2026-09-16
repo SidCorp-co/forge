@@ -55,7 +55,6 @@ export async function redeemPairingCode(input: PairInput): Promise<PairResult> {
       throw badRequest('CODE_EXPIRED', 'pairing code expired');
     }
 
-    // cm:guard the code is marked used BEFORE the credential is issued, and the order is load-bearing: both writes run on the ambient `db` rather than this transaction (`mintPat` and `registerDevice` do not take one), so a failure between them must leave a spent code and no token — recoverable by asking for a new code — rather than a live code and a minted credential, which is a pairing secret that works twice.
     const device = await registerDevice({
       ownerId: row.user_id,
       name: input.name,

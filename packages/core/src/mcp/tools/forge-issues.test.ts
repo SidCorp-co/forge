@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { issueAttachments } from '../../db/schema.js';
 import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('../../issues/issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -29,14 +28,11 @@ vi.mock('../../storage/index.js', () => ({
   isEnoent: () => false,
 }));
 
-// cm:guard every chain step returns the NEXT mock, so a test programs its rows with `mockResolvedValueOnce` in the order the subject queries them — insert a query anywhere in a handler and every later expectation in that test reads someone else's row
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-// cm:guard both leftJoin levels must stay mocked — lib/authz.ts effectiveProjectRole chains TWO before where().limit(1), and dropping one makes every authz lookup in this file throw instead of resolving a role
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
-// cm:guard branch on the TABLE, never on the chain shape — the ISS-963 name lookup reads issue_attachments through the same .where().orderBy().limit() shape the authz lookups use, so a shared resolver hands it a row queued for a project row and every attachment is refused as a duplicate of itself
 const noCollision = { orderBy: () => ({ limit: async () => [] as unknown[] }) };
 const selectFrom = vi.fn((table: unknown) =>
   table === issueAttachments
@@ -49,7 +45,6 @@ const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn((_set?: unknown) => ({ where: updateWhere }));
 
-// cm:guard this thenable must keep BOTH shapes — a direct await (the manual-hold and activity writes) and `.returning(...)` (the ISS-196 status UPDATE through withActorContext); drop either and the tests fail on a chain shape instead of on the behaviour they assert
 const txUpdateWhere = vi.fn(() => {
   const thenable: PromiseLike<unknown> & { returning: typeof updateReturning } = {
     returning: updateReturning,
@@ -59,7 +54,6 @@ const txUpdateWhere = vi.fn(() => {
 });
 const txUpdateSet = vi.fn(() => ({ where: txUpdateWhere }));
 const txUpdate = vi.fn(() => ({ set: txUpdateSet }));
-// cm:guard the tx insert must satisfy BOTH shapes — a bare await (the issueLabels rows) and `.returning()` (the issue row, staged per test via insertReturning) — because ISS-889 moved create's `insert(issues)` inside the transaction alongside the label rows; drop either and every create test fails on a shape, not on the behaviour it asserts
 const txInsertValues = vi.fn((_values?: unknown) => ({
   returning: insertReturning,
   then: (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r),
@@ -67,9 +61,7 @@ const txInsertValues = vi.fn((_values?: unknown) => ({
 const txInsert = vi.fn(() => ({ values: txInsertValues }));
 const txDeleteWhere = vi.fn(async () => undefined);
 const txDelete = vi.fn(() => ({ where: txDeleteWhere }));
-// cm:why ISS-196 — `withActorContext` calls `tx.execute(SELECT set_config(...))` before the UPDATE; stub it so the in-memory db mock doesn't blow up.
 const txExecute = vi.fn(async () => undefined);
-// cm:guard every tx read stubbed here must resolve EMPTY by default and offer both `.limit()` and `.orderBy().limit()` — `markMergedIfLeavingBase` (ISS-232), ISS-633's label replace-set and the attachment name check (ISS-963) each read through this one chain, so a missing link throws for callers that never staged a value
 const txSelectLimit = vi.fn(async () => [] as unknown[]);
 const txSelectWhere = vi.fn(() => ({
   limit: txSelectLimit,
@@ -89,7 +81,6 @@ const transactionMock = vi.fn(async (cb: (tx: typeof txProxy) => Promise<unknown
 const deleteWhere = vi.fn(async () => undefined);
 const deleteFrom = vi.fn(() => ({ where: deleteWhere }));
 
-// cm:why ISS-889 — `update` and the four task actions are adapters now, so this file asserts only what the TOOL owns (argument mapping, authorization, error vocabulary, response shape); the writes themselves are covered in issues/update-service.test.ts and tasks/task-service.test.ts, at the layer that still builds the drizzle chain
 type UpdateIssueFieldsInput = {
   issueId: string;
   updates: Record<string, unknown>;
@@ -126,13 +117,11 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-// cm:why the intake gate is a pass-through here and is proved in `issues/intake-gate.test.ts` instead: the cases in this file exercise create MECHANICS, and a real gate would make every one of them depend on gate policy that moves for its own reasons (ISS-606).
 vi.mock('../../issues/intake-gate.js', () => ({
   applyIntakeGate: vi.fn(async (_projectId: string, status: string) => ({ status, gated: false })),
   finalizeIntake: vi.fn(async () => undefined),
 }));
 
-// cm:why Mocked independently of the shared `db.select` queue, the same way work-evidence is below: the attribute read is its own query and every `get` test would otherwise have to stage one. What it returns is unit-tested in `issues/attributes/attributes.test.ts`; the `get` contract itself is asserted in the test that overrides this.
 vi.mock('../../issues/attributes/read.js', () => ({
   loadIssueAttributes: vi.fn(async () => []),
 }));
@@ -147,7 +136,6 @@ vi.mock('../../pipeline/hooks.js', () => ({
 // mark_merged tests don't need to stage extra queries; the refusal path tests
 // below override per-call.
 const findMissingWorkEvidenceMock = vi.fn<() => Promise<string | null>>(async () => null);
-// cm:why `collectWorkEvidence` is mocked beside it because ISS-959's merge mark fills an absent `commit` from the recorded handoff sha, so every `mark_merged` with no `commit` now reaches this module — unmocked it would consume reads staged for `findIssueById` and the failure would surface there instead of here
 const collectWorkEvidenceMock = vi.fn<() => Promise<{ handoffCommitSha: string | null }>>(
   async () => ({ handoffCommitSha: null }),
 );
@@ -160,7 +148,6 @@ vi.mock('../../ws/server.js', () => ({
   roomManager: { publish: vi.fn() },
 }));
 
-// cm:guard stub the read-side joins, never the generic `db.select` queue: every case here stages its rows with a fixed sequence of `selectLimit.mockResolvedValueOnce`, so a query added to or removed from a code path shifts every later row by one and the failure surfaces in a DIFFERENT test than the one that changed — retiring one `projects` read on the `reopen` path failed 25 cases, none of them about reopen (2026-09-10).
 const listIssueAttachmentsMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
 vi.mock('../../issues/attachment-service.js', async (importActual) => {
   const actual = await importActual<typeof import('../../issues/attachment-service.js')>();
@@ -175,17 +162,14 @@ vi.mock('../../issues/attachment-service.js', async (importActual) => {
 // get/update/transition/mark_merged/unmark tests don't need to stage an extra
 // query. Defaults to no labels; individual label tests override per-call.
 const listIssueLabelsMock = vi.fn(async (..._args: unknown[]) => [] as unknown[]);
-// cm:guard override ONLY `listIssueLabels` here — `resolveLabelIdsForWrite` and `LabelResolutionError` must stay REAL, or the create/update label tests assert against a stub and the BAD_REQUEST mapping in forge-issues.ts compares against an undefined class
 vi.mock('../../issues/label-service.js', async (importActual) => ({
   ...(await importActual<typeof import('../../issues/label-service.js')>()),
   listIssueLabels: (...args: unknown[]) => listIssueLabelsMock(...args),
 }));
 
-// cm:guard the relations read joins `issues` twice, which the generic db.select chain above does not model — leave this mocked to an EMPTY graph, because every pre-existing `get` test in this file reaches it and would otherwise die on `outgoingRows.map is not a function` (ISS-868)
 vi.mock('../../issues/dependency-read.js', () => ({
   loadIssueRelations: vi.fn(async () => ({ blocks: [], blockedBy: [] })),
 }));
-// cm:why stubbing the shared edge write keeps create-with-relations tests off the full DB chain the real one walks; the ordering they assert is the tool's, not the edge write's
 const setEdgeMock = vi.fn(async () => ({
   id: 'dep-id-1',
   created: true,
@@ -214,7 +198,6 @@ const DEVICE_ID = '44444444-4444-4444-8444-444444444444';
 const ORG_ID = '99999999-9999-4999-8999-999999999999';
 const memberAccessRow = { orgId: ORG_ID, memberRole: 'member', orgRole: null };
 
-// cm:guard a MACHINE principal, because a paired device is what these cases used to run as and `agency: 'agent'` is the load-bearing half of that. It is what turns the ISS-786/812 evidence gates ON — a `makeFakePrincipal` here reads as a person, the gates skip, and `mark_merged refuses ... with no recorded code evidence` passes for the wrong reason (ISS-931).
 const fakePrincipal = makeFakeJobPrincipal(
   DEVICE_ID,
   OWNER_ID,
@@ -694,7 +677,6 @@ describe('forge_issues tool', () => {
     expect(result.status).toBe('open');
     expect(listIssueAttachmentsMock).toHaveBeenCalledWith(ISSUE_ID);
     expect(result.attachments).toEqual([]);
-    // cm:guard `attributes` rides this read rather than a surface of its own — an agent asking what an issue owes must not need a second call (ISS-1010).
     expect(result.attributes).toEqual([]);
     expect(result.bodyTruncated).toBeUndefined();
   });
@@ -1185,7 +1167,6 @@ describe('forge_issues tool', () => {
     expect(call?.updates).not.toHaveProperty('expect');
   });
 
-  // cm:guard the refusal must carry the CURRENT value, because MCP has no `details` channel and an agent told only "you lost" has one move left — a blind unconditional overwrite, which is the write the refusal exists to stop
   it('update refuses a mismatched `expect` with the same code REST answers, naming the value the field now holds', async () => {
     const tool = forgeIssuesTool({
       principal: fakePrincipal,
@@ -1207,7 +1188,6 @@ describe('forge_issues tool', () => {
     ).rejects.toThrow(/SESSION_CONTEXT_MISMATCH[\s\S]*session-b/);
   });
 
-  // cm:guard the refusal is what makes the precondition honest on this door: `expect` reaches the row only through `updateIssueFields`, and this action writes a status by a separate call, so accepting `{ expect, status }` would transition unconditionally while the caller read the call as guarded. Assert the TRANSITION never ran, not merely that it threw — a refusal that still moved the status is the bug wearing a 400.
   it('update refuses an `expect` with no field to write instead of transitioning unguarded', async () => {
     const tool = forgeIssuesTool({
       principal: fakePrincipal,
@@ -1237,7 +1217,6 @@ describe('forge_issues tool', () => {
     // membership check
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
 
-    // cm:guard `draft` is the ONE illegal target left, so this is the whole negative half of the state machine on this door — every other pair is permissive by design and judged by the agent, and a second case here would be asserting a rule core does not hold
     await expect(
       tool.handler({
         action: 'update',
@@ -1247,7 +1226,6 @@ describe('forge_issues tool', () => {
     ).rejects.toThrow(/ILLEGAL_TRANSITION/);
   });
 
-  // cm:guard `unblock` is GONE from the schema (RFC 0002 INV-6) — the three tests deleted from this spot asserted that a park exit needs a sentinel to dispatch. `.strict()` is what makes this fail loudly instead of ignoring the field, which is how the same flag was silently dropped by the `transition` action for two days (ISS-671/813/825/831, one stranded 48h).
   it('rejects the removed data.unblock flag instead of ignoring it', async () => {
     const tool = forgeIssuesTool({
       principal: fakePrincipal,
@@ -1262,8 +1240,6 @@ describe('forge_issues tool', () => {
     ).rejects.toThrow();
   });
 
-  // cm:guard a reopen through MCP must be REJECTED without a reason (INV-8) — this is the only enforcement point an agent meets, and the three dispatch-side guards that used to detect a reasonless reopen afterwards are all deleted
-  // cm:guard the agent surface is held to the same bar as REST — an MCP path that accepts a reasonless park is the whole requirement defeated, because agents are what produce nearly all of them
   it.each([
     ['reopen', 'tested'],
     ['waiting', 'in_progress'],
@@ -1306,7 +1282,6 @@ describe('forge_issues tool', () => {
     const testedRow = { ...baseIssueRow, status: 'tested' as const };
     selectLimit.mockResolvedValueOnce([testedRow]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // cm:why ONE project read, not two: `reopen` stopped being rewritten by `issues/autonomous-park.ts` on 2026-09-10, so the park resolver's read is gone and only the ISS-959 criteria read remains. Queueing the extra row left it unconsumed, and a `mockResolvedValueOnce` nobody reads answers the NEXT test's first lookup — 25 cases in this file failed that way, none of them about reopen.
     selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     updateReturning.mockResolvedValueOnce([
       { id: ISSUE_ID, reopenCount: 1, updatedAt: new Date() },
@@ -1330,7 +1305,6 @@ describe('forge_issues tool', () => {
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
     // membership
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // cm:why the project read before the write is ISS-959's declared entry criteria: `resolveDeclaredEntryCriteria` reads `pipelineConfig` OUTSIDE the transaction, and an empty agentConfig is the answer that declares nothing and leaves the transition alone
     selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     // conditional UPDATE returning the new row
     updateReturning.mockResolvedValueOnce([
@@ -1419,7 +1393,6 @@ describe('forge_issues tool', () => {
     });
     selectLimit.mockResolvedValueOnce([baseIssueRow]);
     selectLimit.mockResolvedValueOnce([memberAccessRow]);
-    // cm:why the ISS-959 criteria read sits BEFORE the conditional UPDATE, so a row staged after it answers the stale re-read instead and the refusal comes back naming the wrong cause
     selectLimit.mockResolvedValueOnce([{ agentConfig: {} }]);
     updateReturning.mockResolvedValueOnce([]);
 
@@ -1522,7 +1495,6 @@ describe('forge_issues tool', () => {
       });
       // loadIssue (merged_at currently null)
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
-      // cm:guard one row back is how `stampIssueMergedAt` says THIS call set the value; queue nothing and the stamp reads as a no-op and the tool answers `already_merged`
       updateReturning.mockResolvedValueOnce([{ mergedAt: STAMPED }]);
       // membership
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
@@ -1553,7 +1525,6 @@ describe('forge_issues tool', () => {
         'commentCreated',
         expect.objectContaining({ issueId: ISSUE_ID, commentId: auditCommentRow.id }),
       );
-      // cm:guard both columns in one broadcast: the timestamp and the commit are ONE stamp (ISS-959), so a reader handed only `mergedAt` cannot tell a mark that recorded its commit from one that did not
       expect(hooks.emit).toHaveBeenCalledWith(
         'issueUpdated',
         expect.objectContaining({
@@ -1566,7 +1537,6 @@ describe('forge_issues tool', () => {
     });
 
     it('mark_merged with explicit mergedAt binds an ISO string with a ::timestamptz cast', async () => {
-      // cm:guard the bound param must be the ISO STRING, never a Date — an untyped Date param is what failed type inference on real Postgres (live 500 on forge-beta for every mergedAt-supplied call)
       const tool = forgeIssuesTool({
         principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
@@ -1713,7 +1683,6 @@ describe('forge_issues tool', () => {
       expect(txInsertValues).not.toHaveBeenCalled();
     });
 
-    // cm:guard this case asserted the OPPOSITE until ISS-1003, and the flip is the whole point: a person-owned token establishes nobody, and most agents run on one — so "PAT means human, therefore skip the evidence gate" was the exemption every agent borrowing a person's credential was taking. `agency: null` fails closed through `actorAgency`, so the gate that exists because agents fabricate evidence now meets exactly the callers it was written for. Plant `agency ?? 'human'` back into `actorAgency` and this is the case that goes red.
     it('mark_merged evidence-gates a person-owned PAT, which establishes nobody', async () => {
       const tool = forgeIssuesTool({
         principal: humanPat(OWNER_ID, '55555555-5555-4555-8555-555555555555', null),
@@ -1755,7 +1724,6 @@ describe('forge_issues tool', () => {
         principal: fakePrincipal,
         projectSlug: PROJECT_SLUG,
       });
-      // cm:guard these four stagings pop off ONE shared queue in call order — loadIssue, membership, the single resolveLabelIdsForWrite query that answers both the uuid and the name, then the re-read; insert or drop a query anywhere in the handler and every later test in this file reads someone else's row
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
       selectLimit.mockResolvedValueOnce([memberAccessRow]);
       selectLimit.mockResolvedValueOnce([
@@ -1775,7 +1743,6 @@ describe('forge_issues tool', () => {
       })) as { labels: Array<{ id: string }> };
 
       expect(result.labels).toHaveLength(2);
-      // cm:edge contract -> packages/core/src/issues/update-service.ts — the replace-set delta (which ids are added, which removed, and the activity rows for both) is asserted there; this side asserts only that the resolved ids arrive
       const call = updateIssueFieldsMock.mock.lastCall?.[0];
       expect([...(call?.labelIds ?? [])].map((l) => l.labelId).sort()).toEqual(
         [LABEL_ID, LABEL_ID_2].sort(),
@@ -1802,7 +1769,6 @@ describe('forge_issues tool', () => {
       })) as { labels: unknown[] };
 
       expect(result.labels).toEqual([]);
-      // cm:guard `[]` must survive as `[]` and never collapse to `undefined` — the service reads undefined as "leave labels alone", which is the opposite of the clear-all this asserts
       expect(updateIssueFieldsMock.mock.lastCall?.[0]).toMatchObject({ labelIds: [] });
     });
 
@@ -1970,7 +1936,6 @@ describe('forge_issues tool', () => {
 
       expect(result.task.documentId).toBe(TASK_ID);
       expect(result.task.title).toBe('Sub-task');
-      // cm:edge contract -> packages/core/src/tasks/task-service.ts — sortOrder and the taskCreated emit are asserted there; the tool owns resolving the project from the parent issue rather than trusting the caller for it
       expect(createTaskMock).toHaveBeenCalledWith(
         expect.objectContaining({
           issueId: ISSUE_ID,
@@ -2146,7 +2111,6 @@ describe('forge_issues tool', () => {
       })) as { task: { status: string } };
 
       expect(result.task.status).toBe('done');
-      // cm:edge contract -> packages/core/src/tasks/task-service.ts — the change diff and the taskUpdated emit are asserted there; this side asserts the agent-facing `taskStatus` maps onto the column name
       expect(updateTaskMock).toHaveBeenCalledWith(
         baseTaskRow,
         { status: 'done' },
@@ -2260,7 +2224,6 @@ describe('findVerifiedClaimViolation', () => {
     expect(violation).toBeNull();
   });
 
-  // cm:guard ISS-820 — bound-exceed on a pathological payload MUST accept (fail-open), never reject a legitimate large payload nor hang
   it('accepts without hanging when a pathological payload exceeds the node bound', () => {
     const wide: Record<string, unknown> = {};
     for (let i = 0; i < 120_000; i++) {
@@ -2271,7 +2234,6 @@ describe('findVerifiedClaimViolation', () => {
     expect(violation).toBeNull();
   });
 
-  // cm:guard ISS-820 — the node budget must stay out of reach of any payload the 200000-byte sessionContext refinement admits, or padding keys buy a free bare claim
   it('still catches a bare claim padded to the largest payload the size cap admits', () => {
     const padded: Record<string, unknown> = {};
     for (let i = 0; i < 10_050; i++) {
@@ -2293,7 +2255,6 @@ describe('findVerifiedClaimViolation', () => {
     expect(violation).toBeNull();
   });
 
-  // cm:guard ISS-820 — depth prunes ONE subtree, never the whole walk: a single over-deep decoy key must not buy a bare sibling claim
   it('still checks siblings of an over-deep decoy branch', () => {
     let decoy: Record<string, unknown> = { leaf: true };
     for (let i = 0; i < 70; i++) {

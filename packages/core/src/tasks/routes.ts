@@ -64,7 +64,6 @@ const TASK_PATCH_FIELDS = [
   'sortOrder',
 ] as const satisfies readonly (keyof z.infer<typeof taskPatchSchema>)[];
 
-// cm:why jsonb columns are reported changed on any explicit set — their object identity differs on every load, so a value comparison would call every write a change and never call one unchanged
 const TASK_JSONB_FIELDS = ['agentLog', 'acceptanceCriteria'] as const;
 
 const taskReorderSchema = z.object({ taskIds: z.array(z.uuid()).min(1) }).strict();

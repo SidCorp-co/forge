@@ -13,7 +13,6 @@
  * `resolveSessionMcpServers` runs the same chain minus the stage layer, so this
  * preview describes chat turns too.
  */
-// cm:edge lockstep -> packages/core/src/jobs/resolve-job-mcp-servers.ts — a new provider, gate or binding-pick order must land in both files or the preview lies about what a runner receives
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';

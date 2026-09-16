@@ -24,7 +24,6 @@ import { BatchReleaseDialog, type BatchReleaseIssue } from "./batch-release-dial
 /** Rows shown before the list collapses behind a "show all" toggle. */
 const VISIBLE_LIMIT = 5;
 
-// cm:edge contract -> packages/core/src/release-batch/queries.ts — picks the oldest by comparing `mergedAt` as STRINGS, which is only chronological because that endpoint emits `Date.toISOString()` (always UTC, fixed width). An endpoint that ever sends a zoned offset like `+07:00` would silently name the wrong row as oldest, and the header would read a merge age nobody can reproduce.
 function oldestMergedAt(issues: ReleaseRosterEntry[]): string | null {
   return issues.reduce<string | null>(
     (acc, i) => (i.mergedAt && (acc === null || i.mergedAt < acc) ? i.mergedAt : acc),
@@ -61,7 +60,6 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
       </Card>
     );
   }
-  // cm:guard a null gate means this project HAS no release gate, which is a real answer and renders nothing. It is reachable only after the loading and error branches above have each returned their own state — collapsing any of the three back into a shared `return null` makes "no gate" and "we don't know" indistinguishable on screen.
   if (!data?.gateStatus) return null;
 
   const issues = data.issues;
@@ -181,7 +179,6 @@ export function ReleaseGatePanel({ projectId, slug }: { projectId: string; slug:
   );
 }
 
-// cm:guard "shipping now" is a LINK only where `claimedByRunId` holds a run, and the same field decides the words: a row that reads as shipping and does not open the run it is shipping under is the release screen being unreachable by anything but a typed uuid, which is how it shipped and why this link exists (ISS-1042).
 function RosterRow({
   issue,
   slug,

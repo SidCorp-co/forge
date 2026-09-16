@@ -4,7 +4,6 @@ const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 
-// cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
 vi.mock('../issues/issue-prefix-read.js', () => ({
   activeIssuePrefix: async () => null,
   heldIssuePrefixes: async () => [],
@@ -145,7 +144,6 @@ describe('notify-transitions', () => {
     expect(resolveNotifications).not.toHaveBeenCalledWith(`issue:${ISSUE_ID}:status`);
   });
 
-  // cm:guard ISS-762 — the stranded alarm asks a human to unpark, so ANY move off `waiting` answers it, including a move to an unhealthy status. Narrowing this back to HEALTHY_STATUSES leaves the alarm lit after the decision was already made.
   it('auto-resolves the stranded alarm on any move off waiting, healthy or not', async () => {
     for (const to of ['in_progress', 'developed', 'closed', 'reopen']) {
       resolveNotifications.mockClear();
@@ -220,7 +218,6 @@ describe('notify-transitions', () => {
     createNotification.mockRejectedValueOnce(new Error('db down'));
     const bus = makeBus();
     const result = await bus.emit('transition', transition('reopen') as never);
-    // cm:why notify-transitions self-catches (best-effort by contract) — it never appears in EmitResult.failures even when its own createNotification call rejects
     expect(result.failures).toEqual([]);
   });
 });

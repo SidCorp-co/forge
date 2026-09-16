@@ -1,6 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:why the coolify adapter's import path reaches db/client.js and, since ISS-922 put the deploy-confirmation enqueue on it, queue/boss.js — both parse the runtime env at import time, so a pure-capabilities test still needs the env stubbed.
 vi.mock('../db/client.js', () => ({ db: {} }));
 vi.mock('../config/env.js', () => ({
   env: {
@@ -78,7 +77,6 @@ describe('integration adapter capabilities', () => {
         expect(c.canReceiveWebhook).toBe(false);
         expect(c.hasDeliveryLog).toBe(false);
       }
-      // cm:guard the OR is load-bearing and coolify is the shape that proves it — since ISS-922 it receives nothing and still keeps its delivery log on the strength of dispatch alone, so narrowing this to canReceiveWebhook would delete an audit trail.
       if (c.hasDeliveryLog) {
         expect(c.canDispatch || c.canReceiveWebhook).toBe(true);
       }

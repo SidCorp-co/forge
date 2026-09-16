@@ -12,7 +12,6 @@ import { ASSISTANT_METHOD_GUIDE } from '../guides/assistant-method-guide.js';
 
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-// cm:guard the leftJoin chain routes back into the SAME where/limit FIFO the plain select uses, because `loadProjectAccess` runs select().from().leftJoin().leftJoin().where().limit() — give the joins a queue of their own and every mock below answers the wrong query in the wrong order.
 const selectLeftJoin = vi.fn(
   (): Record<string, unknown> => ({
     leftJoin: selectLeftJoin,
@@ -37,8 +36,6 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
-// cm:why the store has its own suites; this file owns what the ROUTE owns — auth, membership,
-// opening the turn, and the prompt it builds.
 const persisted: Array<Record<string, unknown>> = [];
 const openTurnCalls: Array<Record<string, unknown>> = [];
 let seededHistory: Array<{ role: string; content: string }> = [];
@@ -77,9 +74,6 @@ vi.mock('./conversation-turn.js', () => ({
       blocks: opts?.blocks ?? null,
     });
   },
-  // cm:why the double RETURNS the written rows, as the real one does: `runChatTurn` reads the
-  // assistant row back and streams it as the final frame, so a double answering `undefined` makes
-  // the route throw where production would not (ISS-1029).
   persistMessages: async (t: {
     pending: Array<{
       role: string;
@@ -123,7 +117,6 @@ vi.mock('./conversation-turn.js', () => ({
 }));
 
 const addPerson = vi.fn(async (..._a: unknown[]) => undefined);
-// cm:guard the two ISS-1034 loaders are mocked at the module seam rather than fed through the select FIFO: each is one more `select().from().where()` and threading them through the queue would shift every `mockResolvedValueOnce` below by one, so a test about the SSE door's history would fail on a row order it never asserted (ISS-1034).
 vi.mock('../orgs/agent-selves.js', () => ({ readSelvesFor: vi.fn(async () => new Map()) }));
 vi.mock('../auth/preference-changes.js', () => ({
   readAssistantPreferences: vi.fn(async () => null),
@@ -132,7 +125,6 @@ vi.mock('../conversations/participants.js', () => ({
   addPerson: (...args: unknown[]) => addPerson(...args),
 }));
 
-// cm:guard a chat turn must NOT broadcast over WS — the chat.message publisher was deleted because no client listened to it (the widget streams over the SSE response body, not WS), so a roomManager.publish re-introduced in assistant/routes.ts or run-turn.ts is caught by this mock and fails the success-path test's assertion (ISS-71)
 const wsPublish = vi.fn();
 vi.mock('../ws/server.js', () => ({
   roomManager: { publish: wsPublish },
@@ -235,8 +227,6 @@ beforeEach(() => {
   dbInsert.mockClear();
   dbUpdate.mockClear();
   wsPublish.mockClear();
-  // cm:guard `values()` is both a Promise, for `await db.insert(...).values(...)` on the audit path,
-  // AND carries a `.returning()` — drop either half and a caller this route makes stops resolving.
   insertValues.mockImplementation((() => {
     const p = Promise.resolve(undefined) as Promise<undefined> & {
       returning: typeof insertReturning;
@@ -326,9 +316,6 @@ describe('POST /api/chat (mounted)', () => {
     const body = await res.text();
     expect(body).toContain('event: conversation');
     expect(body).toContain(CONVERSATION_ID);
-    // cm:guard the route speaks ONE event kind now — `message`, carrying the canonical transcript
-    // entry — in place of the provider's chunk/done vocabulary it used to relay. The old
-    // assertions named those two frames and are replaced here, not dropped (ISS-1029).
     expect(body).toContain('event: message');
     expect(body).not.toContain('event: chunk');
     expect(body).not.toContain('event: done');
@@ -393,8 +380,6 @@ describe('POST /api/chat (mounted)', () => {
     });
 
     expect(res.status).toBe(200);
-    // cm:guard the SSE body is drained because the persist and the audit row run AFTER the stream is
-    // fully read — assert without this and both writes are still in flight.
     await res.text();
 
     expect(captured).toHaveLength(4);
@@ -431,9 +416,6 @@ describe('POST /api/chat (mounted)', () => {
 
     expect(res.status).toBe(200);
     const body = await res.text();
-    // cm:guard a failed turn still says so on the stream, as a canonical `system` entry carrying
-    // the reason rather than as an `error` frame — the reason is part of the transcript a reader
-    // sees, and `subtype` is how the canonical shape names a non-assistant entry (ISS-1029).
     expect(body).toContain('event: message');
     expect(body).toContain('"subtype":"error"');
     expect(body).toContain('upstream 500');
@@ -465,9 +447,7 @@ describe('POST /api/chat (mounted)', () => {
   });
 });
 
-// cm:guard this case sits in a describe of its own rather than inside `POST /api/chat (mounted)`, because that block is at its frozen function-length budget and the form axis may only improve — a case added inside it is a `--update-baseline` nobody priced (ISS-1007).
 describe('the system prompt POST /api/chat opens with', () => {
-  // cm:guard the system message is read for what it CONTAINS, not merely for its role: this door passed no persona until ISS-1007 and answered on `system-prompt.ts`'s one-sentence fallback, which asserting `role === 'system'` could never have told apart from a turn carrying the whole method.
   it('opens with the web persona rather than the one-line fallback', async () => {
     let captured: ChatMessage[] = [];
     mockProvider([{ type: 'chunk', text: 'ok' }, { type: 'done' }], (req) => {

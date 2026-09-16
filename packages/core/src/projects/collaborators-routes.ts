@@ -23,7 +23,6 @@ const querySchema = z.object({
 export const collaboratorsMeRoutes = new Hono<{ Variables: AuthVars }>();
 collaboratorsMeRoutes.use('/collaborators', requireAuth(), assertEmailVerified());
 
-// cm:edge contract -> packages/core/src/middleware/pat-rest-surface.ts — lives under `/api/me` and must STAY off PAT_ALLOWED_PREFIXES, for the same reason `/api/me/ops-health` does: it fans out over every project the caller can see, so a token bound to one project would read the membership of all of them. There is deliberately no per-project twin, because `GET /api/projects/:projectId/members` already is one and it fences on the id in the path.
 collaboratorsMeRoutes.get(
   '/collaborators',
   zValidator('query', querySchema, (r) => {

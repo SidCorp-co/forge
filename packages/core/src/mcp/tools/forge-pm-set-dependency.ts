@@ -41,13 +41,11 @@ export const pmSetDependencyInputSchema = z
   })
   .strict();
 
-// cm:guard the `actor` is the PRINCIPAL's, derived here and never defaulted. Until ISS-931 this took a `Device` and fell back to `{type:'device', id: device.id}`, which for a PAT was the synthetic stub's id — so a PERSON's edge was recorded as a device while the same request's status transition read as that person through `principalActor`. One request, two attributions, and the disagreement was invisible in the row.
 export async function pmSetDependencyHandler(
   principal: McpPrincipal,
   input: z.infer<typeof pmSetDependencyInputSchema>,
   opts?: { deferHealthPublish?: boolean },
 ) {
-  // cm:guard gate on plain project membership, NOT the PM capability flag (ISS-131, was `assertPmActor`) — plan-pipeline agents must declare blocks edges while writing a plan and run on `claude-code` runners that carry no PM flag; the cycle guard and the unique-index idempotency already cover the abuse surface. This line is also why the action is NOT in the device-only set: ISS-150 gated the whole `forge_pm.*` family, ISS-868 pruned three of the survivors, and this one was left behind refusing 651 lifetime calls for a capability its own gate never asks for (ISS-931).
   await assertPrincipalIsMember(principal, input.projectId);
 
   try {
@@ -61,7 +59,6 @@ export async function pmSetDependencyHandler(
   }
 }
 
-// cm:edge lockstep -> packages/core/src/issues/dependency-service.ts — every IssueDependencyErrorCode needs a case here; the agent-facing contract is the `CODE: message` prefix, which forge-pm-set-dependency.test.ts asserts by string
 function toMcpDependencyError(err: unknown): unknown {
   if (!(err instanceof IssueDependencyError)) return err;
   switch (err.code) {

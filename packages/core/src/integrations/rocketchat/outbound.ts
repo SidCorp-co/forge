@@ -1,4 +1,3 @@
-// cm:guard ISS-671 — the ONE door to a Rocket.Chat room, and outbound.test.ts makes that structural: it fails CI if any file in this directory other than this one, rest-client.ts or ddp-client.ts calls postRoomMessage( or .sendMessage(, because a new reply path that forgot redact/clip or the output guard entirely used to compile and ship silently
 
 import { scrubLogText } from '@forge/observability';
 import type { RocketChatDdpClient } from './ddp-client.js';
@@ -15,7 +14,6 @@ export type ReplyTransport =
     }
   | { kind: 'rest'; auth: RoomPostAuth; rid: string; tmid?: string | undefined };
 
-// cm:why Rocket.Chat rejects messages over `Message_MaxAllowedSize` (default 5000) outright — truncate below that so the user isn't left in silence
 const MAX_REPLY_CHARS = 4500;
 
 function clipReply(text: string): string {
@@ -38,8 +36,6 @@ export const FIXED_REPLY_CONSTANT: unique symbol = Symbol('rocketchat.outbound.f
 
 export type ReplySendProof = typeof FIXED_REPLY_CONSTANT | { ok: true; problems: string[] };
 
-// cm:guard FIXED_REPLY_CONSTANT is for code-authored text only (an ack, an honest fallback); model text requires a ReplyScreenVerdict narrowed to ok:true for THAT exact string. There is no third way to satisfy `proof`, which is what makes a reply path that forgot to screen (B3) fail to compile rather than ship
-// cm:guard the receipt is the id of the message that was POSTED, and `null` means the transport took the text without naming one — a caller storing a thread id must treat that as an undelivered round rather than inventing one (ISS-978 criterion 8).
 export async function sendFixedReply(
   transport: ReplyTransport,
   text: string,

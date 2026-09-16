@@ -40,13 +40,10 @@ const SCOPES = ['read', 'write', 'admin'] as const;
 
 const createBodySchema = z
   .object({
-    // cm:guard reserve the WHOLE machine-token family on the ONLY route a person mints through — `mintPat` itself must keep accepting those names, because that is how a dispatch mints a job's token and `agent:start` mints a session's. A hand-made PAT wearing one inherits all three things the prefix decides: it escapes the owner's PAT cap (`countActivePatsForUser` filters the family out), a job's or session's revoke sweep matches it and kills a credential nothing owns, and `authenticatePat` stamps it `agency:'agent'` so it is held to the ISS-786/812 evidence gates a person is deliberately exempt from. Measured on production 2026-09-01: 0 tokens carried `job:`, so this fenced a hole before anyone was standing in it; `session:` (ISS-927) is fenced the same way on the day it starts being minted, not after.
     name: z.string().min(1).max(80),
     scopes: z.array(z.enum(SCOPES)).optional(),
     projectIds: z.array(z.uuid()).max(50).nullable().optional(),
-    // cm:guard this is where the mutual exclusion with `projectIds` is enforced, and the ONLY place — `mintPat` accepts both (see its `cm:edge`), so a second minting route that skipped this check would produce a token carrying two different, silently contradictory fences.
     boundProjectId: z.uuid().nullable().optional(),
-    // cm:guard the enum is `PAT_PERMISSION_NAMES`, so the menu is the ONLY source of a legal name and an operator cannot invent a route group — a group nobody proved is a fence nobody proved (ISS-972's rule). Omitting the field grants every group; sending `[]` grants every group too, because absence has two shapes and both must read the same as the rows the migration never wrote.
     permissions: z.array(z.enum(PAT_PERMISSION_NAMES)).optional(),
     expiresAt: z.iso.datetime().optional(),
   })
@@ -119,7 +116,6 @@ patRoutes.post(
       });
     }
 
-    // cm:why pre-checked to answer 409 rather than let `pat_user_name_uniq` surface as a 500.
     const [existing] = await db
       .select({ id: personalAccessTokens.id })
       .from(personalAccessTokens)
@@ -138,7 +134,6 @@ patRoutes.post(
       });
     }
 
-    // cm:why refused rather than merged because a bound token IS its own single-project allowlist (ISS-497), so accepting both would give one token two fences that can disagree.
     if (body.boundProjectId && body.projectIds && body.projectIds.length > 0) {
       throw badRequest({
         formErrors: ['boundProjectId and projectIds are mutually exclusive'],
@@ -254,7 +249,6 @@ patRoutes.post(
   async (c) => {
     const userId = c.get('userId');
     const { id } = c.req.valid('param');
-    // cm:why parsed by hand rather than through `zValidator`, which rejects an absent body: a rotation that keeps the current expiry is the common call and sends nothing at all.
     let expiresAt: Date | null = null;
     try {
       const raw = await c.req.json().catch(() => null);
@@ -265,7 +259,6 @@ patRoutes.post(
       }
     } catch (err) {
       if (err instanceof HTTPException) throw err;
-      // cm:guard swallow ONLY a non-JSON body here; the `throw` above re-raises the 400 a malformed but parseable body earned, and removing it turns a schema violation into a silent rotation on the old expiry.
     }
     const minted = await rotatePat({ id, userId, expiresAt });
     if (!minted) throw notFound();

@@ -127,7 +127,6 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
       });
       model ??= trial.model;
       row.trials.push(trial.result);
-      // cm:guard a judge that is the model under test grades its own habits kindly; the trial it was refused on is kept whole (grades, room id) so the partial file still excludes that room from a history reading
       if (trial.judgeRefused) {
         results.push(row);
         await writeResult(deps, f, version, model, runId, k, results, judge);
@@ -135,7 +134,6 @@ async function run(argv: string[], env: Env, deps: CliDeps): Promise<number> {
           `${task.id} trial ${i + 1}: ${trial.judgeRefused}; no further trial started, partial results written to ${f.out}`,
         );
       }
-      // cm:guard a restore that failed must not become the next trial's baseline: the next trial would read the moved value as the account's own and restore to it, and the run would end "clean" with the person's preference changed
       if (trial.result.cleanup.preferences.equal === false) {
         results.push(row);
         await writeResult(deps, f, version, model, runId, k, results, judge);

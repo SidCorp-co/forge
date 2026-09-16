@@ -74,7 +74,6 @@ async function loadManageableConnection(
   const connection = await findConnectionById(id);
   if (!connection) throw notFound('connection');
   if (connection.ownerType === 'user') {
-    // cm:guard answer not-found, never forbidden, for another user's connection — a 403 confirms the id exists, and these ids are handed out by every list this principal cannot see
     if (connection.ownerId !== userId) throw notFound('connection');
     return connection;
   }
@@ -89,7 +88,6 @@ async function loadManageableConnection(
  * route shows a connection to can also read it here; only WRITING is gated on
  * org admin.
  */
-// cm:guard read routes gate on THIS, write routes on loadManageableConnection — the two sets differ by exactly the org member who is not an admin, and gating a read on the manage check is what made "Projects using this connection" answer 404 to a member looking at a card the same session had just listed
 async function loadVisibleConnection(
   id: string,
   userId: string,
@@ -215,7 +213,6 @@ integrationConnectionsRoutes.post(
       bindingConfig = splitProviderConfig(provider, parsed.data as Record<string, unknown>).binding;
     }
 
-    // cm:why minted per binding, except where the provider signs with a secret of its own — see `githubInboundSecret`
     const integrationSecret =
       (provider === 'github' ? githubInboundSecret(connection) : null) ??
       `whsec_${randomBytes(24).toString('hex')}`;

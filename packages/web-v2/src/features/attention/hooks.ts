@@ -57,7 +57,6 @@ export function useAttention() {
       failedJobs,
       pendingSkillUpdates,
       unseenDrafts,
-      // cm:guard pass core's count through, never `unseenDrafts.length` — that list is capped, and recomputing the total from it is how a 22-deep backlog renders as 20 and stops being one anybody chases.
       unseenDraftsTotal: base?.unseenDraftsTotal ?? 0,
       offlineRunners,
       total:

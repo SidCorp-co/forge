@@ -74,7 +74,6 @@ function codeNames(body: string, file: string): Set<string> {
     if (ts.isPropertyAccessExpression(node) || ts.isElementAccessExpression(node)) {
       const full = chain(node);
       if (full !== null) {
-        // cm:guard every SUFFIX of the chain, not just the whole of it: `registry.STAGES.length` must answer to a `STAGES.length` check, which is the shape a reader writes it as
         const parts = full.split(".");
         for (let i = 0; i < parts.length; i++) names.add(parts.slice(i).join("."));
       }
@@ -102,7 +101,6 @@ function hits(name: string): string[] {
 
 describe("no status→stage ladder survives in web-v2", () => {
   it("finds enough files to be looking at the real tree", () => {
-    // cm:guard guards the scan itself — a walk that silently matched nothing would pass every case below
     expect(FILES.length).toBeGreaterThan(200);
     expect(hits("statusToChip")).not.toHaveLength(0);
   });
@@ -157,7 +155,6 @@ describe("the scan itself cannot be fooled", () => {
     expect(named("const n = registry.STAGES.length;")).toContain("STAGES.length");
   });
 
-  // cm:guard an element access with a string key is the same declaration written another way, and it used to slip past the identifier walk entirely
   it("reads a bracketed string key as the name it names", () => {
     expect(named('const m = globalThis["STATUS_TO_STAGE"];')).toContain("STATUS_TO_STAGE");
     expect(named('const m = registry["STAGES"].length;')).toContain("STAGES.length");

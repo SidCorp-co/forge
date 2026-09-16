@@ -89,7 +89,6 @@ const TASK_STATUS_TONE: Record<
   done: "green",
 };
 
-// cm:edge naming -> packages/web-v2/src/features/issues/derive.ts — the same kernel-status-to-human-label job the issue helpers do, kept separate only because tasks carry their own status set; ISS-349, and the badge must never render the raw wire value `in_progress`
 const TASK_STATUS_LABELS: Record<TaskRow["status"], string> = {
   backlog: "Backlog",
   todo: "To do",
@@ -117,7 +116,6 @@ export function IssueDetailScreen({
 
   useRoom(projectRoom(projectId));
 
-  // cm:why hiding the write affordances from a viewer is UX, never the gate — the server 403s a viewer's transition, edit and comment regardless, so a bug here costs a confusing button and not an unauthorised write
   const projectsQ = useProjects();
   const projectRole = projectsQ.data?.find((p) => p.id === projectId)?.role;
   const canWrite = projectRole !== "viewer";
@@ -138,7 +136,6 @@ export function IssueDetailScreen({
   const { requestTransition, dialog: reasonDialog, isPending: transitionPending } =
     useGuardedTransition();
   const qc = useQueryClient();
-  // cm:why the shared run-control hook already owns the endpoint and both toasts; only the issue query needs an extra invalidation, because a resume changes this issue's `pipelineHealth.pausedRun` and that key is not in the hook's own list
   const resumeRun = useResumeRun();
   const onResumeRun = (runId: string) =>
     resumeRun.mutate(runId, {
@@ -160,7 +157,6 @@ export function IssueDetailScreen({
   const issueDisplayId = issue?.displayId;
   const issueTitle = issue?.title;
 
-  // cm:edge contract -> packages/web-v2/src/features/shell/commands.ts — the ⌘K Recent group reads what this records; dropping the call empties that group with nothing failing.
   useEffect(() => {
     if (!issueDisplayId || !issueTitle) return;
     pushRecent({
@@ -207,17 +203,13 @@ export function IssueDetailScreen({
   const onBannerResume = () =>
     requestTransition(id, "reopen", { successMessage: "Issue resumed" });
 
-  // cm:guard the derivations below sit AFTER the loading/error early-returns on purpose — they are plain function calls, not hooks, so no hook order changes with them; moving a real hook down here is what would break
   const blocker = deriveBlockerState(issue, issue.pipelineHealth, depsQ.data);
-  // cm:guard the step named beside the status chip is this same `liveStep`, never a stage derived from the status — that projection made a closed issue read "release" (ISS-999)
-  // cm:guard both arguments are fields the KERNEL recorded — the active session's own skill and the latest failed job's own step. ISS-999 replaced `deriveStageOutcomes`, whose state came from a stage's index against a status-derived position, so a step read `done` because it sat left of another one.
   const liveStep = issue.pipelineHealth?.activeSession?.skill ?? null;
   const stepOutcomes = deriveStepOutcomes(handoffsQ.data, durationsQ.data, {
     activeStep: runningStepOf(issue.pipelineHealth),
     failedStep: issue.failureInfo?.failedStep ?? null,
   });
   const liveSession = pickActiveSession(issue.agentSessions);
-  // cm:why a queued job has no agent_sessions row, so this is the only signal the panel has that a next step exists at all; the live session outranks it
   const queuedStep = deriveQueuedStep(issue.pipelineHealth, !!liveSession);
   const agentState: LiveAgentState | null = liveSession
     ? { kind: "live", session: liveSession }
@@ -225,7 +217,6 @@ export function IssueDetailScreen({
       ? { kind: "queued", step: queuedStep }
       : null;
 
-  // cm:guard "Provide info" moves the reader to the DECISION PANEL and not to the comment box: since ISS-996 a park at `needs_info` is settled by answering its question row, and an answer typed into the thread resumes nothing (ISS-996).
   const focusDecisions = () => {
     if (typeof window !== "undefined") {
       requestAnimationFrame(() =>
@@ -234,7 +225,6 @@ export function IssueDetailScreen({
     }
   };
 
-  // cm:guard every header action below routes to an EXISTING transition or nav endpoint — one contextual primary button chosen by lifecycle position, the rest in the ⋯ menu (ISS-360)
   const isTerminal = issue.status === "awaiting_release" || issue.status === "closed";
   const isParked = issue.status === "on_hold";
   const isRunActive =
@@ -297,7 +287,6 @@ export function IssueDetailScreen({
             ? "failed"
             : null;
 
-  // cm:guard the one-column track is written out as `minmax(0,1fr)` and is never left implicit: an `auto` track takes its max-content width, so at 375px the column grew to 495px and every card in it was clipped off the right edge (ISS-999)
   return (
     <PageContainer className="min-h-dvh">
       {/* Sticky action + state bar — keeps the id, live status, and the primary
@@ -317,7 +306,6 @@ export function IssueDetailScreen({
             <MonoTag hue="cobalt">{issue.displayId}</MonoTag>
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
             {
-          // cm:guard label with the TRUE lifecycle status, never the bucket's own word. `statusToChip` folds `draft`, `open`, `confirmed`, `clarified` and `approved` all onto `queued`, so the bare chip told a reader the pipeline had a draft queued when nothing was working it — the exact confusion ISS-917 admits statuses to a backlog to make legible. Every other issue-domain chip already passes this.
         }
         <StatusChip status={statusToChip(issue.status)} label={statusLabelFor(issue.status)} />
             {runChip && (
@@ -648,7 +636,6 @@ function TabLoading() {
 
 /** Error body for a detail tab whose query failed, with the retry that gets the
  *  reader out of it. */
-// cm:guard a failed tab query must render THIS, never fall through to the empty render — a thread that renders "no comments yet" on a 500 states as fact the very thing it does not know, and that is how ISS-893's dead page read to the reporter until the error boundary caught it
 function TabError({
   query,
   what,

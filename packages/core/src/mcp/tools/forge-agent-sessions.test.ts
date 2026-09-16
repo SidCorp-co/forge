@@ -12,7 +12,6 @@ vi.mock('../../config/env.js', () => ({
 const selectLimit = vi.fn();
 const selectOrderBy = vi.fn(() => ({ limit: selectLimit }));
 const selectWhere = vi.fn(() => ({ limit: selectLimit, orderBy: selectOrderBy }));
-// cm:guard TWO leftJoins, because `lib/authz.ts:effectiveProjectRole` chains two before `where().limit(1)` — a mock with one silently resolves the role to undefined and every case here passes for the wrong reason.
 const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 const selectFrom = vi.fn(() => ({ where: selectWhere, leftJoin: selectLeftJoin }));
@@ -75,7 +74,6 @@ describe('forge_agent_sessions.list', () => {
     expect(result.sessions[0]?.id).toBe(SESSION_ID);
   });
 
-  // cm:guard ISS-787 — the SAME limit must reach `.limit()` as limit+1 AND reach buildListEnvelope un-inflated: the disclosure is wiring, not a helper, so a tool that hands the overfetched value on as `limit` computes hasMore off the probe row and reports a bound page as complete
   it('over-fetches by one and discloses the limit that bound the page', async () => {
     const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
@@ -113,7 +111,6 @@ describe('forge_agent_sessions.list', () => {
     await expect(tool.handler({ projectId: PROJECT_ID })).rejects.toThrow(/NOT_FOUND/);
   });
 
-  // cm:guard the list query must use a body-free column PROJECTION and never a bare `db.select()`, because the multi-MB `messages` transcript would overflow the MCP token cap; this asserts the projection map of the final sessions select, so a `select()` added later goes red here rather than in a client (ISS-428).
   it('projects a body-free column set (no messages/diff jsonb; exposes messageCount)', async () => {
     const tool = forgeAgentSessionsListTool(makeFakeContext(fakePrincipal));
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);

@@ -45,17 +45,10 @@ export function ConversationChat({
   onClose?: () => void;
   /** Fires once a draft's first send has opened a real room, so the caller can follow it. */
   onConversationActive?: (id: string) => void;
-  // cm:guard the way into the list is a control in THIS header rather than a link to the
-  // `/conversations` page: the panel exists so a person never leaves the screen they are on, and
-  // ISS-732's promise that history stayed reachable was kept on that page and nowhere here, which
-  // is what made closing the panel read as losing the conversation (ISS-1028).
   /** When set, render the control that opens the conversation list. */
   onOpenHistory?: () => void;
   /** When set, render the control that drops back to a fresh draft. */
   onNew?: () => void;
-  // cm:guard rendered UNDER the empty state and only while the room holds nothing, so the list is
-  // on screen the moment the panel opens without a single room being resumed: the issue asks for
-  // both a new draft on open and the list on open, and this is what makes them one screen.
   /** Rendered beneath the empty state of a room with no messages. */
   emptyBody?: React.ReactNode;
 }) {
@@ -70,10 +63,6 @@ export function ConversationChat({
   const open = useOpenConversation();
   const send = useSendMessage();
 
-  // cm:guard the outbox lives HERE and not in the query cache: the first message of a room creates
-  // the conversation before it can send, so at the moment a person presses Enter there is no cache
-  // entry to write an optimistic row into — `setQueryData` would find nothing and drop it silently,
-  // which is the exact failure this is fixing (ISS-1031).
   const [outbox, setOutbox] = useState<OutboxMessage[]>([]);
   const sending = useRef(false);
 
@@ -81,7 +70,6 @@ export function ConversationChat({
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
   const busy = send.isPending || open.isPending;
 
-  // cm:guard the composer is CLOSED before a person types rather than after they press enter, because the server refuses a turn in a room about more than one project by name — and a person who has written a paragraph into a box that was never going to send it has lost the paragraph and learned nothing. The reason and the way out below are the same ones that refusal carries (ISS-1011 criterion 33).
   const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;
 
   const { scrollRef, bottomRef, onScroll } = useStickToBottom({
@@ -91,12 +79,6 @@ export function ConversationChat({
     live: busy,
   });
 
-  // cm:guard the send is AWAITED and a failure rejects up into the composer, which is what keeps the typed text for a retry: resolving on a failure clears the box and the words are gone (ISS-462's contract, kept across the port).
-  // cm:guard the id that just came back from `open` is handed to the send DIRECTLY and not read off `resolvedId`: state set in this same chain has not re-rendered yet, so the render's value is still undefined and the send would post to `/conversations/undefined/messages` (review F3).
-  // cm:guard this RETURNS as soon as the message is in the outbox and never awaits the round-trip.
-  // The composer clears on return, so the words leave the box the moment Enter is pressed and the
-  // thread shows them immediately; the send itself is driven by the drain below. Awaiting here is
-  // what made a person wait out the whole agent turn before seeing their own question (ISS-1031).
   const handleSend = async (message: string) => {
     setOutbox((o) => [...o, { id: crypto.randomUUID(), content: message, state: "queued" }]);
   };
@@ -105,13 +87,6 @@ export function ConversationChat({
     setOutbox((o) => o.map((m) => (m.id === id ? { ...m, state: "queued", error: undefined } : m)));
   }, []);
 
-  // cm:guard ONE send in flight per room, held by a ref rather than by `send.isPending`: the flag is
-  // state and lags a render behind, so two queued messages both read it as free and both post. The
-  // server serialises a room's windows, so the second would answer against a window the first had
-  // already claimed.
-  // cm:guard a failure STOPS the drain and keeps every message behind it queued rather than sending
-  // them into a room whose earlier question was refused — and the failed one keeps its words, which
-  // is ISS-462's contract carried onto the row instead of onto the box.
   useEffect(() => {
     if (sending.current) return;
     if (outbox.some((m) => m.state === "failed")) return;
@@ -141,11 +116,6 @@ export function ConversationChat({
     })();
   }, [outbox, resolvedId, projectId, open, send, onConversationActive]);
 
-  // cm:guard the header is built ONCE and rendered above every body state, rather than the loading
-  // and error states returning a screen of their own: a room whose read fails — one deleted in
-  // another tab, a dropped connection — used to render as an error and a Retry button with no
-  // history control and no way to start a new chat, so the only way out of a room that no longer
-  // loads was to close the panel and open it again (review F3).
   const header = (
     <header className="@container flex-none border-b border-line bg-app/95 px-4 py-3">
       <div className="flex items-center gap-3">
@@ -179,10 +149,6 @@ export function ConversationChat({
     </header>
   );
 
-  // cm:guard the loader yields to anything of the person's OWN that is not sent yet. The first send
-  // of a draft opens the room, which starts this query, which replaced the whole thread — including
-  // the question they had just typed — with a spinner. Showing a spinner over somebody's unsent
-  // words is the same defect as never showing them at all (ISS-1031).
   if (resolvedId && roomQ.isLoading && outbox.length === 0) {
     return (
       <div className="flex h-full min-h-0 flex-col">
@@ -194,10 +160,6 @@ export function ConversationChat({
     );
   }
 
-  // cm:guard the error state yields to an unsent message for the same reason the loader above does,
-  // and this one matters more: a room that will not load is exactly when a person needs the words
-  // they typed handed back rather than replaced by a Retry button. The failed row carries them and
-  // the header still offers the way out ISS-1028 added (ISS-1031).
   if (resolvedId && roomQ.isError && outbox.length === 0) {
     return (
       <div className="flex h-full min-h-0 flex-col">

@@ -136,7 +136,6 @@ pub fn clear_device_token() -> Result<()> {
 ///
 /// `$FORGE_PAT` wins over anything stored, so a CI job or a one-off shell can
 /// speak as a different principal without touching the store.
-// cm:guard the env var is read HERE and not at the call site, so every consumer of a PAT resolves it the same way. A second resolution order elsewhere is how one command honours `$FORGE_PAT` and the next quietly ignores it.
 pub fn load_pat() -> Result<Option<String>> {
     if let Ok(tok) = std::env::var("FORGE_PAT") {
         let tok = tok.trim();
@@ -218,7 +217,6 @@ fn read_cred_file() -> Result<CredFile> {
     serde_json::from_str(&raw).map_err(|e| Error::Other(e.to_string()))
 }
 
-// cm:guard READ-MODIFY-WRITE, never a fresh CredFile — the file holds two independent credentials now, so serialising one field's value into a default struct silently deletes the other. `forge-runner login` would log the machine out of the REST API it never touched.
 fn write_cred_file(cred: &CredFile) -> Result<()> {
     let p = file_path()?;
     if let Some(parent) = p.parent() {
@@ -275,8 +273,6 @@ fn restrict_dir(_p: &std::path::Path) {}
 /// `$FORGE_PAT` too, so with cargo's thread-per-test they would trade values
 /// mid-assertion. Every test in the crate that writes `FORGE_PAT`,
 /// `XDG_CONFIG_HOME` or `FORGE_RUNNER_CRED_STORE` takes this lock.
-// cm:guard the lock lives HERE, beside the resolution order it protects, for the same reason the env var is read here and not at each call site — a second lock elsewhere protects a different set of tests from a different half of the same variable.
-// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/mcp/config.rs — the other holder; a third module that starts setting these vars in a test takes this lock or reintroduces the race
 #[cfg(test)]
 pub(crate) static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
@@ -284,7 +280,6 @@ pub(crate) static ENV_TEST_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(()
 ///
 /// The lock above keeps two tests from trading a value while both run; this
 /// keeps one test from handing its value to every test that runs after it.
-// cm:guard RAII and never a line at the end of the body. `the_two_credentials_do_not_evict_each_other` used to set `XDG_CONFIG_HOME` to `/tmp/forge-cred-<pid>`, delete that directory and leave the variable set, so every later test in the process resolved `Config::path()` into a deleted temp dir and made it again — 90 such dirs on forge-vm holding `skills-cache`, `mcp` and `master/`, and `ensure_server` placing the box's LIVE session unit on a temp socket (ISS-1044).
 #[cfg(test)]
 pub(crate) struct ScopedVar {
     key: &'static str,

@@ -60,7 +60,6 @@ uploadRoutes.put(
   async (c) => {
     const { uploadId } = c.req.valid('param');
 
-    // cm:guard the claim must stay a single atomic UPDATE ... WHERE status = 'pending' RETURNING, never a read-then-write: two callers holding one presigned URL would both pass a separate check and both upload, and the second's bytes would land under a ticket the first already consumed.
     const ticket = await claimUploadTicket(uploadId);
     if (!ticket) throw goneOrNotFound();
 
@@ -76,7 +75,6 @@ uploadRoutes.put(
           mime: ticket.mime,
           bytes,
           uploaderId: ticket.uploaderId,
-          // cm:guard `'human'` here is a PLACEHOLDER, not a measurement — this route authenticates by the upload ticket alone, and `upload_tickets` records who the uploader is but not whether an agent was driving. Carry agency on the ticket at mint time and read it here; until then an agent's upload is filed under its owner, which is what the row already said before this column existed.
           uploaderAgency: 'human',
         });
       } else if (ticket.targetType === 'session') {
@@ -101,7 +99,6 @@ uploadRoutes.put(
 
       return c.json(persisted, 201);
     } catch (err) {
-      // cm:why re-open rather than burn the ticket — the bytes never landed, so a transient failure lets the holder retry the same presigned URL instead of paying a second mint
       await releaseUploadTicket(uploadId);
       if (
         err instanceof IssueAttachmentError ||
@@ -115,7 +112,6 @@ uploadRoutes.put(
   },
 );
 
-// cm:edge contract -> packages/core/src/uploads/download-ticket-service.ts — the ticket id in this path IS the credential, so this route must stay OUTSIDE any auth middleware; adding one here re-breaks third-party fetchers, which is the whole reason it exists
 uploadRoutes.get(
   '/download/:ticketId',
   zValidator('param', z.object({ ticketId: z.uuid() }), (r) => {
@@ -140,11 +136,9 @@ uploadRoutes.get(
     }
 
     const bytes = await getStorage().get(att.path);
-    // cm:guard the filename is uploaded (untrusted) content and must go through `contentDisposition`, never be interpolated here — a header value is a ByteString, so the raw name is both a CRLF injection vector and a 500 on any code point above 255, and names have carried those since they became identities (ISS-963)
     return c.body(new Uint8Array(bytes), 200, {
       'content-type': att.mime,
       'content-length': String(bytes.byteLength),
-      // cm:edge contract -> packages/core/src/lib/attachment-headers.ts — the same bytes are also served by the three bearer-guarded routes through that helper, which sends `nosniff` on every response; this route sends its own headers and must carry it too, or the one surface reachable with no credential is the one where a browser may sniff an uploaded blob into markup
       'x-content-type-options': 'nosniff',
       'content-disposition': contentDisposition('attachment', att.name),
       'cache-control': 'private, no-store',

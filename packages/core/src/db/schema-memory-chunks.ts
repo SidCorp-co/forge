@@ -11,7 +11,6 @@ import { index, integer, pgTable, text, timestamp, uniqueIndex, uuid } from 'dri
 import { memories } from './schema.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
-// cm:guard a sibling table, never a re-key of `memories` — `get`, `decay`, `consolidation`, `feedback`, the candidates and the near-duplicate probe all read one row per natural key and none of them knows this table exists; a chunk is reachable ONLY through the search arm's join on the parent's `chunked_at` and `chunk_generation`, so nothing here may be selected without that join
 export const memoryChunks = pgTable(
   'memory_chunks',
   {

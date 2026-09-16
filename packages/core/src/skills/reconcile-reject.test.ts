@@ -3,7 +3,6 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const RUN_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
 
-// cm:why mirrors runs.test.ts's db.transaction mock — invokes the callback with a tx handle whose select/update chain is structurally identical to db for the calls rejectReconcileRun issues (select().where().for('update').limit(), update().set().where()).
 const state = vi.hoisted(() => ({
   runRow: null as Record<string, unknown> | null,
   updateSetCalls: [] as Record<string, unknown>[],

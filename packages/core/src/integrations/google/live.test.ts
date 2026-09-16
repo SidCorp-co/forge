@@ -53,7 +53,6 @@ describe.skipIf(!haveCredential)('against Google itself (criterion 10, live half
   }, 30_000);
 });
 
-// cm:guard this assertion is the file's whole point when the credential is absent — without it the suite reports two skipped cases in grey and a reader takes the run as green. The message is what a verdict on criterion 10 must cite.
 describe.skipIf(haveCredential)('against Google itself — NOT RUN', () => {
   it('reports criterion 10 LIVE HALF UNPROVED — no Google credential in this environment', () => {
     expect(haveCredential).toBe(false);

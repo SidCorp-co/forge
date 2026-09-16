@@ -19,7 +19,6 @@ let harness: TestDatabase;
 
 const INSTANT = '2026-09-06T20:51:00.000Z';
 
-// cm:why +05:30 is here because a half-hour offset breaks hour buckets too, and -07:00 because it puts this instant on the previous calendar day; UTC is the one zone that passes even unpinned, so a set without the others proves nothing
 const ZONES = ['UTC', 'Asia/Kolkata', 'America/Los_Angeles', 'Asia/Ho_Chi_Minh'];
 
 beforeAll(async () => {

@@ -149,7 +149,6 @@ describe('reapConcludedRuns predicate E2E (ISS-923)', () => {
     expect(await runStatus(runId)).toBe('completed');
   });
 
-  // cm:guard the quiet window is what stands between this pass and a run whose next job is seconds away — remove it and this assertion is the one that goes red.
   it('leaves a run whose last job went terminal inside the quiet window', async () => {
     const runId = await seedRun();
     await seedJob(runId, 'done', 5);
@@ -160,20 +159,16 @@ describe('reapConcludedRuns predicate E2E (ISS-923)', () => {
     expect(await runStatus(runId)).toBe('running');
   });
 
-  // cm:guard the pass must read the CALLER's clock, not SQL's `now()` — the parameter is otherwise
-  // decoration, and the mistake is invisible because the default argument makes it behave correctly.
   it('reads the quiet window from the `now` it is given, not the DB clock', async () => {
     const runId = await seedRun();
     await seedJob(runId, 'done', 5);
 
-    // cm:why 5 minutes quiet is inside the window from real now and outside it from an hour ahead — the same row, two clocks, which is the only shape that separates the two readings.
     expect((await mods.reapConcludedRuns(new Date())).reaped).toBe(0);
     const later = new Date(Date.now() + 61 * 60_000);
     expect((await mods.reapConcludedRuns(later)).reaped).toBe(1);
     expect(await runStatus(runId)).toBe('completed');
   });
 
-  // cm:guard the window is per-RUN, not per-job: one recent job holds the whole run open.
   it('leaves a run with one old job and one recent job', async () => {
     const runId = await seedRun();
     await seedJob(runId, 'done', 500);
@@ -199,7 +194,6 @@ describe('reapConcludedRuns predicate E2E (ISS-923)', () => {
     },
   );
 
-  // cm:edge contract -> packages/core/src/pipeline/runs-concluded.ts — a job-less run belongs to `reapJoblessRuns`, never to this pass; one run answering to two reapers with different outcome rules is the shape both guards exist to prevent.
   it('leaves a run with no jobs at all', async () => {
     const runId = await seedRun();
 
@@ -209,7 +203,6 @@ describe('reapConcludedRuns predicate E2E (ISS-923)', () => {
     expect(await runStatus(runId)).toBe('running');
   });
 
-  // cm:guard ISS-654 narrowed this from "never touch a paused run" to "never touch a paused run that could still be resumed into work" — a live session is what makes the pause a hold rather than a phantom, and this pair is the whole distinction.
   it('leaves a `paused` run holding a live session alone', async () => {
     const runId = await seedRun('paused');
     await seedJob(runId, 'done', 5000);

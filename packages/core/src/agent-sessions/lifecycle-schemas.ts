@@ -78,7 +78,6 @@ export const abortBodySchema = z
   })
   .strict();
 
-// cm:why deviceId: null means Auto — clears the pin so the next turn auto-picks
 export const setRunnerBodySchema = z.object({ deviceId: z.uuid().nullable() }).strict();
 
 export const buildPromptBodySchema = z

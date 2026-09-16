@@ -4,20 +4,6 @@
  * Text and its header only; `layer.ts` is the one reader.
  */
 
-// cm:guard the verbs' own forms are CARRIED, in the `forge` tool's description, and this text no
-// longer opens a task with `forge -h`: measured over beta's 146-turn QA window at 45d92580, a `-h`
-// round-trip was paid on 25 of them — `forge issue -h` 15, `forge -h` 11, `forge new -h` 3,
-// `forge guide -h` 2 — which is the model obeying the sentence that used to stand here rather than
-// groping for a flag. The one surviving mention of `-h` names it as the way out for a verb the
-// description does not carry, and `compose.test.ts` holds every `-h` sentence in this file and in
-// that description to saying so (ISS-1057).
-// cm:edge contract -> packages/core/src/assistant/tools/forge-cli-forms.ts — `READ_FORMS` is the
-// carried set this text promises is there, and `forge-cli-forms.test.ts` holds each form to the
-// bundled CLI's own Usage line, so a verb whose form went stale fails rather than misleads.
-// cm:edge contract -> packages/core/src/guides/assistant-method-guide.ts — that guide's body is
-// `base.ts` and this layer composed.
-// cm:edge contract -> scripts/check-injected-doc-modes.mjs — that gate reads guide bodies by FILE,
-// and this file is listed there because the guide's body is composed from it.
 import type { PromptLayer } from './layer.js';
 
 export const TOOLS_LAYER: PromptLayer = {

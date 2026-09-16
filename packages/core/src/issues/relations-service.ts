@@ -31,7 +31,6 @@ export type IssueRelationInput = {
   validUntil?: string | undefined;
 };
 
-// cm:guard this list is what BOTH the PAT-reachable MCP write path (ISS-868) and REST create accept, so a kind added here becomes creatable by every credential class — widen it only for a kind that is pure metadata with no side effect at all. `duplicates`/`parent` are excluded because they carry no ordering worth an atomic write, and `decomposes` because it is not pure metadata at all — it waives the work-evidence gate (`dependency-effects.ts#WORK_EVIDENCE_WAIVER_KIND`), so it must not be reachable from an atomic create. Route those three through forge_project_pm set_dependency.
 export const RELATION_KINDS = ['blocks', 'relates'] as const;
 
 /**
@@ -60,8 +59,6 @@ export type AppliedIssueRelation = {
   updated: boolean;
 };
 
-// cm:guard `dependsOnId` puts the OTHER issue on the `from` side and this one on `to` — the repo's convention is `from` BLOCKS `to`, so swapping the two silently inverts every edge an agent declares and the dispatcher gates the wrong side
-// cm:edge contract -> packages/core/src/issues/dependency-routes.ts — same direction as POST /api/issues/:id/dependencies, whose `dependsOnId` also lands as (from=dependsOnId, to=:id)
 export async function applyIssueRelations(
   writer: IssueDependencyWriter,
   projectId: string,
@@ -85,7 +82,6 @@ export type PendingIssueRelation = {
  * A create passes its open transaction so the issue and its edges commit as
  * one, then flushes the effects.
  */
-// cm:guard keep this loop SEQUENTIAL — `writeIssueDependency` runs `detectCycle` on the SAME executor, so A→B and B→A sent in one `relations` array are each individually acyclic and only the serial order rejects the pair; `onConflictDoNothing` does not catch a cycle. A `Promise.all` here reads like an obvious win and admits the cycle the gate exists to refuse.
 export async function writeIssueRelations(
   writer: IssueDependencyWriter,
   projectId: string,
@@ -95,7 +91,6 @@ export async function writeIssueRelations(
 ): Promise<PendingIssueRelation[]> {
   const pending: PendingIssueRelation[] = [];
   for (const rel of relations ?? []) {
-    // cm:guard enforce EXACTLY one side here, not just "at least one" — the zod `.refine` in forge-issues.ts is the only other check, so a second caller of this helper (or a widened schema) would otherwise get the `dependsOnId` branch silently and lose the `blocksId` edge it also asked for
     if ((rel.dependsOnId == null) === (rel.blocksId == null)) {
       throw new Error('BAD_REQUEST: relation needs exactly one of dependsOnId or blocksId');
     }
@@ -131,7 +126,6 @@ export async function writeIssueRelations(
  * The EFFECTS half: announce every edge the write landed, then publish the
  * dependents' health once for the whole array.
  */
-// cm:guard ONE publish for the whole array, not one per edge — `publishPipelineHealthChanged` fans out to `hydratePipelineHealthForIssues`, which is ~9 sequential round trips, and it already batches by `inArray(ids)`; per-edge publishing cost 9N reads for the schema's 20-edge maximum. It must still run HERE, before the caller's `issueCreated` emit / status transition wakes the dispatcher.
 export async function flushIssueRelationEffects(
   writer: IssueDependencyWriter,
   projectId: string,

@@ -90,8 +90,6 @@ export function ContextRail({
 }) {
   const router = useRouter();
   const display = deriveSessionDisplayStatus(session);
-  // cm:guard the Pipeline section is the status chip and nothing else — a tracker there draws beads for steps no row records, and `drive` is none of the seven, so it read bead 1 of 7 for every live session (ISS-999)
-  // cm:guard the chip names the step the session RECORDED or no step at all; `deriveStage` used to fold `drive` onto `code` here, which replaced the false tracker with a false word (ISS-999)
   const stage = sessionStep(session.metadata) ?? undefined;
   const live = display === "running" || display === "stalled";
   const startMs = session.startedAt ? new Date(session.startedAt).getTime() : undefined;
@@ -115,8 +113,6 @@ export function ContextRail({
     ? devicesQ.data?.find((d) => d.id === session.deviceId)
     : undefined;
 
-  // cm:why filtered client-side on `metadata.issueId` off the existing list endpoint rather than through a new one: the rows are already in the shared cache the queue screen fills, so this costs no request and no `parentSessionId` column.
-  // cm:guard this list is EVERY session that worked the issue, in no order and with no total — it used to be described as "the other pipeline steps (triage/plan/code/…)", and an autonomous issue has one session that does all of it (ISS-999)
   const issueId = session.metadata?.issueId;
   const siblingsQ = useSessions({ projectId: session.projectId });
   const siblings = useMemo(() => {

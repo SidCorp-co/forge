@@ -34,12 +34,6 @@ export interface TranscriptAccumulator {
 /**
  * The model's `arguments` string as the canonical `input` object.
  */
-// cm:guard a string that is not a JSON object is kept under `arguments` rather than dropped or
-// guessed at: `ToolCall.input` is typed `Record<string, unknown>`, the raw text is what the model
-// actually sent, and the executor (`run-turn-core.ts safeExecute`) has already been handed the same
-// string — so the transcript recording `{}` would say the model called the tool with no arguments,
-// which is a different and false claim. The key collides with nothing, because this branch is only
-// reached when the payload did not parse as an object at all.
 function toInput(raw: string): Record<string, unknown> {
   if (raw.length === 0) return {};
   try {
@@ -71,10 +65,6 @@ export function createTranscriptAccumulator(
     if (text.length === 0) return;
     const e = ensure();
     const blocks = e.blocks as ContentBlock[];
-    // cm:guard chunks COALESCE into the open text block instead of each becoming one: this wire
-    // streams token by token, and `mergeMessages` appends every text block it is given — feeding it
-    // per-token would put one block per token in the column. The CLI path never hits this because a
-    // stream-json line already carries a whole block.
     if (openText >= 0) {
       const b = blocks[openText] as { type: 'text'; text: string };
       b.text += text;
@@ -97,9 +87,6 @@ export function createTranscriptAccumulator(
     };
     (e.blocks as ContentBlock[]).push({ type: 'tool', toolCall: call });
     (e.toolCalls as ToolCall[]).push(call);
-    // cm:why the open text block is CLOSED here and not merged with whatever prose follows: the
-    // order prose/tool/prose is the readable record of what the turn did, and joining the two ends
-    // of it around the call is what loses it.
     openText = -1;
   };
 
@@ -111,10 +98,6 @@ export function createTranscriptAccumulator(
   }): void => {
     const e = entry;
     const known = (e?.toolCalls ?? []).some((t) => t.id === ev.id);
-    // cm:guard a result naming no call this entry holds is REFUSED by name, never dropped: the loop
-    // pairs every result with the call it executed, so an unmatched id means the pairing broke
-    // upstream — and `mergeMessages` would answer it by appending a stray `tool_result` message
-    // that renders as a tool nobody called (ISS-1029 criterion 14).
     if (!e || !known) {
       throw new Error(
         `transcript: tool result for ${ev.id} names no tool call this turn made (calls: ${
@@ -122,9 +105,6 @@ export function createTranscriptAccumulator(
         })`,
       );
     }
-    // cm:why `mergeMessages` and not a local copy — settling `output`/`isError`/`durationMs` onto
-    // the matching call, on the message AND on its block, is exactly what it already does for the
-    // CLI path, and it reads no stream-json field to do it.
     const holder: AgentMessage[] = [e];
     mergeMessages(holder, [
       {

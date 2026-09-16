@@ -21,7 +21,6 @@ const isExpired = (validUntil: Date | string | null, now: number): boolean =>
  * DFS forward from `start` following only `kind='blocks'` edges. If we reach
  * `target`, returns `'cycle'`. Caps depth defensively.
  */
-// cm:guard the walk MUST run on the caller's executor, not the module-level `db`. Inside a create transaction the edges written earlier in that same transaction are not yet committed, so a `db`-level walk cannot see them — and relations-service's sequential loop exists precisely so A→B then B→A is refused on the second edge. Read the graph outside the transaction and that pair goes in clean.
 export async function detectCycle(
   start: string,
   target: string,
@@ -42,7 +41,6 @@ export async function detectCycle(
       .from(issueDependencies)
       .where(and(eq(issueDependencies.fromIssueId, node), eq(issueDependencies.kind, 'blocks')));
     for (const c of children) {
-      // cm:why an EXPIRED edge is not an arc of this graph: `validUntil` in the past is how a retraction is recorded (the row survives as the record that the dependency once held), and the dispatcher already ignores it, so counting it here refuses a new edge on the strength of one that gates nothing. Filtered in JS rather than in SQL because the walk already fetches every child of the node, and the predicate has to agree with the dispatcher's, which reads the same column.
       if (isExpired(c.validUntil, now)) continue;
       if (c.to === target) return 'cycle';
       if (!visited.has(c.to)) stack.push({ node: c.to, depth: depth + 1 });

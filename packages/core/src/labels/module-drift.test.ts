@@ -200,7 +200,6 @@ describe('closeHierarchy (ISS-951)', () => {
     expect(ancestorsOf.get('a')).toEqual([]);
   });
 
-  // cm:why the FK permits a cycle, so a corrupted chain reaches this walk; the assertion is that it ANSWERS rather than that the answer is pretty — a spin here hangs the endpoint, which is the failure `module-service.ts` bounds the same way.
   it('answers rather than spinning on a parent chain that loops', () => {
     const { ancestorsOf } = closeHierarchy([node('a', 'Alpha', 'b'), node('b', 'Beta', 'a')]);
 

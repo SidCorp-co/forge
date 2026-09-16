@@ -25,7 +25,6 @@ const posts: Array<{ rid: string; tmid: string | undefined; text: string }> = []
 let nextMessageId: string | null = null;
 let postCount = 0;
 let postThrows: Error | null = null;
-// cm:guard read DURING the post, which is the only moment that can tell a comment marked delivered before it succeeded from one marked after: every state once the call returns is identical either way, and a process that dies here is what the at-least-once rule is about (ISS-981 criteria 30, 31).
 let atPostTime: (() => Promise<void>) | null = null;
 
 vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) => {
@@ -35,7 +34,6 @@ vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) 
     ...actual,
     sendFixedReply: vi.fn(
       async (transport: { rid: string; tmid?: string }, text: string, proof: unknown) => {
-        // cm:guard the mock re-asserts the proof contract the real door enforces, so a caller that stopped screening its text fails here instead of passing because the door was replaced.
         if (proof !== actual.FIXED_REPLY_CONSTANT && !(proof as { ok?: boolean })?.ok) {
           throw new Error('unscreened text reached the outbound door');
         }
@@ -138,7 +136,6 @@ async function comment(body = 'a thing worth saying'): Promise<string> {
   return row.id;
 }
 
-// cm:guard reads the owed comment through a check rather than a non-null assertion: `a!` under `biome check --write` becomes `a?`, which turns "this test is about the one owed comment" into a silent pass over an empty list.
 function onlyOwed(owed: Awaited<ReturnType<typeof mirror.owedComments>>) {
   const one = owed[0];
   if (!one) throw new Error(`expected exactly one owed comment, found ${owed.length}`);
@@ -162,7 +159,6 @@ describe('the opening lease, not a lock, is what keeps one root', () => {
     const b = owed.find((o) => o.commentId === second);
     if (!a || !b) throw new Error('both comments should be owed');
 
-    // cm:guard the second delivery runs DURING the first one's root post, which is the only moment the lease covers: once the post returns the thread row exists and no second opener is possible, so a test that runs them in sequence proves nothing about the window (ISS-981 criterion 33).
     let inner: string | undefined;
     atPostTime = async () => {
       if (inner !== undefined) return;
@@ -175,7 +171,6 @@ describe('the opening lease, not a lock, is what keeps one root', () => {
     expect(inner).toBe('failed');
     expect(posts.filter((p) => p.tmid === undefined)).toHaveLength(1);
     expect(await threadRows()).toHaveLength(1);
-    // cm:guard the refused opener's comment is still OWED once its backoff passes — a worker that lost the lease has delivered nothing, and reading its failure as terminal is the silent drop this lane exists to prevent (ISS-981 criterion 26).
     expect(
       (await mirror.owedComments(new Date(Date.now() + 3_600_000))).map((o) => o.commentId),
     ).toEqual([second]);
@@ -195,7 +190,6 @@ describe('the opening lease, not a lock, is what keeps one root', () => {
     const owed = await mirror.owedComments();
     expect(await mirror.deliverOwedComment(onlyOwed(owed))).toBe('delivered');
     expect(posts.filter((p) => p.tmid === undefined)).toHaveLength(1);
-    // cm:guard the lease is RELEASED once the thread is registered, so the next issue to need one is not refused by a row nobody owns (ISS-981 criterion 33).
     expect(await db.select().from(rcSchema.rocketchatThreadOpenings)).toHaveLength(0);
   });
 });
@@ -211,7 +205,6 @@ describe('the drain is bounded and takes the oldest first', () => {
       .where(eq(schema.comments.id, first));
 
     const slice = await mirror.owedComments(new Date(), [projectId], 1);
-    // cm:guard OLDEST first: ordered any other way a steady stream of new comments keeps the oldest out of every slice for ever, which is a comment nobody is ever told about rather than one that waited (ISS-981 criterion 26).
     expect(slice.map((o) => o.commentId)).toEqual([first]);
     expect(await mirror.owedComments(new Date(), [projectId])).toHaveLength(2);
   });
@@ -220,7 +213,6 @@ describe('the drain is bounded and takes the oldest first', () => {
     await comment('one');
     await comment('two');
     expect(await mirror.owedProjects()).toEqual([{ projectId, owed: 2 }]);
-    // cm:guard the drain resolves rooms from THIS list and fetches bodies only for the bound ones: an unbound project's backlog is owed for ever by design, so materialising it every thirty seconds to discard it is what the two-phase shape exists to avoid (ISS-981).
     expect(await mirror.owedComments(new Date(), [])).toEqual([]);
   });
 });
@@ -235,7 +227,6 @@ describe('an unbound project costs one lookup, not one per comment', () => {
     expect(result.owed).toBe(3);
     expect(result.undeliverable).toBe(3);
     expect(posts).toHaveLength(0);
-    // cm:guard nothing was written for them, so they are all still owed the moment a room is bound — an unbound project's comments wait rather than expire (ISS-981 criterion 26).
     expect(await mirrorRows()).toHaveLength(0);
     expect(await mirror.owedComments()).toHaveLength(3);
   });
@@ -249,18 +240,10 @@ describe('what the review found, and what now holds', () => {
 
     let leaseAtStart: Date | undefined;
     let leaseAfterRenewal: Date | undefined;
-    // cm:guard the post is held past `OPENING_RENEW_MS`, which is the case a fixed lease loses: the outbound door carries no request timeout, so a post that merely hangs outlives its lease and the next worker steals it and posts a second root (ISS-981 criterion 33, review F1).
     atPostTime = async () => {
       atPostTime = null;
       const [before] = await db.select().from(rcSchema.rocketchatThreadOpenings);
       leaseAtStart = before?.expiresAt;
-      // cm:why POLLED rather than read once. Renewal is a timer followed by a database write, and
-      // advancing the clock only guarantees the timer FIRED — the UPDATE may still be in flight when
-      // the next statement runs, which read the untouched row and asserted against it. That is a
-      // race, not a renewal that did not happen, and it presents as `expected <t> to be greater than
-      // <t>` on whichever CI run happens to lose it (seen on PR #437, 2026-09-16, in a file that
-      // change never touched). Waiting for the row to MOVE keeps the assertion strictly greater: a
-      // renewal that never lands still exhausts the loop and still fails.
       const startedAt = (leaseAtStart as Date).getTime();
       await vi.advanceTimersByTimeAsync(25_000);
       for (let i = 0; i < 50; i += 1) {
@@ -288,7 +271,6 @@ describe('what the review found, and what now holds', () => {
 
   it('refuses to post one room credentials against a thread registered in another', async () => {
     const roomA = await bindRoom('room-a');
-    // cm:guard a SECOND CONNECTION and no second binding: one project carries one binding, and what this test needs is the peer's connection — the room the project was rebound to (ISS-981 criterion 32).
     const roomB = (
       await store.createConnection({
         ownerType: 'user',
@@ -301,7 +283,6 @@ describe('what the review found, and what now holds', () => {
     const owedId = await comment('rebound mid-flight');
     const registry = await import('../../src/integrations/rocketchat/thread-registry.js');
 
-    // cm:guard the peer registers DURING this worker's root post, which is the only moment that reaches the read-back: a row already there before the call is an ordinary rebind and takes the retire-and-reopen branch instead, so the race is never exercised (ISS-981 criterion 32, review F2).
     atPostTime = async () => {
       atPostTime = null;
       await registry.registerThread(
@@ -316,7 +297,6 @@ describe('what the review found, and what now holds', () => {
       { connectionId: roomA, rid: 'room-a' },
     );
 
-    // cm:guard a comment must never carry one room's rid and credentials with another's tmid: Rocket.Chat either refuses it or files it outside the registered thread, and either way the person it was written to never sees it (ISS-981 criterion 32, review F2).
     expect(outcome).toBe('failed');
     expect(posts.some((p) => p.tmid === 'root-in-b')).toBe(false);
   });

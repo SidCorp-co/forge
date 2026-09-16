@@ -147,7 +147,6 @@ describe('stepHandoffSchema', () => {
 });
 
 describe('HANDOFF_STEPS + isHandoffStep', () => {
-  // cm:edge lockstep -> packages/core/src/jobs/finalize-done.ts — this list is what the prompt asks a handoff from, and `hasTerminalHandoffForAttempt` is what reads one back; a step present in one and absent from the other is a rescue that can never fire (ISS-888: `drive` was readable and never written, so every lost result event on an autonomous project re-ran work already done).
   it('lists the 8 expected handoff-emitting steps', () => {
     expect([...HANDOFF_STEPS]).toEqual([
       'triage',

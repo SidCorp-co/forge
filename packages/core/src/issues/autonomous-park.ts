@@ -35,7 +35,6 @@ export interface AutonomousParkInput {
  * can. Every other target, and every staged project, passes through untouched —
  * one project's driver must never change another's vocabulary.
  */
-// cm:guard call this AFTER the transition guards, never before: `requiresAuthoredReason` and `isReopenEntry` key on the REQUESTED status, and resolving first silently drops the reason requirement, the `waitingKind` requirement and the reopen counter — the entire quality signal these parks carry. What each status MEANS survives precisely because the rewrite lands late: the counter still increments and the authored reason is still posted under its own heading.
 export async function resolveAutonomousParkTarget(
   input: AutonomousParkInput,
 ): Promise<IssueStatus> {
@@ -44,9 +43,6 @@ export async function resolveAutonomousParkTarget(
   return AUTONOMOUS_QUESTION_STATUS;
 }
 
-// cm:guard `waiting` is rewritten for a DEVICE actor ONLY: a person parking work has chosen to stop it and owns their own resume, so waking them by comment would take that pause away, whereas an agent writing `waiting` is asking a human for something, which on this mode is what `needs_info` IS.
-// cm:guard `reopen` is NOT rewritten (2026-09-10). Two readers already treat it as a person's business — `notify-transitions.ts` has it in PROBLEM_STATUSES, `attention-buckets.ts` in NEEDS_REVIEW_STATUSES — and the wedge pass does not read it at all. Restoring the rewrite would send `releasing → reopen` (an aborted release) to `open`, which offers a half-released issue to the pool as fresh work.
-// cm:guard `on_hold` is deliberately absent. Its only device-actor writer is the ISS-411 operator cancel, which a human initiated, so rewriting it to a comment-wakeable status would undo the authoritative cancel — and it has been manual-resume in staged mode too, so it is not a hazard this mode introduced.
 function isRewritablePark(input: AutonomousParkInput): boolean {
   if (input.requested !== 'waiting') return false;
   return input.agency === 'agent';

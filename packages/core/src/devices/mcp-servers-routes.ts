@@ -28,9 +28,6 @@ const projectQuerySchema = z.object({ projectId: z.uuid() });
 
 export const deviceMcpServerRoutes = new Hono<{ Variables: DeviceVars }>();
 
-// cm:guard `droppedNames` travels WITH the map and is never folded into it: a response carrying only the servers that did resolve is indistinguishable at the box from a project that declared nothing, and the box turns this field into its master's brief and a `forge-runner doctor` row.
-// cm:guard the response carries RENDERED integration credentials, exactly as a dispatch payload does, so it stays device-token-authed and scoped to one project the caller is bound to — widening either leaks a live key.
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/mcp_servers.rs — the box deserializes these three fields, and reads a 404 from an older core as "no servers" rather than as an error.
 deviceMcpServerRoutes.get(
   '/me/mcp-servers',
   requireDevice(),

@@ -29,7 +29,6 @@ import {
 
 type AppVars = { Variables: import('../../src/middleware/request-id.js').RequestIdVars };
 
-// cm:guard `bindsTo: 'session'`, because `checkOptions` refuses a `this_call` option carrying no fingerprint BEFORE anything else — an invalid option here would make every case below pass on the wrong refusal (the same fixture rule `question-issue-project-agree-e2e.test.ts` carries).
 const WRITER = {
   id: '22222222-2222-4222-8222-222222222222',
   label: 'Take the safe path',
@@ -147,7 +146,6 @@ describe('asking through the token door', () => {
     expect(body.id).toMatch(/^[0-9a-f-]{36}$/);
   });
 
-  // cm:guard the project is the ISSUE's and never the caller's, which is what makes the crossed row ISS-989 refuses unrepresentable through this door rather than merely refused on it.
   it('stamps the project the issue belongs to', async () => {
     const res = await post('/api/questions', writeToken, askBody());
     const { id } = (await res.json()) as { id: string };
@@ -182,7 +180,6 @@ describe('asking through the token door', () => {
     expect(await countQuestions()).toBe(0);
   });
 
-  // cm:guard every reader resolves an option by `find` and takes the first, so a repeated id records a choice nobody can read back — the refusal is at the write because there is no reader that can recover it afterwards.
   it('refuses two options sharing an id, and writes no row', async () => {
     const res = await post(
       '/api/questions',
@@ -195,7 +192,6 @@ describe('asking through the token door', () => {
     expect(await countQuestions()).toBe(0);
   });
 
-  // cm:guard `agent_session_id` is a foreign key and this door takes no session from the caller, so a caller-named one cannot leave the insert as a 23503 and the handler as a 500. The schema is `.strict()`, which is what turns the field into a named refusal rather than a silently dropped key.
   it('refuses a caller-named agentSessionId rather than letting the foreign key 500', async () => {
     const res = await post('/api/questions', writeToken, askBody({ agentSessionId: randomUUID() }));
 
@@ -207,12 +203,10 @@ describe('asking through the token door', () => {
     const res = await post('/api/questions', writeToken, askBody({ issueId: randomUUID() }));
 
     expect(res.status).toBe(404);
-    // cm:guard the refusal names the ISSUE, which is what the caller got wrong — this route takes an issue id and mints the question, so `question not found` sends them looking at the id they never sent.
     expect(await res.json()).toMatchObject({ message: 'issue not found' });
     expect(await countQuestions()).toBe(0);
   });
 
-  // cm:guard a stranger gets the SAME 404 as a missing issue, asserted body and all: the two must stay indistinguishable, or the pair enumerates which issue ids exist to whoever can read both.
   it('answers 404 to a token whose owner holds no role on the project, and writes no row', async () => {
     const missing = await post('/api/questions', writeToken, askBody({ issueId: randomUUID() }));
     const res = await post('/api/questions', strangerToken, askBody());
@@ -244,7 +238,6 @@ describe('listing what is waiting', () => {
     expect(((await res.json()) as { questions: unknown[] }).questions).toHaveLength(2);
   });
 
-  // cm:guard the list is narrowed by `project_id` and never by what the caller happens to be a member of: a member of both projects reading project A's queue must not be handed B's prompts and options.
   it('returns no question of another project the same caller can also see', async () => {
     const other = await createTestProject(harness.db, userId, {
       orgId: (await seedOrg(harness.db, userId)).id,
@@ -261,7 +254,6 @@ describe('listing what is waiting', () => {
     expect(questions[0]?.issueId).toBe(otherIssue);
   });
 
-  // cm:guard the tie-break is the half that makes the order TOTAL: two questions asked in one transaction share a `created_at` to the microsecond, so `created_at` alone leaves a queue that reads differently on each call.
   it('orders newest first and breaks a tie on id descending', async () => {
     const first = await post('/api/questions', writeToken, askBody());
     const second = await post('/api/questions', writeToken, askBody());
@@ -311,7 +303,6 @@ describe('reading the answer back', () => {
 });
 
 describe('a malformed question id', () => {
-  // cm:guard `agent_questions.id` is a uuid column, so a malformed literal raises 22P02 and leaves the handler as a 500 — a caller's typo reading as a server fault, on the very route an agent uses to read its answer back.
   it.each([
     '/api/questions/not-a-uuid',
     '/api/questions/not-a-uuid/answer',
@@ -327,7 +318,6 @@ describe('a malformed question id', () => {
 });
 
 describe("answering and voiding stay a session's", () => {
-  // cm:guard the token is granted `questions:write`, so the grant check upstream has already passed and what refuses it is the handler itself — a token granted less would meet `PAT_PERMISSION_REQUIRED` in middleware and prove nothing about this rule.
   it('refuses an answer on a token that holds the permission the route wanted', async () => {
     const asked = await post('/api/questions', writeToken, askBody());
     const { id } = (await asked.json()) as { id: string };
@@ -349,7 +339,6 @@ describe("answering and voiding stay a session's", () => {
     expect(schema.chosenOptionIdOf(row?.steps.at(-1))).toBeNull();
   });
 
-  // cm:guard an UNGRANTED token is the one the widening actually exposed — an absent grant array reads as holding every group — so this is the case that would have been an open door.
   it('refuses an answer on a token granted nothing at all', async () => {
     const asked = await post('/api/questions', writeToken, askBody());
     const { id } = (await asked.json()) as { id: string };
@@ -395,7 +384,6 @@ describe("answering and voiding stay a session's", () => {
 });
 
 describe('the delivery ISS-978 already ships', () => {
-  // cm:guard asserted against `owedRounds` itself and not against a second query shaped like it: the whole point of this door is that it writes an ORDINARY row, so the obligation must be derived by the code that already ships rather than by anything this change added.
   it('owes a round for a question asked through this door', async () => {
     const asked = await post('/api/questions', writeToken, askBody());
     const { id } = (await asked.json()) as { id: string };

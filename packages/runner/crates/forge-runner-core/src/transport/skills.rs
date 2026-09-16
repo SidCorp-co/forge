@@ -181,7 +181,6 @@ pub async fn report_installed(
 /// be installed (manifest/content pull error). Never returns an error itself
 /// — a dead reporting endpoint (or an old server without it) must not mask
 /// the original sync failure at the call site.
-// cm:edge contract -> packages/core/src/devices/skills-routes.ts — syncFailedBodySchema rejects `error` over 2000 chars; truncate here so a long error never silently vanishes instead of being logged.
 const SYNC_FAILED_ERROR_MAX_CHARS: usize = 2000;
 
 pub async fn report_sync_failed(client: &CoreClient, project_id: &str, error: &str) {

@@ -73,25 +73,8 @@ async function anotherBox() {
 }
 
 /** Wait until Postgres itself says both declarations are blocked on the box run key. */
-// cm:why this asks the DATABASE what is happening rather than timing how long nothing happens, and
-// the difference is the whole point of the test. The assertion it feeds — that neither caller has
-// answered — is an ABSENCE, and an absence is satisfied by any reason at all: a pool with no free
-// connection, a worker the scheduler has not run, a box carrying five suites at once. That is the
-// same wrong-green this test was written to replace (see the guard above), reintroduced through the
-// clock. TWO advisory locks on this exact key is a POSITIVE fact that only the locking code can
-// produce: the unlocked `openRunSession` never takes the lock, so the second and third never
-// appear, and this fails by its own bound instead of by a timeout somebody will read as flake.
 //
-// cm:why the count of two is what discriminates, and `NOT granted` is not. Measured, not assumed: a
-// plant that removed the lock AND dropped the `NOT granted` clause still failed, reporting one — the
-// harness's own holder. The clause narrows what is counted to callers that are WAITING, which rules
-// out an implementation that asks for the key without blocking on it and proceeds anyway; it does
-// not carry the weight the bound does.
 //
-// cm:why the timing dependency that REMAINS is the bound, and it is one-sided on purpose. A slow
-// box takes longer to reach two waiters and still passes; only a box that never reaches them fails.
-// Raising it would not turn a red green, which is why it is safe at a number chosen to sit well
-// inside vitest's 30s default rather than tuned to this machine.
 async function bothAreWaitingOn(deviceId: string, boxRunId: string): Promise<void> {
   const key = `run-session:${deviceId}:${boxRunId}`;
   const deadline = Date.now() + 10_000;
@@ -118,12 +101,6 @@ async function bothAreWaitingOn(deviceId: string, boxRunId: string): Promise<voi
 }
 
 describe('a declaration retried after a lost answer', () => {
-  // cm:guard this is the failure this whole issue is about, arriving from inside the fix. The box
-  // writes its ledger row and then calls core; if core commits and the answer never gets back — a
-  // timeout, a dropped connection, a write-back that failed on the box — the box still has no
-  // session id and its next sweep sends the same declaration again. A second session there leaves
-  // the first with nothing beating it, so core reaps it after ten minutes and `returnIssuesForRun`
-  // pulls those issues back from under the live duplicate (ISS-1050).
   it('is answered with the session core already has, rather than a second one', async () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
@@ -149,9 +126,6 @@ describe('a declaration retried after a lost answer', () => {
     ).toBe(1);
   });
 
-  // cm:guard scoped by DEVICE as well, because a run id is minted on the box: unscoped, one box's
-  // retry would be handed another box's session and would then beat, close and release issues it
-  // never held.
   it('does not hand one box the session another box opened under the same run id', async () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
@@ -177,9 +151,6 @@ describe('a declaration retried after a lost answer', () => {
     expect(b.sessionId).not.toBe(a.sessionId);
   });
 
-  // cm:guard a retry whose earlier session has already been closed or reaped is a genuinely NEW run
-  // of the same work. Handing it the dead session would give it one nothing beats — reaped again
-  // ten minutes later, returning issues from under a run that is working.
   it('opens a fresh session when the one that box run had is already terminal', async () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
@@ -201,20 +172,7 @@ describe('a declaration retried after a lost answer', () => {
     expect(second.sessionId).not.toBe(first.sessionId);
   });
 
-  // cm:guard every test above sends its retry AFTER the first call returned, so the first row is
-  // always committed by the time the second one looks: a plain read-then-create passes all three.
-  // The duplicate arrives when two declarations for one box run are in flight at once — a sweep
-  // that overlapped its predecessor, a route the box's HTTP client retried while the first request
-  // is still open — and BOTH read before either commits. This is the case that tells the atomic
-  // claim apart from the check that preceded it (ISS-1050).
   //
-  // cm:guard the race is CONSTRUCTED, not raced for. Firing N calls at once and hoping they
-  // interleave is not evidence: measured on this box, eight simultaneous declarations against the
-  // unlocked code produced eight sessions when the test ran alone and exactly one when it ran after
-  // its neighbours, because a warm `postgres.js` pool serialises transactions once its connections
-  // are all reserved. That green was indistinguishable from a strong one. So the test takes the
-  // claim's own advisory lock first, and what it asserts is that both callers BLOCK on it — which
-  // an unlocked `openRunSession` cannot do, whatever the pool is doing.
   it('makes two declarations of one box run wait on each other and answer alike', async () => {
     const user = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, user.id);
@@ -432,9 +390,6 @@ describe('an issue whose run died', () => {
     expect(after).toContain('ISS-881');
   });
 
-  // cm:guard `died` and `ended` return the issue alike. The outcome records HOW the run stopped,
-  // for a human reading the record; it is not a second gate on whether the work comes back. A
-  // reading that returned only cleanly-ended runs' issues would strand exactly the crashed ones.
   it('is offered again whether the run died or ended', async () => {
     const { project, device } = await aBacklogProject();
     const session = await mods.openRunSession({

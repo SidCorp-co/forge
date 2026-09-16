@@ -24,7 +24,6 @@ import { type IssueStatus, issues } from '../db/schema.js';
  *  `Parameters<…>` chains expand to the inner-callback argument type. */
 type DrizzleTx = Parameters<Parameters<Db['transaction']>[0]>[0];
 
-// cm:guard do NOT re-introduce `pipelineConfig.mergeStates` as a reader here. Migration 0195 deleted the key from every project and `pipelineConfigSchema` strips it from any save, so the resolver this replaced could only return this constant — at the cost of a `projects` SELECT inside every status transition's transaction (ISS-863).
 /** The status an issue leaves to have its merge stamped. */
 export const BASE_MERGE_STATE: IssueStatus = 'awaiting_release';
 
@@ -50,7 +49,6 @@ export async function markMergedIfLeavingBase(
   if (args.fromStatus !== BASE_MERGE_STATE || args.toStatus === BASE_MERGE_STATE) {
     return { stamped: false };
   }
-  // cm:guard TWO exits out of the gate are not ships and must not stamp. `awaiting_release -> releasing` is the release STARTING: stamp there and the claim itself marks every issue shipped, so an abort leaves `merged_at` set on work that never released. `awaiting_release -> dropped` is the release ABANDONED: `dropped` exists precisely to end an issue without the stamp, so stamping there contradicts the one thing that distinguishes it from `closed` (measured 2026-09-10 on forge-plugin ISS-1077 — dropped from the gate, `merged_at` set, nothing shipped). Either way the stamp belongs to `releasing -> closed`, where `finish` has read the deploy back, and both would otherwise unblock every `blocks` dependent as if the work had landed.
   if (args.toStatus === 'releasing' || args.toStatus === 'dropped') {
     return { stamped: false };
   }

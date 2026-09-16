@@ -71,7 +71,6 @@ describe('classifyMcpEnvelope', () => {
    * mutation charged the 2400/min read budget instead of the 600/min write
    * one, and in direct contradiction of the guard on `READ_ACTIONS` itself.
    */
-  // cm:guard this asserts the CONSUMER's authz, not the verb's spelling, and that is the whole lesson: a member of `READ_ACTIONS` is judged by what its handler does. Add a case here for any verb added there whose tool calls `assertPrincipalIsWriter` or writes a row.
   it('writes an action whose handler is writer-gated, however much its name reads like a read', () => {
     expect(
       classifyMcpEnvelope(
@@ -96,7 +95,6 @@ describe('classifyMcpEnvelope', () => {
     expect(classifyMcpEnvelope(call('forge_projects.list'))).toBe('read');
   });
 
-  // cm:guard the falsifying case — remove the `'write'` default in `request-class.ts` and this is the only assertion in the file that goes red. Everything above it passes for an implementation that never returns `'write'` at all.
   it('defaults to write for an unrecognised tool, an unrecognised method and a broken envelope', () => {
     expect(classifyMcpEnvelope(call('forge_memory.write', { textContent: 'x' }))).toBe('write');
     expect(classifyMcpEnvelope(call('forge_tool_invented_next_release'))).toBe('write');
@@ -142,7 +140,6 @@ describe('mcpRequestClass', () => {
     expect((await charged(res)).charged).toBe('read');
   });
 
-  // cm:guard the whole reason this middleware clones rather than calling `c.req.json()`: the MCP transport is handed `c.req.raw` and reads the stream itself, so a middleware that consumes the original breaks every tool call with nothing naming this file.
   it('leaves the body readable for the handler behind it', async () => {
     const envelope = call('forge_issues', { action: 'list' });
     const res = await post(envelope);
@@ -191,7 +188,6 @@ describe('the read-only tool set against the live registry', () => {
     expect(dead).toEqual([]);
   });
 
-  // cm:guard a tool whose schema REQUIRES an `action` can never reach the name set — `classifyMcpEnvelope` consults `action` first — so listing it there reads as load-bearing while doing nothing. `forge_collaborators` was listed until this assertion, and its schema takes `action: z.enum(['list'])` with no way to omit it.
   it('does not list a tool by name whose only classifier is its action', async () => {
     const registered = await registeredToolNames();
     expect(registered).toContain('forge_collaborators');

@@ -19,9 +19,7 @@ export function IntegrationEnabledControl({
   const updateConnection = useUpdateConnection();
   const orgLocked = useOrgConnectionLocked(projectId, binding.connectionId);
 
-  // cm:guard read `bindingActive`, never `active` — `active` is bindingActive && connectionActive, and this switch writes only the binding tier, so binding the AND makes it report success and snap back whenever the credential is the tier that is off
   const optedIn = binding.bindingActive;
-  // cm:why the credential gets its own affordance rather than being folded into the switch: flipping it back on re-enables an org-shared secret for EVERY project bound to it, so it stays a separate, org-admin-gated action
   const credentialDisabled = !binding.connectionActive;
 
   return (

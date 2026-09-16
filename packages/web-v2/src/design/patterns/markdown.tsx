@@ -17,7 +17,6 @@ import { BodyImage, BodyLink } from "./body-link";
 import { CODE_BLOCK_CLASS, CODE_INLINE_CLASS, COMPACT_TAG_CLASS as T, LINK_CLASS } from "./body-tags";
 import { MermaidDiagram } from "./mermaid";
 
-// cm:guard `urlTransform` is the IDENTITY on purpose, so `classifyBodyHref` is the only thing that decides what an href may be. react-markdown's own `defaultUrlTransform` allows `https?|ircs?|mailto|xmpp` and empties everything else, which is a second sanitizer with a different list: it drops `tel:` that `body-view.tsx` renders fine, so the two renderers disagreed on the same body. Removing this prop restores that disagreement; the unsafe schemes it used to blank are refused by name in `body-href.ts` instead.
 const sameUrl = (url: string) => url;
 
 /** A relative link to another doc page (not scheme:/protocol-relative/absolute/
@@ -66,7 +65,6 @@ const imgRenderer: Components["img"] = ({ src, alt }) => (
   <BodyImage src={typeof src === "string" ? src : undefined} alt={alt} />
 );
 
-// cm:guard keep the mermaid interception HERE, in the factory both variants share — never by forking a second renderer. The fork this replaced (KnowledgeMarkdown) drifted: it gained mermaid but never gained `table`/`th`/`td`, so knowledge entries rendered diagrams and issue descriptions rendered tables, and neither did both.
 function makeCodeRenderer(blockClass: string, inlineClass: string): Components["code"] {
   return ({ className, children, ...props }: ComponentProps<"code"> & { inline?: boolean }) => {
     if (className === "language-mermaid") {

@@ -7,7 +7,6 @@
 
 export type BucketKey = "today" | "yesterday" | "week" | "older";
 
-// cm:guard generic over the one field it reads, so the list row may carry whatever the screen needs beside it — the project it came from, today — without this module knowing about any of it.
 export interface Bucket<Row extends { updatedAt: string }> {
   key: BucketKey;
   label: string;
@@ -26,7 +25,6 @@ export function bucketFor(iso: string, now: number): BucketKey {
   if (Number.isNaN(then)) return "older";
   const ageMs = now - then;
   const dayMs = 24 * 60 * 60 * 1000;
-  // cm:why the two nearest buckets are cut on the local CALENDAR day and not on elapsed hours, so a room last spoken in at 11pm reads as "Yesterday" rather than as today
   const todayStart = new Date();
   todayStart.setHours(0, 0, 0, 0);
   if (then >= todayStart.getTime()) return "today";

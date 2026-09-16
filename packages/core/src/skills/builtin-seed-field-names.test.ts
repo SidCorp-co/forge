@@ -53,7 +53,6 @@ async function collectMarkdown(dir: string): Promise<{ rel: string; text: string
   return out;
 }
 
-// cm:edge contract -> packages/core/src/mcp/tools/forge-issues.ts — this is the checker half of the ISSUE_UPDATE_DATA_KEYS edge; the payloads matched here are hand-written markdown, so any NEW way of spelling an update call must be added to UPDATE_CALL or the gate silently stops covering it.
 const UPDATE_CALL = /forge_issues\s*(?:(?:→|->)\s*update|\.update)/g;
 const TOP_LEVEL_KEY = /(?:^|,)\s*([A-Za-z_][A-Za-z0-9_]*)\s*:/g;
 
@@ -96,7 +95,6 @@ function topLevelKeys(payload: string): string[] {
 describe('bundled skill field names', () => {
   it('names no issue field that the MCP surface dropped or never had', async () => {
     const files = await collectMarkdown(SKILLS_ROOT);
-    // cm:guard the floor tracks the corpus, and the corpus is five operator skills since ISS-895 deleted the eight staged bodies. A floor above what ships turns this gate from "no body names a dropped field" into "the walk is broken", which is the failure it was written to detect, inverted.
     expect(files.length).toBeGreaterThan(4);
 
     const offences = files.flatMap(({ rel, text }) =>
@@ -122,7 +120,6 @@ describe('bundled skill field names', () => {
         }
       }
     }
-    // cm:guard NOT a floor on `seen`: the eight staged bodies were the only ones issuing `forge_issues.update` calls, so the corpus has zero payloads and any positive floor fails on a corpus that is simply correct. The walk is proven by the file count above; this assertion is the rule, and it fires on the first body that writes a key the schema rejects.
     expect(files.length).toBeGreaterThan(4);
     expect(offences).toEqual([]);
   });

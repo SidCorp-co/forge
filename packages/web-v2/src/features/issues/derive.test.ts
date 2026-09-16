@@ -87,7 +87,6 @@ describe("statusToChip", () => {
 		expect(statusToChip("awaiting_release")).toBe("shipped");
 		expect(statusToChip("closed")).toBe("archived");
 	});
-	// cm:guard ISS-917 AC13 — the bucket is LOSSY on purpose and five statuses share `queued`, so anything rendering a chip must pass `statusLabelFor` as its label. A bare chip told a reader the pipeline had a draft "Queued" when nothing was working it, which is the confusion the pool backlog exists to make legible.
 	it("folds five distinct statuses onto queued, which is why the label is separate", () => {
 		for (const s of [
 			"draft",
@@ -117,7 +116,6 @@ describe("statusToTone (ISS-509 — chip↔dashboard color consistency)", () => 
 	});
 
 	it("never resolves a benign / blocked / idle status to the failure tone", () => {
-		// cm:guard no ISSUE status is a real failure — red is reserved for a failed job or session. A lifecycle status painted red states as fact that something broke when nothing did, and `reopen` and `on_hold` are the two that kept being read that way.
 		for (const s of ISSUE_STATUSES) {
 			expect(statusToTone(s), s).not.toBe("failure");
 		}
@@ -130,7 +128,6 @@ describe("statusToTone (ISS-509 — chip↔dashboard color consistency)", () => 
 	});
 });
 
-// cm:why the rows are copied from core's own `transitions` table rather than invented, so a case here reads as the menu a person would actually see at that rung
 const EXITS = {
 	open: ["confirmed", "in_progress", "needs_info", "on_hold", "dropped"],
 	approved: ["in_progress", "needs_info", "on_hold", "dropped"],
@@ -153,7 +150,6 @@ describe("allowedTransitions", () => {
 		expect(allowedTransitions(EXITS, "dropped")).toEqual([]);
 	});
 
-	// cm:guard the three retired statuses must not reappear as TARGETS: nothing dispatches at them, so the write succeeds and the issue is stranded until a person reads the database. 21 rows sat that way across the fleet on 2026-09-10 (ISS-982); removing them from the enum is ISS-976 Part C.
 	it("offers no retired status from any rung it is given", () => {
 		for (const from of Object.keys(EXITS) as (keyof typeof EXITS)[]) {
 			const offered = allowedTransitions(EXITS, from);
@@ -173,7 +169,6 @@ describe("allowedTransitions", () => {
 		]);
 	});
 
-	// cm:guard spell all five out and keep `dropped` among them — this is what core's DRAFT_EXIT_TARGETS holds, and core's refusal message renders that constant member by member, so a member missing from the menu hides an exit the server offers the user by name. Until 2026-08-27 (ISS-787) `dropped` was absent and `closed` was the only discard on offer: the one that stamps merged_at and unblocks every dependent of work that never existed.
 	it("restricts draft to promote, take up, direct-ship, or either discard", () => {
 		expect(allowedTransitions(EXITS, "draft")).toEqual([
 			"open",
@@ -209,7 +204,6 @@ describe("groupedTransitions (ISS-982)", () => {
 		]);
 	});
 
-	// cm:guard pick a row whose declared order is NOT alphabetical — `testing` bounces to reopen, needs_info, on_hold in that order — or the case passes against code that sorts the group and proves only that the letters came out right
 	it("keeps each group in the order core declared it, not in any order of its own", () => {
 		expect(groupedTransitions(EXITS, "testing").map((g) => g.to)).toEqual([
 			"awaiting_release",
@@ -234,7 +228,6 @@ describe("groupedTransitions (ISS-982)", () => {
 		expect(byTo.get("dropped")).toBe("discard");
 	});
 
-	// cm:guard a row's FIRST exit is its forward move whatever set it belongs to — from `releasing` closing IS the outcome, and filing it under the danger group there reads as abandoning shipped work
 	it("does not file releasing's close under the discards", () => {
 		expect(groupedTransitions(EXITS, "releasing")[0]).toEqual({
 			to: "closed",
@@ -275,7 +268,6 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 			),
 		);
 	});
-	// cm:guard the bulk endpoint carries no reason, so offering these three mass-422s the selection (RFC 0002 INV-8) — and a single reason pasted across N issues is the unexplained park the RFC deleted, so the fix is to withhold them, never to send a shared one
 	it("never offers a status that requires an authored reason", () => {
 		const rows = [
 			row({ id: "a", status: "in_progress" }),
@@ -337,7 +329,6 @@ describe("label helpers", () => {
 		expect(complexityLabel("xs")).toBe("XS");
 		expect(complexityLabel("m")).toBe("Medium");
 	});
-	// cm:guard ISS-970 — the string this asserts is the one the owner read off the dashboard for an issue that had asked nothing. A pause and a question must not share a label: this is the whole reported defect, on the surface that reported it.
 	it("labels a deliberate pause as paused, never as needing a human", () => {
 		expect(statusLabelFor("on_hold")).toBe("Paused");
 		expect(statusLabelFor("on_hold")).not.toBe("Needs a human");
@@ -355,7 +346,6 @@ describe("label helpers", () => {
 			expect(COMPLEXITY_LABELS[c]).toBeTruthy();
 	});
 
-	// cm:guard STATUS_LABELS stays total over the kernel's tuple — the lane drives five rungs, humans and masters reach the rest, and an unlabelled one renders blank (ISS-999)
 	it("labels every one of the kernel's statuses and invents none of its own", () => {
 		expect(Object.keys(STATUS_LABELS).sort()).toEqual(
 			[...REGISTRY_ISSUE_STATUSES].sort(),
@@ -512,7 +502,6 @@ describe("filterToQueryParams", () => {
 			expect(s, parked).toContain(parked);
 		}
 	});
-	// cm:guard the release gate waits for a PERSON to approve it, and nothing has dispatched at `reopen` since 2026-09-10. Either one filed under the machine's tab is a row its owner never goes back to.
 	it("counts the release gate and a reopen as the person's, not the machine's", () => {
 		const you = filterToQueryParams("you").status ?? [];
 		const agent = filterToQueryParams("agent").status ?? [];
@@ -527,7 +516,6 @@ describe("filterToQueryParams", () => {
 			expect(s, parked).not.toContain(parked);
 		}
 	});
-	// cm:guard 12 of forge-dev's issues were reachable only through `all` because no bucket named `dropped`. A terminal status with no tab is a row nobody finds.
 	it("`done` carries dropped as well as closed", () => {
 		const s = filterToQueryParams("done").status ?? [];
 		expect(s).toContain("closed");
@@ -559,7 +547,6 @@ describe("filterToQueryParams", () => {
 	it("all stays unfiltered so nothing is unreachable", () => {
 		expect(filterToQueryParams("all")).toEqual({});
 	});
-	// cm:guard `awaiting_release` left this bucket deliberately: an issue at the release gate is NOT finished, it is waiting for somebody to approve the release, and counting it as done is how a gate stops being noticed.
 	it("done is terminal only — the release gate is not finished work", () => {
 		expect(filterToQueryParams("done")).toEqual({
 			status: ["closed", "dropped"],
@@ -705,7 +692,6 @@ describe("deriveCommentKind", () => {
 		}
 	});
 
-	// cm:guard the kind is read from PROSE and from nothing else: `template` carried the root component name until the vocabulary and the column were removed on 2026-09-14, and the prose regex this was written to replace is the only reader again. A body that still contains component markup falls through to it like any other text.
 	it("classifies a stored component body by its prose, not by its markup", () => {
 		expect(
 			deriveCommentKind({
@@ -817,7 +803,6 @@ describe("deriveBlockerState", () => {
 		expect(b?.tone).toBe("attention");
 	});
 
-	// cm:guard the banner points at the DECISION PANEL and never at the comment thread: since ISS-996 a park at `needs_info` is settled by answering its question row, and an answer typed into the comments resumes nothing.
 	it("needs_info sends the reader to the decision below, with a provide-info action", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "needs_info" }),
@@ -850,7 +835,6 @@ describe("deriveBlockerState", () => {
 			expect(b?.reason).toContain("only a person can supply");
 		});
 
-		// cm:guard the generic arm is what makes the nullable column safe — an issue parked before `waiting_kind` existed has no kind, and a banner that guessed one is the ISS-163 failure the RFC deleted
 		it("falls back to generic human-needed copy when no kind was authored", () => {
 			const b = deriveBlockerState(
 				blockerIssue({ status: "waiting" }),
@@ -863,7 +847,6 @@ describe("deriveBlockerState", () => {
 		});
 	});
 
-	// cm:guard ISS-970 — the banner keeps its Resume action but must NOT wear the attention tone. Nobody is owed anything by a pause somebody chose: `attention` is the colour that says a person has to act, which is the same false claim the label and the attention bucket carried, in the fourth reader.
 	it("on_hold status → resume action, in the calm tone", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "on_hold" }),
@@ -908,7 +891,6 @@ describe("deriveBlockerState", () => {
 		}
 	});
 
-	// cm:guard `run_not_running` and `runner_stale` must never say "No action" — a paused run and an empty runner pool are the only two queued gates that cannot clear themselves, so the reassuring copy the capacity waits use is a lie there (measured 2026-08-14: ISS-576/ISS-652 paused 3 days, 11 jobs behind dead runners up to 22)
 	it.each(["run_not_running", "runner_stale"] as const)(
 		"gives %s an action instead of reassurance",
 		(reason) => {
@@ -921,7 +903,6 @@ describe("deriveBlockerState", () => {
 		},
 	);
 
-	// cm:guard the two halves of `job_held` must read differently — for months this said "No action — it resumes itself" for every hold reason, while three of the five never self-release, so the UI told the reader to sit tight in front of a step that was waiting on them
 	it("splits job_held copy on whether the hold clears itself", () => {
 		const held = (holdReason: string) =>
 			deriveBlockerState(
@@ -1014,7 +995,6 @@ describe("deriveStepOutcomes — the steps an issue actually ran (ISS-999)", () 
 	});
 
 	it("keeps a job type outside the seven staged names under its own name", () => {
-		// cm:why `drive` is the only job type an autonomous run has and none of the seven; its predecessor folded it onto `triage`, reporting the one step that ran as a stage that never did (ISS-999)
 		const out = deriveStepOutcomes([handoff("drive", 1, { outcome: "shipped it" })], []);
 		expect(out.map((o) => o.step)).toEqual(["drive"]);
 		expect(out[0].outcomeLabel).toBe("shipped it");
@@ -1177,7 +1157,6 @@ describe("deriveBlockerState — ISS-853, the paused run the screen used to hide
 		expect(sweeper?.runId).toBeUndefined();
 	});
 
-	// cm:guard the pause outranks needs_info deliberately — while the run is paused the "Provide info" CTA promises a resume that cannot happen, and this assertion is the record of that trade
 	it("outranks needs_info, whose CTA would promise movement the pause forbids", () => {
 		const b = deriveBlockerState(
 			blockerIssue({ status: "needs_info" }),
@@ -1223,7 +1202,6 @@ describe("statusesFromParam", () => {
 		]);
 	});
 
-	// cm:guard an unknown status is DROPPED rather than passed through: the server enumerates `status`, so one bad value 400s the whole list and a dashboard cell opens an error instead of its own records (ISS-988 criterion 47)
 	it("drops a status the lifecycle does not have, keeping the rest", () => {
 		expect(statusesFromParam("open,banana,closed")).toEqual(["open", "closed"]);
 	});
@@ -1266,7 +1244,6 @@ describe("runningStepOf — a queued session names no running step (ISS-999)", (
 		);
 	});
 
-	// cm:guard the case the Steps card got wrong: a queued retry of a step that already ran has a handoff row, so passing its skill as the active step painted a row "Running" that the kernel called queued
 	it("names nothing for a session the kernel calls queued", () => {
 		expect(runningStepOf(health({ status: "queued", skill: "drive" }))).toBeNull();
 	});

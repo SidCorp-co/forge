@@ -61,7 +61,6 @@ describe('gathering facts inside a caller transaction', () => {
     expect(poolSelect).not.toHaveBeenCalled();
   });
 
-  // cm:guard this was the one that got away, and it is the reason the test exists rather than a guard alone: the prefix and issue reads were threaded through and the PROGRESS read was not, because no cell needing progress is screened inside a transaction today. The executor's contract is what must hold, not the current call graph (ISS-997 review, F2).
   it('reads the progress through it too, not through the pool', async () => {
     progressCalls.length = 0;
     await gatherFacts({
@@ -76,7 +75,6 @@ describe('gathering facts inside a caller transaction', () => {
     expect(poolExecute).not.toHaveBeenCalled();
   });
 
-  // cm:guard the short-circuit is what keeps the common comment free: a body naming no issue at all must make NO query, because `insertComment` runs this on every agent comment and most of them cite nothing.
   it('makes no query at all for a body naming no issue', async () => {
     prefixCalls.length = 0;
     poolSelect.mockClear();

@@ -78,7 +78,6 @@ pub fn resolve_claude_bin() -> &'static str {
 
 /// Build a `claude` command rooted at `repo_path` with `CLAUDECODE` unset
 /// (so a nested `claude` doesn't think it's inside the parent session).
-// cm:guard EVERY spawn gets its own process group here, because `graceful_kill` signals `-pid` and that is a no-op unless the child leads one. Without it a timeout logs a kill that did not happen: measured live 2026-09-05, a master the daemon reported killed at 150s was still running eleven minutes later, and setup_agent's own 600s timeout had the same hole. `claude_code.rs` sets it separately for the agent lane and predates this.
 pub fn build_command(args: &[String], repo_path: &str) -> Command {
     let mut cmd = Command::new(resolve_claude_bin());
     cmd.args(args).current_dir(repo_path);
@@ -159,7 +158,6 @@ mod tests {
         );
     }
 
-    // cm:guard `graceful_kill` signals the process GROUP (`-pid`), which reaches nothing unless the child leads one — so this asserts the child is its own group leader, the property that makes the kill land. Measured live 2026-09-05: without it a master the daemon reported killed at 150s was still running eleven minutes later, and the log said the opposite of the truth.
     #[cfg(unix)]
     #[tokio::test]
     async fn a_spawned_child_leads_its_own_process_group() {

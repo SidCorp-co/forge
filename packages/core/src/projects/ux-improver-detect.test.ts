@@ -196,7 +196,6 @@ describe('detectUxImproverCandidates — the recurrence bar', () => {
 
     const report = detectUxImproverCandidates({ findings, rules: [], now: NOW });
 
-    // cm:why single-linkage would compare C against B rather than against the seed, fold all three into one 3-issue cluster, clear the recurrence bar, and propose one rule spanning two unrelated gaps — this assertion is the only thing standing between the seed comparison and that
     expect(report.clusters).toBe(2);
     expect(report.candidates).toHaveLength(0);
     expect(report.refused.every((r) => r.reason === 'one-off')).toBe(true);

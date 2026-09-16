@@ -46,7 +46,6 @@ describe('admin alert routes (ISS-652)', () => {
   });
 
   describe('response contract', () => {
-    // cm:guard assert the WHOLE public shape, not just id/status/count — the Ops Console drills on `entities` and dates the incident from `since`, so a field the route silently stopped populating passes a status-only assertion and reaches the UI as an undrillable alert
     it('200s with exactly 5 items A1-A5, all ok and fully populated, on healthy data', async () => {
       const { res, body } = await getAlerts(ctx, await ctx.adminToken());
 
@@ -76,7 +75,6 @@ describe('admin alert routes (ISS-652)', () => {
       const project = await createTestProject(ctx.harness.db, owner.id);
       const run = await fx.insertRun(project.id, 'cancelled');
 
-      // cm:why ISS-448's I1 trigger auto-cancels any active child written under a terminal run; disable it to simulate a pre-existing orphan, same as i1-orphan-trigger.test.ts's backfill case
       await ctx.harness.db.execute(
         sql`ALTER TABLE jobs DISABLE TRIGGER trg_jobs_no_active_under_terminal_run`,
       );
@@ -90,14 +88,12 @@ describe('admin alert routes (ISS-652)', () => {
       expect(a1?.status).toBe('crit');
       expect(a1?.count).toBe(1);
       expect(a1?.entities).toHaveLength(1);
-      // cm:guard `since` is typed `string | null` and MUST be an ISO string, not the JS Date postgres-js hands back for a timestamptz — over HTTP the difference is invisible, but computeAlerts is called in-process by the sweeper too, where a consumer calling .startsWith on it throws
       expect(typeof a1?.since).toBe('string');
       expect(new Date(a1?.since ?? '').toISOString()).toBe(a1?.since);
     });
   });
 
   describe('A2 stuck jobs', () => {
-    // cm:guard AC 5 — a `dispatched`-only query (what forge-ops-health.ts does) returns 2 here and fails; a `running` job goes stuck exactly the same way and was the half nobody was told about
     it('catches BOTH dispatched and running past staleSeconds', async () => {
       const owner = await createTestUser(ctx.harness.db);
       const project = await createTestProject(ctx.harness.db, owner.id);

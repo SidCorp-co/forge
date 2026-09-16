@@ -81,7 +81,6 @@ describe('A3 runner starvation (ISS-652)', () => {
     await truncateAll(ctx.harness.db);
   });
 
-  // cm:guard every state below is one the dispatcher's `fresh_capable_runners` CTE rejects while `status = 'online'` still reads healthy, so a copy of that CTE missing any one clause reports `ok` on a genuinely wedged queue. `limit_reason='auth'` and `provision_status` reached main while A3 hand-rolled its own filter — these two cases are that regression.
   it.each([
     ['quarantined (AC 7)', { quarantinedUntil: new Date(Date.now() + 3_600_000).toISOString() }],
     ['heartbeat is stale', { lastSeenAt: new Date(Date.now() - 3_600_000).toISOString() }],
@@ -128,7 +127,6 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(body, 'A3')?.status).not.toBe('ok');
   });
 
-  // cm:guard `->` on a JSON null yields jsonb 'null', not SQL NULL, so a coalesce with no nullif leaves `@> 'null'` matching no runner at all. dispatcher.ts reads the same field with `?? {}` and places the job on this very runner, so a fire here is pure noise on a queue that is moving.
   it('stays ok when the queued job carries an explicitly null requiredCapabilities', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
@@ -146,7 +144,6 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(body, 'A3')?.status).toBe('ok');
   });
 
-  // cm:guard the per-stage device pool is applied by onlineCapableDeviceIds and by NOTHING in the picker's CTE, so a pool naming only devices that are gone leaves every gate passing and the job unplaceable — a wedge with no gate reason for any UI to show, which is the case A3 exists to name
   it('fires when the stage device pool names no runner the project has', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
@@ -169,7 +166,6 @@ describe('A3 runner starvation (ISS-652)', () => {
     const { body } = await getAlerts(ctx, token);
     expect(findAlert(body, 'A3')?.status).not.toBe('ok');
 
-    // cm:why an EMPTY pool means "the whole fleet", not "no device" — clearing it must clear the alert, which is what separates this from a plain no-runner case
     await ctx.harness.db.execute(sql`
       UPDATE projects
       SET agent_config = '{"pipelineConfig":{"states":{"approved":{"deviceIds":[]}}}}'::jsonb
@@ -179,12 +175,10 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(cleared, 'A3')?.status).toBe('ok');
   });
 
-  // cm:guard `z.uuid()` accepts uppercase hex and nothing normalizes it, but `device_id::text` on a uuid column always renders lowercase — so comparing as text matches nothing here while runners/select.ts, binding a parameter against the uuid column, matches fine. This runner IS in the pool and IS dispatchable; A3 saying otherwise would page every platform admin about a moving queue.
   it('stays ok when the stage pool names this runner in uppercase hex', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
     const deviceId = '22222222-2222-4222-8222-222222222222';
-    // cm:guard bind the version to the floor constant, never a literal — this fixture is hand-rolled rather than `createTestDevice`, and a device below the claim floor is invisible to `fresh_capable_runners`, which would make this uppercase-hex assertion pass or fail for a reason that has nothing to do with hex.
     await ctx.harness.db.execute(sql`
       INSERT INTO devices (id, owner_id, name, platform, status, agent_version)
       VALUES (${deviceId}, ${owner.id}, 'pool fixture', 'linux', 'online',
@@ -214,8 +208,6 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(body, 'A3')?.status).toBe('ok');
   });
 
-  // cm:why cap=2 so issue B PASSES project_cap and the sole runner being full is the only thing left holding it — genuine capacity starvation, which no upstream gate clears
-  // cm:guard a BUSY runner is not a starved queue, and this is the case that proves A3 knows the difference. Core enforces no ceiling — a box already running a job still claims the next one — so a capacity term in A3's runner EXISTS would report every project whose runners are working, page every platform admin at three of them, and bury the wedge the alert exists to name. The fixture is the alarming one with only the runner's load changed.
   it('stays ok when the only runner is healthy but already running a job', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
@@ -227,7 +219,6 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(body, 'A3')?.status).toBe('ok');
   });
 
-  // cm:guard the discriminating case for `held_by`: a job a master has already claimed is NOT starved — a master is holding it precisely because it means to run it, and counting that as "no usable runner" alarms on the healthy path. The fixture is otherwise identical to the alarming one, so a pass proves the hold is replayed rather than the runner state alone being read.
   it('stays ok when the queued job is already claimed by a master', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);
@@ -241,7 +232,6 @@ describe('A3 runner starvation (ISS-652)', () => {
     expect(findAlert(body, 'A3')?.status).toBe('ok');
   });
 
-  // cm:guard this used to assert `ok`, on the `stale_trigger` gate arm that explained the wait away. ISS-895 deleted the arm AND the lane, so a queued job of a retired type is now exactly what A3 is for: no runner may claim `code` (it is absent from RUNNER_CAPABILITIES), nothing ends the job, and it sits queued forever. Reporting `ok` here would tell a platform admin the queue is healthy about the one row that can never move.
   it('warns when a queued job names a job type no runner can claim', async () => {
     const owner = await createTestUser(ctx.harness.db);
     const project = await createTestProject(ctx.harness.db, owner.id);

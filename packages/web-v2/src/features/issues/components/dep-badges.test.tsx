@@ -72,7 +72,6 @@ describe("DepBadges reads the row, never the network", () => {
   });
 });
 
-// cm:guard direction is the whole meaning of the chip: an INCOMING `blocks` means this issue is blocked-by, an OUTGOING one means it blocks. Swap the two and every count still renders, which is why the two are asserted against each other rather than one at a time.
 describe("direction", () => {
   it("counts incoming as blocked-by and outgoing as blocks, not the reverse", () => {
     show(deps({ incoming: [edge({ id: "i" })], outgoing: [edge({ id: "o1" }), edge({ id: "o2" }), edge({ id: "o3" })] }));

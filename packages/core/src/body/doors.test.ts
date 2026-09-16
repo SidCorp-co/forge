@@ -19,7 +19,6 @@ const SRC = dirname(dirname(fileURLToPath(import.meta.url)));
 /** Every write path that takes a body from its CALLER. Each must gate it. */
 const DOORS: Record<string, RegExp> = {
   'comments/service.ts': /prepareBody\(/,
-  // cm:guard ISS-969 — this entry named `prepareBodyOrThrow` until the create door was collapsed into `insertComment`. `updateCommentBody(` alone would have kept the row green while create's gate moved somewhere this file no longer looked, so both verbs are named.
   'comments/routes.ts': /insertComment\(|updateCommentBody\(/,
   'issues/create-service.ts': /prepareBody\(/,
   'issues/patch-fields.ts': /prepareBody\(/,
@@ -34,11 +33,6 @@ const DOORS: Record<string, RegExp> = {
  */
 const KERNEL_AUTHORED = [
   'agent-sessions/steer-session.ts',
-  // cm:why ISS-1050 — it builds the whole body itself from a box checkpoint and a lease `next`, and
-  // takes no caller text at all, so there is nothing for a door to gate. The one thing it does
-  // carry from elsewhere is the run's own words, and those are printed byte for byte inside a fence
-  // sized past the content on purpose: passing them through `prepareBody` would normalise a
-  // statement the block is labelled as quoting.
   'assistant/weekly/post.ts',
   'devices/run-evidence.ts',
   'issues/apply-transition.ts',
@@ -97,7 +91,6 @@ const WARNING_SURFACES: Record<string, RegExp[]> = {
   'mcp/tools/forge-issues.ts': [/out\.warnings = /, /updateResult\.warnings = /],
 };
 
-// cm:why comments are stripped before the scan because a cm:guard that QUOTES `db.insert(comments)` to explain the rule is not a write path — the first one written flagged `db/schema.ts` as an unclassified writer
 function codeOf(file: string): string {
   return readFileSync(file, 'utf8')
     .replace(/\/\*[\s\S]*?\*\//g, '')
@@ -116,7 +109,6 @@ function walk(dir: string): string[] {
 }
 
 describe('every caller-supplied body door is gated', () => {
-  // cm:guard ISS-969 — three `KERNEL_AUTHORED` entries named files that had been deleted, and the list is read as a Set of names, so a rotted entry is invisible: it classifies nothing and reports nothing. This is what stops the list from silently becoming an inventory of a repo that no longer exists.
   it('every name in the enumeration is a file that still exists', () => {
     const declared = [...Object.keys(DOORS), ...KERNEL_AUTHORED, ...PREPARED_UPSTREAM];
     expect(declared.filter((rel) => !existsSync(join(SRC, rel)))).toEqual([]);
@@ -243,7 +235,6 @@ describe('the read projection is safe on stored rows', () => {
    * that was already html emits `description` with no format. Measured live on
    * forge-beta: ISS-899's body was re-embedded as raw markup.
    */
-  // cm:guard the sniff that reads a leading `<forge-` as html is NOT dead now that the vocabulary is refused on write (2026-09-14): it is what keeps the rows written before that projecting to text when their format is lost in transit.
   it('projects a component body whose format was lost in transit, rather than embedding markup', () => {
     const body = '<forge-symptom><forge-opening>patched</forge-opening></forge-symptom>';
     const text = bodyText(body, null);

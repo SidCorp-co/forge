@@ -77,8 +77,6 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  // cm:guard import these SEQUENTIALLY, never with Promise.all. Resolving these ten graphs concurrently deadlocks the module runner — measured 2026-08-13: the hook never returned at 120s OR at 600s, so all 6 tests reported `skipped` and this suite had never once executed anywhere since it was written. Awaiting them one at a time runs the whole file in ~10s. The graphs overlap heavily (db/client, config/env, logger, schema) and a cycle between two concurrent evaluations is what wedges.
-  // cm:edge protocol -> packages/core/vitest.integration.config.ts — `pool: 'forks'` is what makes this reachable; a hook that hangs here is invisible as a FAILURE (vitest reports the tests as skipped and the suite as timed out), so a green-looking `core-integration` is not evidence this file ran
   const classifierMod = await import('../../src/pipeline/failure-classifier.js');
   const retryMod = await import('../../src/jobs/retry.js');
   const quarantineMod = await import('../../src/runners/quarantine.js');
@@ -108,7 +106,6 @@ beforeAll(async () => {
     db: dbMod.db,
     jobs: schemaMod.jobs,
   };
-  // cm:why 120s covers a cold testcontainer pull on a CI runner, matching the 17 sibling suites. It was previously blamed for the hang and raised from 60s to 120s as the fix — it was never the cause (600s hung identically); the concurrent imports above were.
 }, 120_000);
 
 afterAll(async () => {
@@ -237,7 +234,6 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     expect(classified.action).toBe('failover');
 
     const { owner, project } = await seedProject();
-    // cm:why the fleet's only device is seeded ALREADY rate-limited because finalize-failure.ts stamps the spend cap BEFORE the retry decision reads it (ISS-823 review round 1's ordering fix); seeding it clean would test a fleet state that cannot occur at this point in the real sequence
     const { deviceId, runnerId } = await seedRunner(project.id, owner.id, {
       rateLimitedUntil: new Date(Date.now() + 60 * 60_000),
     });
@@ -250,12 +246,9 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     });
     const job = await getJobRow(jobId);
 
-    // cm:why this assertion was inverted on 2026-08-13, and the inversion is the POINT: it used to demand `{scheduled:false, reason:'all_devices_exhausted'}` on the FIRST attempt, which is the policy the owner reversed on 2026-08-12 — an all-limited fleet DEFERS rather than parking, because parking a seconds-long provider throttle turns it into a human intervention. The test was authored the same day and never executed, so nothing caught that it contradicted the guard.
-    // cm:edge lockstep -> packages/core/src/jobs/retry.ts — the deferral is `nextRotation`'s empty-pool branch; if an entry-park is ever restored, this first-attempt expectation flips back
     const firstAttempt = await mods.scheduleAutoRetryWithVerify(job, spendCapText);
     expect(firstAttempt.scheduled).toBe(true);
 
-    // cm:guard what closes the 60-dispatch face is no longer the ROUND BUDGET, and asserting the budget here would re-assert the defect: an empty pool spends no round (a round is one sweep over the devices that can take the work), so a job at RETRY_MAX_ROUNDS still defers. The storm is bounded harder than before — the deferred clone goes back to `queued` and the dispatch gate holds it there, instead of spending 10 sweeps x 3 tries to reach a permanent hold.
     const exhausted = {
       ...job,
       payload: {
@@ -270,7 +263,6 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     const atBudgetEnd = await mods.scheduleAutoRetryWithVerify(exhausted, spendCapText);
     expect(atBudgetEnd.scheduled).toBe(true);
 
-    // cm:why the park is proven from the DEFERRAL CEILING instead, which is the only thing that now ends a capacity outage — and it reports `all_devices_exhausted`, the hold reason jobs/hold.ts re-queues by itself, so the storm ends without a human
     const deferredTooLong = {
       ...job,
       payload: {
@@ -327,7 +319,6 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
     expect(runnerRow?.quarantined_until).toBeTruthy();
     expect(runnerRow?.quarantine_reason).toBe(`preflight_failed: ${check}`);
 
-    // cm:guard the quarantine must be a HARD exclusion from the candidate set, not a preference the retry engine may fall back through. A rotation handed a quarantined device offers work the claim then refuses, every round, and the queue burns its attempts against a box already known broken.
     const candidates = await mods.onlineCapableDeviceIds(project.id, {});
     expect(candidates).toContain(healthyDeviceId);
     expect(candidates).not.toContain(brokenDeviceId);
@@ -446,7 +437,6 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
 
   // ---------- ISS-630/804 — the fifth face: per-state budget gate ---------
 
-  // cm:guard the issue/run assertions at the end are the RFC 0002 half of this test (INV-1/INV-4) — ISS-630's own finding was that the capped stage died SILENTLY; the fix is that it now dies honestly on the JOB axis, and re-parking the issue here would restore the lie while every failure_action assertion above still passed
   it('composition: a fleet exhausted by a MIX of quarantine (ISS-825) and rate-limit (ISS-823) reasons still reads as exhausted, not offline', async () => {
     const { owner, project } = await seedProject();
     const { runnerId: quarantinedRunnerId, deviceId: quarantinedDeviceId } = await seedRunner(
@@ -474,12 +464,10 @@ describe('ISS-812 failure-taxonomy/action-policy — composed walk of the five f
   });
 });
 
-// cm:guard the budget case lives in its own block because it is the one face whose shape is written by a DIFFERENT module (`jobs/budget-breach.ts`) — the other five are the classifier's own output, and mixing them made the describe read as if the classifier decided this one too.
 describe('ISS-812 failure-taxonomy — the budget face', () => {
   it('ISS-630/804: a budget-exhausted stage holds the job, leaving the issue and run untouched (the 3x-vs-0x asymmetry)', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
-    // cm:why the cap sits on `open`, triage's trigger status, so the direct-dispatch fixture follows the same status contract as an orchestrator-enqueued job while preserving the per-stage asymmetry this case covers
     await harness.db.execute(sql`
       UPDATE projects
       SET agent_config = COALESCE(agent_config, '{}'::jsonb)
@@ -543,7 +531,6 @@ describe('ISS-812 failure-taxonomy — the budget face', () => {
       )
     `);
 
-    // cm:guard drive the BREACH directly, not the claim — the subject here is the taxonomy shape (terminal + a `held` retry, issue and run untouched), and routing through the claim would make this case fail for setup reasons that belong to `budget-check-e2e.test.ts` instead.
     const { checkMonthlyBudget } = await import('../../src/jobs/budget-check.js');
     const [jobRow] = await mods.db.select().from(mods.jobs).where(eq(mods.jobs.id, jobId));
     if (!jobRow) throw new Error('seeded job vanished');

@@ -41,8 +41,6 @@ export interface OpenAttemptArgs {
  * that grew a row per retry would make "how many times did this release
  * deploy" unanswerable.
  */
-// cm:guard the conflict target is `(run_id, idempotency_key)` and the key ALONE would be wrong. Two runs retrying `deploy-1` are two acts on two rosters, and folding the second into the first hands a release another release's readings.
-// cm:guard re-opening CLEARS the machine half. A second attempt under one key is a fresh act, and leaving the previous verdict on the row would have the bounds read a settled failure as this attempt's outcome while it is still in flight.
 export async function openAttempt(args: OpenAttemptArgs): Promise<ReleaseAttemptRow> {
   const [row] = await db
     .insert(releaseAttempts)
@@ -84,7 +82,6 @@ export interface SettleAttemptArgs {
 /**
  * What the act reported back, written onto the row its intent already made.
  */
-// cm:guard core's own call and never a route body's. Everything set here is what CORE read; an agent handed a door onto these columns is the sentence-as-evidence this whole table replaces, which is why `recordAccount` exists next door and writes none of them. `providerRef` is deliberately NOT here: a Coolify deployment uuid is a fact only the caller holds, so it travels with the account, where it is read as something reported rather than as something measured.
 export async function settleAttempt(args: SettleAttemptArgs): Promise<ReleaseAttemptRow | null> {
   const [row] = await db
     .update(releaseAttempts)
@@ -123,7 +120,6 @@ export interface RecordAccountArgs {
  * reads as the whole of it, and an operator debugging a failed deploy then
  * believes they have seen the error.
  */
-// cm:guard `logTailReadAt` stays NULL here and is not defaulted to now(): the cut is the machine's and reading it is a person's, so a write that stamped both would make every cut look attended the moment it happened.
 export async function recordAccount(args: RecordAccountArgs): Promise<ReleaseAttemptRow | null> {
   const raw = args.logTail ?? null;
   const truncated = raw !== null && raw.length > LOG_TAIL_LIMIT;

@@ -37,10 +37,8 @@ const notFound = (message = 'not found') =>
 
 const orgParamSchema = z.object({ orgId: z.uuid() });
 
-// cm:edge contract -> packages/core/src/middleware/pat-rest-surface.ts — `/api/orgs` is absent from `PAT_ALLOWED_PREFIXES`, and that absence IS the guard that an agent cannot mint another agent. These three routes gate on `assertOrgAccess(..., 'admin')`, which an agent's own membership (`member`) already fails; the allowlist is the second, earlier refusal and the one that survives somebody widening a role by mistake. Adding `/api/orgs` there hands every AAT the mint route.
 const agentParamSchema = z.object({ orgId: z.uuid(), agentUserId: z.uuid() });
 
-// cm:guard the label is bounded and trimmed and NOTHING else — no case folding, no shape, no uniqueness. It is free text a person reads, and every constraint added here is a step back towards the column being a key (ISS-1003 rule 2). The bound exists so one row cannot make a list unrenderable.
 const displayNameSchema = z
   .object({ displayName: z.string().trim().min(1).max(200).nullable() })
   .strict();
@@ -101,7 +99,6 @@ agentAccountRoutes.delete(
   },
 );
 
-// cm:guard the credential routes gate on `assertOrgAccess(..., 'admin')` exactly as the three above do, and they are reachable only by a session for the same reason: `/api/orgs` is absent from `PAT_ALLOWED_PREFIXES`, so no token can mint a token. That absence is the guard; these handlers are the second refusal, not the first.
 agentAccountRoutes.post(
   '/:orgId/agents/:agentUserId/tokens',
   zValidator('param', agentParamSchema, (result) => {
@@ -112,7 +109,6 @@ agentAccountRoutes.post(
     await assertOrgAccess(orgId, c.get('userId'), 'admin');
     const minted = await mintAgentCredential(orgId, agentUserId);
     if (!minted) throw notFound('agent not found');
-    // cm:guard the plaintext is returned HERE and nowhere else, which is the same contract `POST /api/pat` has: no route reads it back, because the row stores a hash and there is nothing to read (ISS-1003 criterion 4).
     return c.json(minted, 201);
   },
 );
@@ -170,7 +166,6 @@ agentAccountRoutes.get(
   },
 );
 
-// cm:guard a presence refusal is the validator's own sentence — which key, which bound — and not `Invalid input`: the admin fixing the payload reads this response and nothing else (ISS-1034 criterion 39/40).
 agentAccountRoutes.patch(
   '/:orgId/agents/:agentUserId/self',
   zValidator('param', agentParamSchema, (result) => {
@@ -211,7 +206,6 @@ const memberAssistantPrefsSchema = z
     error: 'at least one of answerStyle/assistantInstructions is required',
   });
 
-// cm:guard an admin writes a MEMBER's assistant preferences through the same writer the person and the assistant use, so the trail shows `admin` and the person can restore it — a direct UPDATE here would be the one write nobody could undo (ISS-1034 criterion 58).
 agentAccountRoutes.patch(
   '/:orgId/members/:userId/assistant-preferences',
   zValidator('param', memberParamSchema, (result) => {

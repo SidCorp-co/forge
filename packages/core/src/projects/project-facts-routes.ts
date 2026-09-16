@@ -54,8 +54,6 @@ const projectFactsPatchBodySchema = z
   })
   .strict();
 
-// cm:guard add NO middleware here: this router is mounted under `projectRoutes`, which already applies `requireAuth()` + `assertEmailVerified()` to every request, so a second copy runs auth and its email-verified DB lookup twice per call.
-// cm:edge protocol -> packages/core/src/projects/routes.ts — that mount is what supplies `userId`; mounted anywhere else, every handler here reads it as undefined
 export const projectFactsRoutes = new Hono<{ Variables: AuthVars }>();
 
 projectFactsRoutes.get(
@@ -78,7 +76,6 @@ projectFactsRoutes.get(
       projectFactsConfig:
         (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {},
       maxAlwaysInjectChars: PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
-      // cm:edge contract -> packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx — the tab renders this string; it is served rather than copied because core may not value-import @forge/contracts and web-v2 cannot import core, so any string both sides must agree on otherwise lives twice behind a parity test
       alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE,
     });
   },
@@ -100,11 +97,9 @@ projectFactsRoutes.patch(
     const access = await loadProjectAccess(id, userId);
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
-    // cm:why a `null` merge result drops the key entirely, and the filter does what `delete` would because lint's noDelete refuses that operator
     const dropKey = (obj: Record<string, unknown>, key: string) =>
       Object.fromEntries(Object.entries(obj).filter(([k]) => k !== key));
 
-    // cm:guard the read-modify-write touches the `projectFacts` / `projectFactsConfig` sub-keys ONLY, so the blob's siblings (`pipelineConfig`, `plugins`, …) survive; the reserved derived keys are dropped by the mergers, so a caller cannot shadow base-branch / test-creds through here
     const ac = await mergeAgentConfig(id, (current) => {
       let next = current;
       if (patch.projectFacts !== undefined) {
@@ -155,7 +150,6 @@ projectFactsRoutes.patch(
           orderIndex: Object.keys(factsMap).indexOf(key),
         });
       }
-      // cm:guard the write-through is ONE batch so a patch of N keys costs one embeddings call rather than N, matching the lockstep partners above; a failure logs every key it carried, because the upsert lands whole or not at all and naming one would hide the rest.
       if (writes.length > 0) {
         await upsertKnowledgeEntries(writes).catch((err: Error) => {
           logger.warn(
@@ -171,7 +165,6 @@ projectFactsRoutes.patch(
       projectFactsConfig:
         (ac.projectFactsConfig as Record<string, { alwaysInject?: boolean }> | undefined) ?? {},
       maxAlwaysInjectChars: PROJECT_FACTS_ALWAYS_INJECT_MAX_CHARS,
-      // cm:guard the PATCH answer replaces the GET's in the tab's query cache (`useUpdateProjectFacts` calls `setQueryData` on the same key), so a field served by only ONE of these two routes disappears from the screen on the owner's first save.
       alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE,
     });
   },

@@ -101,8 +101,6 @@ export async function applyUxImproverProposals(
     .from(uxContractRules)
     .where(eq(uxContractRules.projectId, projectId));
 
-  // cm:guard This pass, not the `duplicate` branch below, is what keeps an inbox proposal's evidence current: once a proposal exists the detector REFUSES the gap as `already-proposed`, so it never reaches `candidates` and the duplicate branch never sees it again. Delete this and evidence freezes at whatever the first run happened to observe.
-  // cm:guard Union ACROSS refusals before writing, one UPDATE per target. Jaccard is not transitive, so two clusters that are unrelated to each other can both match one proposal's text — write per refusal off the once-loaded row and the second UPDATE silently drops the first one's issues, while `outcomes` still reports both as refreshed.
   const refreshes = new Map<string, string[]>();
   for (const refusal of report.refused) {
     if (refusal.reason !== 'already-proposed' || !refusal.targetRuleId) continue;
@@ -140,7 +138,6 @@ export async function applyUxImproverProposals(
       continue;
     }
 
-    // cm:guard Re-running the improver must never queue a second proposal for a gap already in the inbox — the schedule fires on every cadence tick, so a duplicate here compounds weekly until a human clears it. Match by signature and union the evidence instead.
     const duplicate = existing.find(
       (r) =>
         r.status === 'proposed' &&
@@ -188,7 +185,6 @@ export async function applyUxImproverProposals(
     mutated = true;
   }
 
-  // cm:edge protocol -> packages/core/src/projects/ux-contract-routes.ts — invariant #1: every path that mutates ux_contract_rules recompiles before returning, even when only `proposed` rows moved and the prose cannot have changed.
   if (mutated) await recompileAndPersistUxContract(projectId);
 
   return { outcomes, report };

@@ -92,7 +92,6 @@ export type CreateIssueInput = {
  * Who is creating. `createdVia` is the channel the origin classifier reads
  * (`creator.ts`), so it must name the real transport, never a default.
  */
-// cm:guard `createdVia` and `actor` must describe the SAME principal — `buildOriginCondition` splits the Backlog/Findings views on `created_via`, so a web create labelled `mcp` (or the reverse) files the issue under the wrong origin and it vanishes from the list its author is watching
 export type IssueCreateWriter = {
   createdById: string;
   createdVia: IssueCreatedVia;
@@ -123,10 +122,6 @@ export type CreateIssueResult =
       bodyWarnings: string[];
     };
 
-// cm:edge ordering -> packages/core/src/jobs/queued-gates.ts — relations MUST commit before the `issueCreated` emit below, which synchronously triggers considerEnqueue→dispatch; an edge written after it is invisible to the L2 blocks-gate on the first tick and the dependent ships ahead of its blocker
-// cm:guard decode attachments and resolve labels BEFORE the insert — both reject on bad input, and doing them after would leave a half-created issue with no files and no labels
-// cm:edge lockstep -> packages/core/src/issues/routes.ts — the REST POST maps IssueCreateError / LabelResolutionError / AttachmentError to status codes
-// cm:edge lockstep -> packages/core/src/mcp/tools/forge-issues.ts — same mapping on the MCP side, to its `CODE: message` string form
 export async function createIssue(
   input: CreateIssueInput,
   writer: IssueCreateWriter,
@@ -136,7 +131,6 @@ export async function createIssue(
     throw new IssueCreateError('INVALID_STATUS', requestedStatus);
   }
 
-  // cm:why ISS-606 — a gated project parks every would-be `open` create at draft, so the status that lands is the gate's answer, not the caller's request
   const intake = await applyIntakeGate(input.projectId, requestedStatus as IssueStatus);
 
   let decodedAttachments: DecodedAttachment[] = [];
@@ -149,7 +143,6 @@ export async function createIssue(
       ? await resolveLabelIdsForWrite(input.projectId, input.labels)
       : [];
 
-  // cm:guard prepared BEFORE the transaction, for the same reason attachments and labels are: `prepareBody` REFUSES an invalid `forge-*` body, and refusing inside the transaction would leave the caller a rolled-back write instead of a 400 naming what to fix
   const prepared =
     typeof input.description === 'string' && input.description.trim().length > 0
       ? prepareBody({ raw: input.description, format: input.descriptionFormat })
@@ -160,7 +153,6 @@ export async function createIssue(
     if (!isValidDetectorKey(detectorKey)) {
       throw new IssueCreateError('INVALID_DETECTOR_KEY', detectorKey);
     }
-    // cm:guard one live issue per detector — a recurring finding must land on the issue already tracking it, never as issue N+1
     const { existingIssueId } = await claimDetectorKey(input.projectId, detectorKey);
     if (existingIssueId) {
       const [live] = await db
@@ -180,7 +172,6 @@ export async function createIssue(
     }
   }
 
-  // cm:guard the `blocks` edges land INSIDE this transaction with the issue row. Committing the issue first and writing edges after leaves a crash window in which the issue exists at its intake status carrying no blocker: `issueCreated` never fires, so nothing dispatches immediately, but the dispatcher also POLLS — the next tick picks up an `open` issue that looks unblocked and runs it ahead of the thing that was supposed to gate it. The record would say "not blocked" while the intent was blocked, which is exactly what VISION: state-never-lies forbids.
   const { created, pendingRelations } = await db.transaction(async (tx) => {
     const [inserted] = await tx
       .insert(issues)
@@ -238,10 +229,8 @@ export async function createIssue(
     attachmentErrors = result.errors;
   }
 
-  // cm:guard finalizeIntake runs ONLY when the gate actually parked the issue — it labels and notifies the owner that something is waiting, and firing it on an ungated create pages them for nothing
   if (intake.gated) await finalizeIntake(input.projectId, { id: created.id, title: created.title });
 
-  // cm:guard the effects still run BEFORE `issueCreated`, unchanged: that hook is what wakes dispatch, and the dependent's health must already be published when it does.
   await flushIssueRelationEffects(
     { actor: writer.actor, createdById: writer.createdById },
     input.projectId,
@@ -257,7 +246,6 @@ export async function createIssue(
     snapshot: {
       title: created.title,
       description: created.description,
-      // cm:edge contract -> packages/core/src/memory/indexer.ts — the indexer embeds `snapshot.description` through the body projection and needs the format to pick a path; without it an `html` component body is embedded as raw markup and the vector describes the template, not the problem
       descriptionFormat: created.descriptionFormat,
       priority: created.priority,
       category: created.category,

@@ -42,7 +42,6 @@ export function buildPlatformInvariantSet(): PlatformInvariantSet {
       id: fact.id,
       title: fact.title,
       version: fact.version,
-      // cm:why hash the RENDERED text, not the version — an edit that forgets to bump `version` still moves the digest
       sha: sha8(renderFact(fact.id, {}) ?? ''),
     }))
     .sort((a, b) => a.id.localeCompare(b.id));

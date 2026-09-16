@@ -31,7 +31,6 @@ export type IssueUpdateInput = {
  * read at 500 rows, so an issue past that cap computed its delta against a
  * truncated `oldSet` and re-inserted labels it never removed.
  */
-// cm:guard the label delta and its activity rows commit in ONE transaction with the field update — a partial commit leaves `issue.labeled` claiming a label the issues row does not carry, and the activity feed is the only record of who changed a label
 export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const { issueId, updates, labelIds, expect, actor } = input;
   const guard = expect ? [sessionContextGuard(expect.sessionContext)] : [];
@@ -55,7 +54,6 @@ export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueR
       const oldSet = new Set(existing.map((r) => r.labelId));
       const newSet = new Set(labelIds.map((l) => l.labelId));
 
-      // cm:guard the delete and the re-insert are what make a primary swap atomic — the old primary row is gone before the new one lands, so `issue_labels_primary_uq` never sees two true rows for the issue and no caller has to clear the old designation first.
       await tx.delete(issueLabels).where(eq(issueLabels.issueId, issueId));
       if (labelIds.length > 0) {
         await tx
@@ -85,8 +83,6 @@ export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueR
   });
 }
 
-// cm:guard the precondition is a term in the UPDATE's OWN `WHERE`, never a SELECT above it — a read-then-write is the exact race this closes, and two writers that both read the same value would both pass a check placed there. `IS NOT DISTINCT FROM` rather than `=` so an absent field is an expressible expectation: `= null` is NULL in SQL and would refuse every legitimate first claim.
-// cm:why the jsonb parameter carries an explicit `::jsonb` cast — a bare `sql`${json}`` is an untyped parameter whose type Postgres cannot infer, which was a live 500 on forge-beta for the sibling `merged_at` write (issues/merge-marker.ts)
 function sessionContextGuard(expected: Record<string, unknown> | null) {
   const expr = expected === null ? sql`null::jsonb` : sql`${JSON.stringify(expected)}::jsonb`;
   return sql`${issues.sessionContext} is not distinct from ${expr}`;

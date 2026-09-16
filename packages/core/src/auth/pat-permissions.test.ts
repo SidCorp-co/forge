@@ -11,7 +11,6 @@
 
 import { describe, expect, it, vi } from 'vitest';
 
-// cm:guard `scopeForMethod` is imported from the middleware that owns it rather than restated, and that module's import chain reaches `db/client.ts`. Mock the environment, never copy the method classification into this file — a second copy would agree with itself while the real one drifted, which is the failure this whole test file exists to prevent.
 vi.mock('../config/env.js', () => ({
   env: { NODE_ENV: 'test', JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef' },
 }));
@@ -30,7 +29,6 @@ import {
   patResourceForPath,
 } from './pat-permissions.js';
 
-// cm:guard the path-to-permission step is the CALLER's since ISS-974, so the menu-level assertions below go through one helper instead of each doing its own resolution — which is the shape the request path is forbidden. What the helper composes is asserted apart: `patPermissionWanted` has its own describe block, and the predicate's three-shapes rule is about the grant array alone.
 function covers(
   granted: readonly string[] | null | undefined,
   path: string,
@@ -39,7 +37,6 @@ function covers(
   return patGrantCovers(granted, patPermissionWanted(path, level));
 }
 
-// cm:guard the reachable set as it stood at 896ca541a, before the menu existed. Editing this list is how a reachability change is DECLARED — never how a red test is quieted. A prefix added to `PAT_PERMISSION_RESOURCES` and mirrored here in the same commit is a decision someone made; one mirrored here to make this test green again is the silent widening this exists to stop.
 const REACHABLE_ON_2026_09_10 = [
   '/api/attachments',
   '/api/comments',
@@ -185,7 +182,6 @@ describe('the grant predicate honours the whole menu', () => {
   });
 });
 
-// cm:guard the three shapes are asserted APART rather than folded into one `?? []`, because they arrive by different routes — a column the migration never wrote, a caller who sent `[]`, a principal built without the field — and one misplaced `??` makes exactly one of them permissionless while the others keep working (ISS-973).
 describe('an absent grant is every group, in each of its three shapes', () => {
   it.each([
     ['null', null],

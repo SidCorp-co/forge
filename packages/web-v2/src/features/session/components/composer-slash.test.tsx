@@ -71,7 +71,6 @@ function typeInto(el: HTMLTextAreaElement, text: string) {
   fireEvent.change(el, { target: { value: text, selectionStart: text.length } });
 }
 
-// cm:guard jsdom dispatches mousedown but performs NONE of its default actions, so a bare fireEvent.mouseDown never moves focus and never fires focusout. A press modelled without that step passes on code where the panel closes under the pointer and the click lands on nothing — which is exactly the defect this file failed to catch once already.
 function pressWithFocusShift(el: HTMLElement) {
   act(() => {
     fireEvent.mouseDown(el);
@@ -210,7 +209,6 @@ describe("Composer — slash skills menu", () => {
     await waitFor(() => expect(textarea().value).toBe("/dataviz "));
   });
 
-  // cm:guard the relatedTarget guard above only covers browsers that move focus TO the pressed node. Safari clears focus to the body, where relatedTarget is null, so cancelling mousedown's default action is the half that covers it — and it is invisible to a test that only checks the panel survived, since either half alone passes in jsdom.
   it("cancels mousedown's focus default anywhere in the panel, which is what covers Safari", () => {
     renderComposer({ items: [], error: new Error("boom") });
     const el = textarea();
@@ -244,7 +242,6 @@ describe("Composer — slash skills menu", () => {
     typeInto(el, "/");
     const btn = screen.getByRole("button", { name: "Retry" });
     fireEvent.keyDown(el, { key: "Tab" });
-    // cm:why both assertions are needed — the panel surviving the focus move is the half the round-2 bug broke, and the button holding focus is the half that makes Retry reachable at all
     expect(screen.getByRole("listbox")).toBeInTheDocument();
     expect(document.activeElement).toBe(btn);
     fireEvent.click(btn);
@@ -282,7 +279,6 @@ describe("Composer — slash skills menu", () => {
     expect(screen.getByRole("listbox")).toBeInTheDocument();
     fireEvent.keyDown(el, { key: "Escape" });
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
-    // cm:why continuing to type inside the DISMISSED token is the case that used to resurrect the panel, costing an Escape per keystroke
     typeInto(el, "/forg");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
     typeInto(el, "/forge");
@@ -318,14 +314,12 @@ describe("Composer — slash skills menu", () => {
     fireEvent.keyDown(el, { key: "Tab" });
     const btn = screen.getByRole("button", { name: "Retry" });
     expect(document.activeElement).toBe(btn);
-    // cm:guard focus must leave the button BEFORE the retry can unmount it. React fires no blur for a node removed while focused, so a fix that only handled blur would leave activeElement on <body> with the panel still up and its keys — which live on the textarea — unreachable.
     fireEvent.click(btn);
     expect(document.activeElement).toBe(textarea());
     act(() => settle({ items: SKILLS, error: null }));
     expect(retry).toHaveBeenCalled();
     expect(screen.queryByRole("button", { name: "Retry" })).not.toBeInTheDocument();
     expect(document.activeElement).toBe(textarea());
-    // cm:why the last two assertions are the point — a stranded focus leaves the panel mounted and its keys, which live on the textarea, unreachable, so proving Escape still works is what proves focus came home
     fireEvent.keyDown(textarea(), { key: "Escape" });
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
@@ -393,7 +387,6 @@ describe("Composer — the trigger is never inert", () => {
   it("hides the trigger entirely when the project has no invokable skills", () => {
     renderComposer({ items: [] });
     expect(screen.queryByLabelText("Insert a skill")).not.toBeInTheDocument();
-    // cm:why the second assertion is the one that matters — a hidden trigger is not enough if typing a slash can still open an empty panel
     typeInto(textarea(), "/");
     expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
   });
@@ -431,10 +424,6 @@ describe("Composer — the actions slot", () => {
   });
 });
 
-// cm:guard ISS-1031 moved the clear to BEFORE the await so a person's words leave the box the moment
-// they press Enter, and these two are the pair that keeps that honest. Clearing early is only safe
-// because a throw puts them back: ISS-462's contract is that a refused send never costs the typing,
-// and the session screen is the caller that still reports a refusal by throwing.
 describe("Composer · what pressing send does to the box", () => {
   it("clears the box before the send has resolved, for a caller that queues", async () => {
     let release: () => void = () => undefined;
@@ -454,9 +443,6 @@ describe("Composer · what pressing send does to the box", () => {
     });
   });
 
-  // cm:guard the non-queueing caller keeps ISS-462's clear-on-success, and that is what makes this
-  // safe: there is no early clear to restore over, so a draft typed while the send was in flight
-  // cannot be overwritten by the refused one (ISS-1031 review F1).
   it("puts the words back when the send throws", async () => {
     const onSend = vi.fn(async () => {
       throw new Error("no online runner");
@@ -482,8 +468,6 @@ describe("Composer · what pressing send does to the box", () => {
     });
     expect(onSend).not.toHaveBeenCalled();
 
-    // cm:guard the SAME press with `queueWhileBusy` set must land, or this case is only asserting
-    // that `busy` disables something and would pass against a composer that refuses every send.
     view.rerender(<Composer onSend={onSend} busy queueWhileBusy />);
     await act(async () => {
       fireEvent.keyDown(screen.getByLabelText("Message"), { key: "Enter" });

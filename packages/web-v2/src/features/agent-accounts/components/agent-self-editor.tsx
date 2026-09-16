@@ -55,7 +55,6 @@ const num = (v: string, scale = 1): number | null =>
  * The patch a draft sends: text fields whole, presence keys one by one — an
  * emptied number is sent as `null`, which UNSETS the key so the default folds back.
  */
-// cm:guard every presence key the form shows is SENT, set or null, and none it does not show is touched: `writeAgentSelf` merges presence key by key, so a key left out stays as it was and a key sent null goes back to its default — the affordance a wholesale replace would deny (ISS-1034 criterion 51).
 export function patchOf(draft: Draft): AgentSelfPatch {
   return {
     soul: text(draft.soul),
@@ -91,7 +90,6 @@ export function AgentSelfEditor({
     if (selfQ.data) setDraft(draftOf(selfQ.data));
   }, [selfQ.data]);
 
-  // cm:guard the error branch comes BEFORE the no-draft branch: a first read that fails leaves no draft, and a skeleton returned first would spin for ever over a refusal the admin could act on (codex F6).
   if (selfQ.isError) {
     return (
       <div className="flex items-center gap-3" data-testid={`agent-self-error-${agentUserId}`}>

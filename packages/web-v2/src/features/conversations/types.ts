@@ -13,7 +13,6 @@ export type ConversationMessageRole = "user" | "assistant" | "system";
 /**
  * Every way a window can close.
  */
-// cm:edge contract -> packages/core/src/db/schema-conversations.ts — the same eight names the `conversation_windows_decision_known` check constraint holds; a ninth added there and not here renders as an unlabelled silence rather than failing.
 export type ConversationWindowDecision =
   | "answered"
   | "nothing-to-say"
@@ -81,7 +80,6 @@ export interface ConversationProject {
 /**
  * A room's membership, as every membership call answers with it.
  */
-// cm:guard the SHAPE is part of it and not an afterthought: a direct room is read by the people in it and a group room by everyone holding a role on its projects, so a roster rendered without knowing which cannot tell a person what adding somebody there will do (ISS-1011).
 export interface ConversationMembership {
   shape: ConversationShape;
   participants: ConversationParticipant[];
@@ -89,7 +87,6 @@ export interface ConversationMembership {
   scope: string[];
   scopeProjects: ConversationProject[];
   /** Whether THIS caller may change who is in the room. */
-  // cm:guard served, never inferred: the screen cannot compute it, because it turns on being a live person in the room AND holding a role on every project of a scope the screen does not decide. A client that guessed from the project role would offer the controls to somebody the server then refuses, which reads as a broken button rather than as a rule (ISS-1011).
   canChangeMembership: boolean;
 }
 
@@ -101,7 +98,6 @@ export interface PersonCandidate {
 
 export interface HandleCandidate {
   /** The agent account, or null where this project has never needed one. */
-  // cm:guard NULLABLE because core offers a project that has never been talked to under the name its agent will be given, and mints it on add. Typing this `string` made the add send `userId: undefined` and the advertised mint-on-add path unreachable from the screen (ISS-1011).
   userId: string | null;
   handle: string;
   project: ConversationProject;
@@ -122,11 +118,6 @@ export interface ConversationDetail extends ConversationRow, ConversationMembers
 /**
  * A message this browser has accepted and the server has not confirmed.
  */
-// cm:guard the outbox exists because `POST /conversations/:id/messages` does not return until the
-// agent turn is OVER (core `assistant/conversation-send.ts` awaits `routeOneWebWindow`), so the
-// authoritative messages cannot carry what a person just said until the answer arrives with it.
-// Without a row of its own, pressing send left the text in the box and the thread unchanged for the
-// whole turn, and the question then appeared stamped at the moment the answer did (ISS-1031).
 export interface OutboxMessage {
   /** Client-minted; never a server id, and never written anywhere. */
   id: string;
@@ -147,7 +138,6 @@ export type ThreadEntry =
 /**
  * Every decision that is a SILENCE, with the sentence a person reads for it.
  */
-// cm:guard `answered` is absent deliberately and must stay absent: its window's text is a message row, so an entry for it would render the same answer twice — once as itself and once as a label saying it happened.
 export const SILENCE_REASON: Record<SilenceDecision, string> = {
   "nothing-to-say": "The agent read this and had nothing to add.",
   "guard-backoff": "The agent is pacing itself here — it has had nothing to add for several turns.",
@@ -161,11 +151,6 @@ export const SILENCE_REASON: Record<SilenceDecision, string> = {
 /**
  * The thread, with every silence in the place it happened.
  */
-// cm:guard this is criterion 28, and the two states it separates are told apart by DIFFERENT SHAPES rather than by wording: a `silence` entry is a window that closed on a decision, and a `pending` entry is a window that has not closed at all. Rendering an unclosed window as a silence — or omitting it — is how "nobody has answered yet" and "it read this and said nothing" become the same thing on screen, which is the exact confusion this criterion names.
-// cm:guard a window whose decision is `answered` contributes NO entry, because the answer is already a message row below it.
-// cm:guard the outbox is appended AFTER every stored row and never interleaved by time: an unsent
-// message has no `seq`, and inventing one to sort it would put it above a row the server has already
-// numbered. It is always the newest thing in the room, because it has not happened yet.
 export function threadEntries(
   messages: ConversationMessage[],
   windows: ConversationWindow[],

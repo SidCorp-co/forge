@@ -5,7 +5,6 @@ const updateSet = vi.fn((_set: unknown) => ({ where: () => ({ returning: updateR
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const selectWhere = vi.fn(async () => [] as unknown[]);
 const dbSelect = vi.fn(() => ({ from: () => ({ where: selectWhere }) }));
-// cm:why `pauseRun` / `resumeRunsWhere` write through `withKernelMarker`, which opens a transaction and stamps `forge.kernel_txn` with `tx.execute` first; a double without `transaction` + `execute` fails these tests on the marker rather than on the pause.
 const dbStub = {
   update: dbUpdate,
   select: dbSelect,
@@ -114,7 +113,6 @@ describe('pipeline/run-pause', () => {
     updateReturning.mockResolvedValueOnce([{ ...RUN, status: 'running' }]);
     const row = await resumeRun({ runId: 'run-1' });
     expect(row?.status).toBe('running');
-    // cm:guard resume must ALWAYS emit the metadata SET that strips `pauseReason` — leaving the key behind lets a stale machine reason re-match a later operator pause, which is how a human's hold gets cleared by a sweep answering a different pause.
     const setArg = updateSet.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(setArg.metadata).toBeDefined();
     expect(hookEmit).toHaveBeenCalledWith(
@@ -147,7 +145,6 @@ describe('pause-reason vocabulary', () => {
     }
   });
 
-  // cm:guard `reopen_cap` must stay unrecognised — RFC 0002 deleted that mechanism, and this assertion is what keeps a future edit from re-registering a kind whose resume path no longer exists
   it('a retired kind is not live, and neither is a bare or empty reason', () => {
     expect(isLivePauseReason('reopen_cap:developed')).toBe(false);
     expect(isLivePauseReason('missing_skill')).toBe(false);
@@ -159,7 +156,6 @@ describe('pause-reason vocabulary', () => {
 });
 
 describe('resumeOrphanedPauses', () => {
-  // cm:guard this is the whole point of the pass — forge-dev ISS-576/652 sat paused on `reopen_cap:developed` for 3 days after RFC 0002 deleted the cap, their queued triage jobs invisible to a picker that requires `r.status='running'`
   it('frees a run whose pause reason has no owner left', async () => {
     selectWhere.mockResolvedValueOnce([
       {
@@ -177,7 +173,6 @@ describe('resumeOrphanedPauses', () => {
     expect(updateSet).toHaveBeenCalledTimes(1);
   });
 
-  // cm:guard a live kind must be left alone. `stage_stalled` has no machine that clears it and never did — it is live because a PERSON is owed the look, and resuming it from a sweep takes that look away from them. `missing_skill` was the other live kind until ISS-895 deleted its resume path; it is now correctly freed by the case above.
   it('leaves a run paused for a reason that still has an owner', async () => {
     selectWhere.mockResolvedValueOnce([
       {
@@ -194,7 +189,6 @@ describe('resumeOrphanedPauses', () => {
     expect(updateSet).not.toHaveBeenCalled();
   });
 
-  // cm:guard an operator pause carries NO pauseReason — resuming one would override a human decision from a sweep, which is the opposite of what this pass is for
   it('never touches a run with no pause reason at all', async () => {
     selectWhere.mockResolvedValueOnce([
       { id: 'run-7', projectId: 'p1', issueId: 'i1', metadata: {} },
@@ -208,21 +202,18 @@ describe('resumeOrphanedPauses', () => {
 });
 
 describe('pauseResumesItself (ISS-879)', () => {
-  // cm:guard NO kind may answer true here while `MACHINE_RESUMED_PAUSE_KINDS` is empty. `missing_skill` answered true until ISS-895 deleted `missing-skill-resume.ts` with the staged lane; a surface told "it resumes on its own" about a pause nothing resumes is the aged-hold failure repeated on the run axis, so this asserts the retired kind now answers false alongside the ones that always did.
   it('is false for every kind while no kind has a resume path in this build', () => {
     expect(pauseResumesItself('missing_skill:open')).toBe(false);
     expect(pauseResumesItself('stage_stalled:awaiting_release')).toBe(false);
     expect(pauseResumesItself('reopen_cap:3')).toBe(false);
   });
 
-  // cm:guard an operator pause carries NO reason, and reporting it as self-resuming would tell a human "nothing to do" about the one pause that is entirely theirs
   it('is false for an operator pause, which has no reason at all', () => {
     expect(pauseResumesItself(null)).toBe(false);
     expect(pauseResumesItself(undefined)).toBe(false);
     expect(pauseResumesItself('')).toBe(false);
   });
 
-  // cm:guard the union is what `resumeOrphanedPauses` frees the complement of, so it is asserted in both directions. `missing_skill` LEFT it with ISS-895 — that is the point: a run still paused on a kind whose mechanism is gone gets freed one sweep later instead of sitting frozen, which is the `reopen_cap:*` failure this pass was built for. `stage_stalled` stays because a human is still owed the look.
   it('leaves LIVE_PAUSE_REASON_KINDS the exact union of the two halves', () => {
     expect([...LIVE_PAUSE_REASON_KINDS]).toEqual([
       ...MACHINE_RESUMED_PAUSE_KINDS,
@@ -258,7 +249,6 @@ describe('describePause — ISS-853, the one reader of a pauseReason for display
     expect(describePause('reopen_cap:3').resumer).toBe('sweeper');
   });
 
-  // cm:guard the detail half may itself contain a colon (a stage plus a qualifier), so only the FIRST separator splits — reading the last one renames the kind
   it('splits on the first colon only, and reads a bare kind as detail-free', () => {
     expect(describePause('stage_stalled:code:attempt-2').detail).toBe('code:attempt-2');
     expect(describePause('stage_stalled')).toEqual({
@@ -269,7 +259,6 @@ describe('describePause — ISS-853, the one reader of a pauseReason for display
   });
 
   it('reports `machine` for every kind something in this build resumes', () => {
-    // cm:guard this list is EMPTY today, so the loop is empty and the assertion below is what keeps the arm honest — a kind added to MACHINE_RESUMED_PAUSE_KINDS without its resume path makes this describe the promise it breaks
     for (const kind of MACHINE_RESUMED_PAUSE_KINDS) {
       expect(describePause(`${kind}:x`).resumer).toBe('machine');
     }

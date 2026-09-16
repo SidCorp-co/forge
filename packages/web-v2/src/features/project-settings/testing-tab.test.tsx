@@ -69,7 +69,6 @@ describe("Testing tab · usage notes (ISS-767)", () => {
     expect(sent.previewDeploy.notes).toBe("No issue ever rests at the release gate.");
   });
 
-  // cm:guard the whole previewDeploy blob is PATCHed as one object, so a save that rebuilds it from form state alone would delete the credentials and URLs sitting beside the note — the same clobber the server-side scoped write guards against
   it("saving a note keeps the credentials, URLs and unknown keys beside it", () => {
     renderTab();
     fireEvent.change(notesBox(), { target: { value: "updated" } });

@@ -71,7 +71,6 @@ describe('the keep-forever tools under a `session:` token', () => {
     }
   });
 
-  // cm:guard assert on the ABSENCE of a credential refusal, never on success — `db` is `{}` here, so every one of these calls fails further in, and a test written to expect success would be asserting the stub rather than the gate. A device requirement reintroduced in front of any of these four is what this case exists to catch, and it would arrive as exactly this text: the refusals in `project-authz.ts` and `require-pat.ts` are the only messages on this transport that name a device.
   it.each(KEEP_FOREVER)('$name is not refused on the credential', async ({ name, args }) => {
     const { client, server } = await connect('00000000-0000-4000-8000-0000000000b2');
     try {

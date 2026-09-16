@@ -9,7 +9,6 @@ import {
 import { PipelineBoard } from "@/features/pipeline/components/pipeline-board";
 import { useProjects } from "@/features/projects/hooks";
 import { useTabParam } from "@/lib/utils/use-tab-param";
-// cm:why List is the default view and not Board (ISS-436) — the board hides draft+closed, so it opened empty on the projects that had shipped most of their work
 import { useEffect, useState } from "react";
 import { IssuesInsightsView } from "./issues-insights-view";
 import { ModuleRollupView } from "./module-rollup-view";
@@ -30,10 +29,8 @@ interface IssuesScreenProps {
   scope: { projectId: string; slug: string };
 }
 
-// cm:guard the subtitle in the header below says what the LIST is, never where an issue sits: "One strict pipeline, left to right" described the ladder ISS-897 deleted and outlived every screen that drew it (ISS-999)
 export function IssuesScreen({ scope }: IssuesScreenProps) {
   const [view, setView] = useTabParam<IssuesView>(VIEWS, "list");
-  // cm:guard hiding the write affordances is UX and never the gate — the server 403s a viewer's write regardless, so a bug here costs a confusing button and not an unauthorised write
   const projectsQ = useProjects();
   const canWrite =
     projectsQ.data?.find((p) => p.id === scope.projectId)?.role !== "viewer";

@@ -97,7 +97,6 @@ describe('config/env retired rate-limit variables', () => {
     );
   });
 
-  // cm:why an empty value is how `${VAR}` reaches a container for a variable the operator never set (see `cleanedEnv`), so treating it as "set" would refuse the boot of every deployment that merely lists the name.
   it('boots when a retired name is present but empty', async () => {
     process.env.RATE_LIMIT_PAT_MAX = '';
     const { env } = await import('./env.js');

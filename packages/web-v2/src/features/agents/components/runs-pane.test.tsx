@@ -1,6 +1,5 @@
 // @vitest-environment jsdom
 
-// cm:why the states the ux-contract says get skipped, asserted rather than eyeballed: an idle project and a filter that matched nothing look identical unless the branch that separates them exists, and the second reader then goes looking for a fault that is not there. The a11y and 375px items on that checklist are verified by hand — this covers the four render branches and the three marks (ISS-964 criteria 51, 52, 54).
 
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
@@ -116,7 +115,6 @@ describe("the runs pane", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
-  // cm:guard the two empties are DIFFERENT screens and this pair is what holds them apart: the first-run copy says runs will appear, the filtered copy names the search and offers to clear it. One shared message fails the ux-contract and misleads the second reader.
   it("tells an idle project that runs will appear here", () => {
     state = { isLoading: false, isError: false, data: { items: [], count: 0 } };
     render(<RunsPane scope={scope} />);
@@ -171,7 +169,6 @@ describe("the runs pane", () => {
     ).toBeInTheDocument();
   });
 
-  // cm:guard the state today's UI could not express at all, asserted on the rendered row rather than only in the derivation table: an answered park is owed a revival nobody performed, and it must be visible as its own thing (ISS-964 criteria 38, 51).
   it("shows an answered park as owed a revival", () => {
     state = {
       isLoading: false,
@@ -186,7 +183,6 @@ describe("the runs pane", () => {
 
 
 describe("the count of runs nothing is working on", () => {
-  // cm:guard the case the count EXISTS for, and the reason it renders outside the ledger's first-run branch: an orphaned run's box is long gone, so it has no ledger row and the screen it appears on is the one that says "No runs on this project". Inside that branch the count would be invisible here.
   it("is stated even when the box ledger holds nothing at all", () => {
     state = { isLoading: false, isError: false, data: { items: [], count: 0 } };
     band.runs = { data: { items: [runItem()] }, isLoading: false, isError: false };
@@ -196,7 +192,6 @@ describe("the count of runs nothing is working on", () => {
     expect(screen.getByText(/1 open run has nothing working on it/i)).toBeInTheDocument();
   });
 
-  // cm:guard the pair, because either half alone passes against a broken build: a version ignoring the heartbeat entirely counts both, and one counting nothing at all counts neither.
   it("excludes a run whose session is still beating and counts one whose beat is stale", () => {
     state = { isLoading: false, isError: false, data: { items: [], count: 0 } };
     band.runs = {
@@ -225,7 +220,6 @@ describe("the count of runs nothing is working on", () => {
     expect(screen.getByText(/Every open run has a job or a live agent/i)).toBeInTheDocument();
   });
 
-  // cm:guard a failed read must not render as a zero: "0 runs" a reader cannot tell from an unanswered question is the reassurance this count was added to stop giving.
   it("says the read failed rather than reporting a zero, and offers the retry", () => {
     state = { isLoading: false, isError: false, data: { items: [], count: 0 } };
     band.runs = { isLoading: false, isError: true, error: new Error("nope") };

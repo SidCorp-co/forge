@@ -10,9 +10,6 @@ import { groupByRecency } from "../grouping";
 import type { ListedConversation } from "../hooks";
 import { ConversationRow } from "./conversation-row";
 
-// cm:why the placeholder rows are keyed by a fixed list of names rather than by their index, for the
-// reason `conversation-list.tsx` gives over the same six: the set never reorders, and an index key
-// on a list that never reorders is still a lint the budget counts.
 const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
 interface ProjectInfo {
@@ -20,11 +17,6 @@ interface ProjectInfo {
   slug: string;
 }
 
-// cm:guard the three actions arrive as props rather than being wired here: the dock's list owns the
-// same three, and a second copy of a destructive control is a second place for them to disagree
-// about what a press means. Each carries the ROW, which the row's own handler does not need and this
-// screen does — its list spans projects, so the mutation has to know which room it is about
-// (ISS-1028).
 interface ConversationSidebarProps {
   rows: ListedConversation[];
   nameById: Map<string, ProjectInfo>;

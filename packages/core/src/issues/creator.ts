@@ -4,7 +4,6 @@ import { issues, users } from '../db/schema.js';
 
 export const FORGE_AGENT_LABEL = 'Forge Agent';
 
-// cm:edge contract -> packages/web-v2/src/features/issues/derive.ts — creatorLabelOf mirrors this rule
 export function isAgentChannel(createdVia: string | null): boolean {
   return createdVia != null && createdVia !== 'web';
 }
@@ -20,21 +19,18 @@ export function isAgentChannel(createdVia: string | null): boolean {
  * `schedule`. These channels stay in the predicate only to catch server-side
  * writers that never pass a key.
  */
-// cm:guard both halves must stay complementary — a row matching neither (or both) vanishes from the UI or shows twice. Change buildOriginCondition's two branches together.
 export const DETECTOR_CHANNELS = ['system', 'schedule'] as const;
 
 export function isDetectorChannel(createdVia: string | null): boolean {
   return createdVia != null && (DETECTOR_CHANNELS as readonly string[]).includes(createdVia);
 }
 
-// cm:edge contract -> packages/web-v2/src/features/issues/derive.ts — the Backlog/Findings split mirrors this predicate
 export function buildOriginCondition(origin: 'detector' | 'human'): SQL {
   const channels = [...DETECTOR_CHANNELS];
   const viaDetectorChannel = inArray(issues.createdVia, channels);
   if (origin === 'detector') {
     return or(isNotNull(issues.detectorKey), viaDetectorChannel) as SQL;
   }
-  // cm:why legacy rows predate created_via and are human backlog, so NULL lands in this branch
   return and(
     isNull(issues.detectorKey),
     or(isNull(issues.createdVia), notInArray(issues.createdVia, channels)),
@@ -79,7 +75,6 @@ export async function hydrateCreatorsForIssues(
   );
 }
 
-// cm:edge contract -> packages/core/src/me/attention-buckets.ts — the unseen-draft bucket scopes to agent-filed issues with THIS predicate, and it decides whose inbox a draft lands in. Widening it to match a human-channel row nags a person about a draft they typed themselves; narrowing it drops an agent's draft back to being reachable from nowhere.
 export function agentChannelCondition(): SQL {
   return sql`${issues.createdVia} IS NOT NULL AND ${issues.createdVia} <> 'web'`;
 }

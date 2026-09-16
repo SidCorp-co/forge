@@ -199,9 +199,6 @@ async function history(argv: string[], env: Env, deps: CliDeps): Promise<number>
   const excludedSet = new Set(excluded);
   const isExcluded = (row: HistoryRow) => Boolean(row.sessionId && excludedSet.has(row.sessionId));
   const base: GradeRowOptions = { budgetSeconds, maxIterations };
-  // cm:why a link inside an excluded bench room is never fetched: those rows are dropped by
-  // summarize, and a lookup the deployment refuses there would abort the whole export (codex F1);
-  // so they are graded without lookups and the lookups cover the rows that stay.
   const opts: GradeRowOptions = f.resolve
     ? {
         ...base,
@@ -268,7 +265,6 @@ async function harvestFile(argv: string[], deps: CliDeps): Promise<number> {
   const result = readHistoryResult(await deps.readFile(file), file);
   const out = harvest(result, loadTasks(), file);
   await deps.mkdir(dir);
-  // cm:why a candidate is written once and never over: a person who filled in its checks and harvests the same window again would otherwise get checks: [] back in silence (codex F1)
   for (const c of out.candidates) {
     const path = `${dir.replace(/\/+$/, '')}/${c.file}`;
     try {

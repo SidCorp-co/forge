@@ -87,7 +87,6 @@ describe('emitPipelineWedge re-notify floor', () => {
     expect(await countWedges()).toBe(1);
   });
 
-  // cm:guard marking a wedge READ must not re-arm the emitter — this is the exact loop that produced 721 rows on forge-beta (2026-08-14). If this assertion ever reads 2, the dedupe has drifted back onto the `read` column.
   it('stays suppressed after the operator reads it', async () => {
     await emit();
     await harness.db.execute(
@@ -97,7 +96,6 @@ describe('emitPipelineWedge re-notify floor', () => {
     expect(await countWedges()).toBe(1);
   });
 
-  // cm:guard the floor must EXPIRE — keying on `resolved_at IS NULL` alone would emit a wedge once and never again for the same entity, which is the opposite failure and just as silent, since no caller resolves most keys
   it('re-notifies once the floor has elapsed', async () => {
     await emit();
     const past = new Date(Date.now() - mods.WEDGE_RENOTIFY_MS - 60_000).toISOString();

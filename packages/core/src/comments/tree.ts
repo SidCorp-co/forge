@@ -34,7 +34,6 @@ export interface CommentAttachmentLite {
 export type CommentNode<R extends CommentRow = CommentRow> = R & {
   replies: CommentNode<R>[];
   attachments: CommentAttachmentLite[];
-  // cm:guard the tree ships on EVERY comment surface because web-v2 has no `@forge/core` dependency and cannot parse a component body; a builder that drops it renders literal `<forge-…>` markup with every test still green (ISS-967). `null` is markdown, or bytes this build's scanner cannot read.
   nodes: BodyNode[] | null;
   // ISS-519 — resolved author identity (email for a human, device name + Agent
   // marker for an agent comment). Optional so existing builders/tests that
@@ -73,7 +72,6 @@ export function buildCommentTree<R extends CommentRow>(
       continue;
     }
     const parent = byId.get(r.parentId);
-    // cm:guard a reply whose parent is not in `rows` is DROPPED, never promoted to a root — a cap-truncated page would otherwise present a mid-thread reply as a top-level comment, which reads as a different statement than the one that was made.
     if (parent) parent.replies.push(node);
   }
   return roots;
@@ -91,7 +89,6 @@ export function walkCommentTree<R extends CommentRow>(
   }
 }
 
-// cm:guard authorship is the TOKEN's — a device token resolves to that device (agent), any other credential resolves to the person who owns it, and nothing per-comment overrides that. Do not reintroduce a stored "written by a bot" flag on the row: `comments.is_ai` was exactly that, and because an agent holding the owner's PAT wrote `true` on the owner's own identity, the column disagreed with the token on 3,172 of 23,414 rows (measured 2026-09-04) while claiming to be the durable human test.
 export function attachAuthors(
   nodes: CommentNode<CommentRow>[],
   resolved: Map<string, ResolvedActor>,

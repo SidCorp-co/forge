@@ -44,7 +44,6 @@ export interface GoogleClientArgs {
   fetchImpl?: typeof fetch;
 }
 
-// cm:guard 401 and 403 are different verdicts and must never be collapsed — Google answers 401 for a token it will not accept and 403 for an account it accepts and refuses this spreadsheet, and the two name different operator actions: replace the credential, or share the sheet with the account. The same guard is on `coolify/adapter.ts` and `github/adapter.ts` (ISS-924).
 function describeSheetsFailure(
   status: number,
   route: string,
@@ -174,7 +173,6 @@ export async function readValues(
   return { spreadsheetId, range: body.range ?? range, values: body.values ?? [] };
 }
 
-// cm:why USER_ENTERED, not RAW — an operator maintaining a roster by hand expects `2026-09-16` to land as a date and `=SUM(...)` as a formula, which is what the same value typed into the cell would do. RAW would store both as text and the sheet would silently stop computing.
 const VALUE_INPUT_OPTION = 'USER_ENTERED';
 
 export async function updateValues(

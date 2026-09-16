@@ -149,8 +149,6 @@ skillCrudRoutes.get(
  * `skillName` (ISS-733); reusing that resolver is what keeps the menu from
  * offering a skill the start route would then reject.
  */
-// cm:edge contract -> packages/core/src/agent-sessions/lifecycle-routes.ts — the listed set must stay identical to /start's skillName allow-list, or the menu offers skills that route refuses
-// cm:guard registered BEFORE `GET /:id` — that handler's uuid param validator would claim the literal path and answer 400 for every request here
 skillCrudRoutes.get(
   '/invokable',
   zValidator('query', invokableQuerySchema, (r) => {

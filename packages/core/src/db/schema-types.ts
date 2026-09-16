@@ -36,7 +36,6 @@ export const tsVector = customType<{ data: string; driverData: string }>({
   },
 });
 
-// cm:guard `forge_identifier_words` is ONE immutable SQL function (migration 0207) and every `ident_search` column and every identifier query goes through it — a generated column is legal only over an IMMUTABLE expression, and a query split by any other rule than the stored one would look for words the column never holds. Changing the split means rewriting four generated columns; the function is replaced in a migration, never edited in place (ISS-907)
 /** The `ident_search` column: the row's text with camelCase, `_`, `/`, `.`, `:` and `-` split into `simple`-config words, so `LITELLM_API` finds `LITELLM_API_URL` and `cascade` finds `runs-cascade.ts`. */
 export const identSearchColumn = (text: () => SQL) =>
   tsVector('ident_search').generatedAlwaysAs(

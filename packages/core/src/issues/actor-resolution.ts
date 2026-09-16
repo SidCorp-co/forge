@@ -3,11 +3,9 @@ import { db } from '../db/client.js';
 import { devices, users } from '../db/schema.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 
-// cm:guard ONE resolver for both surfaces, and that is the whole reason it exists rather than a convenience. `comments` and `activity_log` each store an actor as a `(type, id)` pair — `user` pointing at `users.id`, `device` at `devices.id` — and each used to render it on its own: the activity API returned the bare type plus the raw UUID, the comment UI a truncated one. Two renderers of one pair is how the same principal reads as two different people on two screens (ISS-519). Batch-resolve here; never fall back to printing an id at a call site.
 
 const UNKNOWN_LABEL = 'Unknown';
 
-// cm:guard `isAgent` here is the TYPE-derived FLOOR, and it stays type-derived. The per-row `actor_agency` read lives in `issues/activity-routes.ts:isAgentForRow`, which ORs it over this value — it belongs there and not here because this resolver's map is keyed on `(type, id)` while agency varies row by row for the same person. Never replace this with a column read: on its own the column drops the agent marker across every row written before migration 0193, which is what the owner's 2026-09-02 deferral was protecting. The writing rules are on `pipeline/activity.ts`.
 function unknownActor(type: ActorType, id: string): ResolvedActor {
   return {
     type,
@@ -67,7 +65,6 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
       .select({ id: users.id, email: users.email, displayName: users.displayName })
       .from(users)
       .where(inArray(users.id, [...ownerIdsToFetch]));
-    // cm:guard the label prefers `display_name` and falls back to the address, and the fallback is not a stopgap: `display_name` is null until somebody types one, and an activity row for a user who never did must still say something (ISS-1003). What it must NOT do is decide anything — this map feeds rendering only.
     for (const r of rows) userEmailById.set(r.id, r.displayName ?? r.email);
   }
 

@@ -36,7 +36,6 @@ export interface ParticipantRow {
    * Whether this handle can still act — it holds a live credential and the
    * authority its room's project needs.
    */
-  // cm:guard a handle that cannot act is REPORTED and never hidden, and the room stays readable around it. Revoking an agent is a security action that always succeeds; what it must not do is make the room silently go quiet, which is what an empty scope did before the project moved onto this row (ISS-1003 criteria 18, 20). `null` for a person, who is not a thing that acts.
   reachable: boolean | null;
 }
 
@@ -85,7 +84,6 @@ export async function listParticipants(
     projectId: row.projectId,
     externalKey: row.externalKey,
     label: row.label,
-    // cm:guard BOTH halves, because either alone leaves a handle that cannot act reading as if it could: a credential with no membership reaches nothing, and a membership with no credential has nothing to reach with. `revokeAgentAccount` removes both and `revokeAgentCredentials` removes only the first, so a reader testing one of them would call an agent reachable after one of the two revokes.
     reachable: row.kind === 'handle' ? (row.liveTokens ?? 0) > 0 && row.memberRole !== null : null,
   }));
 }
@@ -108,7 +106,6 @@ export interface RoomHandle {
   handle: string | null;
 }
 
-// cm:guard the name is `organization_members.handle` and never `users.display_name`: the handle is unique within its org and is the one address the schema says a mention may resolve on; a display name is re-assignable and is read to decide nothing (ISS-1034 criteria 66, 67).
 export async function roomHandles(
   conversationId: string,
   tx: Executor = defaultDb,
@@ -138,7 +135,6 @@ export async function roomHandles(
 /**
  * The live handle in this room that carries `projectId`, or null where none does.
  */
-// cm:guard who an assistant message in this room is BY: a room may hold several handles, and the one that speaks is the one carrying the project the turn arrived under (ISS-1001 criterion 14)
 export async function handleForProject(
   conversationId: string,
   projectId: string,
@@ -168,14 +164,12 @@ export interface AddHandleArgs {
    * Which of the handle's projects this room is about. Recorded on the row and
    * checked against both the handle's membership and the caller's role.
    */
-  // cm:guard NAMED by the caller and never inferred from the handle's memberships, even though an agent holds exactly one today. The value is what the room's scope is read from for the rest of its life, so inferring it binds the room to whatever the agent's memberships happen to be at the moment of the add — and a second membership granted a month later would then silently widen every room the inference had touched (ISS-1003 criterion 21). One project, named, is also the only shape the stored column can hold.
   projectId: string;
   /** Who is doing the adding; their roles are what the door checks. */
   actorUserId: string;
   tx?: Executor;
 }
 
-// cm:guard the handle is READ from `organization_members.handle` and never split back out of the address (ISS-1003). The join is `leftJoin` and the null is refused by name rather than fallen back on, because an agent whose membership carries no handle is a row 0242 could not have produced — reaching for `email.split('.')` there would put the second spelling back, and the suffix in the address is exactly what makes the two disagree.
 async function loadHandle(
   tx: Executor,
   handleUserId: string,
@@ -208,8 +202,6 @@ async function loadHandle(
  * Put a handle in a room with NO authorization check, because there is nobody
  * to check: the room is being opened by a message arriving, not by a person.
  */
-// cm:guard the ONLY caller is `store.ts:openConversation`, in the same transaction that inserts the conversation, and that is what keeps this unchecked path safe: the handle it attaches is the one the venue's own project resolves to, never one a caller named. A route, a tool or an adapter reaching for this instead of `addHandle` is a handle admitted with nobody's role behind it — which is the door standing open (ISS-1001 criteria 8, 9, 13).
-// cm:guard `projectId` is the VENUE's project, passed in rather than derived from the handle's memberships, and that is the same rule `addHandle` follows for a different reason: the room is about the project the message arrived under, and reading it off the agent instead would make a second membership granted later change what an already-open room is about (ISS-1003 criterion 21).
 export async function attachOpeningHandle(
   tx: Executor,
   conversationId: string,
@@ -218,7 +210,6 @@ export async function attachOpeningHandle(
 ): Promise<void> {
   const handle = await loadHandle(tx, handleUserId);
 
-  // cm:guard the ONE check this unchecked door does keep, and it is not an authorization check: that the handle is actually a member of the project being recorded. There is nobody to authorize here, but `project_id` is what `derivedScope` reads, so a mismatch writes a room whose scope names work its only handle can never do — and it writes it silently, since no later reader compares the two. The ordinary caller resolves the venue's own handle and cannot mismatch; this refuses the call that does, rather than trusting that the only caller stays the only caller (ISS-1003 criteria 16, 17).
   const handleProjects = await projectsOfHandle(handleUserId, tx);
   if (!handleProjects.includes(projectId)) {
     throw badRequest(
@@ -244,14 +235,10 @@ export async function attachOpeningHandle(
  * Put a handle in a live room on somebody's behalf. This is the moment a room's
  * scope widens, so it is the moment the authorization is checked.
  */
-// cm:guard checked at the DOOR and per PROJECT: a handle carries its projects with it, so admitting one a caller holds no role on hands them a room whose answers are computed with an access they do not have. The refusal names the project rather than saying no, because "which of its projects" is the whole of what the caller has to fix (ISS-1001 criteria 8, 9).
-// cm:guard the bar is MEMBER and not merely any role, which it was until ISS-1011 gave this function a caller: `assertConversationWritable` already demands `member` to rename or delete a room, and widening what a room can see is the larger act of the two — a `viewer` who could not retitle a room could otherwise pull a second project's data into it. The refusal names the role held as well as the project, because "you have viewer and need member" is a different fix from "you are on the wrong project".
-// cm:guard `actorUserId` is REQUIRED and not nullable, because the check is `effectiveProjectRole(actor, …)` and an absent actor holds no role anywhere: made optional, every caller that forgets to pass one is refused on a room it owns, and the obvious fix — skipping the loop when it is absent — turns the door into a formality. The opening path has `attachOpeningHandle` instead, which says out loud that it checks nothing.
 export async function addHandle(args: AddHandleArgs): Promise<void> {
   const tx = args.tx ?? defaultDb;
   const handle = await loadHandle(tx, args.handleUserId);
 
-  // cm:guard the named project must be one the HANDLE holds, checked before the caller's role is: a project the agent is no member of is a room whose scope names work that agent cannot do, and admitting it would put a handle in a room it can never answer in. Refused by name rather than corrected to the agent's actual project, because which project the room is about is the caller's decision and not this function's to guess.
   const handleProjects = await projectsOfHandle(args.handleUserId, tx);
   if (!handleProjects.includes(args.projectId)) {
     throw badRequest(
@@ -290,7 +277,6 @@ export interface AddPersonArgs {
   tx?: Executor;
 }
 
-// cm:guard a person may join with NO `users` row — an unlinked speaker has only the key their adapter gave, which is what `chat_sessions.user_key` held. That key authorizes nothing: `assistant_speaker_links` stays the only path from an outside speaker to a Forge identity.
 export async function addPerson(args: AddPersonArgs): Promise<void> {
   const tx = args.tx ?? defaultDb;
   if (!args.userId && !args.externalKey) {
@@ -326,9 +312,6 @@ export interface RemoveParticipantArgs {
 }
 
 /** Stamp a participant as gone. */
-// cm:guard the LAST PERSON of a one-to-one room may not leave either, and it is the same defect wearing the other kind: `conversation-access.ts:assertInTheRoom` fences a `direct` room to its live people, so a room with none is refused to everybody including whoever emptied it. Both halves of the pair are here because both are read-then-write across the same lock (ISS-1011 criterion 27).
-// cm:guard the LAST handle may not leave: a room with none derives an empty scope, and `scope.ts` then refuses every reader — so the removal does not fail loudly, it makes the room silently unreachable for everybody including the person who removed it. Atomic creation holds the invariant only until the first removal; this is the other half (ISS-1001 criterion 42).
-// cm:guard the count and the update are ONE transaction behind a `FOR UPDATE` on the conversation, because the check is a read-then-write across two handles: two callers removing a different handle each count two, each pass `live <= 1`, and both commit — leaving exactly the unreadable room this guard exists to prevent, with neither caller told.
 export async function removeParticipant(args: RemoveParticipantArgs): Promise<void> {
   if (args.tx) return removeWithin(args.tx, args);
   const dbi = args.db ?? defaultDb;

@@ -18,50 +18,16 @@ function stripNonFigureTokens(reply: string): string {
   return reply.replace(UUID_TOKEN_RE, ' ').replace(ISS_TOKEN_RE, ' ').replace(ISO_DATE_RE, ' ');
 }
 
-// cm:why matches the Vietnamese/English "nothing done" phrasing that produced the literal 54-issue incident
-// cm:guard the totalizing SUBJECTS are a list, and that list IS the recall this narrowing has to
-// keep: the bare arm caught "implementation has not started" and "development is not started" for
-// free, and a subject allowlist naming only `work` and `project` lets both through while the
-// snapshot shows shipped work — a false green where the old rule gave a false red (codex F4 of the
-// whole-set read). Adding a subject is cheap; `withoutFigureContexts` is what keeps "4 not started"
-// out of this scan whatever the list says.
-// cm:guard every English alternative is TOTALIZING — it needs a subject saying *none of it* — and
-// the bare `\bnot started\b` that used to stand among them is gone: `authoritativeSummary` below
-// renders `not started=N`, the corrective message hands the model that sentence, and a correct
-// summary restating it as "4 not started" was read as a claim that nothing had been done, refused,
-// told to restate using those figures, and refused again — unrepairable by construction. Measured
-// over beta's 146-turn QA window at 45d92580: 12 replies carried the bare label and NOT ONE carried
-// a real denial, so every refusal the alternative produced was a false one. The narrowing is the
-// direction this rule's own guard declares — high precision, low recall, because a false refusal
-// taxes every agent in the fleet while a missed claim is the state the tracker was already in
-// (ISS-1057, codex F4).
 const DENIAL_RE =
   // cm:ignore CM001 — i18n-allow: regex literal must contain the Vietnamese denial phrasing being matched
   /chưa\s+(có\s+gì|làm\s+gì|triển\s+khai)|chưa\s+có\s+tiến\s+độ|(?:dự\s+án|công\s+việc|toàn\s+bộ|tất\s+cả)\s+(?:này\s+)?(?:vẫn\s+)?chưa\s+bắt\s+đầu|chưa\s+bắt\s+đầu\s+(?:gì|việc\s+gì)|chưa\s+hoàn\s+thành\s+(việc|issue)\s+nào|\b(?:the\s+|any\s+|no\s+)?(?:work|project|implementation|development|delivery|build|rollout)\s+(?:has\s+|is\s+|have\s+|are\s+)?(?:been\s+)?not\s+(?:yet\s+)?(?:started|begun)\b|\bno\s+work\s+(?:has\s+)?(?:been\s+)?(?:started|begun)\b|\bnothing\s+(?:has\s+)?(?:been\s+)?started\b|\bnot\s+started\s+(?:at\s+all|on\s+anything)\b|\bnothing\s+(has\s+been\s+)?(done|completed)\b|\bno\s+(work|progress)\s+(has\s+been\s+)?(done|made)\b/i; // i18n-allow: matches the Vietnamese/English "nothing done" phrasing under test
 
-// cm:guard a plain string, NOT a regex: this is only ever interpolated via the four RegExp constructors below, and a `g`-flagged RegExp object carries mutable `lastIndex` — so anyone who reached for `.test()` on it directly would get position-dependent results
-// cm:guard `not started` and its Vietnamese pair are KEYWORDS here, the other half of the same
-// defect: `authoritativeSummary` renders the `remaining` bucket under that label, so the model
-// states its count in those words — and until this line the count beside it was checked against
-// nothing at all, while the phrase itself was read as a denial. It is a figure label, and a figure
-// label's number is screened like every other (ISS-1057).
-// cm:guard `not started` sits BEFORE `started` would, and no bare `started` is in this list: the
-// alternation is scanned left to right, so a shorter alternative that is a suffix of a longer one
-// would capture the number first and report the wrong keyword in its refusal.
 const PROGRESS_KEYWORDS =
   // cm:ignore CM001 — i18n-allow: the literal must contain the Vietnamese progress-keyword vocabulary being scanned
   'hoàn thành|hoàn tất|đã xong|đã đóng|còn lại|đang làm|chưa bắt đầu|tổng|done|completed|closed|finished|remaining|in progress|not started|total'; // i18n-allow: the Vietnamese progress-keyword vocabulary being scanned
 
-// cm:why a figure and its keyword may be separated by markdown emphasis and nothing else: the door
-// renders to chat, the model writes `**4** not started`, and until this class existed the `**`
-// defeated the adjacency strip below — so a CORRECT summary had its label read as a bare denial and
-// was refused. Caught by the benchmark rather than by a test: `vietnamese-count` went pass^3 100% ->
-// 0% on the after run at e5184fe8, where the refused reply carried every figure right (ISS-1057).
-// The class holds emphasis markers only — a wide one would re-open the AC#6 defect the next comment
-// names, which is why a run of whitespace is still required on the before-keyword side.
 const EMPHASIS = '[*_`~]*';
 
-// cm:why a number must be DIRECTLY adjacent to a keyword (only whitespace/colon/emphasis between) — a wide character window flagged ordinary unrelated numbers several words away as if they were claimed counts (AC#6)
 const NUMBER_AFTER_KEYWORD_RE = new RegExp(
   `(${PROGRESS_KEYWORDS})${EMPHASIS}\\s*:?\\s*${EMPHASIS}(\\d+)`,
   'gi',
@@ -71,7 +37,6 @@ const NUMBER_BEFORE_KEYWORD_RE = new RegExp(
   'gi',
 );
 
-// cm:why same adjacency requirement as the count rule — an unrelated percentage ("nhanh hơn 20%") must never be read as a progress claim (B1) // i18n-allow: quotes the Vietnamese example phrase being guarded against
 const PERCENT_AFTER_KEYWORD_RE = new RegExp(
   `(${PROGRESS_KEYWORDS})${EMPHASIS}\\s*:?\\s*${EMPHASIS}(\\d{1,3})\\s*%`,
   'gi',
@@ -104,7 +69,6 @@ function progressContextNumbers(scanText: string): Array<{ n: number; keyword: s
     if (isPercent(numIndex, numStr)) continue;
     found.push({ n: Number(numStr), keyword });
   }
-  // cm:why no isPercent check on this loop, unlike the one above: `(\d+)\s+(KW)` cannot match a percentage — `\d+` and `\s+` are greedy with no viable backtrack (a keyword starts with a letter, never `%`), so the char after the digits always begins the whitespace run
   for (const m of scanText.matchAll(NUMBER_BEFORE_KEYWORD_RE)) {
     const [, numStr, keyword] = m as unknown as [string, string, string];
     found.push({ n: Number(numStr), keyword });
@@ -125,7 +89,6 @@ function progressContextPercents(scanText: string): Array<{ pct: number; keyword
   return found;
 }
 
-// cm:why any ONE of the four buckets may legitimately be the subject ("10% đang làm", "còn 27% chưa xong"), not only shipped/total; total===0 makes every share 0%, so a bare 0% is legal // i18n-allow: quotes the Vietnamese example phrases being permitted
 function expectedPercents(f: ProgressFacts): number[] {
   if (f.total === 0) return [0];
   return [f.shipped, f.closedUnshipped, f.inFlight, f.remaining].map((n) =>
@@ -150,11 +113,6 @@ function judge(reply: string, facts: ProgressFacts | null): RuleBreak[] {
   const add = (why: string, quote: string | null) => {
     if (!problems.has(why)) problems.set(why, { why, quote });
   };
-  // cm:guard the denial is read over the text with its FIGURE CONTEXTS removed, so a labelled count
-  // is never also a denial: "4 not started" is a figure and is judged as one below, while "the work
-  // has not started" survives the removal and still denies. Removing only the matched span and not
-  // the sentence is deliberate — "3 completed, but work has not started" keeps its denial
-  // (ISS-1057, codex F4).
   const denialText = withoutFigureContexts(scanText);
   if ((facts.shipped > 0 || facts.inFlight > 0) && DENIAL_RE.test(denialText)) {
     add(
@@ -189,7 +147,6 @@ function judge(reply: string, facts: ProgressFacts | null): RuleBreak[] {
   return [...problems.values()];
 }
 
-// cm:guard fails CLOSED when the snapshot is null, and only in the cells that carry it — a reader with no role cannot open the tracker to check a figure, so failing open there admits the self-counted number this rule exists to catch (the 54-issue incident, ISS-671).
 export const PROGRESS_FIGURES_MATCH: MessageRule = {
   id: 'progress-figures-match',
   shape: 'state only the figures from this turn’s snapshot, or none at all',

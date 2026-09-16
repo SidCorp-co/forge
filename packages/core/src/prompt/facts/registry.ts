@@ -20,7 +20,6 @@
 // takes its inputs through `FactRenderContext` from `./resolve.ts`.
 
 import type { IssueStatus, JobType } from '../../db/schema.js';
-// cm:guard NO non-type import, which is where ISS-1047 left it: the two that were allowed here belonged to facts it removed, and each was allowed only because it was a leaf whose own imports erase. A DB- or env-touching import breaks the cycle constraint above; a leaf one is arguable and has to be argued here.
 
 export type FactCategory = 'enum' | 'protocol' | 'format' | 'reference';
 export type FactTier = 'mandatory' | 'contextual';
@@ -43,7 +42,6 @@ export interface FactRenderContext {
   modules?: readonly ProjectModuleFact[];
 }
 
-// cm:edge contract -> packages/core/src/prompt/facts/resolve.ts#loadProjectModules — that query is the only producer of this shape, and `parentName` must stay a NAME: the rendered text hands it straight to an agent as something to pass back to `forge_issues`, where an id is noise it cannot act on
 export interface ProjectModuleFact {
   name: string;
   parentName: string | null;
@@ -73,9 +71,7 @@ export interface ForgeFact {
   relevant?(ctx: FactRenderContext): boolean;
 }
 
-// cm:guard these strings are the ONLY text injected into every job rather than fetched on demand, so a mode-specific claim here reaches projects of every mode: `rule-parity.test.ts` holds them against the runner's orientation template by INTENT (never bytes — the surfaces differ in escaping and audience), and `check-injected-doc-modes.mjs` holds every status transition in them to naming the mode it belongs to.
 
-// cm:edge lockstep -> packages/core/src/prompt/system.ts — this text is authored once and imported there as `OPERATING_AFFORDANCES_TEXT`, so the injected job orientation and the interactive chat orientation cannot drift; the shape is deliberate too — trigger → tool → red-flag rather than a noun-list, so an agent reaches for the affordance instead of re-encoding it in prose (a dependency written as text rather than a `blocks` edge). This note used to name its consumer `CHAT_NUDGE`, a symbol that no longer exists anywhere in the repo.
 export const OPERATING_AFFORDANCES_TEXT = `## Operating affordances
 Forge gives you a tool for things agents routinely do in prose. When you hit the trigger, reach for the tool — and avoid the red flag.
 
@@ -98,7 +94,6 @@ An issue is a unit of WORK with a named deliverable and an owner, whose completi
 **Forge red flags:** prose-deps · open-then-block · open-as-note · draft-as-note · plan-by-hand · wholesale-config-clobber · skip-recall · on_hold-from-draft · fix-by-hand-and-forget · close-without-unmark · silent-nonwork · file-instead-of-fix.
 What counts as an issue: guide \`what-is-an-issue\` · how to write the body of one (pick the shape first, mermaid renders, attach HTML never paste it): guide \`writing-an-issue\`.`;
 
-// cm:edge lockstep -> packages/core/src/guides/registry.ts — the pipeline-and-issue-lifecycle guide is what this pointer resolves to; renaming the guide slug there without changing it here sends every agent to a 404
 const LIFECYCLE_GUIDE_POINTER = 'forge_guide get pipeline-and-issue-lifecycle';
 
 const PIPELINE_RULES_TEXT = `## Pipeline Rules
@@ -153,9 +148,6 @@ const TOOL_REFERENCE_TEXT = `## Tool Reference
 - **forge_skills** — list available skills + per-project enable/disable.
 - **forge_guide** — capability guides, fetched live: \`list\` / \`get {slug}\` (or \`<host>/api/guides/<slug>.md\`).`;
 
-// cm:guard this array is the full forward sequence and PIPELINE_RULES embeds the same chain in prose — `registry.test.ts` compares the two, so change one alone and that test goes red rather than the prompt quietly stating two ladders.
-// cm:guard EIGHT rungs since ISS-976, and each one is a place a DIFFERENT party owes the next move — that test is what admits a rung, and a rung failing it is what the 2026-09-10 cut removed. `confirmed`: a reader has said what the issue is, an executor owes the next move. `approved`: a decision, a plan and criteria exist, the build owes it. `developed` and `testing`: the review and QA gates, where the proof is owed.
-// cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the other side is `src/flow/earned.mjs` ORDER in github.com/SidCorp-co/forge-plugin, and it is this same eight. The six-rung version omitted `confirmed` and `approved` while the plugin walked them, which is how `open → confirmed` landed on ISS-952 on 2026-09-10 with nothing warning and nothing dispatching there. Nothing dispatches at either rung still: `poolBacklog.statuses` is how a row resting on one reaches a master, and a project declaring none offers only `open` (ISS-976).
 export const CANONICAL_LADDER: readonly IssueStatus[] = [
   'open',
   'confirmed',
@@ -167,7 +159,6 @@ export const CANONICAL_LADDER: readonly IssueStatus[] = [
   'closed',
 ];
 
-// cm:edge lockstep -> packages/core/src/memory/step-handoff-schema.ts#stepHandoffSchema — these key lists are what the prompt tells the agent to send; drift briefs the agent on a stale shape
 const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
   triage: 'summary, suggestedApproach, complexity, risks, affectedAreas',
   clarify: 'outcome, environment, stepsVerified[], rootCauseHypothesis, openQuestions',
@@ -179,7 +170,6 @@ const HANDOFF_KEYS: Partial<Record<JobType, string>> = {
   drive: 'outcome, summary, workDone[], openQuestions[], commitSha',
 };
 
-// cm:guard named ONCE and prepended by the renderer, never copied into the eight lists above. Every branch of `stepHandoffSchema` is `z.literal`-keyed on both, so a list that omits them briefs the agent on a payload that cannot validate — and eight copies is eight chances to leave one out, which is the drift the `cm:edge lockstep` above exists to catch and did not, because the field was missing from all eight at once rather than one.
 const HANDOFF_UNIVERSAL_KEYS = 'step, schema_version: 1';
 
 export const FORGE_FACTS: readonly ForgeFact[] = [
@@ -213,8 +203,6 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     namespace: 'forge',
     appliesTo: ['clarify', 'release', 'drive'],
     version: 5,
-    // cm:guard the changelog half forks for the same reason the transport does: nothing dispatches after a `drive` job, so telling the driver that forge-release appends its line names a stage that never runs and leaves the entry unwritten. `RELEASE_RECORD_REQUIRED` gates the close on `issues.release_notes` alone, and `scripts/check-release-record.mjs` is a no-silent-loss ratchet rather than an entry-required check, so nothing downstream catches the gap either.
-    // cm:guard name the transport the STAGE is told to use everywhere else — this fact applies to `drive`, whose skill and preamble both speak `forge-runner api`, and it named `forge_issues.update` until 2026-09-02. That is not cosmetic here: `RELEASE_RECORD_REQUIRED` (`issues/apply-transition.ts`) REFUSES an agent close while `releaseNotes` is null, so the one instruction that clears the driver's own exit gate was a call the driver could not make.
     render: (ctx) => `## Release-notes shape
 Seed \`releaseNotes\` via ${
       ctx?.stage === 'drive' ? '`forge-runner api issues/<id> -X PATCH`' : '`forge_issues.update`'
@@ -235,10 +223,8 @@ ${
     tier: 'contextual',
     scope: 'global',
     namespace: 'forge',
-    // cm:guard derived from `HANDOFF_KEYS`, and it must stay derived — `release`/`custom`/`pm` have no branch in `stepHandoffSchema`, so a stage listed here without a key list is an agent sent after a payload that cannot validate, and one with a key list left out never reads the instruction at all.
     appliesTo: Object.keys(HANDOFF_KEYS) as JobType[],
     version: 3,
-    // cm:guard name the transport the STAGE is told to use everywhere else: `drive`'s skill and preamble both speak `forge-runner api`, and this fact applied to it while naming `forge_step_handoff.write` — a third name for one write, in the same context window as a driver skill that names none. `HANDOFF_KEYS` carries a `drive` entry, so `appliesTo` includes it and the fork is not optional.
     render: (ctx) => {
       const stage = ctx?.stage ?? null;
       const keys = stage ? HANDOFF_KEYS[stage] : undefined;
@@ -277,9 +263,6 @@ Implement on the ISS-* branch inside a dedicated git worktree under \`.claude/wo
 - Uncommitted changes already in your worktree that you did not make mean a prior attempt was interrupted. Inspect them and adopt or discard deliberately; never assume they are yours.
 - **Your adopted skill's steps may still tell you to \`git checkout\` / \`git stash\` in the main tree. That text predates this protocol — this block wins.** Skills are copied per project and do not receive template fixes, so a stale procedure is expected; follow it for WHAT to build, not for where to stand.`,
   },
-  // cm:guard this fact and `worktree-protocol` are the two halves of one lifecycle: that one says CREATE and never delete, this one is the only place deletion is ever asked for. `worktree-protocol` carried the sentence "clean up only at release" while its own `appliesTo` was `['code','fix']` — so the instruction existed and no stage it named could ever read it. Measured 2026-08-14: ~200 abandoned worktrees fleet-wide, one project holding 17G / 1.69M files in `.claude/worktrees`, and ubuntu6 down to 951MB free on a 78G disk.
-  // cm:edge lockstep -> packages/core/src/prompt/facts/registry.ts#worktree-protocol — that fact tells the agent to create the worktree and to REUSE it across code/fix/review; if its path convention or reuse rule changes, the removal step here has to follow or it deletes the wrong thing (or nothing)
-  // cm:why a release-stage step, NOT a background reaper — a sweep would have to guess from the outside whether a worktree is still wanted, and guessing wrong deletes an agent's in-flight work. At release the answer is already known: this issue's branch just merged, so its worktree is provably finished.
   {
     id: 'worktree-cleanup',
     title: "Remove this issue's worktree at release",
@@ -299,7 +282,6 @@ Remove ONLY this issue's worktree, once its branch has merged — that is the re
 
 Never sweep other issues' worktrees, however old they look: a directory you did not create may hold an agent's work in progress right now.`,
   },
-  // cm:why ISS-595 — this instruction used to belong in a `forge-triage` / `forge-clarify` skill body; those were deleted with the staged lane (ISS-895), and a fact reaches every stage of both lanes with no file to re-sync and can gate itself on project data, which a skill body cannot
   {
     id: 'module-attribution',
     title: "The issue's primary module",
@@ -309,7 +291,6 @@ Never sweep other issues' worktrees, however old they look: a directory you did 
     namespace: 'forge',
     appliesTo: ['drive'],
     version: 1,
-    // cm:guard the predicate, not an empty `render()`, is what makes this a no-op for a taxonomy-less project — `render()` is also what the Skill Studio palette and `GET /api/skill-facts` preview with no project at all, and `registry.test.ts` asserts every fact renders non-empty
     relevant: (ctx) => (ctx.modules?.length ?? 0) > 0,
     render: (ctx) => {
       const modules = ctx?.modules ?? [];

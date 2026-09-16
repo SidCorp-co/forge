@@ -150,8 +150,6 @@ describe('POST /api/knowledge/ingest', () => {
     });
   });
 
-  // cm:guard a batch lands whole or not at all, so a failure names EVERY document it carried —
-  // reporting a subset as processed would tell the caller a document is stored that is not
   it('reports every document of a failed batch as index_failed, and none as processed', async () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({
@@ -185,7 +183,6 @@ describe('POST /api/knowledge/ingest', () => {
     ]);
   });
 
-  // cm:guard two doc ids kebabing to one slug were last-writer-wins when this route upserted one at a time, and a multi-row upsert naming one conflict target twice is a hard Postgres error — so the batch de-duplicates and the LATER document, whole, is the one sent (ISS-1024)
   it('sends one entry for two ids that reduce to the same slug, carrying the later document', async () => {
     authVerified();
     projectAccess.mockResolvedValueOnce({

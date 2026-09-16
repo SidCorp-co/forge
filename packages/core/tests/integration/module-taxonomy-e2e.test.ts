@@ -20,7 +20,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:guard assert the constraint NAME through the cause, never a regex over the message — drizzle wraps the driver error, so `.message` carries only the failed SQL and the regex matches nothing, leaving the case red whether or not the constraint exists and carrying no signal either way. The name is green only when THAT constraint rejected, red both when nothing rejects and when a different one does.
 async function violatedConstraint(p: Promise<unknown>): Promise<string | undefined> {
   try {
     await p;
@@ -167,7 +166,6 @@ describe('ISS-593 · migration 0210', () => {
     expect(await junction(issueId)).toEqual([{ label_id: label.body.id, is_primary: false }]);
   });
 
-  // cm:guard the app layer is not the only thing holding this — a writer that bypasses `resolveLabelIdsForWrite` must still be refused, and this is the statement that refuses it
   it('refuses a second is_primary row for one issue at the database', async () => {
     const issueId = await insertIssue();
     const a = await createModule('alpha');
@@ -380,7 +378,6 @@ describe('ISS-593 · search ?module', () => {
     expect(body.items.map((i) => i.id)).toEqual([tagged]);
   });
 
-  // cm:guard an unresolved module must return NOTHING — the failure this catches is the filter being dropped, which hands back every issue in the project and reads as "nothing matched"
   it('returns no issues for a module name that exists nowhere', async () => {
     await seedTwoIssues();
     const body = await search('module=no-such-module');
@@ -446,7 +443,6 @@ describe('ISS-593 · kind changes after creation', () => {
 });
 
 describe('ISS-593 · deleting a parent module', () => {
-  // cm:guard `parent_id` is ON DELETE SET NULL, never cascade — a cascade would delete every descendant module and with it every issue's attribution to one, and no caller asked for that
   it('orphans its children rather than deleting them', async () => {
     const parent = await createModule('core');
     const child = await createModule('core-db', { parentId: parent.id });
@@ -499,7 +495,6 @@ describe('ISS-593 · parentId belongs to modules only', () => {
 });
 
 describe('ISS-593 · labels_kind_chk', () => {
-  // cm:guard `text(col,{enum})` emits no constraint, so this CHECK is the only thing stopping a writer that skips `labels/routes.ts` — a row with a third kind filters as no module and renders as no label, and nothing reports it
   it('refuses a kind that is neither label nor module, at the database', async () => {
     expect(
       await violatedConstraint(

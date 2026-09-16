@@ -47,7 +47,6 @@ const idParamSchema = z.object({ id: z.uuid() });
 const projectQuerySchema = z.object({ projectId: z.uuid() }).strict();
 const removeParamSchema = z.object({ id: z.uuid(), participantId: z.uuid() });
 const addPersonSchema = z.object({ userId: z.uuid() }).strict();
-// cm:guard the PROJECT is required and the agent is optional, which is the order the room's own rule runs in: a room is made about a project, and the agent that carries it is that project's handle. A project that has never been talked to has no handle yet, and refusing the add on that would make "which projects can this room be about" an answer about history rather than about access (ISS-1011).
 const addHandleSchema = z.object({ projectId: z.uuid(), userId: z.uuid().optional() }).strict();
 
 const badRequest = (details: unknown) =>
@@ -59,7 +58,6 @@ conversationMemberRoutes.use('*', requireAuth(), assertEmailVerified());
 /**
  * A room's membership, as one answer.
  */
-// cm:guard the SHAPE travels with it, because the room's readers are a different set for each and a screen that shows a roster without saying which rule reads it cannot tell a person what adding somebody will do. It is read back from the row rather than computed here, so a promotion that did not happen cannot be announced as one.
 export async function membershipOf(
   conversationId: string,
   userId: string,
@@ -87,7 +85,6 @@ export async function membershipOf(
 /**
  * Who this caller could open a room WITH, before any room exists.
  */
-// cm:guard declared BEFORE `/:id/candidates` and on a path that cannot collide with it, because the screen that opens a room has to compose its membership before there is a room to ask about — and the alternative, opening an empty room the moment somebody picks a project, litters the list with rooms nobody said anything in (ISS-1011 criterion 39).
 conversationMemberRoutes.get(
   '/candidates',
   zValidator('query', projectQuerySchema, (r) => {
@@ -110,7 +107,6 @@ conversationMemberRoutes.get(
 /**
  * Who this caller could still put in this room.
  */
-// cm:guard a READ of the room is enough to ask, and a WRITE is what it takes to act: a person deciding whether to add somebody is looking, not changing, and making the list itself take the membership door would mean the roster could not explain why it is empty for a reader who may not change it.
 conversationMemberRoutes.get(
   '/:id/candidates',
   zValidator('param', idParamSchema, (r) => {
@@ -132,7 +128,6 @@ conversationMemberRoutes.get(
 /**
  * Add a person: who reads the room changes, and nothing about what it can see does.
  */
-// cm:guard a SEPARATE route from the handle one, and not one route taking a `kind`, because the two are different acts with different blast radius and the issue's own rule says they may not share a control. A single endpoint would make the screen's separation a convention one refactor away from being folded back (ISS-1011 criterion 14).
 conversationMemberRoutes.post(
   '/:id/people',
   zValidator('param', idParamSchema, (r) => {
@@ -148,7 +143,6 @@ conversationMemberRoutes.post(
     await withMembershipLock(id, actor, async (tx, _room, scope) => {
       await assertPersonReachesScope(joining, scope, tx);
       await addPerson({ conversationId: id, userId: joining, actorUserId: actor, tx });
-      // cm:guard the person add settles the shape too, which ISS-1011 reserved for the handle add: a second person turns a one-to-one chat into a room, and a row still calling itself `direct` would fence the newcomer out of the very room they were just put in (ISS-1034 criterion 41).
       await settleShape(tx, id, {
         kind: 'person',
         label: await personLabel(tx, joining),
@@ -162,7 +156,6 @@ conversationMemberRoutes.post(
 /**
  * Add an agent: what the room can see changes, which is why this one moves the shape.
  */
-// cm:guard the add and the shape settle are ONE transaction: a committed second handle under a row still calling itself `direct` is a room whose readers are computed by the one-to-one fence while its scope says otherwise, and the window between two statements is exactly long enough for a reader to arrive in it.
 conversationMemberRoutes.post(
   '/:id/handles',
   zValidator('param', idParamSchema, (r) => {
@@ -176,7 +169,6 @@ conversationMemberRoutes.post(
     const { userId, projectId } = c.req.valid('json');
     const actor = c.get('userId');
     await withMembershipLock(id, actor, async (tx) => {
-      // cm:guard the mint happens INSIDE the transaction the add is in, under the advisory lock `resolveProjectHandle` already takes: two people adding the same never-talked-to project to two rooms at once would otherwise mint that project two handles whose union is still one project, which nothing downstream would ever report.
       const handleUserId = userId ?? (await resolveProjectHandle(tx, projectId)).userId;
       await addHandle({ conversationId: id, handleUserId, projectId, actorUserId: actor, tx });
       await settleShape(tx, id);
@@ -188,7 +180,6 @@ conversationMemberRoutes.post(
 /**
  * Take one member out, whichever kind it is.
  */
-// cm:guard ONE route for both kinds here, which is the opposite of the two adds above and for the reason that makes them different: an add is a choice between two acts a person has to understand apart, and a removal is one act on a member already in the list whose kind the row itself carries. The two refusals it can meet — the last handle, and a one-to-one room's last person — are `participants.ts`'s and are named rather than re-stated here.
 conversationMemberRoutes.delete(
   '/:id/participants/:participantId',
   zValidator('param', removeParamSchema, (r) => {
@@ -199,7 +190,6 @@ conversationMemberRoutes.delete(
     const actor = c.get('userId');
     await withMembershipLock(id, actor, async (tx) => {
       const leaving = await participantLabel(tx, id, participantId);
-      // cm:guard joins the lock rather than taking its own: `removeParticipant` fences its last-one-out count on the same conversation row, so a second `FOR UPDATE` from inside this transaction would be the same lock re-taken, while a second TRANSACTION would be the race it exists to stop.
       await removeParticipant({ conversationId: id, participantId, tx: tx as never });
       if (leaving) await settleShape(tx, id, { ...leaving, verb: 'left' });
     });

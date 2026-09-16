@@ -22,14 +22,8 @@ import { attachOpeningHandle } from './participants.js';
 import type { ConversationVenue } from './ports.js';
 import { derivedScope } from './scope.js';
 
-// cm:guard re-exported rather than moved out of reach: `asBlocks` is used by `toStored` below and
-// `toCanonicalEntry` by every caller that had it from here, so the split is a file boundary and not
-// an interface change. The definitions live in `canonical-entry.ts`.
 export { asBlocks, toCanonicalEntry } from './canonical-entry.js';
 
-// cm:guard re-exported rather than moved out of reach, for the same reason `asBlocks` is above: the
-// room's own row moved to `rooms.ts` at ISS-1028 for the file's length, and a caller that imported
-// `getConversation` or `renameConversation` from here still does.
 export {
   type ConversationListFilter,
   countConversationsInProject,
@@ -73,7 +67,6 @@ export interface StoredConversationMessage {
   createdAt: Date;
 }
 
-// cm:guard the venue's shape and its project are settled when it is first opened and are NOT re-decided per message: a room rebound to another project arrives here as the same `(adapter, externalId)` under a different project, and the honest answer is a refusal naming both — widening the room would answer a stranger under a scope they were never granted, and returning it unchanged would compute the answer under the wrong project's access (ISS-1001 criterion 44).
 async function assertVenueMatches(
   tx: Executor,
   row: ConversationRow,
@@ -97,8 +90,6 @@ async function assertVenueMatches(
 /**
  * The conversation this venue names, opened with its handle if it is new.
  */
-// cm:guard the conversation and its handle participant are ONE transaction and there is no window between them: a committed room with no handle derives an empty scope, which `scope.ts` refuses to every reader — so a two-step open would make a room nobody can read whenever the second step lost (ISS-1001 criterion 13).
-// cm:guard `DO NOTHING RETURNING` returns no row when another transaction won the insert, which is why the loser re-reads rather than trusting the return: `DO UPDATE` would hand back the winner's row having already bumped it, and the loser would then add ITS handle to a room bound to somebody else's project.
 export async function openConversation(
   venue: ConversationVenue,
   opts: { db?: typeof defaultDb } = {},
@@ -117,7 +108,6 @@ export async function openConversation(
 /**
  * The same open, for a caller that already holds the transaction.
  */
-// cm:guard the caller's transaction and not one of this module's, for a caller that has more to commit with it: a room opened deliberately with the people and agents it starts with is one act, and opening it in a transaction of its own leaves a committed room behind every refusal the membership doors make afterwards — a room nobody asked for, holding half the members they named (ISS-1011).
 export async function openConversationIn(
   tx: Executor,
   venue: ConversationVenue,
@@ -146,7 +136,6 @@ export async function openConversationIn(
       return raced;
     }
 
-    // cm:guard the OPENING is not a person's act and takes no actor: a room opens because a message arrived, and there is nobody yet whose roles could be checked. `addHandle`'s door check guards a handle somebody ADDS to a live room, which is the only case with an actor to check — routing the open through it refuses every first message instead, which is what this call used to do.
     await attachOpeningHandle(tx, inserted.id, handle.userId, venue.projectId);
     return inserted;
   }
@@ -158,7 +147,6 @@ export interface AppendMessageArgs {
    * The row's id, where the caller must know it BEFORE the insert; the column
    * default mints one otherwise.
    */
-  // cm:guard this exists so a streamed transcript entry and the row it becomes share ONE identity. `POST /api/chat` emits the entry as it grows, and a client keyed by `id` must reduce those frames and the final one to a single turn — with the id minted here at insert time, the growing frames carried one and the settled frame another, and a reducer saw two assistant turns for one answer (ISS-1029 review, F1, confirmed on beta: 19 frames under one id, the 20th under the row's).
   id?: string | undefined;
   role: ConversationMessageRole;
   content: string;
@@ -175,7 +163,6 @@ export interface AppendMessageArgs {
 }
 
 /** Append one turn. Every row already in the conversation is left alone. */
-// cm:guard the row is locked and the sequence read inside the same transaction: two turns that each read `max(seq)` and each write it plus one lose one of the two, which is exactly what the jsonb blob did on a concurrent write and what the unique index on `(conversation_id, seq)` now refuses outright.
 export async function appendMessage(args: AppendMessageArgs): Promise<StoredConversationMessage> {
   const [only] = await appendMessages({
     conversationId: args.conversationId,
@@ -195,7 +182,6 @@ export interface AppendMessagesArgs {
 /**
  * Append a whole turn's messages, in order, as ONE write.
  */
-// cm:guard all of them or none, under one lock: committing the question while the answer's insert fails leaves a transcript whose last row is a person waiting — which reads as a turn still running (ISS-1001 invariant 7).
 export async function appendMessages(
   args: AppendMessagesArgs,
 ): Promise<StoredConversationMessage[]> {
@@ -207,7 +193,6 @@ export async function appendMessages(
 /**
  * The same append, for a caller that already holds the transaction.
  */
-// cm:guard the collector needs the message and the window it belongs to committed TOGETHER: a message durable with no window is owed an answer nothing knows to give, and the only way to have both under one commit is for the append to take somebody else's transaction (ISS-1004, review F3).
 export async function appendMessagesIn(
   tx: TxOnly,
   args: Omit<AppendMessagesArgs, 'db'>,
@@ -248,9 +233,6 @@ export async function appendMessagesIn(
           content: m.content,
           externalId: m.externalId ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
-          // cm:guard an EMPTY blocks array is written as null, not as `[]`: `[]` would say "this
-          // turn produced nothing", which is a claim, while null says "this row carries its answer
-          // in `content`" — the legacy reading `toCanonicalEntry` already answers for.
           blocks: (m.blocks && m.blocks.length > 0 ? [...m.blocks] : null) as never,
           deliveryProof: (m.deliveryProof ?? null) as never,
           silenceReason: m.silenceReason ?? null,
@@ -273,7 +255,6 @@ export async function appendMessagesIn(
 /**
  * The messages a closed seq range holds, oldest first.
  */
-// cm:guard the range is applied in SQL and BEFORE the limit, never by filtering the newest rows afterwards: a window claimed while its successor collects can have its whole contents pushed out of the newest `cap` rows, and the filter would then find nothing and close a person's question `unreachable` for good (ISS-1004, review pass 1 F4).
 export async function readMessagesInRange(
   conversationId: string,
   range: { firstSeq: number; lastSeq: number; limit: number },
@@ -312,7 +293,6 @@ export async function readMessages(
 /**
  * Has this conversation already been shown the reply for this delivery key?
  */
-// cm:guard the key is the AT-MOST-ONCE proof and it is checked against what was DELIVERED, never against what was attempted: a window re-claimed after its holder died is owed an answer only if the room never got one, and the row carrying the key is the only evidence either way (ISS-1004 rule 2).
 export async function deliveredUnderKey(
   conversationId: string,
   deliveryKey: string,
@@ -324,7 +304,6 @@ export async function deliveredUnderKey(
 /**
  * What was already delivered under this key, in the words of the decision that sent it.
  */
-// cm:guard it answers the DECISION and not merely "something went", because the two are different records: a core that delivered an authority refusal and died before closing its window left the next claimant able to see a delivery and nothing to say what it was, so the window closed `answered` over a room that had been refused. `answered` is the default only because an ordinary reply writes no decision on its proof (ISS-1004 rule 4).
 export async function deliveredDecisionUnderKey(
   conversationId: string,
   deliveryKey: string,
@@ -364,7 +343,6 @@ export async function countMessages(
  * Bounded by `limit`/`offset` where the caller has a page; unbounded where it
  * must authorize each row before it knows what a page contains.
  */
-// cm:guard an UNBOUNDED read is deliberate and priced: a room's readability is a per-project role question this join cannot ask, so paginating first hands back a short page and a total that counts rooms the caller may not see. The set is one project's rooms — 35 across the whole fleet on 2026-09-14 — so reading them to authorize them is cheap today. When a single project's rooms reach the thousands, this becomes a keyset walk that authorizes as it goes, and the condition that says so is this sentence (ISS-1001 criterion 10).
 
 function toStored(row: typeof conversationMessages.$inferSelect): StoredConversationMessage {
   return {
@@ -384,7 +362,6 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
   };
 }
 
-// cm:guard validated on the way OUT and never trusted from the column: `images` is untyped jsonb, so a row written by an older shape, by hand, or by a migration is read back as the parts of it that are still legible rather than crashing the turn that loaded it.
 export function asImages(value: unknown): ConversationImage[] {
   if (!Array.isArray(value)) return [];
   const out: ConversationImage[] = [];

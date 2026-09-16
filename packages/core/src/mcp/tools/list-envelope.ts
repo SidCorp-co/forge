@@ -21,7 +21,6 @@ export const MAX_RESPONSE_CHARS = 38_000;
  * The value to pass to `.limit()`. The extra row is never returned — it is
  * what makes {@link buildListEnvelope}'s `hasMore` exact.
  */
-// cm:guard the caller MUST pass this to `.limit()` and the SAME `limit` to buildListEnvelope — deriving hasMore from `returned === limit` instead is wrong precisely when the result set size equals the limit, which is the case ISS-787 was filed about
 export function overfetch(limit: number): number {
   return limit + 1;
 }
@@ -43,14 +42,12 @@ export interface ListEnvelopeArgs<T> {
    * Which end the SIZE trim sheds. Default `oldest`, which is what a reader
    * of a thread or a feed wants.
    */
-  // cm:guard a CURSOR-paginated surface must pass 'newest' — shedding the oldest rows moves the cursor past events the caller has not seen, and they are never replayed. forge_jobs.events and forge_comments.list are the callers.
   sizeTrimSheds?: 'oldest' | 'newest';
   maxChars?: number;
   /**
    * Makes this a cursor surface: `more` is whether the query found rows after
    * this page, and `of` mints the token that resumes after one item.
    */
-  // cm:guard `of` is called on the LAST KEPT item, after the trims, and that is why it is a callback rather than a token the caller passes in: a caller cannot know which item survived the size trim, so its own token would point past items the caller never received. Pair it with `sizeTrimSheds: 'newest'` — the other order sheds items the cursor has already gone past, and the walk skips them in silence (ISS-956).
   cursor?: { more: boolean; of: (item: T) => string };
 }
 
@@ -89,7 +86,6 @@ export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, 
   };
   if (args.cursor) envelope.nextCursor = nextCursor;
 
-  // cm:guard `truncated` says a CAP cut this response; a page followed by another one is not truncated, it is a page. Setting the flag off `hasMore` instead tells a cursor caller that every page but the last was cut short, which is the disclosure ISS-787 asked for pointed at the wrong fact.
   if (!trimmed) return envelope;
 
   const truncatedBy: TruncatedBy =
@@ -117,7 +113,6 @@ export function buildListEnvelope<T>(args: ListEnvelopeArgs<T>): Record<string, 
  *
  * One row always survives.
  */
-// cm:guard never return zero rows while at least one matched. A single row over the whole budget is ordinary — one agent report is 20K characters — and an empty page under a cursor is a dead end: the caller has nothing to resume from and no row to make progress with, so the walk stops mid-thread with `hasMore` the only sign anything is missing (ISS-956 AC 12).
 function trimToBudget<T>(key: string, items: T[], maxChars: number, fromHead: boolean): T[] {
   const overhead = JSON.stringify({ [key]: [] }).length;
   const sizes = items.map((item) => JSON.stringify(item).length + 1);
@@ -131,9 +126,6 @@ function trimToBudget<T>(key: string, items: T[], maxChars: number, fromHead: bo
   return head === 0 && tail === items.length ? items : items.slice(head, tail);
 }
 
-// cm:guard never state a count that reads as a DB total — the only numbers here are `returned` and the caller's own `limit`, both of which the caller can verify. forge_feedback and forge_ux_findings used to say "the N most recent of M" where M was the rows already bounded by the limit; an agent read that as a total and it never was one.
-// cm:guard name WHICH rows survived, not just how many — the two trims drop from opposite ends on an ascending list, so "the N most recent" is false there and sends the caller looking for rows it already has
-// cm:guard when a cursor is on offer the remedy is the cursor and nothing else — "a higher limit will NOT help" was true and still left the caller with no move, which is the whole of ISS-956: a CLI client read that line as "this thread is unreadable" and it was right.
 function buildNotice(args: {
   returned: number;
   truncatedBy: TruncatedBy;

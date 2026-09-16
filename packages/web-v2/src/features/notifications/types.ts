@@ -17,7 +17,6 @@ export interface NotificationRow {
   // linkage. Nullable: legacy rows created before ISS-510 carry none.
   severity: NotificationSeverity | null;
   resolutionKey: string | null;
-  // cm:why dedupeKey is internal-only (ISS-849 redelivery dedup) — kept here just to mirror the row shape, no UI reads it
   dedupeKey: string | null;
   resolvedAt: string | null;
   issueId: string | null;

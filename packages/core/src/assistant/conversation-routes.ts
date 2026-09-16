@@ -56,15 +56,10 @@ const READ_WINDOW = 200;
 /**
  * How many of a conversation's windows a read carries.
  */
-// cm:guard enough to cover the message window above it — one window is at least one message, so a page of decisions can never be shorter than the page of messages it explains (ISS-1004 criterion 28).
 const WINDOW_PAGE = READ_WINDOW;
 
 const idParamSchema = z.object({ id: z.uuid() });
 
-// cm:guard `archived` is an explicit four-value literal and NOT `z.coerce.boolean()`, which reads
-// the string "false" as true and would answer a caller asking for live rooms with the archived
-// ones: a query parameter arrives as text, and the coercion that looks right here is the one that
-// silently inverts the filter (ISS-1028).
 const archivedQuery = z
   .union([z.literal('1'), z.literal('true'), z.literal('0'), z.literal('false')], {
     error: "archived takes '1', '0', 'true' or 'false'",
@@ -96,10 +91,6 @@ const createSchema = z
   })
   .strict();
 
-// cm:guard a body holding NEITHER field is refused by name rather than answered 200 having written
-// nothing: `title` was required before this, so an empty object was already a 400, and widening it
-// to optional without this refinement would have turned every malformed rename into a silent no-op
-// the caller reads as a success (ISS-1028).
 const patchSchema = z
   .object({
     title: z.string().max(500).nullable().optional(),
@@ -113,7 +104,6 @@ const patchSchema = z
 const sendSchema = z.object({ content: z.string().min(1).max(40_000) }).strict();
 
 /** A room's name, taken from the first thing said in it. */
-// cm:guard cut on a CHARACTER count and not on a word boundary, and never asked of a model: a title is a label in a list, an auto-title turn is a second model call a person is waiting behind, and the first sentence of what they typed is what they would have written anyway.
 const ROOM_NAME_MAX = 80;
 function roomNameFrom(content: string): string {
   const line = content.trim().split('\n')[0]?.trim() ?? '';
@@ -129,13 +119,11 @@ const notFound = (message: string) =>
 export const conversationRoutes = new Hono<{ Variables: AuthVars }>();
 conversationRoutes.use('*', requireAuth(), assertEmailVerified());
 
-// cm:guard mounted at the ROOT of this router and not under a path of its own, because its routes are `/:id/...` on the same rooms: a caller reaching `/api/conversations/:id/people` is reaching the same resource `/api/conversations/:id` serves, and a second mount point would make the room's membership live at an address the room's own answer does not mention (ISS-1011).
 conversationRoutes.route('/', conversationMemberRoutes);
 
 /**
  * The one project a web turn runs under.
  */
-// cm:guard a room bound to more than one project is REFUSED by name rather than answered under the first of them: the turn reads and acts under one project's access, and picking one of two would answer a question about project B with project A's tools and say nothing about having done so.
 function soleProject(row: ConversationRow, scope: string[]): string {
   const only = scope[0];
   if (scope.length !== 1 || !only) {
@@ -161,8 +149,6 @@ conversationRoutes.get(
 
     const rows = await listConversationsInProject(projectId, { archived });
 
-    // cm:guard the rooms are filtered by the DERIVED scope BEFORE the page is cut and `total` counts what survived: paginating first returns a short page, hides the rooms behind it, and over-counts.
-    // cm:why the role lookups are memoized per request because the rooms share their projects.
     const roleByProject = new Map<string, boolean>();
     const visible: ConversationRow[] = [];
     for (const row of rows) {
@@ -176,7 +162,6 @@ conversationRoutes.get(
         }
         if (!held) ok = false;
       }
-      // cm:guard the same one-to-one fence `assertInTheRoom` applies to a read, applied to the LIST: a room a caller would be refused on opening has no business appearing in their list with its title and its preview, which is most of what it holds.
       if (ok && row.shape === 'direct') {
         const people = await listParticipants(row.id);
         ok = people.some((p) => p.kind === 'person' && p.userId === userId);
@@ -211,13 +196,11 @@ conversationRoutes.post(
     const handles = input.handles ?? [];
     const people = input.people ?? [];
 
-    // cm:guard the WHOLE opening is one transaction — the room, its own handle, the opener, every agent named, every colleague named and the shape that follows from them. A room opened in a transaction of its own leaves a committed room behind every refusal the membership doors make afterwards: a room nobody asked for holding half the people they named, with the request they made reported as a failure (ISS-1011, review F1).
     const conversation = await db.transaction(async (handle) => {
       const tx = handle as unknown as typeof db;
       const room = await openConversationIn(tx, {
         adapter: 'web',
         externalId: randomUUID(),
-        // cm:guard opened `direct` and PROMOTED from the live rows at the end, rather than computed from how many agents were asked for: a request naming the project's own handle, or naming one twice, is a request for fewer live handles than entries, and a shape read off the entry count would make such a room readable by everyone with a role on its project while holding one agent. Nothing can observe the intermediate value, because it never commits (ISS-1011, review F3).
         shape: 'direct',
         projectId: input.projectId,
         title: input.title ?? null,
@@ -232,13 +215,11 @@ conversationRoutes.post(
           tx,
         });
       }
-      // cm:guard the people are checked against the scope the room ENDED UP with, read back from the rows rather than projected from the request: the projection cannot know that a named agent was already the room's own, and a colleague refused on a project the room does not actually hold is a refusal about nothing.
       const scope = await derivedScope(room.id, tx);
       for (const person of people) {
         await assertPersonReachesScope(person, scope, tx);
         await addPerson({ conversationId: room.id, userId: person, actorUserId: userId, tx });
       }
-      // cm:guard settled AFTER the people as well as the handles, and with no change named: a room opened already holding two people is a group from its first row and owes its readers no line about why (ISS-1034 criteria 41, 42).
       await settleShape(tx, room.id);
       const settled = await getConversation(room.id, tx);
       return settled ?? room;
@@ -263,13 +244,11 @@ conversationRoutes.get(
       derivedScope(id),
       listWindowsForConversation(id, WINDOW_PAGE),
     ]);
-    // cm:guard the projects are NAMED here rather than left as ids for the client to resolve: the scope is derived, so a screen printing it has no list of its own to look them up in, and a banner reading "this room is about 2 projects" with two uuids under it says nothing a person can act on (ISS-1011 criteria 5, 30).
     const scopeProjects = await projectsNamed(scope);
     return c.json({
       ...conversation,
       scope,
       scopeProjects,
-      // cm:guard the CAPABILITY travels with the room rather than being derived on the client from a project role: a group room is readable by anybody holding a role on its projects, and a screen deciding on that alone offers Add agent to somebody every press of which is refused (ISS-1011, review F6).
       canChangeMembership: await mayChangeMembership(conversation, userId),
       participants: await withDisplayNames(participants),
       messages,
@@ -291,10 +270,6 @@ conversationRoutes.patch(
     const { title, archived } = c.req.valid('json');
     const userId = c.get('userId');
     await writableConversation(id, userId);
-    // cm:guard both writes RUN when both fields are sent, rather than the first one winning an
-    // if/else: a body carrying a rename and an archive together is one act to the caller, and an
-    // else-branch here silently drops the archive and answers 200 with the renamed row. Both
-    // writers return the whole of `selection`, so whichever runs last answers completely.
     let updated: ConversationRow | null = null;
     if (title !== undefined) updated = await renameConversation(id, title);
     if (archived !== undefined) updated = await setConversationArchived(id, archived);
@@ -320,8 +295,6 @@ conversationRoutes.delete(
 /**
  * Say something in this room, and get back what the room now holds.
  */
-// cm:guard the turn is routed INLINE and the whole thread comes back with it, rather than answered by a socket the caller then has to wait on: the person pressing enter is the one waiting, and an endpoint that returned 202 would make a delivered answer and a lost one look identical to the only client that could tell. The socket push in `conversation-adapter.ts:deliver` is for the OTHER tabs (ISS-1004 step 5).
-// cm:guard the message is COLLECTED before it is answered and the two are one commit, which is what `collect-inbound.ts` is for: a send whose turn throws still leaves the question in the log, so it is a window somebody can route rather than a message the product forgot (ISS-1004 rule 1).
 conversationRoutes.post(
   '/:id/messages',
   zValidator('param', idParamSchema, (r) => {
@@ -359,7 +332,6 @@ conversationRoutes.post(
       content,
     });
 
-    // cm:guard the room is named from its FIRST message and only its first: a list of rooms all reading "New conversation" is a list nobody can pick from, and renaming on every message would overwrite a name a person typed. `seq === 0` is the one moment both are false.
     if (conversation.title === null && sent.seq === 0) {
       await renameConversation(id, roomNameFrom(content));
     }

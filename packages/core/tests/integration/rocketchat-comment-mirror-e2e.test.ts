@@ -25,7 +25,6 @@ const posts: Array<{ rid: string; tmid: string | undefined; text: string }> = []
 let nextMessageId: string | null = null;
 let postCount = 0;
 let postThrows: Error | null = null;
-// cm:guard read DURING the post, which is the only moment that can tell a comment marked delivered before it succeeded from one marked after: every state once the call returns is identical either way, and a process that dies here is what the at-least-once rule is about (ISS-981 criteria 30, 31).
 let atPostTime: (() => Promise<void>) | null = null;
 
 vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) => {
@@ -35,7 +34,6 @@ vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) 
     ...actual,
     sendFixedReply: vi.fn(
       async (transport: { rid: string; tmid?: string }, text: string, proof: unknown) => {
-        // cm:guard the mock re-asserts the proof contract the real door enforces, so a caller that stopped screening its text fails here instead of passing because the door was replaced.
         if (proof !== actual.FIXED_REPLY_CONSTANT && !(proof as { ok?: boolean })?.ok) {
           throw new Error('unscreened text reached the outbound door');
         }
@@ -142,7 +140,6 @@ async function comment(body = 'a thing worth saying'): Promise<string> {
   return row.id;
 }
 
-// cm:guard reads the owed comment through a check rather than a non-null assertion: `a!` under `biome check --write` becomes `a?`, which turns "this test is about the one owed comment" into a silent pass over an empty list.
 function onlyOwed(owed: Awaited<ReturnType<typeof mirror.owedComments>>) {
   const one = owed[0];
   if (!one) throw new Error(`expected exactly one owed comment, found ${owed.length}`);
@@ -243,7 +240,6 @@ describe('a comment the screen refuses', () => {
     expect(row?.status).toBe('refused');
     expect(row?.lastError).toContain('addresses the whole room');
 
-    // cm:guard the row must leave the owed set NOW, not after eight more posts: a retryable refusal ends with the comment dropped and nobody told, which is the failure this asserts against (ISS-981).
     expect(await mirror.owedComments()).toEqual([]);
   });
 
@@ -288,7 +284,6 @@ describe('one thread per issue', () => {
     const retry = await mirror.owedComments();
     expect(await mirror.deliverOwedComment(onlyOwed(retry))).toBe('delivered');
 
-    // cm:guard one LIVE row, which the partial unique makes structural rather than incidental.
     expect(await threadRows()).toHaveLength(1);
   });
 
@@ -343,7 +338,6 @@ describe('nothing stops being owed except delivery or a refusal', () => {
         .set({ nextAttemptAt: new Date(Date.now() - 1000) });
     }
 
-    // cm:guard ten failures must not have retired the obligation: an attempt cap ends with the comment dropped while its room was merely unreachable, which reads identically to a comment nobody wrote (ISS-981 criteria 22, 26).
     postThrows = null;
     const finally_ = await mirror.owedComments();
     expect(finally_).toHaveLength(1);
@@ -357,7 +351,6 @@ describe('nothing stops being owed except delivery or a refusal', () => {
     const stale = onlyOwed(await mirror.owedComments());
     expect(await mirror.deliverOwedComment(stale)).toBe('refused');
 
-    // cm:guard the stale work item a second instance still holds must not re-claim the terminal row: `held` is the claim being declined, and what matters is that the row stays refused and nothing reaches the room (ISS-981).
     expect(await mirror.deliverOwedComment(stale)).toBe('held');
     const [row] = await mirrorRows();
     expect(row?.status).toBe('refused');
@@ -370,7 +363,6 @@ describe('the thread the registry names is the one posted into', () => {
     const connectionId = await bindRoom();
     await comment('the loser of the race');
 
-    // cm:guard the winner must land AFTER this worker read "no live thread" and while its own root post is in flight — registering it beforehand takes the root-opening branch out of the run entirely, and the test then passes without ever exercising the race at all (ISS-981 criterion 33).
     atPostTime = async () => {
       atPostTime = null;
       await registry.registerThread(
@@ -411,7 +403,6 @@ describe('one root per issue, and one live thread', () => {
     expect(await registry.retireIssueThread(issueId, stale)).toBe(true);
 
     await registry.registerThread({ issueId }, { connectionId, rid: 'room-2', tmid: 'fresh' });
-    // cm:guard the stale worker's retirement must name its own row and find it already retired, never reach the replacement: retiring by issue alone leaves the issue with no live thread and the new thread's replies refused as retired (ISS-981 criterion 32).
     expect(await registry.retireIssueThread(issueId, stale)).toBe(false);
     expect((await registry.liveThreadForIssue(issueId))?.tmid).toBe('fresh');
   });
@@ -460,7 +451,6 @@ describe('an issue can carry two threads, and they are never one', () => {
     const owed = await mirror.owedComments();
     expect(await mirror.deliverOwedComment(onlyOwed(owed))).toBe('delivered');
 
-    // cm:guard the comment opens a SECOND root and never posts into the question's: Rocket.Chat threads do not nest, so one shared root would make a reply's meaning — an answer, or a comment — undecidable from the message alone (ISS-981 criterion 17).
     const all = await db.select().from(rcSchema.rocketchatThreads);
     const issueThread = all.find((r) => r.issueId === issueId);
     const questionThread = all.find((r) => r.questionId === questionId);
@@ -469,7 +459,6 @@ describe('an issue can carry two threads, and they are never one', () => {
     expect(issueThread?.tmid).toBeDefined();
     expect(issueThread?.tmid).not.toBe(questionThread?.tmid);
 
-    // cm:guard each triple resolves to its OWN subject, which is what lets `route()` send an answer to the question handler and a comment to the comment handler from the tmid alone (ISS-981 criteria 17, 18).
     expect(
       await registry.subjectForThread({ connectionId, rid: 'room-1', tmid: 'q-root' }),
     ).toEqual({ kind: 'question', questionId });
