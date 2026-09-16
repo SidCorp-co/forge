@@ -12,6 +12,8 @@
  */
 
 import type { DeployStage } from '../../db/schema.js';
+import { grantHolds, notGrantedMessage } from '../agent-access.js';
+import { getIntegration } from '../registry.js';
 import { effectiveConfig, listActiveDeployBindingsForProvider } from '../../integrations/store.js';
 import {
   type DispatchOutcome,
@@ -55,6 +57,33 @@ export async function activeCoolifyIntegrations(projectId: string) {
 }
 
 export type CoolifyIntegrationRow = Awaited<ReturnType<typeof activeCoolifyIntegrations>>[number];
+
+/**
+ * The agent boundary for Coolify (ISS-1071). Refuses by name when no binding an agent may use backs
+ * the deploy it is about to run.
+ *
+ * Called from the MCP tool ONLY, never from `activeCoolifyIntegrations` itself — and that placement
+ * is the whole point. Coolify is core-mediated: core holds the API token and performs the deploy, so
+ * the same binding backs BOTH an agent asking for a deploy and the release pipeline running one on a
+ * human's behalf. The grant answers the first question and says nothing about the second, so putting
+ * this check inside the shared resolver would let an ungranted binding stop a release nobody asked an
+ * agent about.
+ */
+// cm:guard the empty and unknown-id cases return rather than refuse — each command shapes its own
+// "nothing configured" payload, and `resolveIntegrationRow` already names an unknown id better than
+// this could. Refusing here would replace two specific sentences with one vague one.
+export function assertAgentMayDeployCoolify(
+  rows: CoolifyIntegrationRow[],
+  integrationId: string | undefined,
+): void {
+  if (rows.length === 0) return;
+  const candidates = integrationId ? rows.filter((r) => r.id === integrationId) : rows;
+  const first = candidates[0];
+  if (!first) return;
+  const decl = getIntegration('coolify');
+  if (candidates.some((r) => grantHolds(decl, r.pair.binding))) return;
+  throw new CoolifyCommandError(notGrantedMessage('coolify', first.id));
+}
 
 /**
  * Pick the one integration the caller means: an explicit `integrationId`, else

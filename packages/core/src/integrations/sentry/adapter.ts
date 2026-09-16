@@ -27,7 +27,7 @@ import {
   type IntegrationAdapterMethods,
 } from '../types.js';
 import { buildSentryMcpEntry } from './resolver.js';
-import { resolveSentryTargets } from './targets.js';
+import { renderSentryTargetsLine, resolveSentryTargets } from './targets.js';
 import {
   SENTRY_BINDING_CONFIG_KEYS,
   sentryConfigBase,
@@ -214,7 +214,14 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     independentSecretFields: [],
     bindingConfigKeys: SENTRY_BINDING_CONFIG_KEYS,
   },
-  usage: null,
+  usage: {
+    // No `hint`: the generic line is what Sentry rendered before ISS-1071 and this change is about
+    // WHERE the knowledge lives, not about rewriting what an agent is told.
+    renderExtra: (config) => {
+      const targets = resolveSentryTargets(config as SentryConfig);
+      return targets.length > 0 ? renderSentryTargetsLine(targets) : null;
+    },
+  },
   presentation: {
     label: 'Sentry',
     alwaysStageKeyed: false,

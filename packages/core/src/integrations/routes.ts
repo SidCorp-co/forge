@@ -17,6 +17,12 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
 import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
+import {
+  type AgentAccess,
+  AGENT_ACCESS_CLOSED,
+  agentAccessTier,
+  noAgentPathMessage,
+} from './agent-access.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { registerCoolifyDeployRoutes } from './coolify-routes.js';
@@ -30,7 +36,7 @@ import {
   updateSchema,
 } from './provider-schemas.js';
 import { enqueueCoolifyDispatch } from './queue.js';
-import { getAdapter } from './registry.js';
+import { getAdapter, getIntegration } from './registry.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
 import {
   alreadyExists,
@@ -63,6 +69,32 @@ import {
 // Owner-scoped connection CRUD lives in its own module; re-exported so
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
 export { integrationConnectionsRoutes } from './connection-routes.js';
+
+
+/**
+ * Authorize a write to a binding's agent-access grant, and refuse one that means nothing.
+ *
+ * ISS-1071 rule 5 — the tier is a property of the provider's declared agent path, not of the route:
+ * a `direct-mcp` grant hands the project's credential to a runner box, so it takes the same
+ * org-admin escalation that already guards `secrets`, `config` and `active` on an org-owned
+ * connection; a `core-mediated` grant only widens who may ask core to make a call core was already
+ * making, so it stays with the project-admin fields. A provider declaring no agent path is refused
+ * by name rather than storing a column value nothing will ever read.
+ */
+// cm:edge contract -> packages/core/src/integrations/agent-access.ts — `agentAccessTier` decides
+// which of the two this is; adding a third agent path changes the answer there and nowhere here.
+async function authorizeAgentAccessWrite(
+  userId: string,
+  projectId: string,
+  provider: string,
+): Promise<void> {
+  const tier = agentAccessTier(getIntegration(provider));
+  if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
+  if (tier !== 'org-admin') return;
+  const access = await effectiveProjectRole(userId, projectId);
+  if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
+}
+
 
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());
@@ -121,6 +153,12 @@ integrationsRoutes.post(
       }
       if (!orgRoleAtLeast(access.orgRole, 'admin')) throw forbidden();
     }
+    // Connecting an integration and saying whether agents may use it is ONE act on ONE object
+    // (ISS-1071 rule 3). The default is closed, so a caller that does not ask grants nothing.
+    const bindingAgentAccess: AgentAccess = body.agentAccess ?? AGENT_ACCESS_CLOSED;
+    if (bindingAgentAccess !== AGENT_ACCESS_CLOSED) {
+      await authorizeAgentAccessWrite(userId, projectId, body.provider);
+    }
     const tiers = splitProviderConfig(body.provider, body.config);
     const connection = await createConnection({
       ownerType: body.orgId ? 'org' : 'user',
@@ -145,6 +183,7 @@ integrationsRoutes.post(
         config: tiers.binding,
         integrationSecret,
         label: bindingLabel,
+        agentAccess: bindingAgentAccess,
       });
     } catch (err) {
       // Roll the just-created connection back so a binding-unique collision
@@ -222,6 +261,10 @@ integrationsRoutes.patch(
       if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
     }
 
+    if (patch.agentAccess !== undefined) {
+      await authorizeAgentAccessWrite(userId, projectId, binding.provider);
+    }
+
     let mergedSecrets: Record<string, unknown> | undefined;
     if (patch.secrets) {
       mergedSecrets = await applySecretsPatch({
@@ -246,13 +289,15 @@ integrationsRoutes.patch(
     if (
       mergedBindingConfig !== undefined ||
       patch.active !== undefined ||
-      patch.instructions !== undefined
+      patch.instructions !== undefined ||
+      patch.agentAccess !== undefined
     ) {
       const bindingPatch: Parameters<typeof updateBinding>[1] = {};
       if (mergedBindingConfig !== undefined) bindingPatch.config = mergedBindingConfig;
       if (patch.active !== undefined) bindingPatch.active = patch.active;
       // cm:why project-admin editable without the org-owner escalation above — instructions are per-project prompt text, not a shared credential, so a project admin scoping their own store's guidance touches nothing another project can see
       if (patch.instructions !== undefined) bindingPatch.instructions = patch.instructions;
+      if (patch.agentAccess !== undefined) bindingPatch.agentAccess = patch.agentAccess;
       await updateBinding(binding.id, bindingPatch);
     }
 

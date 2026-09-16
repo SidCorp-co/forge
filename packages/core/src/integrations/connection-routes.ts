@@ -15,7 +15,14 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
-import { loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import {
+  type AgentAccess,
+  AGENT_ACCESS_CLOSED,
+  AGENT_ACCESS_VALUES,
+  agentAccessTier,
+  noAgentPathMessage,
+} from './agent-access.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
@@ -35,7 +42,7 @@ import {
   connectionUpdateSchema,
   splitProviderConfig,
 } from './provider-schemas.js';
-import { getAdapter } from './registry.js';
+import { getAdapter, getIntegration } from './registry.js';
 import {
   alreadyExists,
   assertAdmin,
@@ -161,6 +168,10 @@ const bindExistingSchema = z
     // can target a different Coolify resource per project. Connection-tier keys
     // are validated then dropped — a bind must not shadow the shared baseUrl.
     config: z.record(z.string(), z.unknown()).optional(),
+    // ISS-1071 — the third door onto `integration_bindings`, so it takes the same field. Sharing an
+    // existing credential into a project is still a connect, and whether agents there may use it is
+    // still a property of the binding it creates rather than of a map somewhere else.
+    agentAccess: z.enum(AGENT_ACCESS_VALUES).optional(),
   })
   // cm:guard the SAME three refusals the create path makes, from the same function — this is the
   // second door onto `integration_bindings`, and a caller who reaches a wrong role/stages pair
@@ -216,6 +227,19 @@ integrationConnectionsRoutes.post(
       bindingConfig = splitProviderConfig(provider, parsed.data as Record<string, unknown>).binding;
     }
 
+    // Same tier rule as the two project-side doors (ISS-1071 rule 5): a `direct-mcp` grant puts the
+    // credential on a runner box, so it takes the org-admin escalation; a `core-mediated` grant does
+    // not; a provider with no agent path is refused by name rather than storing an inert value.
+    const bindingAgentAccess: AgentAccess = body.agentAccess ?? AGENT_ACCESS_CLOSED;
+    if (bindingAgentAccess !== AGENT_ACCESS_CLOSED) {
+      const tier = agentAccessTier(getIntegration(provider));
+      if (tier === 'refused') throw badRequest(noAgentPathMessage(provider));
+      if (tier === 'org-admin') {
+        const access = await effectiveProjectRole(userId, body.projectId);
+        if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
+      }
+    }
+
     // cm:why minted per binding, except where the provider signs with a secret of its own — see `githubInboundSecret`
     const integrationSecret =
       (provider === 'github' ? githubInboundSecret(connection) : null) ??
@@ -230,6 +254,7 @@ integrationConnectionsRoutes.post(
         ...(body.role === 'deploy' && body.stages ? { stages: body.stages } : {}),
         config: bindingConfig,
         integrationSecret,
+        agentAccess: bindingAgentAccess,
       });
     } catch (err) {
       // No connection rollback here — we did not create one (contrast the create

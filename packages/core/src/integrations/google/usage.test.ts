@@ -6,7 +6,9 @@
 
 import { describe, expect, it, vi } from 'vitest';
 import { getGuide } from '../../guides/registry.js';
-import { getIntegrationGuide, getIntegrationUsage } from '../usage-registry.js';
+// ISS-1071 — the hint and the guide slug are fields on google's own declaration now, not rows in a
+// shared `usage-registry.ts` table, so this reads them where the provider declares them.
+import { googleIntegration } from './adapter.js';
 
 // `resolve.ts` reaches the DB and the env at import time and none of that is
 // what criterion 27 is about; the same three stubs `prompt/facts/resolve.test.ts`
@@ -19,6 +21,13 @@ vi.mock('../../knowledge/service.js', () => ({
 }));
 
 const { renderIntegrations } = await import('../../prompt/facts/resolve.js');
+
+// `renderIntegrations` reads each provider's hint, guide slug and extra line off its DECLARATION
+// (ISS-1071), so the registry has to hold one. Reading it empty throws rather than rendering the
+// generic line for every provider, which is the answer that would have made these assertions pass
+// while saying nothing true.
+const { registerAllIntegrations } = await import('../../integrations/register-all.js');
+registerAllIntegrations();
 
 function googleRow(overrides: Record<string, unknown> = {}) {
   return {
@@ -46,8 +55,8 @@ describe('the preamble line a connected Google integration earns', () => {
     // The router hint is the tier that is injected into EVERY job on a project
     // with this connected, so its length is the thing worth asserting: the
     // playbook belongs behind the pointer above, not in this string.
-    expect(getIntegrationUsage('google').length).toBeLessThan(400);
-    expect(getIntegrationUsage('google')).not.toContain('client_email (Viewer');
+    expect(googleIntegration.usage?.hint?.length ?? 0).toBeLessThan(400);
+    expect(googleIntegration.usage?.hint).not.toContain('client_email (Viewer');
   });
 
   it('carries the health verdict, so a broken credential is visible in the prompt', () => {
@@ -65,7 +74,7 @@ describe('the preamble line a connected Google integration earns', () => {
 
 describe('the capability guide the pointer resolves to', () => {
   it('is served by the code registry under the slug the usage table names', () => {
-    expect(getIntegrationGuide('google')).toBe('google-sheets');
+    expect(googleIntegration.usage?.guideSlug).toBe('google-sheets');
     expect(getGuide('google-sheets')).toBeDefined();
   });
 

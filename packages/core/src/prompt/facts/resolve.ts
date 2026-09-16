@@ -23,8 +23,9 @@ import {
   resolveSentryTargets,
 } from '../../integrations/sentry/targets.js';
 import type { SentryConfig, SentryTarget } from '../../integrations/sentry/types.js';
-import { listBindingsForProject } from '../../integrations/store.js';
-import { getIntegrationGuide, getIntegrationUsage } from '../../integrations/usage-registry.js';
+import { effectiveConfig, listBindingsForProject } from '../../integrations/store.js';
+import { grantHolds } from '../../integrations/agent-access.js';
+import { getIntegration } from '../../integrations/registry.js';
 import {
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
@@ -112,16 +113,21 @@ interface IntegrationRow {
   role: BindingRole;
   stages: DeployStage[];
   lastHealthStatus: string | null;
-  /** ISS-526 — Sentry-only: the labelled targets the agent picks between when
-   *  querying the Sentry MCP (org/project is passed per call). */
-  sentryTargets?: SentryTarget[];
+  /** The provider's own extra line, built from its declaration — see `IntegrationUsage.renderExtra`. */
+  extraLine?: string | null;
+  /** ISS-1071 — does this binding reach an agent at all? Renders as the reason where it does not. */
+  agentGranted?: boolean;
   /** Operator text for THIS project's binding, rendered verbatim. */
   instructions?: string | null;
   /** The caller's org authored a runtime guide for this provider. */
   hasOrgGuide?: boolean;
 }
 
-// cm:edge contract -> packages/core/src/integrations/usage-registry.ts — per-provider usage hints are data-driven there; adding an integration edits that table, never this renderer
+// cm:edge contract -> packages/core/src/integrations/types.ts — a provider's usage hint, its guide
+// slug and its one extra line are fields on the declaration in `integrations/<provider>/adapter.ts`.
+// Until ISS-1071 this comment pointed at a `usage-registry.ts` table and was only two thirds true:
+// the sentry targets line was an `if (r.provider === 'sentry')` right here, so adding a provider
+// that wanted one meant editing this renderer after all. That branch is gone and the claim now holds.
 // cm:why one query, shared by the pipeline facts block and the chat preamble — a chat-only copy of the active-filter + sentry-target mapping would drift from what a job sees
 export async function loadActiveIntegrationRows(
   projectId: string,
@@ -142,12 +148,17 @@ export async function loadActiveIntegrationRows(
     lastHealthStatus: p.connection.lastHealthStatus,
     instructions: p.binding.instructions ?? null,
     hasOrgGuide: orgGuides.has(p.binding.provider),
-    ...(p.binding.provider === 'sentry'
-      ? {
-          sentryTargets: resolveSentryTargets(p.connection.config as SentryConfig),
-        }
-      : {}),
+    extraLine: getIntegration(p.binding.provider)?.usage?.renderExtra?.(effectiveConfig(p)) ?? null,
+    agentGranted: grantHolds(getIntegration(p.binding.provider), p.binding),
   }));
+}
+
+/** What a provider with nothing of its own to say renders. */
+const GENERIC_USAGE = 'Project-specific integration.';
+
+/** The sentence a connected-but-ungranted binding renders in place of its usage hint. */
+function ungrantedNote(provider: string): string {
+  return `connected, but agents on this project may NOT use it: agent access is off for this binding. You will not be given its tools; do not treat their absence as a credential or auth fault, and do not retry. An org owner or admin turns it on beside the integration under Settings → Integrations.`;
 }
 
 // cm:why indented as a markdown sub-block so multi-line operator text cannot break out of its bullet and read as a new top-level instruction to the agent
@@ -163,25 +174,25 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
     return '## Project integrations\nNo external integrations are connected to this project.';
   }
   const lines = rows.map((r) => {
-    const hint = getIntegrationUsage(r.provider);
+    const decl = getIntegration(r.provider);
+    const hint = decl?.usage?.hint ?? GENERIC_USAGE;
     const health = r.lastHealthStatus ? ` (health: ${r.lastHealthStatus})` : '';
     // cm:why the org's runtime guide WINS over the seeded slug — an org authors one precisely to correct or replace the shipped default, so pointing at the default would send the agent to the text they overrode
-    const guideSlug = r.hasOrgGuide
-      ? integrationGuideSlug(r.provider)
-      : getIntegrationGuide(r.provider);
+    const guideSlug = r.hasOrgGuide ? integrationGuideSlug(r.provider) : decl?.usage?.guideSlug;
     const guidePointer = guideSlug ? ` Full guide: \`forge_guide get ${guideSlug}\`.` : '';
     // cm:why the bracket says `service` or the stages rather than an environment: it used to print
     // `[prod]` for every sentry, rocketchat, github and postman binding in the fleet, which was the
     // filler value the column forced them to carry and told the agent nothing.
     const scope = r.role === 'service' ? 'service' : r.stages.join('+') || 'deploy';
-    const bullet = `- **${r.provider}** [${scope}]${health} — ${hint}${guidePointer}`;
+    // ISS-1038 — connected is not reachable. A binding no agent may use used to render the same
+    // "here is how to use it" line as one an agent could, so a session was told to reach for tools
+    // it would never be given and read their absence as a credential fault. The bullet now says
+    // which it is, and where the switch is, INSTEAD of the usage hint — not beside it, because a
+    // line telling an agent how to use something it cannot use is the thing being removed.
+    const body = r.agentGranted === false ? ungrantedNote(r.provider) : `${hint}${guidePointer}`;
+    const bullet = `- **${r.provider}** [${scope}]${health} — ${body}`;
     const extra: string[] = [];
-    // ISS-526 — for Sentry, list the configured targets (label → org/project
-    // → notes) under the bullet so the agent knows which org/project slug to
-    // pass per Sentry MCP call. The MCP server still gets only host + token.
-    if (r.provider === 'sentry' && r.sentryTargets && r.sentryTargets.length > 0) {
-      extra.push(renderSentryTargetsLine(r.sentryTargets));
-    }
+    if (r.agentGranted !== false && r.extraLine) extra.push(r.extraLine);
     // cm:guard operator text, rendered VERBATIM and last so it is the final word for this provider — never summarise, reorder or truncate it here
     const instructions = r.instructions?.trim();
     if (instructions) {

@@ -101,9 +101,10 @@ export const forgeStorefrontTargetTool: ContextScopedMcpToolFactory = (ctx) => (
     '`configured: true` is NOT a promise that you have `mcp__epodsystem__*` tools — it only means ' +
     'an active binding with a usable credential exists. `mcpInjection` is the real gate: ' +
     '{ willInject, reason, serverName }, where reason is ok | not_configured | disabled | ' +
-    'no_credential | shadowed | not_declared. `not_declared` means no stage listed the sentinel in ' +
-    "`pipelineConfig.mcpServers` — the integration is fine and the config is what's wrong, so do " +
-    'NOT read absent tools as an auth/reauth problem or retry; report the reason. ' +
+    'no_credential | shadowed | not_granted. `not_granted` means nobody has turned on agent access ' +
+    'for that binding: the integration is healthy and the switch is off, so do NOT read absent ' +
+    'tools as an auth/reauth problem and do NOT retry. Report the reason and say where the switch ' +
+    'is — beside the integration under Settings → Integrations, on the binding itself. ' +
     'NEVER returns ' +
     'the API key — the crmk_ key is injected into the runner only via the mcpServers.epodsystem ' +
     'entry. Build on the DRAFT theme; publishing promotes draft → main. Project scope comes from ' +

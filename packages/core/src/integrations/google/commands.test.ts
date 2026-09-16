@@ -6,6 +6,18 @@ const listBindingsForProjectMock = vi.fn();
 // which parses the server env at import time, and nothing in these cases needs
 // a database. `effectiveConfig` is restated because it is pure and three cases
 // turn on the binding-over-connection overlay it performs.
+// cm:why registering the declarations (below) imports every adapter, and several of those reach the
+// db client and with it the whole env contract — so a file whose subject touches neither still needs
+// both stubs to hold a populated registry.
+vi.mock('../../config/env.js', () => ({
+  env: {
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://x/y',
+    DEVICE_TOKEN_PEPPER: 'pepper',
+  },
+}));
+vi.mock('../../db/client.js', () => ({ db: {} }));
 vi.mock('../store.js', () => ({
   listBindingsForProject: (...a: unknown[]) => listBindingsForProjectMock(...(a as [])),
   decryptConnectionSecrets: (connection: { secretsPlain?: Record<string, unknown> }) =>
@@ -25,6 +37,13 @@ const {
   resolveGoogleBinding,
 } = await import('./commands.js');
 const { __resetGoogleTokenCache } = await import('./auth.js');
+
+// `resolveGoogleBinding` asks the registry whether an agent may use the binding it just picked
+// (ISS-1071), so the registry has to hold google's declaration. Reading it empty throws rather than
+// treating google as undeclared — which would have refused every call in this file for the wrong
+// reason while still going red.
+const { registerAllIntegrations } = await import('../register-all.js');
+registerAllIntegrations();
 
 const { privateKey } = generateKeyPairSync('rsa', {
   modulusLength: 2048,
@@ -54,6 +73,7 @@ function row(opts: {
   secrets?: Record<string, unknown> | null;
   createdAt?: Date;
   id?: string;
+  agentAccess?: string;
 }) {
   return {
     binding: {
@@ -64,6 +84,9 @@ function row(opts: {
       environment: 'prod',
       config: opts.bindingConfig ?? { defaultSpreadsheetId: DEFAULT_SHEET },
       active: opts.bindingActive ?? true,
+      // ISS-1071 — granted by default so the fixtures keep testing what they were written to test.
+      // The gate itself gets its own assertions below rather than being smuggled into all of them.
+      agentAccess: opts.agentAccess ?? 'all',
       createdAt: opts.createdAt ?? new Date('2026-01-01T00:00:00Z'),
     },
     connection: {
@@ -370,5 +393,36 @@ describe('the ISS-405 rotation window governs the command path too (criterion 19
       code: 'ACCOUNT_REJECTED',
     });
     expect(g.issuers).toEqual(['rotated@forge-sheets-1.iam.gserviceaccount.com']);
+  });
+});
+
+// ISS-1071 — the agent boundary for a CORE-MEDIATED provider. Google's key never leaves core, so
+// nothing about this binding changes when the grant is off: the credential still works, the sheet is
+// still shared, core could still make the call. What changes is who may ask for it. There was no
+// gate here at all before this issue, which is why migration 0255 grants every google binding that
+// was already reachable rather than closing them: closing would have removed reachability that
+// existed, and a silent removal is the failure this issue is about.
+describe('the agent-access gate on a core-mediated provider', () => {
+  it('refuses an ungranted binding by name, naming the binding and the switch', async () => {
+    listBindingsForProjectMock.mockResolvedValueOnce([row({ agentAccess: 'none' })]);
+    await expect(resolveGoogleBinding(PROJECT)).rejects.toMatchObject({ code: 'NOT_GRANTED' });
+    listBindingsForProjectMock.mockResolvedValueOnce([row({ agentAccess: 'none' })]);
+    const err = await resolveGoogleBinding(PROJECT).catch((e: Error) => e);
+    expect(err.message).toContain('bind-1');
+    expect(err.message).toContain('Settings → Integrations');
+    // NOT a credential or health complaint — that is the misreading the sentence exists to prevent.
+    expect(err.message).toContain('agent access is `none`');
+  });
+
+  it('is a DIFFERENT refusal from a disabled binding, so the operator fixes the right thing', async () => {
+    listBindingsForProjectMock.mockResolvedValueOnce([row({ bindingActive: false })]);
+    await expect(resolveGoogleBinding(PROJECT)).rejects.toMatchObject({ code: 'BINDING_DISABLED' });
+  });
+
+  it('lets a granted binding through unchanged', async () => {
+    listBindingsForProjectMock.mockResolvedValueOnce([row({ agentAccess: 'all' })]);
+    await expect(resolveGoogleBinding(PROJECT)).resolves.toMatchObject({
+      binding: { id: 'bind-1' },
+    });
   });
 });

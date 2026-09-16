@@ -257,10 +257,26 @@ export interface IntegrationPresentation {
 
 /** The short router hint and forward pointer injected into the preamble when this is reachable. */
 export interface IntegrationUsage {
-  /** One to three lines: which entry tool to reach for plus one cardinal rule. */
-  hint: string;
+  /**
+   * One to three lines: which entry tool to reach for plus one cardinal rule. Omitted where the
+   * provider has nothing specific to say, which renders the generic line.
+   *
+   * Keep it SHORT. A rich per-service playbook does not belong in an always-injected preamble: it
+   * taxes every job on every project that has the integration connected. `guideSlug` is the forward
+   * pointer to that detail, fetched on demand.
+   */
+  hint?: string;
   /** Capability-guide slug carrying the full playbook, fetched on demand. */
   guideSlug?: string;
+  /**
+   * An extra indented line under the provider's bullet, built from the binding's effective config.
+   *
+   * Sentry is the only user today — it lists the labelled targets an agent picks between, because
+   * the MCP server gets only host + token and the org/project slug is passed per call. This exists
+   * so that stays in `integrations/sentry/` rather than as an `if (provider === 'sentry')` in the
+   * prompt renderer, which is what it was until ISS-1071.
+   */
+  renderExtra?: (config: Record<string, unknown>) => string | null;
 }
 
 /** What an adapter DOES. Absent on a provider that integrates nothing (`agent`). */

@@ -21,6 +21,13 @@ vi.mock('../../logger.js', () => ({
 const { renderStageFactsText, renderIntegrations, makeProjectResolver } = await import(
   './resolve.js'
 );
+
+// `renderIntegrations` reads each provider's hint, guide slug and extra line off its DECLARATION
+// (ISS-1071), so the registry has to hold one. Reading it empty throws rather than rendering the
+// generic line for every provider, which is the answer that would have made these assertions pass
+// while saying nothing true.
+const { registerAllIntegrations } = await import('../../integrations/register-all.js');
+registerAllIntegrations();
 type Inputs = Parameters<typeof renderStageFactsText>[0];
 
 const GUIDE_TEXT = 'pnpm build && pnpm test -- THE FULL GUIDE BODY';
@@ -200,15 +207,9 @@ describe('renderIntegrations — Sentry targets (ISS-526)', () => {
         role: 'service',
         stages: [],
         lastHealthStatus: 'ok',
-        sentryTargets: [
-          {
-            label: 'Backend',
-            organizationSlug: 'acme',
-            projectSlug: 'be',
-            notes: '5xx errors',
-          },
-          { label: 'Mobile', organizationSlug: 'acme', projectSlug: 'mob' },
-        ],
+        // ISS-1071 — the row carries the provider's OWN rendered line now. `loadActiveIntegrationRows`
+        // builds it from the sentry declaration's `usage.renderExtra`; the renderer only places it.
+        extraLine: '  - Backend: org=acme project=be — 5xx errors\n  - Mobile: org=acme project=mob',
       },
     ]);
     expect(text).toContain('- **sentry** [service] (health: ok)');
@@ -223,7 +224,7 @@ describe('renderIntegrations — Sentry targets (ISS-526)', () => {
         role: 'service',
         stages: [],
         lastHealthStatus: null,
-        sentryTargets: [],
+        extraLine: null,
       },
     ]);
     expect(text).toContain('- **sentry** [service]');
@@ -347,7 +348,7 @@ describe('renderIntegrations — per-binding instructions (A11)', () => {
         role: 'service',
         stages: [],
         lastHealthStatus: 'ok',
-        sentryTargets: [{ label: 'Backend', organizationSlug: 'acme', projectSlug: 'be' }],
+        extraLine: '  - Backend: org=acme project=be',
         instructions: 'Only triage P1s.',
       },
     ]);

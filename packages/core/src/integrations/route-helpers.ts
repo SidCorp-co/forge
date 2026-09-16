@@ -8,11 +8,12 @@
 
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
+import type { AgentAccess } from './agent-access.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { raceWithTimeout } from './probe.js';
-import { getAdapter } from './registry.js';
+import { getAdapter, getIntegration } from './registry.js';
 import {
   type BindingWithConnection,
   buildContextFromBinding,
@@ -137,6 +138,13 @@ export function summarizeBinding(pair: BindingWithConnection) {
     breakerOpenedAt: connection.breakerOpenedAt,
     hasSecrets: connection.secretsEnc !== null,
     integrationSecretSet: binding.integrationSecret !== null,
+    // ISS-1071 — the grant, and what it would MEAN for this provider, projected together. A screen
+    // that only got `agentAccess` would have to decide for itself whether the switch is offerable,
+    // which is how the old sentinel ended up rendered as a catalog toggle on a settings tab that
+    // refused its only legal value. `none` here means the switch is not a question for this
+    // provider at all, and a screen renders the reason rather than a dead control.
+    agentAccess: binding.agentAccess as AgentAccess,
+    agentPathKind: getIntegration(binding.provider)?.capabilities.agentPath.kind ?? 'none',
     createdAt: binding.createdAt,
     updatedAt: binding.updatedAt,
   };
