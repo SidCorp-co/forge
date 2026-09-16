@@ -57,6 +57,37 @@ pub fn session_name(prefix: &str, raw: &str) -> String {
     name
 }
 
+/// The config dir this box's session server is keyed on.
+///
+/// One reading, because the socket and the unit are two halves of one identity
+/// and a caller that resolved them separately could temp one and not the other.
+// cm:guard the SINGLE source for both `socket_path` and `session_unit`. Before ISS-1044 the socket was derived here and the unit was a literal, so a test's temp config dir moved the socket and left `systemctl --user stop forge-sessions.service` naming the one real unit hosting every pane on the box: 38 evictions in 12h, measured forge-vm 2026-09-15, each killing every master and agent pane across every project on it.
+fn session_config_dir() -> Option<std::path::PathBuf> {
+    crate::config::Config::path()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+}
+
+/// The config dir with no override in the environment — this box's own.
+///
+/// `Config::path()` answers with whatever `XDG_CONFIG_HOME` points at, so
+/// telling "the box's own" from "a temp one" needs the unoverridden value, and
+/// there is no way to ask `dirs_next` for it without unsetting a process-wide
+/// variable under every other thread.
+// cm:guard this DUPLICATES `dirs_next`'s rule for the platform, which is why `the_unoverridden_dir_is_what_the_box_resolves_with_no_override` pins the two together: the day `dirs_next` changes where it puts a Linux config dir, that test goes red rather than this silently classifying the box's own dir as an override and renaming the live unit out from under the panes.
+fn unoverridden_config_dir() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        dirs_next::home_dir().map(|h| h.join(".config").join("forge-runner"))
+    }
+    // Only Linux has the user manager this unit is placed in, and `dirs_next`
+    // consults no XDG variable elsewhere, so the resolved dir IS the box's own.
+    #[cfg(not(target_os = "linux"))]
+    {
+        dirs_next::config_dir().map(|d| d.join("forge-runner"))
+    }
+}
+
 /// The socket this box's agent sessions live on.
 ///
 /// Derived from `Config::path()` and nothing else, exactly as the control
@@ -65,10 +96,7 @@ pub fn session_name(prefix: &str, raw: &str) -> String {
 /// another's panes.
 // cm:guard a socket of OUR OWN is not tidiness, it is the survival property: on the default socket the runner shares a server with whatever tmux the operator is running, so one `tmux kill-server`, or their last personal session ending, takes every agent on the box with it. Measured forge-vm 2026-09-11: `-L`/`-S` appeared zero times in this crate and 47 agent panes were sitting on the operator's own server.
 pub fn socket_path() -> Option<std::path::PathBuf> {
-    crate::config::Config::path()
-        .ok()
-        .map(|p| p.with_file_name("tmux.sock"))
-        .filter(|p| fits_a_unix_socket(&p.to_string_lossy()))
+    SessionIdentity::current().map(|id| id.socket)
 }
 
 /// Whether a path can be a unix socket at all on this platform.
@@ -143,6 +171,96 @@ pub async fn alive(name: &str) -> bool {
 // cm:edge naming -> packages/runner/crates/forge-runner/src/cmd/service.rs — the runner's own unit is `forge-runner*`; this one must NOT share that prefix, or an operator's `systemctl --user stop forge-runner*` takes the sessions this exists to spare.
 const SESSION_UNIT: &str = "forge-sessions";
 
+/// The unit name for the config dir in force, which is what every systemd call
+/// in this module names.
+///
+/// The box's own config dir keeps the bare `SESSION_UNIT`, so nothing about a
+/// real runner changes. Any OTHER config dir — a test's temp dir, a leaked
+/// `/tmp/forge-cred-*` inherited by a stray subprocess — gets a unit of its
+/// own, and can no longer reach the one this box's panes run under.
+// cm:guard no systemd call may name `SESSION_UNIT` directly; `no_systemd_command_names_a_literal_unit` is the gate. That is the whole of ISS-1044: the cold-start test interpolated the const into `systemctl --user stop`, so `cargo test` on a box hosting live sessions stopped the unit every pane was in, then re-placed it bound to the test's temp socket — leaving the live unit holding a socket nothing used and the panes outside its cgroup.
+// cm:guard the SUFFIX is keyed on the config dir and not on the pid, the hostname or a random value: a daemon that restarts must resolve the same unit it placed, or `ensure_server` places a second one beside the first and neither owns the panes.
+// cm:guard both the comparison and the digest read `resolved`, never the path as written. `XDG_CONFIG_HOME` reaching the box's own dir through a symlink or a `..` is an operator's ordinary setup, and a lexical `==` would call it an override and rename the live unit out from under panes already inside it — the eviction this issue fixes, wearing the fix's clothes. Two spellings of one dir must also hash alike, or one directory grows two units and two servers race for one socket.
+/// The unit name one config dir resolves.
+fn unit_for(dir: &std::path::Path) -> String {
+    let Some(own) = unoverridden_config_dir() else {
+        return SESSION_UNIT.to_string();
+    };
+    let dir = resolved(dir);
+    if dir == resolved(&own) {
+        return SESSION_UNIT.to_string();
+    }
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(path_bytes(&dir));
+    format!("{SESSION_UNIT}-{}", &hex::encode(digest)[..16])
+}
+
+/// The socket and the unit, from ONE reading of the config dir.
+///
+/// Every systemd call and every tmux call on the placement path takes its half
+/// from one of these rather than asking again.
+// cm:guard one VALUE carrying both halves, not two functions that agree by convention. `ensure_server` used to read the socket and then let `ask_systemd_for_the_server` read the unit on its own; a shared source function is not one reading, and anything moving the config dir between the two hands systemd the unit for one dir and the tmux command the socket for another — the split identity ISS-1044 criterion 6 forbids, surviving the fix that was supposed to close it.
+struct SessionIdentity {
+    socket: std::path::PathBuf,
+    unit: String,
+}
+
+impl SessionIdentity {
+    fn current() -> Option<Self> {
+        let dir = session_config_dir()?;
+        let socket = dir.join("tmux.sock");
+        if !fits_a_unix_socket(&socket.to_string_lossy()) {
+            return None;
+        }
+        Some(Self {
+            unit: unit_for(&dir),
+            socket,
+        })
+    }
+}
+
+/// A path as the filesystem sees it, resolving as much of it as exists.
+///
+/// `canonicalize` needs the whole path to exist, and a fresh box is exactly the
+/// case where the last component does not. Resolving the deepest ancestor that
+/// does exist and appending the rest as written is what makes a symlinked
+/// `~/.config` still the box's own dir before the first run has made
+/// `forge-runner/` inside it.
+// cm:guard the FALLBACK is the path as written and never an error. Refusing here would take out the boxes this exists to leave alone, over a path lookup — the same reasoning as `socket_path`'s. What the fallback costs is stated where it bites: two spellings of one dir that share no existing ancestor read as two dirs, so one gets a suffixed unit. A `..` inside a path that does not exist is that case.
+fn resolved(p: &std::path::Path) -> std::path::PathBuf {
+    if let Ok(whole) = p.canonicalize() {
+        return whole;
+    }
+    let mut missing: Vec<std::ffi::OsString> = Vec::new();
+    let mut cursor = p;
+    while let (Some(parent), Some(name)) = (cursor.parent(), cursor.file_name()) {
+        missing.push(name.to_os_string());
+        if let Ok(base) = parent.canonicalize() {
+            let mut out = base;
+            for part in missing.iter().rev() {
+                out.push(part);
+            }
+            return out;
+        }
+        cursor = parent;
+    }
+    p.to_path_buf()
+}
+
+/// A path's own bytes, for hashing.
+// cm:guard NOT `to_string_lossy`. A Unix path is bytes and need not be UTF-8; lossy conversion maps every invalid sequence to the same replacement character, so two config dirs with different invalid bytes would get different sockets and the same unit name.
+fn path_bytes(p: &std::path::Path) -> Vec<u8> {
+    #[cfg(unix)]
+    {
+        use std::os::unix::ffi::OsStrExt as _;
+        p.as_os_str().as_bytes().to_vec()
+    }
+    #[cfg(not(unix))]
+    {
+        p.to_string_lossy().as_bytes().to_vec()
+    }
+}
+
 /// The session the server is started with, so it has one and does not exit.
 // cm:guard named OUTSIDE both `MASTER_PREFIX` and `RUN_PREFIX`, because every reader on this box classifies a session by that prefix and would otherwise adopt the keep-alive as a master with no project.
 const KEEPALIVE: &str = "forge-session-host";
@@ -165,16 +283,35 @@ async fn ensure_server() -> bool {
     if server_answers().await {
         return true;
     }
-    let Some(sock) = socket_path() else {
+    // cm:guard ONE reading for the whole placement. Everything below takes its
+    // socket and its unit from this value rather than asking again, which is
+    // criterion 6 made structural instead of conventional.
+    let Some(id) = SessionIdentity::current() else {
         tracing::warn!(
             "[terminal] no usable session socket path — agent panes will run on the default tmux server and die with this service, as they did before"
         );
         return false;
     };
-    match ask_systemd_for_the_server(&sock.to_string_lossy()).await {
+    let sock = &id.socket;
+    // cm:guard `tmux -S` does NOT make the directory it is handed, so a box whose
+    // config dir has never been written cannot bind here and every pane fails with
+    // a message about tmux rather than about a missing directory. Until ISS-1044 no
+    // test found that, because `cred_store` leaked an `XDG_CONFIG_HOME` that happened
+    // to exist and every pane test bound inside it.
+    if let Some(parent) = sock.parent() {
+        if let Err(e) = std::fs::create_dir_all(parent) {
+            tracing::warn!(
+                "[terminal] could not make the session socket's directory {} ({e}) — panes will be killed with this service, as they were before",
+                parent.display()
+            );
+            return false;
+        }
+    }
+    match ask_systemd_for_the_server(&id).await {
         Placement::Accepted if server_answers_within(SERVER_READY_WITHIN).await => {
             tracing::info!(
-                "[terminal] session server running as {SESSION_UNIT}.service — agent panes now outlive a restart of this one"
+                "[terminal] session server running as {}.service — agent panes now outlive a restart of this one",
+                id.unit
             );
             true
         }
@@ -223,19 +360,20 @@ impl Drop for OverlapWatch {
     }
 }
 
-async fn ask_systemd_for_the_server(sock: &str) -> Placement {
+async fn ask_systemd_for_the_server(id: &SessionIdentity) -> Placement {
     let _overlap = OverlapWatch::enter();
+    let sock = id.socket.to_string_lossy().into_owned();
     let out = Command::new("systemd-run")
         .args([
             "--user",
             "--unit",
-            SESSION_UNIT,
+            &id.unit,
             "--service-type=forking",
             "--collect",
             "--quiet",
             "tmux",
             "-S",
-            sock,
+            &sock,
             "new-session",
             "-d",
             "-s",
@@ -249,7 +387,7 @@ async fn ask_systemd_for_the_server(sock: &str) -> Placement {
     match out {
         Ok(o) if o.status.success() => Placement::Accepted,
         other => {
-            if unit_is_running().await {
+            if unit_is_running(&id.unit).await {
                 return Placement::Accepted;
             }
             Placement::Unavailable(match &other {
@@ -262,9 +400,9 @@ async fn ask_systemd_for_the_server(sock: &str) -> Placement {
 
 /// Whether systemd already holds the unit, asked structurally rather than by reading a message.
 // cm:guard `is-active`, never a substring of `systemd-run`'s stderr: losing the race prints `Unit forge-sessions.service already exists`, which is a translated, version-specific sentence — and the thing the caller actually needs to know is whether the unit is coming up, which systemd will answer directly.
-async fn unit_is_running() -> bool {
+async fn unit_is_running(unit: &str) -> bool {
     Command::new("systemctl")
-        .args(["--user", "is-active", &format!("{SESSION_UNIT}.service")])
+        .args(["--user", "is-active", &format!("{unit}.service")])
         .stdin(Stdio::null())
         .output()
         .await
@@ -485,10 +623,131 @@ pub fn pane_env() -> Vec<(String, String)> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::auth::cred_store::{ScopedVar, ENV_TEST_LOCK};
+
+    /// The unit the config dir in force resolves.
+    ///
+    /// Production reads it off a [`SessionIdentity`], which is the one reading
+    /// the placement path is entitled to; the tests below ask about the name on
+    /// its own, and this is that question.
+    fn session_unit() -> String {
+        SessionIdentity::current()
+            .map(|id| id.unit)
+            .unwrap_or_else(|| SESSION_UNIT.to_string())
+    }
 
     /// Every test below drives ONE server on one socket, so they run one at a time.
     // cm:guard serialised because a cold-start test has to kill that shared server, and `cargo test` runs this module's tests concurrently by default — without the lock it takes the panes the other two tests are mid-assertion on.
     static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// A config dir of this test's own, removed however the test ends.
+    ///
+    /// The `forge-runner` directory inside it is made here because `tmux -S`
+    /// will not make it.
+    // cm:guard RAII for the same reason `ScopedVar` is. A `remove_dir_all` at the end of the body is skipped by a panic, and skipping it is how 90 `/tmp/forge-cred-*` dirs came to sit on forge-vm — the newest of them holding another module's `skills-cache` and the very `tmux.sock` the box's LIVE session unit was bound to (ISS-1044).
+    struct ConfigHome(std::path::PathBuf);
+
+    impl ConfigHome {
+        fn new(label: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!("forge-{label}-{}", std::process::id()));
+            std::fs::create_dir_all(dir.join("forge-runner")).expect("temp config dir");
+            Self(dir)
+        }
+
+        fn path(&self) -> &std::path::Path {
+            &self.0
+        }
+    }
+
+    impl Drop for ConfigHome {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
+    }
+
+    /// The unit and server a test places, gone however the test ends.
+    ///
+    /// Constructing it tears down first, which is the cold start the test needs;
+    /// dropping it tears down again, which is the one a panic needs.
+    // cm:guard RAII, and `Drop` cannot await, so this is the blocking `Command`. Without it a panic anywhere after the placement leaves a transient `forge-sessions-*.service` and its `sleep infinity` running on a box that never asked for either — the same leak `ConfigHome` closes for the directory, and the same one that put 90 dirs on forge-vm.
+    // cm:guard the caller passes `session_unit()` and the socket beside it, never a name of its own: that is what keeps every stop in this module inside the config dir in force. `no_systemd_command_names_a_literal_unit` is the static half of that and the `assert_ne!` in the cold-start test is the running half.
+    struct PlacedUnit {
+        unit: String,
+        socket: std::path::PathBuf,
+    }
+
+    impl PlacedUnit {
+        /// Tears down now, for a test that needs a cold start, and again on drop.
+        fn cold(unit: String, socket: std::path::PathBuf) -> Self {
+            let placed = Self::guarding(unit, socket);
+            placed.tear_down();
+            placed
+        }
+
+        /// Tears down on drop only, for a test that places a unit as a side
+        /// effect of what it is really asserting.
+        // cm:guard the `assert_ne!` is the whole safety of this type. Everything below stops a unit, so a caller that reached it with the box's own name would evict every pane on the box from inside the guard meant to prevent exactly that.
+        fn guarding(unit: String, socket: std::path::PathBuf) -> Self {
+            assert_ne!(
+                unit.as_str(),
+                SESSION_UNIT,
+                "this guard stops the unit it is given; it may never be given the box's own"
+            );
+            Self { unit, socket }
+        }
+
+        fn tear_down(&self) {
+            let _ = std::process::Command::new("tmux")
+                .args(["-S", &self.socket.to_string_lossy(), "kill-server"])
+                .stdin(std::process::Stdio::null())
+                .output();
+            for verb in ["stop", "reset-failed"] {
+                let _ = std::process::Command::new("systemctl")
+                    .args(["--user", verb, &format!("{}.service", self.unit)])
+                    .stdin(std::process::Stdio::null())
+                    .output();
+            }
+        }
+    }
+
+    impl Drop for PlacedUnit {
+        fn drop(&mut self) {
+            self.tear_down();
+        }
+    }
+
+    /// A config dir of this test's own, the env pointed at it, and whatever unit
+    /// and server the test places torn down at the end.
+    ///
+    /// Fields are dropped in declaration order, so the unit goes before the env
+    /// is put back and before the directory is removed.
+    // cm:guard the test's OWN dir, never "whatever dir is in force". An earlier draft of this guard read any non-default config dir as disposable and stopped it — which on a box running a SECOND runner from an overridden `XDG_CONFIG_HOME`, a setup this module exists to support, would have killed that runner's server and every pane in it. That is ISS-1044's own defect one box over, arriving inside the fix for it. Owning the dir is what makes the teardown safe; a name comparison is not.
+    struct Sandbox {
+        _placed: Option<PlacedUnit>,
+        _xdg: ScopedVar,
+        _home: ConfigHome,
+    }
+
+    impl Sandbox {
+        fn new(label: &str) -> Self {
+            let home = ConfigHome::new(label);
+            let xdg = ScopedVar::set("XDG_CONFIG_HOME", home.path());
+            // cm:guard guard only a unit whose socket is INSIDE the directory this
+            // sandbox made — ownership, not a name comparison. `dirs_next` reads
+            // `XDG_CONFIG_HOME` on XDG platforms only, so on macOS and Windows the
+            // variable moves nothing and the dir in force is still the box's own;
+            // guarding there would hand `PlacedUnit` the live unit, which is what
+            // its `assert_ne!` refused when this was written the other way round.
+            let placed = socket_path()
+                .filter(|sock| sock.starts_with(home.path()))
+                .map(|sock| PlacedUnit::guarding(session_unit(), sock));
+            Self {
+                _placed: placed,
+                _xdg: xdg,
+                _home: home,
+            }
+        }
+    }
 
     /// Whether this box can place a unit at all; where it cannot, the property does not exist.
     async fn can_place_a_unit() -> bool {
@@ -544,9 +803,13 @@ mod tests {
     /// the pane actually receives what a master is typed.
     // cm:guard the body is MULTI-LINE on purpose, because that is the case `send-keys -l` gets wrong and bracketed paste gets right: every embedded newline would otherwise be an Enter, and a five-line pass prompt would arrive as five turns, the first four of them fragments. A single-line body here would pass against the bug.
     // cm:guard skipped rather than failed when tmux is absent, and the daemon refuses to start a master on such a box — so the skip cannot hide a broken transport in production, only on a developer machine that could never have run one.
+    // cm:hack ISS-1044 until:one of these tests asks for a runtime flavour — `await_holding_lock` is allowed here because holding `ENV_TEST_LOCK` across the body IS the point: `XDG_CONFIG_HOME` is process-global, so a guard dropped before the first await protects nothing. What is traded is clippy's warning about starving a runtime, and it costs nothing while every test here is a bare `#[tokio::test]`, which is current-thread and has no other task to starve. `the_serialised_tests_stay_on_a_current_thread_runtime` is that condition as a gate rather than as a sentence.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_pane_receives_what_is_typed_at_it_and_the_transcript_keeps_it() {
         let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _sandbox = Sandbox::new("panes");
         if !available() {
             eprintln!("tmux is not installed here — the transport test cannot run");
             return;
@@ -619,9 +882,13 @@ mod tests {
     /// daemon restart re-enters the session it left rather than replacing it.
     // cm:guard the PID comparison is the assertion, not `created == false`. A second `ensure` that killed the pane and started a fresh one would also report "created nothing" while the master lost every word of the pass it was in the middle of — the two are indistinguishable from the return value alone.
     // cm:guard the second `ensure` passes a DIFFERENT argv on purpose, because that is what a restarted daemon carrying a new build sends. A reuse path that read the argv would relaunch here and the test would catch it; one that matched on the name alone is what the design needs.
+    // cm:hack ISS-1044 until:one of these tests asks for a runtime flavour — `await_holding_lock` is allowed here because holding `ENV_TEST_LOCK` across the body IS the point: `XDG_CONFIG_HOME` is process-global, so a guard dropped before the first await protects nothing. What is traded is clippy's warning about starving a runtime, and it costs nothing while every test here is a bare `#[tokio::test]`, which is current-thread and has no other task to starve. `the_serialised_tests_stay_on_a_current_thread_runtime` is that condition as a gate rather than as a sentence.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_restart_re_enters_the_pane_it_left_rather_than_starting_a_second_one() {
         let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _sandbox = Sandbox::new("panes");
         if !available() {
             eprintln!("tmux is not installed here — the residency test cannot run");
             return;
@@ -802,10 +1069,298 @@ mod tests {
         assert!(!KEEPALIVE.starts_with(RUN_PREFIX));
     }
 
+    /// The condition the `cm:hack` above each serialised test ends on.
+    // cm:guard this is the amnesty's price made checkable. `#[allow(clippy::await_holding_lock)]` is sound only while these tests run on a current-thread runtime with no other task to starve; the day one of them takes `flavor = "multi_thread"`, the allow is hiding a real hazard and this goes red instead of the hazard being found by a hung suite.
+    // cm:guard the needle is SPLIT across `concat!` for the same reason the systemd scan's are: written whole, this test matches its own source and fails on a file that has not drifted at all.
+    #[test]
+    fn the_serialised_tests_stay_on_a_current_thread_runtime() {
+        let flavoured = concat!("tokio::", "test(");
+        assert!(
+            !THIS_SOURCE.contains(flavoured),
+            "a test here asks for a runtime flavour; the await_holding_lock allow must be re-argued with it"
+        );
+    }
+
     // cm:guard the unit name is what stops an operator's `systemctl --user stop forge-runner*` from taking the sessions with it, so it may not share that prefix.
     #[test]
     fn the_session_unit_is_not_matched_by_a_glob_over_the_runners_own() {
         assert!(!SESSION_UNIT.starts_with("forge-runner"));
+    }
+
+    /// Criterion 4. Nothing about a real runner changes: the box's own config
+    /// dir still resolves the bare name its live panes are already inside.
+    // cm:guard the SECOND half — the same dir named explicitly through `XDG_CONFIG_HOME` — is the case an operator hits, not a contrivance. A comparison made against the variable rather than against the resolved path would call that an override and rename the unit out from under every pane on the box, which is the eviction this issue fixes wearing the fix's own clothes.
+    #[test]
+    fn the_boxs_own_config_dir_resolves_the_bare_session_unit() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _xdg = ScopedVar::unset("XDG_CONFIG_HOME");
+        assert_eq!(session_unit(), SESSION_UNIT);
+
+        // Naming the same dir explicitly is still the box's own. Linux only: see
+        // the note on the tests below — off Linux this variable moves nothing, so
+        // the assertion would hold for a reason that is not the one being claimed.
+        #[cfg(target_os = "linux")]
+        {
+            let own = unoverridden_config_dir().expect("this box resolves a config dir");
+            let _explicit = ScopedVar::set("XDG_CONFIG_HOME", own.parent().expect("…/.config"));
+            assert_eq!(session_config_dir().as_deref(), Some(own.as_path()));
+            assert_eq!(session_unit(), SESSION_UNIT);
+        }
+    }
+
+    /// F2 from the ISS-1044 review: a Unix path is bytes and need not be UTF-8.
+    // cm:guard the two dirs differ ONLY in bytes `to_string_lossy` maps to the same replacement character. Hashed lossily they produce one unit name for two directories, so two runners would race `systemd-run` for the same unit while their sockets stayed apart — the "second one beside the first" failure the suffix exists to prevent, arriving through the encoding instead.
+    #[cfg(all(unix, target_os = "linux"))]
+    #[test]
+    fn two_config_dirs_differing_only_in_invalid_utf8_get_different_units() {
+        use std::os::unix::ffi::OsStringExt as _;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+
+        let mut units = Vec::new();
+        let mut sockets = Vec::new();
+        for tail in [b"\xf0".to_vec(), b"\xf1".to_vec()] {
+            let mut raw = format!("/tmp/forge-bytes-{}-", std::process::id()).into_bytes();
+            raw.extend(tail);
+            let dir = std::path::PathBuf::from(std::ffi::OsString::from_vec(raw));
+            let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &dir);
+            units.push(session_unit());
+            sockets.push(socket_path().expect("a socket"));
+        }
+
+        assert_ne!(sockets[0], sockets[1], "the two dirs really are different");
+        assert_ne!(
+            units[0], units[1],
+            "two config dirs with different sockets may not share one unit"
+        );
+    }
+
+    /// F1 from the ISS-1044 review: an operator whose `XDG_CONFIG_HOME` reaches
+    /// the box's own config root through a symlink must keep the bare unit.
+    // cm:guard the SYMLINK is the case a lexical `==` gets wrong, and getting it wrong renames the live unit out from under panes already inside it — the eviction this issue fixes, arriving as the fix. The `..` case below is the same alias by another spelling.
+    #[cfg(all(unix, target_os = "linux"))]
+    #[test]
+    fn a_config_dir_reached_through_an_alias_is_still_the_boxs_own() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let own = unoverridden_config_dir().expect("this box resolves a config dir");
+        let Some(root) = own.parent().map(std::path::Path::to_path_buf) else {
+            return;
+        };
+        if !own.exists() {
+            eprintln!("this box has no config dir yet — an alias to it cannot be built");
+            return;
+        }
+
+        // cm:guard the symlink lives INSIDE a `ConfigHome`, so its removal is the
+        // directory's and survives a panic. Left at the top of `/tmp` with a line
+        // at the end of the body, a failing run leaves a dangling `forge-alias-*`
+        // pointing into the operator's real config root — measured while planting
+        // this test's own failure.
+        let holder = ConfigHome::new("alias");
+        let link = holder.path().join("config");
+        std::os::unix::fs::symlink(&root, &link).expect("a symlink into the box's own config root");
+        {
+            let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &link);
+            assert_eq!(
+                session_unit(),
+                SESSION_UNIT,
+                "a symlinked config root is the box's own dir, not an override"
+            );
+
+            // F1's second half: a FRESH box, where the leaf does not exist yet.
+            // Whole-path canonicalization fails for both spellings there, so
+            // only resolving the deepest existing ancestor keeps them equal.
+            let leaf = own
+                .file_name()
+                .expect("the config dir is a named directory")
+                .to_os_string();
+            let unborn = format!("{}-unborn", leaf.to_string_lossy());
+            assert!(!root.join(&unborn).exists(), "the leaf must not exist");
+            assert_eq!(
+                unit_for(&link.join(&unborn)),
+                unit_for(&root.join(&unborn)),
+                "an alias of a dir that does not exist yet is still the same dir"
+            );
+        }
+
+        let dotted = root.join("..").join(
+            root.file_name()
+                .expect("the config root is a named directory"),
+        );
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", &dotted);
+        assert_eq!(
+            session_unit(),
+            SESSION_UNIT,
+            "a `..` spelling of the box's own dir is not an override"
+        );
+    }
+
+    /// What the `cm:guard` on `unoverridden_config_dir` promises: the rule
+    /// spelled out there and `dirs_next`'s own must agree.
+    // cm:guard this is the test that goes red the day `dirs_next` moves a Linux config dir, instead of `session_unit` silently classifying the box's own dir as an override.
+    #[test]
+    fn the_unoverridden_dir_is_what_the_box_resolves_with_no_override() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let _xdg = ScopedVar::unset("XDG_CONFIG_HOME");
+        assert_eq!(session_config_dir(), unoverridden_config_dir());
+    }
+
+    /// Criterion 5, and the whole of what makes `cargo test` cost a box nothing:
+    /// a config dir that is not this box's own cannot name this box's unit.
+    // cm:guard the assertion is `!=` against the LIVE name and not a shape. A suffix scheme that produced the bare `forge-sessions` for some temp dir would satisfy every naming assertion in this module and still stop the unit hosting every master and agent pane on the box.
+    // cm:guard LINUX because the property is Linux's, not because it was red elsewhere. The override this issue is about is `XDG_CONFIG_HOME`, which `dirs_next` consults on XDG platforms only — on Windows it reads `%APPDATA%` and the variable moves nothing — and the unit being protected lives in a systemd user manager, which no other platform has. Asserting it off Linux asserts a rule the platform does not have.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn a_config_dir_that_is_not_the_boxs_own_resolves_a_unit_of_its_own() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let dir = ConfigHome::new("unit-temp");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", dir.path());
+
+        let unit = session_unit();
+        assert_ne!(
+            unit, SESSION_UNIT,
+            "a temp config dir may not name the live unit"
+        );
+        assert!(
+            unit.starts_with(&format!("{SESSION_UNIT}-")),
+            "still recognisable as one of ours: {unit}"
+        );
+    }
+
+    /// Criteria 6 and 7: one reading of the config dir, so the socket and the
+    /// unit cannot be temped separately.
+    // cm:guard BOTH halves in ONE test and never two. The defect was precisely that one half moved with the config dir and the other did not — two tests each asserting its own half would both have been green while `cargo test` evicted the box 38 times in 12 hours.
+    // cm:guard the return to `a` is not tidy-up, it is the suffix's other property: it is keyed on the dir and not on a pid, a hostname or a random value, so a daemon that restarts resolves the unit it placed rather than placing a second one beside it.
+    // cm:guard LINUX because the property is Linux's, not because it was red elsewhere. The override this issue is about is `XDG_CONFIG_HOME`, which `dirs_next` consults on XDG platforms only — on Windows it reads `%APPDATA%` and the variable moves nothing — and the unit being protected lives in a systemd user manager, which no other platform has. Asserting it off Linux asserts a rule the platform does not have.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn moving_the_config_dir_moves_the_socket_and_the_unit_together() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let a = ConfigHome::new("pair-a");
+        let b = ConfigHome::new("pair-b");
+
+        let xdg = ScopedVar::set("XDG_CONFIG_HOME", a.path());
+        let (sock_a, unit_a) = (socket_path().expect("a socket"), session_unit());
+        assert_eq!(
+            sock_a.parent(),
+            session_config_dir().as_deref(),
+            "the socket is made from the same reading the unit is"
+        );
+        assert!(sock_a.starts_with(a.path()), "{}", sock_a.display());
+
+        xdg.move_to(b.path());
+        let (sock_b, unit_b) = (socket_path().expect("a socket"), session_unit());
+        assert_ne!(sock_a, sock_b, "the socket must follow the config dir");
+        assert_ne!(unit_a, unit_b, "and so must the unit");
+        assert!(sock_b.starts_with(b.path()), "{}", sock_b.display());
+
+        xdg.move_to(a.path());
+        assert_eq!(session_unit(), unit_a);
+        assert_eq!(socket_path().expect("a socket"), sock_a);
+    }
+
+    /// Criterion 8: the prefix guard holds for every name the override can
+    /// produce, not only for the constant it is derived from.
+    // cm:guard the test above this one asserts the CONST, which before ISS-1044 was the only name there was. A derived name beginning `forge-runner` would be swept up by an operator's `systemctl --user stop 'forge-runner*'` — the single thing that constant exists to prevent — and no assertion in this file would have said so.
+    // cm:guard LINUX because the property is Linux's, not because it was red elsewhere. The override this issue is about is `XDG_CONFIG_HOME`, which `dirs_next` consults on XDG platforms only — on Windows it reads `%APPDATA%` and the variable moves nothing — and the unit being protected lives in a systemd user manager, which no other platform has. Asserting it off Linux asserts a rule the platform does not have.
+    #[cfg(target_os = "linux")]
+    #[test]
+    fn no_config_dir_produces_a_unit_inside_the_runners_own_prefix() {
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        let mut names = vec![{
+            let _xdg = ScopedVar::unset("XDG_CONFIG_HOME");
+            session_unit()
+        }];
+        for label in ["prefix-1", "prefix-2"] {
+            let dir = ConfigHome::new(label);
+            let _xdg = ScopedVar::set("XDG_CONFIG_HOME", dir.path());
+            names.push(session_unit());
+        }
+        for n in &names {
+            assert!(!n.starts_with("forge-runner"), "{n}");
+            assert!(
+                n.chars().all(|c| c.is_ascii_alphanumeric() || c == '-'),
+                "a unit name, not a path: {n}"
+            );
+        }
+    }
+
+    /// Criteria 9 and 10, statically over this whole file.
+    // cm:guard the scan covers the TEST half too, because the defect was in a test: the cold-start test interpolated `SESSION_UNIT` into `systemctl --user stop`, and that one line stopped the unit every master and agent pane on the box was running under, 38 times in 12 hours (forge-vm, 2026-09-15). A gate reading only the production half would have been green throughout.
+    // cm:guard the needles are SPLIT across `concat!` so this test's own source does not match them. A scanner that finds itself reports on a segment it wrote and passes over a file that has drifted.
+    #[test]
+    fn no_systemd_command_names_a_literal_unit() {
+        let forbidden = concat!("SESSION", "_UNIT");
+        let needles = [
+            concat!("Command::new(\"system", "ctl\")"),
+            concat!("Command::new(\"system", "d-run\")"),
+        ];
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let calls = |src: &'static str, needle: &str| -> Vec<&'static str> {
+            src.split(needle)
+                .skip(1)
+                .map(|s| s.split(".output()").next().unwrap())
+                .collect()
+        };
+
+        let mut scanned = 0usize;
+        for needle in needles {
+            for call in calls(THIS_SOURCE, needle) {
+                scanned += 1;
+                assert!(
+                    !call.contains(forbidden),
+                    "a systemd call naming the literal unit: {call}"
+                );
+            }
+        }
+        assert!(
+            scanned >= 4,
+            "the scan found {scanned} systemd calls; it must reach every one in this file"
+        );
+
+        // F4 from the ISS-1044 review, twice over. The segment scan starts at
+        // `Command::new`, so `let unit = SESSION_UNIT;` — or the bare string —
+        // on the line before it is a systemd call naming the live unit that no
+        // segment contains. The rule that terminates is about the FUNCTION, not
+        // about the call expression: an item that spawns systemd may not hold
+        // the const or the literal at all, however it is spelled or aliased.
+        // cm:guard comment lines are stripped first, because the prose around the deriver names both and must go on being allowed to. Code is what this counts.
+        let code: String = production
+            .lines()
+            .filter(|l| !l.trim_start().starts_with("//"))
+            .map(|l| format!("{l}\n"))
+            .collect();
+        let literal = concat!("forge-", "sessions");
+
+        let mut items_with_systemd = 0usize;
+        for item in code.split("\n}\n") {
+            if !needles.iter().any(|n| item.contains(n)) {
+                continue;
+            }
+            items_with_systemd += 1;
+            assert!(
+                !item.contains(forbidden),
+                "an item that spawns systemd may not hold the const: {item}"
+            );
+            assert!(
+                !item.contains(literal),
+                "an item that spawns systemd may not hold the literal unit name: {item}"
+            );
+        }
+        assert!(
+            items_with_systemd >= 2,
+            "{items_with_systemd} production item(s) spawn systemd; the placement and the liveness probe are both owed"
+        );
+
+        // and the literal itself exists once, where the const is declared.
+        assert_eq!(
+            code.matches(literal).count(),
+            1,
+            "the unit's name is written once in production code, as the const's value"
+        );
+        assert!(
+            code.contains(&format!("const {forbidden}: &str = \"{literal}\";")),
+            "that one writing must be the declaration"
+        );
     }
 
     // cm:guard `--scope` places NOTHING here and the source must not drift back to it: `tmux` daemonizes, so the tracked process exits, the scope is collected, and the server lands in the caller's cgroup. Measured 2026-09-11 — the scope form looked correct and left the server in `org.gnome.Shell@x11.service`.
@@ -836,28 +1391,33 @@ mod tests {
     }
     /// A sweep starts several panes at once; one placement is asked for, and no pane is lost.
     // cm:guard cold-start is the whole setup: a warm server short-circuits every caller before the lock and the case cannot happen. Without the serialization, six callers issue six `systemd-run`s, five of them lose, and each loser races `new-session` against a socket nothing has bound yet.
+    // cm:hack ISS-1044 until:one of these tests asks for a runtime flavour — `await_holding_lock` is allowed here because holding `ENV_TEST_LOCK` across the body IS the point: `XDG_CONFIG_HOME` is process-global, so a guard dropped before the first await protects nothing. What is traded is clippy's warning about starving a runtime, and it costs nothing while every test here is a bare `#[tokio::test]`, which is current-thread and has no other task to starve. `the_serialised_tests_stay_on_a_current_thread_runtime` is that condition as a gate rather than as a sentence.
+    #[allow(clippy::await_holding_lock)]
     #[tokio::test]
     async fn a_cold_start_hit_by_several_panes_at_once_places_one_server_and_loses_no_pane() {
         let _serialised = ONE_AT_A_TIME.lock().await;
+        let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         if !available() || !can_place_a_unit().await {
             eprintln!("no tmux or no systemd user manager here — the placement property does not exist on this box");
             return;
         }
+        let home = ConfigHome::new("coldstart");
+        let _xdg = ScopedVar::set("XDG_CONFIG_HOME", home.path());
+        let unit = session_unit();
+        assert_ne!(
+            unit, SESSION_UNIT,
+            "this test stops the unit it names, so it may never name the one the box serves panes from"
+        );
         let Some(sock) = socket_path() else {
             eprintln!("no usable socket path here");
             return;
         };
-        let _ = tmux(&["kill-server"]).await;
-        let _ = Command::new("systemctl")
-            .args(["--user", "stop", &format!("{SESSION_UNIT}.service")])
-            .stdin(Stdio::null())
-            .output()
-            .await;
-        let _ = Command::new("systemctl")
-            .args(["--user", "reset-failed", &format!("{SESSION_UNIT}.service")])
-            .stdin(Stdio::null())
-            .output()
-            .await;
+        assert!(
+            sock.starts_with(home.path()),
+            "the socket must be this test's own: {}",
+            sock.display()
+        );
+        let _placed = PlacedUnit::cold(unit, sock.clone());
         let _ = std::fs::remove_file(&sock);
         assert!(!server_answers().await, "the server must start out cold");
 
@@ -890,5 +1450,6 @@ mod tests {
             assert!(alive(n).await, "{n} must be findable by its exact name");
             let _ = kill(n).await;
         }
+        let _ = std::fs::remove_dir_all(&dir);
     }
 }
