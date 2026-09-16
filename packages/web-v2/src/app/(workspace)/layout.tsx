@@ -300,9 +300,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
       case "attention":
         router.push("/attention");
         break;
-      case "usage":
-        router.push("/usage");
-        break;
       case "search":
         setPaletteOpen(true);
         break;
