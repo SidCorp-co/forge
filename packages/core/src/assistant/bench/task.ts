@@ -169,6 +169,9 @@ function movesPreferences(task: Task): boolean {
   );
 }
 
+/** What a multi-turn rubric has to say so the judge knows which turn a requirement is about. */
+const TURN_SCOPED = /\bon (a|the|each|every|its) (\w+ )?turn\b/i;
+
 /** Refuse the task list by name where it cannot be graded whole, else return it as given. */
 export function validateTasks(list: readonly Task[]): Task[] {
   const seen = new Set<string>();
@@ -186,6 +189,18 @@ export function validateTasks(list: readonly Task[]): Task[] {
       (/\n/.test(task.judgeRubric) || task.judgeRubric.length > 300)
     )
       throw new TaskLoadError(`task ${task.id} judgeRubric must be one line under 300 characters`);
+    // cm:guard `run.ts#judgeTurns` hands the rubric to EVERY judged turn of the task, so a
+    // task-wide requirement on a multi-turn task is one the person never asked for on the early
+    // turns: "served means the reply gives the deploy window" failed the turn that had only asked
+    // the assistant to remember it, and the disagreement read as the assistant's (ISS-1066).
+    if (
+      task.judgeRubric !== undefined &&
+      task.turns.length > 1 &&
+      !TURN_SCOPED.test(task.judgeRubric)
+    )
+      throw new TaskLoadError(
+        `task ${task.id} judgeRubric is handed to every one of its ${task.turns.length} turns, so it must name the turn each requirement belongs to ("on the first turn…", "on a turn that…", "on each turn…")`,
+      );
     if (!(task.budgetSeconds > 0))
       throw new TaskLoadError(`task ${task.id} names no budget in seconds`);
     if (task.turns.length === 0) throw new TaskLoadError(`task ${task.id} has no turn`);

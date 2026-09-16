@@ -82,6 +82,21 @@ project holding no knowledge gets a section saying so rather than no section. A 
 cannot read that route refuses the whole run by name before the first turn, rather than leaving the
 judge to grade project answers against a silently empty brief.
 
+Two details of that read are load-bearing on a large project. The always-injected entries are asked
+for with the route's own `injection` filter rather than found by filtering the index, because the
+index arrives as a prefix once it passes the deployment's response cap
+(`knowledge/service.ts:MAX_RESPONSE_CHARS`), and an entry past that prefix would otherwise
+contribute none of its prose while the brief read as complete. What the cap left out and the
+filtered read did not recover is disclosed as a count. And the entries whose bodies the brief
+fetched are rendered **before** the title-only ones: the knowledge section is cut at its end, so a
+long enough prefix of titles would spend the section's whole allowance and slice off the very rule
+the second read paid a request for.
+
+A task's `judgeRubric` is handed to the judge on **every** judged turn of that task, so a multi-turn
+rubric says which turn each requirement belongs to: `memory-question`'s first turn asks only that the
+assistant remember a window, and a rubric demanding the window back would have failed the
+acknowledgement that served it.
+
 In the judge's messages the brief stands under its own sub-header (`judge.ts:BRIEF_HEADER`) between
 the filled fixtures and the earlier turns. An input carrying no brief produces the byte-identical
 block it produced before the split — `judge.test.ts` pins that against the pre-change text for
@@ -133,7 +148,8 @@ it sets before its first turn, and its budget in seconds. A task is complete on 
 is an earlier turn of the same task, and a task that reads a style sets that style first.
 `task.test.ts` loads the set whole and refuses a duplicate id, a turn with no check, a check outside
 the vocabulary, a placeholder no fixture fills, a preference move with no restore, a task with no
-capability, a judge rubric over one line, and a new room asked for on a first turn.
+capability, a judge rubric over one line, a multi-turn task whose rubric does not name the turn it
+is about, and a new room asked for on a first turn.
 
 ## Reading a comparison
 

@@ -265,6 +265,28 @@ describe('what the loader refuses', () => {
     ).toHaveLength(1);
   });
 
+  // cm:why the loader and not a lint of the shipped set: the rubric reaches the judge on every turn
+  // of the task, so a task-wide requirement is a wrong grade on the early turns whoever wrote it
+  // (ISS-1066, codex F2)
+  it('a multi-turn rubric that does not say which turn a requirement belongs to', () => {
+    const twoTurns = { ...base, turns: [...base.turns, ...base.turns] };
+    expect(() =>
+      validateTasks([{ ...twoTurns, judgeRubric: 'Served means the reply gives the window.' }]),
+    ).toThrow('must name the turn each requirement belongs to');
+    expect(
+      validateTasks([
+        {
+          ...twoTurns,
+          judgeRubric: 'On the first turn an acknowledgement serves it; on the second, the window.',
+        },
+      ]),
+    ).toHaveLength(1);
+    // one turn is the whole exchange, so a rubric about it is already turn-scoped
+    expect(
+      validateTasks([{ ...base, judgeRubric: 'Served means the reply gives the window.' }]),
+    ).toHaveLength(1);
+  });
+
   it('a new room on the first turn, which is the turn that opens the room', () => {
     const turn = base.turns[0];
     if (!turn) throw new Error('base has no turn');
