@@ -44,8 +44,8 @@ import {
   type RESERVED_PROJECT_FACT_KEYS,
   unreservedProjectKeyRefusal,
 } from '../../projects/project-facts.js';
+import { effectivePipelineStates } from './effective-ladder.js';
 import {
-  CANONICAL_LADDER,
   type FactRenderContext,
   FORGE_FACTS,
   type ForgeFact,
@@ -192,20 +192,6 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
     return extra.length > 0 ? `${bullet}\n${extra.join('\n')}` : bullet;
   });
   return `## Project integrations\nConnected integrations and how to use them:\n${lines.join('\n')}`;
-}
-
-/**
- * Build the project's happy-path ladder: the canonical sequence in
- * `registry.ts` as `CANONICAL_LADDER`, minus any stage the project disabled
- * via `pipelineConfig.states[s].enabled === false`. Pure.
- *
- * This is what `enabled` does, and all it does. Nothing skips at runtime, so
- * an omitted status is one the agent is not shown, never one the pipeline
- * routes around.
- */
-// cm:guard rendering only — a status dropped here is still a status an issue can hold and a session can run at. Reading this filter as a routing decision is how `enabled` came to be described as an auto-transition it never performed (ISS-994).
-function buildLadder(states: Record<string, { enabled?: boolean } | undefined>): IssueStatus[] {
-  return CANONICAL_LADDER.filter((s) => states[s]?.enabled !== false);
 }
 
 /**
@@ -356,7 +342,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   }
 
   return {
-    ladder: buildLadder(states),
+    ladder: effectivePipelineStates(states),
     branches: { baseBranch, liveBranch, releaseModel },
     noProgressRounds,
     project: makeProjectResolver({

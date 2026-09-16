@@ -283,7 +283,7 @@ export const pipelineConfigSchema = z
       .optional(),
     // cm:why ISS-917 — statuses whose issues a master may SEE but not claim; the shape is `poolBacklogSchema` above and the refusal pairing it with `intakeGate` lives in the `superRefine` at the bottom of this object
     poolBacklog: poolBacklogSchema.optional(),
-    // cm:guard `enabled === false` does NOT route around a stage — the walk that did was deleted with the staged lane (ISS-897), and nothing has replaced it. Its one effect is that `buildLadder` (prompt/facts/resolve.ts) leaves the status out of the ladder rendered into the agent's prompt; at the entry status it also closes the gate `isEntryGateClosed` reads. No validator runs at PATCH time (ISS-994).
+    // cm:guard `enabled === false` does NOT route around a stage — the walk that did was deleted with the staged lane (ISS-897), and nothing has replaced it. Its one effect is that `effectivePipelineStates` (prompt/facts/effective-ladder.ts) leaves the status out of the ladder rendered into the agent's prompt; at the entry status it also closes the gate `isEntryGateClosed` reads. No validator runs at PATCH time (ISS-994).
     states: statesConfigSchema,
     // cm:why ISS-580 — a resume carries the prior session's whole context, so past a peak the fresh session plus its handoff is cheaper and no less informed; 0 disables the bound, absent means 150000 tokens / 3 reopen cycles (jobs/resume-policy.ts)
     maxResumeTokens: z.number().int().min(0).optional(),
