@@ -29,8 +29,10 @@ import {
   resolveRunnerForDevice,
 } from '../jobs/prepare-claimed-job.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
+import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
 import { runnerAdmission } from './pool-admission.js';
+import { releaseLabelVerdict } from './release-label.js';
 
 export type PrepareResult =
   | {
@@ -50,7 +52,8 @@ export type PrepareResult =
         | 'runner_too_old'
         | 'runner_withdrawn'
         | 'device_disabled'
-        | 'runner_unbound';
+        | 'runner_unbound'
+        | 'release_label_missing';
     };
 
 export type StartResult = { ok: true } | { ok: false; reason: 'hold_lost' | 'runner_too_old' };
@@ -81,6 +84,22 @@ export async function prepareJobForMaster(args: {
   const admission = await runnerAdmission({ jobId: args.jobId, deviceId: args.deviceId });
   if (!admission.admitted) {
     return { ok: false, reason: admission.reason };
+  }
+
+  // cm:guard the pool's filter is not enough on its own, for the same reason `runnerAdmission` is
+  // checked here: a master holds a page of pool rows across a round trip, and an operator moving
+  // the release label in that window would otherwise hand the production deploy to a box that no
+  // longer holds the credential. Refused BEFORE the hold, so there is nothing to give back.
+  // cm:edge lockstep -> packages/core/src/devices/pool.ts — `RUNNER_MAY_TAKE_JOB` is this same
+  // verdict as SQL. Answer differently in either place and the fleet either burns claims on work it
+  // can never take or hides work a box was entitled to.
+  const releaseLabel = await releaseLabelVerdict({ jobId: args.jobId, deviceId: args.deviceId });
+  if (!releaseLabel.allowed) {
+    logger.warn(
+      { jobId: args.jobId, deviceId: args.deviceId, ...releaseLabel },
+      'claim: release job refused, this box does not carry the project release label',
+    );
+    return { ok: false, reason: 'release_label_missing' };
   }
 
   const claimed = await db.transaction(async (tx) => {
