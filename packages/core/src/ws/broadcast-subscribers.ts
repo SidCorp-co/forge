@@ -35,7 +35,6 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
     });
   });
 
-
   bus.on('taskCreated', (p) => {
     roomManager.publish(projectRoom(p.projectId), {
       event: 'task.created',

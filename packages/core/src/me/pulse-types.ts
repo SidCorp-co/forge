@@ -4,7 +4,6 @@
  * person, which way is the flow going, is the output any good.
  */
 
-
 /** A set the response counts in full and names only the first `shown.length` of. */
 export interface PulseCapped<T> {
   total: number;

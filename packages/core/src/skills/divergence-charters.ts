@@ -109,6 +109,7 @@ export async function upsertCharter(
     ...(input.reason !== undefined ? { reason: input.reason } : {}),
   });
 
+  // biome-ignore lint/style/noNonNullAssertion: the insert above is an upsert with a `returning`, so it yields exactly one row on both arms and drizzle's array type is what loses that.
   const saved = row!;
   return {
     id: saved.id,

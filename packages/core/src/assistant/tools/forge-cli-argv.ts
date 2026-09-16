@@ -3,7 +3,6 @@
  * free of any import that reaches a database so the rules test on their own.
  */
 
-
 import { withheldForJob } from 'forge-plugin/plugin/src/resolve/visibility.mjs';
 
 /**

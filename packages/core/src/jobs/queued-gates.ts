@@ -15,7 +15,6 @@
  * no temporal predicate beyond `valid_until`, the heartbeat, runner load and
  * `retry_after_at` (ISS-197) — a `gate_at + N seconds` debouncer trips it; and
  * no writes from either reader.
- *
  */
 
 import { eq, type SQL, sql } from 'drizzle-orm';
@@ -120,7 +119,6 @@ export function buildBarrierFragments(args: {
 
   const ctes = sql`    fresh_capable_runners AS (
       SELECT r.id,
-             -- cm:guard carried as a COLUMN and not a WHERE clause, so the reason arms can tell "no box at all" from "a box too old to claim". Every reader asking "is there a usable runner" MUST therefore say WHERE claim_capable; one that forgets counts a box the claim refuses outright ("runner_too_old") and re-opens the picker-offers/selector-rejects deadlock this CTE carries three other guards about.
              ${claimCapableSql('d')} AS claim_capable
       FROM runners r
       JOIN devices d ON d.id = r.device_id
@@ -128,13 +126,9 @@ export function buildBarrierFragments(args: {
         AND r.status = 'online'
         AND r.last_seen_at IS NOT NULL
         AND r.last_seen_at > now() - (${livenessSeconds} || ' seconds')::interval
-        -- cm:guard every clause runners/select.ts filters on MUST appear here too, or the two disagree silently: this gate reports the job as dispatchable while the candidate query excludes the only box, so the job sits with NO reason for any UI to show. Measured 2026-08-14: 11 jobs across 5 projects sat 6-22 days in exactly that state, back when a selector rejected what the picker offered.
         AND (r.rate_limited_until IS NULL OR r.rate_limited_until <= now())
-        -- cm:guard an auth limit has NO reset time by design ("rate_limited_until" stays NULL, nothing parseable to wait for), so the time predicate above passes it and an auth-dead runner reads as healthy. It must be excluded by NAME, and no widening of quarantine removes that need: "maybeQuarantineRunner" only counts failures "classifyBoxFault" recognises, and an expired OAuth session is neither a preflight check nor an unclaimed dispatch — the runner claims the job, starts the agent, and the agent dies on the credential. That is how device dev1-ai013 took 421 jobs in 5.5h with "quarantined_until" still NULL.
         AND r.limit_reason IS DISTINCT FROM 'auth'
-        -- cm:guard mirrors NOT_QUARANTINED in runners/select.ts — a quarantined runner was counted as available here, which is the deadlock above and is also what would have made the escalating backoff invisible: longer TTL, more days of a job queued with no reason
         AND (r.quarantined_until IS NULL OR r.quarantined_until <= now())
-        -- cm:guard mirrors WORKSPACE_READY in runners/select.ts — NULL is a legacy row that predates the column and stays eligible; only an explicit non-ready value blocks
         AND (r.provision_status IS NULL OR r.provision_status = 'ready')
         -- Device turn-off gate — MUST mirror runners/select.ts
         -- (NOT_DISABLED_DEVICE). Without it the picker/asserter counts a runner

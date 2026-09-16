@@ -14,7 +14,6 @@
  * real `count()`, where MCP infers `hasMore` from one overfetched row.
  */
 
-
 import type { Context } from 'hono';
 import { z } from 'zod';
 

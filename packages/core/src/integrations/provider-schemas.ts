@@ -398,13 +398,6 @@ export function configSchemaForProvider(provider: string): z.ZodTypeAny {
 /**
  * The config schema for an OWNER-SCOPED connection PATCH, where a binding-tier
  * key does not belong.
- *
- * cm:guard only `google` is narrowed, and that is a statement about scope rather
- * than about the other providers: `coolify` carries `targets` and every provider
- * carries the three release-channel keys through this same door, so a connection
- * PATCH can put a binding-tier key on a shared credential for all of them. That
- * is a pre-existing hole ISS-1036 found and did not widen; narrowing the rest
- * changes what six live providers accept and is somebody's own change to make.
  */
 export function connectionConfigSchemaForProvider(provider: string): z.ZodTypeAny {
   // Both of its fields are already optional, so there is no `.partial()` to take.

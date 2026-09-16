@@ -50,12 +50,6 @@ async function selectAbandoned(
           SELECT 1 FROM jobs j JOIN pipeline_runs r ON r.id = j.pipeline_run_id
           WHERE r.issue_id = i.id AND j.status IN (${idList(LIVE)})
         )
-    -- cm:guard the cutoff comes from the CALLER's now and not from the database's, because
-    -- the age this read reports is measured against that same value in ageSeconds below: a
-    -- row the SQL called stale against one clock and the fold ages against another is a row
-    -- whose reported age can disagree with the reason it was selected. That now is injectable
-    -- so the integration suite can place a fixture either side of the threshold deliberately.
-    -- The ISO text is cast rather than bound as a Date, which postgres-js refuses (ISS-267).
     ), aged AS (
       SELECT * FROM stale
       WHERE idle_since < ${now.toISOString()}::timestamptz

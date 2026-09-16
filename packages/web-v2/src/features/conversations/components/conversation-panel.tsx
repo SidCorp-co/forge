@@ -90,9 +90,6 @@ export function ConversationPanel({
           >
             Back to chat
           </button>
-          {/* cm:guard the close control is on THIS header too and not only the chat's: the panel can
-              be left showing the list, and a person who has to go back to the chat before they can
-              shut the panel is one the close button has hidden from. */}
           {onClose && (
             <IconButton icon="x" size="sm" aria-label="Close conversation" onClick={onClose} />
           )}

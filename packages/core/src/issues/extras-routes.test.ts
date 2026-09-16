@@ -57,7 +57,6 @@ vi.mock('../ws/server.js', () => ({
   roomManager: { publish: vi.fn(), subscribe: vi.fn(), unsubscribe: vi.fn() },
 }));
 
-
 vi.mock('../pipeline/runs.js', () => ({
   openIssueRun: vi.fn(async () => ({ id: 'run-1', startedAt: new Date() })),
   openOneShotRun: vi.fn(async () => ({ id: 'run-1' })),

@@ -23,10 +23,11 @@ number.
 **The driver skill lives in a second repo.** `github.com/SidCorp-co/forge-plugin` is Forge's own
 Claude Code plugin — the `forge` CLI, the session hooks, and `plugin/skills/issue-flow`, which is
 the skill `AUTONOMOUS_SKILL_NAME` names and every `drive` job runs. It reaches a runner through
-`pipelineConfig.plugins` → `GET /api/devices/me/plugins`, gated by that box's `[plugins] enabled`.
-Nothing in this repo can gate the pair: a change to the five driver statuses, the drive prompt, or
-the phase endpoints has a second half in that repo, and the `cm:guard`s that name it are the only
-record of the coupling. It is a Forge project too (`forge-plugin`, autonomous, pinned to a SHA).
+`projects.agent_config.plugins` → `GET /api/devices/me/plugins`, gated by that box's
+`[plugins] enabled`. Nothing in this repo can gate the pair: a change to the five driver statuses,
+the drive prompt, or the phase endpoints has a second half in that repo, and
+[`docs/architecture/forge-plugin-coupling.md`](docs/architecture/forge-plugin-coupling.md) is the
+record of every such place. It is a Forge project too (`forge-plugin`, autonomous, pinned to a SHA).
 
 ## Commands
 
@@ -174,8 +175,9 @@ your hands owned — it leaves owned by a row somebody can open, which is exactl
 `file-instead-of-fix` refuses everywhere else and requires here.
 
 The pair is not symmetric. Nothing in this repo can gate that one: a change to the five driver
-statuses, the drive prompt or the phase endpoints has a second half over there, and the
-`cm:guard`s naming it are the only record of the coupling.
+statuses, the drive prompt or the phase endpoints has a second half over there, and
+[`docs/architecture/forge-plugin-coupling.md`](docs/architecture/forge-plugin-coupling.md) names
+each of those places, what breaks when the halves drift, and whether anything would notice.
 
 ## Green is a claim about one proposition
 
@@ -209,9 +211,10 @@ line number — a line number is stale the moment anything above it moves, and s
   box was doing (ISS-923).
   - *Forward — no child `jobs` row stays non-terminal under a terminal `pipeline_run`*: one orphan
     wedges a runner slot. Three defences in lockstep (close-cascade, loop monitor, pool exclusion),
-    plus `held` as a deliberate fourth shape that is NOT an orphan. The `cm:guard` and the
-    `cm:edge lockstep` set lives on `packages/core/src/pipeline/runs-cascade.ts`; the four hops and
-    their thresholds are modelled in `packages/core/src/jobs/loop-monitor.ts`.
+    plus `held` as a deliberate fourth shape that is NOT an orphan. The cascade itself is
+    `packages/core/src/pipeline/runs-cascade.ts`; the four hops and their thresholds are modelled
+    in `packages/core/src/jobs/loop-monitor.ts`; the pool's half is
+    `packages/core/src/devices/admissible.ts`.
   - *Inverse — no `pipeline_run` stays non-terminal once every child job is terminal*:
     `packages/core/src/pipeline/runs-concluded.ts`, driven from the sweeper tick, closing on the
     LAST job's outcome so a run whose last job failed never closes `completed`.

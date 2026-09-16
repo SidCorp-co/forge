@@ -119,7 +119,6 @@ export function isReopenEntry(from: IssueStatus, to: IssueStatus): boolean {
   return to === 'reopen' && from !== 'reopen' && from !== 'in_progress';
 }
 
-
 export type StagesConfig = Partial<
   Record<
     IssueStatus,

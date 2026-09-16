@@ -259,11 +259,6 @@ function GoogleBindingPanel({
 /**
  * Read the account address out of the pasted key so the share hint can name it
  * before anything is saved. Never throws — a half-typed paste is normal.
- *
- * cm:guard it returns an address only for a WHOLE key file, because its result
- * is also what enables Connect. Reading `client_email` alone would let any JSON
- * carrying that one field clear the form, and the server would then refuse the
- * paste the screen had just called valid.
  */
 function clientEmailOf(keyJson: string): string | null {
   try {

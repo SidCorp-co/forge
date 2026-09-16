@@ -213,10 +213,6 @@ export async function runTimeseries(params: TimeseriesParams): Promise<Timeserie
             AND al.created_at >= ${cutoff}
           GROUP BY al.issue_id
         ),
-        -- cm:guard ISS-1022 - scoped to the issues the resolved CTE above selected,
-        -- and that changes no figure: the outer query LEFT JOINs this on exactly
-        -- those ids, so every row it used to compute for another tenant's issue was
-        -- discarded. Without the scope it aggregated every transition in the table.
         work_start AS (
           SELECT al.issue_id, min(al.created_at) AS started_at
           FROM activity_log al

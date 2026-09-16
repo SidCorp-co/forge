@@ -236,7 +236,6 @@ function escalationQuestion(rawArguments: string, fallback: string): string {
     const parsed = JSON.parse(rawArguments) as { question?: unknown };
     if (typeof parsed.question === 'string' && parsed.question.trim())
       return parsed.question.trim();
-  } catch {
-  }
+  } catch {}
   return fallback;
 }

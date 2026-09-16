@@ -76,13 +76,6 @@ function describeSheetsFailure(
 /**
  * Mint for one operation, falling back once to the key the rotation window
  * retained.
- *
- * cm:guard the fallback belongs HERE and not only in the adapter's healthcheck.
- * With it in one place, an operator who rotates to a key Google has not
- * propagated yet sees a green card — the healthcheck recovers — while every
- * agent call fails `ACCOUNT_REJECTED`, which is a directory saying the opposite
- * of what the surface does. The two paths recover on the same terms or the
- * health verdict is a claim about a code path nobody uses (ISS-1036).
  */
 async function mintFor(args: GoogleClientArgs, access: SheetsAccess): Promise<string> {
   const scope = scopeFor(access);

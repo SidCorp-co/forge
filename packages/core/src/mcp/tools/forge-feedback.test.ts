@@ -487,8 +487,8 @@ describe('forge_feedback review', () => {
     const LINKED_ISSUE_ID = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
 
     queueSlugAndMember();
-    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]); // cm:why resolveLinkedIssue visibility fence
-    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // cm:why linkedIssueId lookup
+    mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
+    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]);
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt, linkedIssueId: LINKED_ISSUE_ID },
     ]);
@@ -518,7 +518,7 @@ describe('forge_feedback review', () => {
 
     queueSlugAndMember();
     mockVisibleProjects([PROJECT_ID, PROJECT_ID_2]);
-    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]); // cm:why lives in PROJECT_ID_2
+    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]);
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt, linkedIssueId: FORGE_ISSUE_ID },
     ]);
@@ -543,7 +543,7 @@ describe('forge_feedback review', () => {
 
     queueSlugAndMember();
     mockVisibleProjects([PROJECT_ID]);
-    selectLimit.mockResolvedValueOnce([]); // cm:why not among visible projects
+    selectLimit.mockResolvedValueOnce([]);
 
     await expect(
       tool.handler({ action: 'review', reportId: REPORT_ID, linkedIssueId: HIDDEN_ISSUE_ID }),

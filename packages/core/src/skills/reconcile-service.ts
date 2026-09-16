@@ -154,6 +154,7 @@ export function validateC1C5(bundle: Partial<ReconcileBundleSnapshot>): string |
       return `C1: missing required bundle input: ${key}`;
     }
   }
+  // biome-ignore lint/style/noNonNullAssertion: `readAt` is in REQUIRED_BUNDLE_KEYS, so the loop above has already returned for undefined, null and the empty string.
   const readAt = new Date(bundle.readAt!).getTime();
   if (Number.isNaN(readAt)) return 'C2: bundle.readAt is not a valid ISO timestamp';
   const ageMs = Date.now() - readAt;

@@ -198,8 +198,7 @@ export async function discardCommentAttachments(ids: readonly string[]): Promise
   for (const row of rows) {
     try {
       await getStorage().delete(row.path);
-    } catch {
-    }
+    } catch {}
   }
   await db.delete(commentAttachments).where(inArray(commentAttachments.id, [...ids]));
 }

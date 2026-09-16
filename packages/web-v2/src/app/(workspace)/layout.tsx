@@ -449,9 +449,6 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
               fitBody
               hideHeader
             >
-              {/* cm:guard the phone mounts the same `ConversationPanel` the dock does rather than
-                  the chat alone: the two widths are one behaviour, and a history control that
-                  existed on desktop only would leave the phone exactly where ISS-1028 found it. */}
               <ConversationPanel projectId={railProject.id} onClose={() => setChatOpen(false)} />
             </SlideOver>
           </div>

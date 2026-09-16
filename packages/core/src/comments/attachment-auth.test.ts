@@ -1,7 +1,6 @@
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-
 const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
 const TEST_PEPPER = 'test-pepper-32-chars-long-abcdefghij';
 

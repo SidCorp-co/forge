@@ -42,8 +42,7 @@ export function baseRev(root) {
   try {
     const mb = git(['merge-base', 'origin/main', 'HEAD'], root);
     if (mb && mb !== head) return mb;
-  } catch {
-  }
+  } catch {}
   try {
     return git(['rev-parse', 'HEAD~1'], root);
   } catch {

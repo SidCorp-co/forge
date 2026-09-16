@@ -341,8 +341,8 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     authVerified();
     selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({ role: 'member' });
-    mockVisibleProjectIds([PROJECT_ID, OTHER_PROJECT_ID]); // cm:why resolveLinkedIssue fence
-    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]); // cm:why issue lookup
+    mockVisibleProjectIds([PROJECT_ID, OTHER_PROJECT_ID]);
+    selectLimit.mockResolvedValueOnce([{ id: LINKED_ISSUE_ID }]);
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt: NOW, linkedIssueId: LINKED_ISSUE_ID },
     ]);
@@ -367,7 +367,7 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({ role: 'member' });
     mockVisibleProjectIds([PROJECT_ID, OTHER_PROJECT_ID]);
-    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]); // cm:why lives in OTHER_PROJECT_ID
+    selectLimit.mockResolvedValueOnce([{ id: FORGE_ISSUE_ID }]);
     updateReturning.mockResolvedValueOnce([
       { id: REPORT_ID, reviewedAt: NOW, linkedIssueId: FORGE_ISSUE_ID },
     ]);
@@ -392,7 +392,7 @@ describe('POST /api/feedback-reports/:id/reviewed', () => {
     selectLimit.mockResolvedValueOnce([{ id: REPORT_ID, projectId: PROJECT_ID }]);
     projectAccess.mockResolvedValueOnce({ role: 'member' });
     mockVisibleProjectIds([PROJECT_ID]);
-    selectLimit.mockResolvedValueOnce([]); // cm:why not among visible projects
+    selectLimit.mockResolvedValueOnce([]);
 
     const app = buildApp();
     const res = await app.request(`/api/feedback-reports/${REPORT_ID}/reviewed`, {

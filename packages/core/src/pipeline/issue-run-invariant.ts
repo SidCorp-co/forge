@@ -111,9 +111,6 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
           WHERE rs.project_id = i.project_id
             AND rs.kind = 'system'
             AND rs.status IN ('running', 'paused')
-            -- cm:guard CANONICAL, the form openRunSession stores, never the project's own
-            -- prefix: matching on issue_prefix here makes a live run's issues invisible to
-            -- this pass and every one of them is reported as an orphan (ISS-992)
             AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq) -- ISS-992:canonical
        )
   `)) as unknown as OrphanRow[];

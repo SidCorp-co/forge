@@ -239,7 +239,6 @@ describe('0241 forward — the handle each project gets', () => {
       await db.drop();
     }
   });
-
 });
 
 describe('0241 forward — the person a row did or did not record', () => {

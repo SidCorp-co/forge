@@ -2,7 +2,6 @@ import { scrubSentryEvent } from '@forge/observability';
 import * as Sentry from '@sentry/node';
 import { sourceCommit } from './source-commit.js';
 
-
 let initialized = false;
 
 export function initSentry(): boolean {

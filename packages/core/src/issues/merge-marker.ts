@@ -184,7 +184,6 @@ export async function applyMergeMarker(args: {
     after: { mergedAt: issue.mergedAt, mergedCommitSha: issue.mergedCommitSha },
   });
 
-
   if (args.op !== 'mark') return { issue, action: 'unmarked' };
   return { issue, action: stampResult.stamped ? 'merged' : 'already_merged' };
 }

@@ -58,8 +58,7 @@ async function readersOf(conversationId: string): Promise<string[]> {
     try {
       await assertConversationReadable(conversationId, person.userId);
       out.push(person.userId);
-    } catch {
-    }
+    } catch {}
   }
   return out;
 }

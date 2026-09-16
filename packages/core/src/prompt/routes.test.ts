@@ -239,7 +239,6 @@ describe('POST /api/prompts/preview — the states it will answer for', () => {
     (t) => !new Set(Object.values(RUNNER_CAPABILITIES).flat()).has(t),
   );
 
-
   it('there is something to refuse', () => {
     expect(unclaimable).toEqual(
       expect.arrayContaining([

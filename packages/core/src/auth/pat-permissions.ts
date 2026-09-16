@@ -37,8 +37,6 @@ export const PAT_PERMISSION_RESOURCES = {
   questions: ['/api/questions'],
 } as const satisfies Record<string, readonly string[]>;
 
-
-
 export type PatPermissionResource = keyof typeof PAT_PERMISSION_RESOURCES;
 
 /**

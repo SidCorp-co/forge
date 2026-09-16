@@ -34,10 +34,6 @@ export async function detectRetryRescueThresholds(
       failure_reason: string;
       rescues: number | string;
     }>(sql`
-      -- cm:guard the project list is NULL, meaning every project, and that is the one
-      -- caller entitled to pass it: this runs on the sweeper across the whole
-      -- deployment. An empty array here would be the opposite answer and would
-      -- silence the alert entirely.
       SELECT project_id, failure_reason, count(*)::int AS rescues
       FROM ${retryRescuesSince(null, sql`${start}`)}
       GROUP BY project_id, failure_reason

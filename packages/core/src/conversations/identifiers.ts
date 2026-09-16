@@ -23,9 +23,6 @@ const PATTERNS: readonly RegExp[] = [
   /`([^`]+)`/g,
 ];
 
-
-
-
 /**
  * Every identifier a piece of text names, lower-cased and deduplicated.
  */

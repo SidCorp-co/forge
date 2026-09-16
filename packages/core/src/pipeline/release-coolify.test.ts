@@ -372,7 +372,7 @@ describe('isIssueAtReleaseStage', () => {
 describe('tryDispatchCoolifyRelease — prod confirm gate', () => {
   it('returns pendingHumanConfirm and enqueues nothing when the gate is unconfirmed', async () => {
     listBindingsSpy.mockResolvedValueOnce([prodPair]); // active coolify bindings
-    selectQueue.push([{ status: 'running' }]); // cm:why the run's own status, read first by ISS-922's terminal-run report
+    selectQueue.push([{ status: 'running' }]);
     selectQueue.push([]); // projectAutoProdDeploy: no agentConfig → gate stays on
     selectQueue.push([]); // getProdGateState: no run carries a gate
     selectQueue.push([{ metadata: {} }]); // markPendingHumanConfirm: run metadata read

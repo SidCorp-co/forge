@@ -11,7 +11,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-
 type PipelineMods = {
   HooksBus: typeof import('../../src/pipeline/hooks.js').HooksBus;
   // biome-ignore format: esbuild's TS transform cannot parse a line break inside import(); keep on one line

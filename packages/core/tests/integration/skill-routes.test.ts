@@ -11,7 +11,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-
 describe('F2 skill routes integration', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;

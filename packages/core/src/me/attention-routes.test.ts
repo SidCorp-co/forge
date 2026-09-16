@@ -153,7 +153,7 @@ describe('GET /api/me/attention', () => {
         projectSlug: 'alpha',
         projectName: 'Alpha',
       },
-    ]); // cm:why pendingSkillUpdates
+    ]);
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },
@@ -313,7 +313,7 @@ describe('GET /api/me/attention', () => {
         projectSlug: 'beta',
         projectName: 'Beta',
       },
-    ]); // cm:why pendingSkillUpdates
+    ]);
 
     const res = await buildApp().request('/api/me/attention', {
       headers: { authorization: `Bearer ${await token()}` },

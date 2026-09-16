@@ -15,7 +15,6 @@
  * as genuinely dead, and therefore retryable.
  */
 
-
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, runners } from '../db/schema.js';

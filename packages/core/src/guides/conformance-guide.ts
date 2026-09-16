@@ -51,21 +51,31 @@ node scripts/check-<axis>.mjs --update-baseline
 
 Then **say so in the commit message and name what moved**. The changed numbers in the diff are the record; a re-baseline mentioned nowhere reads as a cleanup that never happened. Never re-baseline to make an unexplained red go away — find out why it went red first.
 
-### Read the advisory before you edit
+### What a comment in this repo may claim
 
-A full verify run prints the declared couplings on every file you changed — \`cm:guard\` (invariants you must obey), \`cm:edge\` (files that must change together), \`cm:flow\` (runtime steps). This is the pull-side replacement for context injection and it works with nothing installed. If an edge's other side needs the same change, make it now rather than leaving the pair inconsistent.
+A comment beside code explains that code. It does not assert anything about another file, another
+repository, a database row or a past incident: this repo removed 8,861 such annotations in ISS-1049
+after measuring that 5.3% of the identifiers they named existed nowhere outside a comment. Do not
+write a replacement, with or without a marker.
 
-Ask **before** you edit rather than after, and ask the map rather than reading files:
+Where you find something worth recording, it goes where it can be searched and corrected:
 
-| Want to know | Ask |
+| What you learned | Where it goes |
 |---|---|
-| what this file is coupled to, both directions | \`cm impact <path>\` |
-| the ordered steps of a named runtime flow | \`cm flow <name>\` |
-| the whole declared graph, for your own reasoning | \`cm graph --json\` |
+| a measured lesson, a cost, a falsifying experiment | \`forge knowledge write\` — found later by \`forge knowledge search\` |
+| a coupling with \`github.com/SidCorp-co/forge-plugin\` | \`docs/architecture/forge-plugin-coupling.md\` |
+| what a gate is, and what it was born from | \`scripts/README.md\` |
+| what shipped | \`CHANGELOG.md\` |
+| why a change was made | the tracker issue the commit names |
 
-These answer in one call what would otherwise cost a dozen file reads, and they carry edges no language server can see — a \`lockstep\` pair usually has no import between its two sides. They are also only as complete as what somebody declared: an empty \`cm impact\` means *nothing was declared here*, never *nothing depends on this*. Confirm with references either way.
+Three annotation kinds survive, and each because something reads it: \`cm:flow\`, which
+\`check-flow-coverage\` gates; \`cm:hack\`, whose \`until:\` condition is checkable; and
+\`cm:ignore\`, a directive to the \`cm\` tool rather than a claim about the code. The reasoning,
+and what removing the rest gave up, is \`docs/architecture/comment-conventions.md\`.
 
-The other direction is part of your job too. If you discover a coupling nothing links — two sides that must agree on a string, a call that must run before another, an effect that happens in SQL or a cron — declare it with a \`cm:edge\` in the same change. That is how the next agent gets context you had to work for.
+To learn what a file is coupled to, ask the tools that derive it rather than a comment: an LSP for
+references, \`archmap check\` for which module may depend on which, and the tests for what a change
+breaks.
 
 ### Cardinal rules
 

@@ -93,9 +93,6 @@ export function ConversationSidebar({
         )}
       </div>
 
-      {/* cm:guard the toggle is rendered only while the rail is EXPANDED, and not as a third icon on
-          the 64px rail: the rail hides the list entirely, so a control there would swap a set nobody
-          can see and read as having done nothing until the rail is opened again. */}
       {!collapsed && (
         <div className="flex flex-none items-center gap-1.5 border-b border-line px-2 py-1.5">
           <span className="fg-overline flex-1 px-1 text-subtle">

@@ -480,7 +480,6 @@ export function registerMemoryIndexer(bus: HooksBus): () => void {
     }),
   );
 
-
   return () => {
     for (const u of unsubs) u();
     alreadyRegistered = false;

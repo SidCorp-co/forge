@@ -1,4 +1,3 @@
-
 import { ilike, or, type SQL, sql } from 'drizzle-orm';
 import type { AnyPgColumn } from 'drizzle-orm/pg-core';
 import { issues } from '../db/schema.js';

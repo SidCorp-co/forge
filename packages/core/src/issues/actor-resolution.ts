@@ -3,7 +3,6 @@ import { db } from '../db/client.js';
 import { devices, users } from '../db/schema.js';
 import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './actor-identity.js';
 
-
 const UNKNOWN_LABEL = 'Unknown';
 
 function unknownActor(type: ActorType, id: string): ResolvedActor {

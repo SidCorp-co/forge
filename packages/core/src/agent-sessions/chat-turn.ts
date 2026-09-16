@@ -33,7 +33,6 @@ import {
 import { readSessionModel } from './session-model.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
-
 type AgentSessionRow = typeof agentSessions.$inferSelect;
 
 /**

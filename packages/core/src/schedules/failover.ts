@@ -219,8 +219,7 @@ async function attemptScheduleFailover(sessionId: string): Promise<ScheduleFailo
         .update(schedules)
         .set({ lastSessionId: dispatched.id, lastStatus: 'running' })
         .where(eq(schedules.id, meta.scheduleId as string));
-    } catch {
-    }
+    } catch {}
     return { ok: true, status: 'redispatched', sessionId: dispatched.id, deviceId };
   } catch (err) {
     logger.error(

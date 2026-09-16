@@ -1,4 +1,3 @@
-
 import { eq } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import { issuePrefixAliases, projects } from '../db/schema.js';

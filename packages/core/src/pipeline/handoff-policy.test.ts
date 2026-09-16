@@ -56,5 +56,4 @@ describe('resolveHandoffsPolicy', () => {
     );
     expect(r.injectFromSteps).toEqual(['triage', 'plan', 'clarify']);
   });
-
 });

@@ -2,7 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 
 // cm:ignore CM013 — every frozen comment in this file is an `i18n-allow` pragma naming what its Vietnamese fixture exercises. The fixtures have to be Vietnamese, because the rules under test match Vietnamese phrasing, and deleting a pragma to pay the drain reds the language gate instead.
 
-
 const selectWhere = vi.fn();
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
 vi.mock('../db/client.js', () => ({

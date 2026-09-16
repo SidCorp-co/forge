@@ -267,8 +267,7 @@ async function discardIssueAttachments(ids: readonly string[]): Promise<void> {
   for (const row of rows) {
     try {
       await getStorage().delete(row.path);
-    } catch {
-    }
+    } catch {}
   }
   await db.delete(issueAttachments).where(inArray(issueAttachments.id, [...ids]));
 }

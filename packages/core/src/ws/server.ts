@@ -247,8 +247,7 @@ export function attachWs(server: AnyServer): void {
                   timestamp: new Date().toISOString(),
                 }),
               );
-            } catch {
-            }
+            } catch {}
             return;
           }
           roomManager.subscribe(ws, room);

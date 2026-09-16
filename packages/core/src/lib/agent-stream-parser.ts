@@ -358,7 +358,6 @@ export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]):
   }
 }
 
-
 /** A persisted job_event row, narrowed to the fields the derive reads. */
 export interface JobEventLike {
   kind: string;

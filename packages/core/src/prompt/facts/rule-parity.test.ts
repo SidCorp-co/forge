@@ -30,15 +30,13 @@ const ORIENTATION_RS = join(
 
 /** Strip the escaping each surface needs so intent can be compared directly. */
 function normalize(text: string): string {
-  return (
-    text
-      .replaceAll('\\`', '`')
-      .replaceAll('\\n', '\n')
-      .replaceAll('\\"', '"')
-      .replaceAll('{{', '{')
-      .replaceAll('}}', '}')
-      .replace(/\s+/g, ' ')
-  );
+  return text
+    .replaceAll('\\`', '`')
+    .replaceAll('\\n', '\n')
+    .replaceAll('\\"', '"')
+    .replaceAll('{{', '{')
+    .replaceAll('}}', '}')
+    .replace(/\s+/g, ' ');
 }
 
 const promptCopy = normalize(OPERATING_AFFORDANCES_TEXT);

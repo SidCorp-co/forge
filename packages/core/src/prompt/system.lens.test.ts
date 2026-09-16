@@ -101,6 +101,7 @@ describe('buildChatPreamble — lens override (ISS-674)', () => {
 
     expect(preamble).toContain('Speak their language');
     expect(preamble).not.toContain('implementation depth');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock chain
     expect((db as any).select).toHaveBeenCalledTimes(2);
   });
 

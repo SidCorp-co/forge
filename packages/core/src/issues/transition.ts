@@ -200,8 +200,7 @@ export async function triggerTerminalDispatch(
         },
       });
     }
-  } catch {
-  }
+  } catch {}
 }
 
 export const transitionRoutes = new Hono<{ Variables: AuthVars }>();

@@ -71,7 +71,6 @@ export interface ForgeFact {
   relevant?(ctx: FactRenderContext): boolean;
 }
 
-
 export const OPERATING_AFFORDANCES_TEXT = `## Operating affordances
 Forge gives you a tool for things agents routinely do in prose. When you hit the trigger, reach for the tool — and avoid the red flag.
 

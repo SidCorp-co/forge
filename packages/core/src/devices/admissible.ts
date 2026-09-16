@@ -143,7 +143,6 @@ export async function readAdmissibleIssues(args: {
           i.status IN (${statusList})
           ${a.entryOnRelease ? sql`OR (i.status = ${AUTONOMOUS_ENTRY_STATUS} AND i.session_context ? 'runRelease')` : sql``}
         )
-        -- cm:guard asks whether a job is LIVE, never whether one ever existed: a terminal row is history, and held is a job a session still owns so it stays excluding. Unfiltered, this hid every issue a pre-ISS-933 dispatcher had ever minted for — zero admissible rows on all 25 projects forge-vm serves, measured 2026-09-08.
         AND NOT EXISTS (
           SELECT 1 FROM jobs j
           WHERE j.issue_id = i.id AND j.status NOT IN ('done', 'failed', 'cancelled')
@@ -152,15 +151,11 @@ export async function readAdmissibleIssues(args: {
           SELECT 1 FROM pipeline_runs pr
           WHERE pr.issue_id = i.id AND pr.status IN ('running', 'paused')
         )
-        -- cm:guard a run session is CROSS-BOX state and the per-box ledger cannot see it. Without this, two boxes serving one project each open a run over the same issue, and each ledger correctly reports no conflict (ISS-933 criterion 7).
         AND NOT EXISTS (
           SELECT 1 FROM pipeline_runs rs
           WHERE rs.project_id = i.project_id
             AND rs.kind = 'system'
             AND rs.status IN ('running', 'paused')
-            -- cm:guard CANONICAL on purpose: runIssues holds the form openRunSession
-            -- canonicalised, never the project's own prefix, so this containment must not take
-            -- issue_prefix into account or a run's issues silently stop being seen (ISS-992)
             AND rs.metadata -> 'runIssues' @> to_jsonb('ISS-' || i.iss_seq) -- ISS-992:canonical
         )
       ORDER BY i.created_at ASC

@@ -98,7 +98,6 @@ const EnvSchema = z.object({
   PIPELINE_ADVISORY_LOCK_TIMEOUT_MS: z.coerce.number().int().positive().default(3_000),
 });
 
-
 const RETIRED_ENV_VARS: Record<string, string> = {
   RATE_LIMIT_PAT_MAX: 'RATE_LIMIT_PAT_READ_MAX and RATE_LIMIT_PAT_WRITE_MAX',
   RATE_LIMIT_PAT_WINDOW_MS: 'RATE_LIMIT_PAT_READ_WINDOW_MS and RATE_LIMIT_PAT_WRITE_WINDOW_MS',

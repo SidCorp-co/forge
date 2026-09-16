@@ -22,7 +22,6 @@ import type {
   AdminMetricWindow,
 } from './types.js';
 
-
 export type BucketUnit = 'hour' | 'day' | 'week';
 
 export interface WindowSpec {

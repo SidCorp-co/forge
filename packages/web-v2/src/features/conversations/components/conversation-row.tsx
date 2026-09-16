@@ -69,8 +69,6 @@ export function ConversationRow({
     return (
       <div className="flex min-h-[44px] w-full items-center gap-2 rounded-lg border border-[color:var(--link)] px-2 py-1.5">
         <ProjectMark tint={glyph.tint} ink={glyph.ink} initials={initials} size={22} />
-        {/* cm:why the field takes focus on mount because the editor only ever opens from a
-            deliberate press on this row's rename control — focus belongs where that press asked */}
         <Input
           autoFocus
           value={draft}
@@ -94,10 +92,6 @@ export function ConversationRow({
         open ? "border-[color:var(--link)] bg-hover" : "border-transparent"
       }`}
     >
-      {/* cm:guard the open target carries an explicit label rather than leaving its name to its own
-          text: `ProjectMark` renders the project's initials as live text, so the computed name was
-          "ALRelease planAlpha" — a room announced to a screen reader by two letters nobody says out
-          loud, and a name no test could match without encoding that accident. */}
       <button
         type="button"
         onClick={onOpen}

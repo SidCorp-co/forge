@@ -1,4 +1,3 @@
-
 import { scrubLogText } from '@forge/observability';
 import type { RocketChatDdpClient } from './ddp-client.js';
 import { postRoomMessage } from './rest-client.js';

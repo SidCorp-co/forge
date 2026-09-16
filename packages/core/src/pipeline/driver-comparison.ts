@@ -86,7 +86,6 @@ export async function driverComparison(args: {
     ), waits AS (
       SELECT sc.project_id, d.driver,
              EXTRACT(EPOCH FROM (fr.started_at - sc.created_at))::float AS wait_seconds,
-             -- cm:why GREATEST(0,...) because first_run is the MIN over ALL of the issue's jobs: one that ran staged first and drove later starts before the switch and lands negative
              GREATEST(0, EXTRACT(EPOCH FROM (fr.started_at - GREATEST(
                sc.created_at,
                CASE WHEN d.driver = 'autonomous'
@@ -98,14 +97,6 @@ export async function driverComparison(args: {
       JOIN first_run fr ON fr.issue_id = sc.id
       LEFT JOIN driver_start ds ON ds.project_id = sc.project_id
       WHERE fr.started_at IS NOT NULL AND fr.started_at >= sc.created_at
-    -- cm:guard ISS-1022 - one grouped pass, not five correlated subqueries per output
-    -- group. MAX is not an aggregate over several values here: the LEFT JOIN below is on
-    -- exactly this CTE's grouping key, so each output group sees at most one row of it and
-    -- MAX is what carries a single value through the outer GROUP BY. That is why the four
-    -- percentiles stay NULL for a pair with no waits rows - MAX of nothing is NULL, which
-    -- is what the correlated subqueries answered - while the count is COALESCEd to 0,
-    -- because count(*) over an empty correlated set answered 0 and not NULL. Coalescing
-    -- the percentiles too would report a perfect zero wait for a driver that never ran.
     ), wait_stats AS (
       SELECT w.project_id, w.driver,
              percentile_disc(0.5) WITHIN GROUP (ORDER BY w.wait_seconds)         AS median_request_to_running,
@@ -120,15 +111,6 @@ export async function driverComparison(args: {
       FROM issue_intervention_events e
       JOIN scope sc ON sc.id = e.issue_id
       JOIN driver d ON d.id = sc.id
-      -- cm:guard the predicate is the PROJECT and deliberately not occurred_at, against
-      -- this issue's own wording (ISS-1022, decision on the record): the guards above scope
-      -- both metrics to the issues that CLOSED in the window and never to the window's
-      -- events, so a time bound here would drop an intervention that happened before the
-      -- window on an issue that closed inside it - under-counting whichever driver held the
-      -- long-running work, which is the direction this measurement must never be wrong in.
-      -- The project predicate is redundant with the join to scope and is not there for
-      -- correctness: it is what stops the planner materialising the whole three-arm
-      -- intervention view before the join can discard it.
       WHERE e.project_id IN ${args.projectIds}
       GROUP BY sc.project_id, d.driver
     )

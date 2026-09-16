@@ -136,10 +136,7 @@ issueExtrasRoutes.patch(
       distinctProjects.map(async (projectId): Promise<[string, ProjectAccessState]> => {
         try {
           const access = await loadProjectAccess(projectId, userId);
-          return [
-            projectId,
-            { allowed: projectRoleAtLeast(access.role, 'member') },
-          ];
+          return [projectId, { allowed: projectRoleAtLeast(access.role, 'member') }];
         } catch (err) {
           if (err instanceof HTTPException && err.status === 404) {
             return [projectId, { allowed: false, missing: true }];

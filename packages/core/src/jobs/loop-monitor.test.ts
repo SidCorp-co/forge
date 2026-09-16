@@ -26,7 +26,7 @@ const selectLimit = vi.fn(async () => [] as Array<{ issueId: string | null }>);
 
 vi.mock('../db/client.js', () => {
   const dbStub: Record<string, unknown> = {
-    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub), // cm:why applyKernelTransition reaches its write through `exec.transaction`
+    transaction: async <T>(cb: (tx: unknown) => Promise<T>): Promise<T> => cb(dbStub),
     execute: (...args: unknown[]) => dbExecute(...(args as [])),
     update: () => ({
       set: (patch: Record<string, unknown>) => {

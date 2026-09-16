@@ -77,7 +77,6 @@ const killAckBodySchema = z
 
 const RUNNABLE_STATUSES = new Set(['dispatched', 'running']);
 
-
 async function loadJob(jobId: string) {
   const row = await readJobGate(jobId);
   if (!row) throw notFound('job not found');
@@ -322,7 +321,6 @@ jobLifecycleDeviceRoutes.post(
     }
     // ISS-439 — materialize the usage_records row from the stored job_events.
     void materializeJobUsage(updated);
-
 
     if (status === 'failed') {
       let precomputedRetry: RetryOutcome | undefined;

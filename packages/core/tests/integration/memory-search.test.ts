@@ -12,7 +12,6 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-
 const DIM = 1536;
 
 const ENV_DEFAULTS: Record<string, string> = {

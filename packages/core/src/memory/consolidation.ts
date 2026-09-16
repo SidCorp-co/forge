@@ -779,6 +779,7 @@ let reconcileWorkerRegistered = false;
  *  transition (enqueued by `registerMemoryReconcileTrigger`). */
 export async function registerMemoryReconcileWorker(): Promise<void> {
   if (reconcileWorkerRegistered) return;
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(MEMORY_RECONCILE_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss handler arg type varies across versions
   await (boss as any).work(MEMORY_RECONCILE_QUEUE, { batchSize: 1 }, async (arg: any) => {
@@ -812,6 +813,7 @@ let registered = false;
 
 export async function registerMemoryConsolidation(): Promise<void> {
   if (registered) return;
+  // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).createQueue(MEMORY_CONSOLIDATION_QUEUE);
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss types vary across versions
   await (boss as any).work(MEMORY_CONSOLIDATION_QUEUE, async () => {

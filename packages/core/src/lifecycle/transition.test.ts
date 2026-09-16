@@ -1,6 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-
 const deliverEscalationReplyOnce = vi.fn(async (..._args: unknown[]) => undefined);
 vi.mock('../integrations/rocketchat/escalation-bridge.js', () => ({
   deliverEscalationReplyOnce: (...args: unknown[]) => deliverEscalationReplyOnce(...args),
