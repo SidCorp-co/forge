@@ -1,5 +1,5 @@
 {
-  "$comment": "Resolution map for `arch check` ONLY — nothing compiles against this. It exists so dependency-cruiser can follow web-v2's `@/*` alias; without it 841 of the repo's import edges are unresolvable, and an unresolvable edge is DROPPED, so every contract over that package passes on an empty graph. Declared by `.arch.json` -> tsConfig. It sits at the repo root because tsc resolves `include` against the tsconfig's own directory, so a copy under .forge/ finds no inputs. Keep `paths` in sync with packages/web-v2/tsconfig.json and with packages/contracts/package.json#exports \u2014 `@forge/contracts` is a first-party package whose subpath exports dependency-cruiser does not follow, and its 35 edges were being dropped in the same silence.",
+  "$comment": "Resolution map for `arch check` ONLY \u2014 nothing compiles against this. It exists so dependency-cruiser can follow web-v2's `@/*` alias; without it 841 of the repo's import edges are unresolvable, and an unresolvable edge is DROPPED, so every contract over that package passes on an empty graph. Declared by `.arch.json` -> tsConfig. It sits at the repo root because tsc resolves `include` against the tsconfig's own directory, so a copy under .forge/ finds no inputs. Keep `paths` in sync with packages/web-v2/tsconfig.json and with packages/contracts/package.json#exports \u2014 `@forge/contracts` is a first-party package whose subpath exports dependency-cruiser does not follow, and its 35 edges were being dropped in the same silence. ISS-1038: `hono/*` is the same problem in a third-party package \u2014 167 of the repo's 199 unresolvable edges were `hono/http-exception`, one per route file, so every new route file ate ceiling headroom for a reason that is not a regression. Mapping it took the count to 33 with no change to the edge count and no new violations: node_modules belongs to no declared module, so these edges cannot violate a contract \u2014 but an unresolvable edge is DROPPED, so leaving them unresolved kept 166 edges out of the graph the contracts are checked over.",
   "compilerOptions": {
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -7,10 +7,21 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["packages/web-v2/src/*"],
-      "@forge/contracts": ["packages/contracts/src/index.ts"],
-      "@forge/observability": ["packages/observability/src/index.ts"],
-      "@forge/contracts/*": ["packages/contracts/src/*"]
+      "@/*": [
+        "packages/web-v2/src/*"
+      ],
+      "@forge/contracts": [
+        "packages/contracts/src/index.ts"
+      ],
+      "@forge/observability": [
+        "packages/observability/src/index.ts"
+      ],
+      "@forge/contracts/*": [
+        "packages/contracts/src/*"
+      ],
+      "hono/*": [
+        "node_modules/hono/dist/types/*"
+      ]
     }
   },
   "include": [

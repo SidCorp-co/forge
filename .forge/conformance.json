@@ -71,8 +71,8 @@
   },
   "checkers": {
     "archmap": {
-      "maxUnresolvableEdges": 200,
-      "$comment": "Ceiling on edges `arch check` cannot resolve. Measured 2026-08-23: 171, all of them node_modules subpath exports (hono/http-exception and friends), which belong to no module and so cannot violate a contract. It was 997 until `.arch.json` declared a tsConfig \u2014 841 of those were web-v2's `@/*` alias, and an unresolvable edge is DROPPED, so three locked contracts over that package were being checked against an empty graph. Audit rule R7 fails if it climbs back."
+      "maxUnresolvableEdges": 50,
+      "$comment": "Ceiling on edges `arch check` cannot resolve. Measured 2026-08-23: 171, all of them node_modules subpath exports (hono/http-exception and friends), which belong to no module and so cannot violate a contract. It was 997 until `.arch.json` declared a tsConfig \u2014 841 of those were web-v2's `@/*` alias, and an unresolvable edge is DROPPED, so three locked contracts over that package were being checked against an empty graph. Audit rule R7 fails if it climbs back. ISS-1038 (2026-09-16): 167 of the then-199 were `hono/http-exception`, one per route file \u2014 a ceiling every new route file ate into for a reason that is not a regression. `.arch-tsconfig.json` now maps `hono/*` the way it already mapped `@forge/contracts/*`, and the measurement fell to 33 with 0 new violations. The ceiling drops 200 -> 50 to be a tripwire again rather than 6x headroom. The trade: a future dependency whose subpath exports dependency-cruiser cannot follow needs its own `paths` entry instead of quietly consuming the margin."
     },
     "lint-budget": {
       "$comment": "Registering a class is this list plus one `--update-baseline` run \u2014 no second script, no second baseline file. That is the whole claim ISS-833 made for a shared ratchet, and `packages/core` is the proof of it: its `warn`-severity rules produced 280 diagnostics that nothing counted, because biome exits 0 on a warning. A scope with no `drain` block is freeze-only.",
