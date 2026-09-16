@@ -77,6 +77,49 @@ describe('parseServiceAccountKey', () => {
   });
 });
 
+describe('where a signed assertion may be sent', () => {
+  // cm:guard `token_uri` is operator-supplied JSON and it is where core POSTs a SIGNED assertion, so an unchecked value is an SSRF door a project admin can open — and worse than a plain one, because the request carries a credential this deployment minted.
+  it('refuses a key file whose token_uri is not Google, by name', () => {
+    const foreign = JSON.stringify({
+      ...JSON.parse(KEY_FILE),
+      token_uri: 'http://127.0.0.1:8080/steal',
+    });
+    expect(() => parseServiceAccountKey(foreign)).toThrow(/is not Google/);
+  });
+
+  it('sends nothing when the key file names a foreign token endpoint', async () => {
+    const ep = tokenEndpoint();
+    const foreign = JSON.stringify({
+      ...JSON.parse(KEY_FILE),
+      token_uri: 'https://attacker.example/token',
+    });
+    await expect(
+      googleAccessToken({
+        connectionId: CONN,
+        serviceAccountJson: foreign,
+        scope: SHEETS_READONLY_SCOPE,
+        fetchImpl: ep.impl,
+      }),
+    ).rejects.toThrow(/is not Google/);
+    expect(ep.calls).toHaveLength(0);
+  });
+
+  it('a key file with no token_uri at all is accepted and exchanged at Google', async () => {
+    const ep = tokenEndpoint();
+    const noUri = JSON.parse(KEY_FILE) as Record<string, unknown>;
+    delete noUri.token_uri;
+    await googleAccessToken({
+      connectionId: CONN,
+      serviceAccountJson: JSON.stringify(noUri),
+      scope: SHEETS_READONLY_SCOPE,
+      fetchImpl: ep.impl,
+    });
+    expect(ep.calls[0]?.url).toBe('https://oauth2.googleapis.com/token');
+    const claims = decodeSegment(String(ep.calls[0]?.body.get('assertion')?.split('.')[1]));
+    expect(claims.aud).toBe('https://oauth2.googleapis.com/token');
+  });
+});
+
 describe('the assertion Forge signs (criterion 4)', () => {
   it('verifies against the account public key and carries iss, aud, scope and a backdated iat', () => {
     const now = 1_760_000_000_000;
@@ -199,6 +242,32 @@ describe('the token cache (criteria 5, 6, 7)', () => {
       nowMs: 1_000_000,
     });
     expect(ep.calls).toHaveLength(2);
+  });
+
+  // cm:guard a connection keeps its id across a rotation, so a cache key of (connection, scope) alone hands back the OLD account's token for the rest of its hour and every read and write runs as the account the operator just replaced.
+  it("a rotated key does not reuse the old account's token", async () => {
+    const ep = tokenEndpoint();
+    const rotated = JSON.stringify({
+      ...JSON.parse(KEY_FILE),
+      client_email: 'rotated@forge-sheets-1.iam.gserviceaccount.com',
+    });
+    await googleAccessToken({
+      connectionId: CONN,
+      serviceAccountJson: KEY_FILE,
+      scope: SHEETS_READONLY_SCOPE,
+      fetchImpl: ep.impl,
+      nowMs: 1_000_000,
+    });
+    await googleAccessToken({
+      connectionId: CONN,
+      serviceAccountJson: rotated,
+      scope: SHEETS_READONLY_SCOPE,
+      fetchImpl: ep.impl,
+      nowMs: 1_000_000,
+    });
+    expect(ep.calls).toHaveLength(2);
+    const second = decodeSegment(String(ep.calls[1]?.body.get('assertion')?.split('.')[1]));
+    expect(second.iss).toBe('rotated@forge-sheets-1.iam.gserviceaccount.com');
   });
 
   it('forceMint bypasses a warm cache, so the credential stored now is the one tested', async () => {

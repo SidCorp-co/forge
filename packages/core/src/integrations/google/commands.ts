@@ -7,6 +7,7 @@
  * of the four ways a call can have nothing to act on.
  */
 
+import { isPreviousCredentialValid } from '../rotation.js';
 import {
   type BindingWithConnection,
   decryptConnectionSecrets,
@@ -79,12 +80,13 @@ export async function resolveGoogleBinding(projectId: string): Promise<BindingWi
 
 /** Which spreadsheet the caller means: the one it named, else the binding's
  *  declared default, else a refusal — never a guess. */
+// cm:guard the fallback is read off `binding.config` and NEVER off `effectiveConfig`. The overlay would let a `defaultSpreadsheetId` sitting on the shared connection — which the owner-scoped connection routes could store before ISS-1036 narrowed their schema — become the answer for every project bound to that credential, which is the one outcome the binding tier exists to prevent.
 export function resolveSpreadsheetId(
   pair: BindingWithConnection,
   explicit: string | undefined,
 ): string {
   if (explicit && explicit.length > 0) return explicit;
-  const fallback = effectiveConfig<GoogleConfig>(pair).defaultSpreadsheetId;
+  const fallback = (pair.binding.config as GoogleConfig | null)?.defaultSpreadsheetId;
   if (typeof fallback === 'string' && fallback.length > 0) return fallback;
   throw new GoogleCommandError(
     'NO_SPREADSHEET',
@@ -101,7 +103,18 @@ function clientArgsFor(pair: BindingWithConnection): GoogleClientArgs {
       'the bound Google connection holds no service-account key — re-enter the key file under Settings → Integrations → Google.',
     );
   }
-  return { connectionId: pair.connection.id, serviceAccountJson };
+  // cm:guard the retained key travels with the primary one. Without it the
+  // healthcheck recovers through the rotation window and every agent call does
+  // not, so the directory reports healthy while `forge_google_sheets` refuses —
+  // a health verdict about a code path nobody uses (ISS-1036).
+  const previous = secrets.previousServiceAccountJson;
+  const carryPrevious =
+    typeof previous === 'string' && previous.length > 0 && isPreviousCredentialValid(secrets);
+  return {
+    connectionId: pair.connection.id,
+    serviceAccountJson,
+    ...(carryPrevious ? { previousServiceAccountJson: previous } : {}),
+  };
 }
 
 /**

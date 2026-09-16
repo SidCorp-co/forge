@@ -228,3 +228,103 @@ describe('what Google refusing a sheet looks like', () => {
     });
   });
 });
+
+/**
+ * A Google whose token endpoint accepts exactly one account. Everything else is
+ * refused 400 `invalid_grant`, which is what Google answers for a key it has
+ * revoked or has not propagated yet.
+ */
+function googleAcceptingOnly(accepted: string) {
+  const issuers: string[] = [];
+  const impl = (async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.startsWith('https://oauth2.googleapis.com/token')) {
+      const body = new URLSearchParams(String(init?.body));
+      const claims = JSON.parse(
+        Buffer.from(String(body.get('assertion')).split('.')[1] ?? '', 'base64url').toString(
+          'utf8',
+        ),
+      ) as { iss: string };
+      issuers.push(claims.iss);
+      if (claims.iss !== accepted) {
+        return new Response('{"error":"invalid_grant"}', { status: 400 });
+      }
+      return new Response(
+        JSON.stringify({ access_token: `ya29.${claims.iss}`, expires_in: 3600 }),
+        { status: 200, headers: { 'content-type': 'application/json' } },
+      );
+    }
+    return new Response(JSON.stringify({ range: 'A1', values: [['ok']] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as unknown as typeof fetch;
+  return { impl, issuers };
+}
+
+function keyFileFor(email: string): string {
+  return JSON.stringify({
+    type: 'service_account',
+    private_key: privateKey,
+    client_email: email,
+    token_uri: 'https://oauth2.googleapis.com/token',
+  });
+}
+
+const NEW_ACCOUNT = 'new@forge-sheets-1.iam.gserviceaccount.com';
+const OLD_ACCOUNT = 'old@forge-sheets-1.iam.gserviceaccount.com';
+
+describe('the rotation window reaches the agent surface, not only the health card', () => {
+  afterEach(() => {
+    __resetGoogleTokenCache();
+  });
+
+  it('a rejected new key falls back once to the retained one and the call completes', async () => {
+    const g = googleAcceptingOnly(OLD_ACCOUNT);
+    const out = await readValues(
+      {
+        connectionId: 'conn-rotating',
+        serviceAccountJson: keyFileFor(NEW_ACCOUNT),
+        previousServiceAccountJson: keyFileFor(OLD_ACCOUNT),
+        fetchImpl: g.impl,
+      },
+      SHEET,
+      'A1',
+    );
+    expect(out.values).toEqual([['ok']]);
+    expect(g.issuers).toEqual([NEW_ACCOUNT, OLD_ACCOUNT]);
+  });
+
+  it('with no retained key the rejection is the answer, and it is not retried', async () => {
+    const g = googleAcceptingOnly(OLD_ACCOUNT);
+    await expect(
+      readValues(
+        {
+          connectionId: 'conn-rotating-2',
+          serviceAccountJson: keyFileFor(NEW_ACCOUNT),
+          fetchImpl: g.impl,
+        },
+        SHEET,
+        'A1',
+      ),
+    ).rejects.toThrow();
+    expect(g.issuers).toEqual([NEW_ACCOUNT]);
+  });
+
+  it('a retained key Google also refuses is not retried a third time', async () => {
+    const g = googleAcceptingOnly('nobody@forge-sheets-1.iam.gserviceaccount.com');
+    await expect(
+      readValues(
+        {
+          connectionId: 'conn-rotating-3',
+          serviceAccountJson: keyFileFor(NEW_ACCOUNT),
+          previousServiceAccountJson: keyFileFor(OLD_ACCOUNT),
+          fetchImpl: g.impl,
+        },
+        SHEET,
+        'A1',
+      ),
+    ).rejects.toThrow();
+    expect(g.issuers).toEqual([NEW_ACCOUNT, OLD_ACCOUNT]);
+  });
+});

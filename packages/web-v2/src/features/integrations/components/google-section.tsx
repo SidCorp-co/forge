@@ -6,7 +6,7 @@
 // project reads by default is binding-tier, so two projects on one credential
 // each keep their own sheet.
 
-import { Badge, type BadgeProps, Banner, Button, Field, Input, Textarea } from "@/design";
+import { Badge, type BadgeProps, Banner, Button, ErrorState, Field, Input, Textarea } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import {
@@ -68,6 +68,18 @@ export function GoogleSection({ projectId }: { projectId: string }) {
   );
 
   if (list.isLoading) return <p className="fg-body-sm text-muted">Loading…</p>;
+  // cm:guard a failed read is NOT "no connection". Falling through to the connect
+  // form under a failed list invites an operator to paste a second key file for
+  // an account that may already be connected, which is a credential handled for
+  // nothing and a duplicate binding to unpick.
+  if (list.isError)
+    return (
+      <ErrorState
+        message={`Could not read this project's integrations, so whether a Google account is already connected is unknown. ${formatApiError(list.error)}`}
+        onRetry={() => list.refetch()}
+        mascot={false}
+      />
+    );
   if (!binding) return <AddGoogleForm projectId={projectId} />;
   return <GoogleBindingPanel projectId={projectId} binding={binding} />;
 }
@@ -248,12 +260,29 @@ function GoogleBindingPanel({
 // First-time connect form
 // ─────────────────────────────────────────────────────────────
 
-/** Read the account address out of the pasted key so the share hint can name
- *  it before anything is saved. Never throws — a half-typed paste is normal. */
+/**
+ * Read the account address out of the pasted key so the share hint can name it
+ * before anything is saved. Never throws — a half-typed paste is normal.
+ *
+ * cm:guard it returns an address only for a WHOLE key file, because its result
+ * is also what enables Connect. Reading `client_email` alone would let any JSON
+ * carrying that one field clear the form, and the server would then refuse the
+ * paste the screen had just called valid.
+ */
 function clientEmailOf(keyJson: string): string | null {
   try {
-    const parsed = JSON.parse(keyJson) as { client_email?: unknown };
-    return typeof parsed.client_email === "string" ? parsed.client_email : null;
+    const parsed = JSON.parse(keyJson) as {
+      type?: unknown;
+      client_email?: unknown;
+      private_key?: unknown;
+    };
+    const whole =
+      parsed.type === "service_account" &&
+      typeof parsed.client_email === "string" &&
+      parsed.client_email.length > 0 &&
+      typeof parsed.private_key === "string" &&
+      parsed.private_key.includes("PRIVATE KEY");
+    return whole ? (parsed.client_email as string) : null;
   } catch {
     return null;
   }

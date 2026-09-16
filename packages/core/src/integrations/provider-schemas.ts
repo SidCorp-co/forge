@@ -1,18 +1,27 @@
 /**
  * Per-provider integration config + secrets schemas and dispatch tables.
  *
- * Adding a provider = edit THIS file only: its config/secrets schemas, a
- * branch in the two create discriminated unions (project-scoped create +
- * owner-scoped connection create), and the per-provider dispatch functions
- * (configSchemaForProvider / secretsSchemaForProvider /
+ * Adding a provider = its config/secrets schemas, a branch in the two create
+ * discriminated unions (project-scoped create + owner-scoped connection
+ * create), and the per-provider dispatch functions (configSchemaForProvider /
+ * connectionConfigSchemaForProvider / secretsSchemaForProvider /
  * primaryFieldForProvider — plus BINDING_CONFIG_KEYS when the provider has
  * binding-tier config). The route modules stay provider-agnostic.
+ *
+ * A provider that owns a directory may declare its shapes there and be imported
+ * here — `google/schemas.ts` does. The dispatch stays in THIS file either way,
+ * so one place still answers "which providers exist".
  */
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { integrationEnvironments } from '../db/schema.js';
-import { parseServiceAccountKey } from './google/auth.js';
+import {
+  googleConfigBase,
+  googleConnectionConfigSchema,
+  googleSecretsSchema,
+} from './google/schemas.js';
+import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from './release-channel-schema.js';
 import { isRotatingProvider, mergeRotatedSecrets, type RotatingProvider } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
 
@@ -33,31 +42,6 @@ const coolifyTargetSchema = z
     resourceUuid: t.resourceUuid,
     ...(t.healthUrl ? { healthUrl: t.healthUrl } : {}),
   }));
-
-const releaseVerifyProbeSchema = z.object({
-  url: z.string().url().max(500),
-  commitPath: z.string().min(1).max(200).optional(),
-});
-
-// cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseChannel` reads these three keys off `effectiveConfig(pair)` of the production binding whatever its provider, so EVERY provider config schema below must spread these fields and every provider must list them in BINDING_CONFIG_KEYS. A schema that omits them strips them on PATCH (zod objects drop unknown keys) and the roster then reports the label as undeclared behind a 200 — measured on sidpeak's coolify binding 2026-09-03, and again on pixelight's epodsystem binding 2026-09-04, where it made the storefront project's release gate undeclarable.
-const releaseChannelFields = {
-  /** Matched against `runners.labels`; only those boxes may run the release. */
-  releaseRunnerLabel: z.string().min(1).max(60).optional(),
-  verify: z
-    .object({
-      probes: z.array(releaseVerifyProbeSchema).min(1).max(10),
-      timeoutSeconds: z.number().int().min(10).max(3600).optional(),
-      stableReads: z.number().int().min(1).max(10).optional(),
-    })
-    .optional(),
-  /**
-   * What to do when a deploy replaces a working build with a dead one, for a
-   * channel whose API cannot do it. Prose here is read by a release agent.
-   */
-  rollback: z.string().max(4000).optional(),
-};
-
-const RELEASE_CHANNEL_KEYS = ['releaseRunnerLabel', 'verify', 'rollback'] as const;
 
 export const COOLIFY_ROLLBACK_MODE = 'coolify-image' as const;
 
@@ -255,38 +239,6 @@ const githubSecretsSchema = z.object({
   webhookSecret: z.string().min(8).max(500),
 });
 
-// ISS-1036 — Google service account. The credential is the account's JSON key
-// file, kept whole (see rotation.ts for why the file and not the PEM). Config
-// is identity only: `clientEmail` and `projectId` are READ BACK OUT of the key
-// by the healthcheck, mirroring epodsystem, so an operator transcribes nothing
-// Forge is about to discover.
-const googleConfigBase = z.object({
-  clientEmail: z.string().min(1).max(320).optional(),
-  projectId: z.string().min(1).max(200).optional(),
-  // cm:edge contract -> packages/core/src/integrations/google/commands.ts — the per-project sheet. It MUST stay listed in BINDING_CONFIG_KEYS below: a binding-tier key the provider does not declare there is stripped on PATCH (zod objects drop unknown keys) and the setting then reads as never-saved.
-  defaultSpreadsheetId: z.string().min(1).max(200).optional(),
-  ...releaseChannelFields,
-});
-
-const SERVICE_ACCOUNT_SHAPE_REFUSAL =
-  'serviceAccountJson must be the whole service-account key file Google issued — a JSON object with "type":"service_account", "client_email" and "private_key". Download it from the Google Cloud console under IAM & Admin → Service Accounts → Keys → Add key → JSON, and paste the file unchanged.';
-
-// cm:edge contract -> packages/core/src/integrations/google/auth.ts — what counts as a service-account key file is decided by `parseServiceAccountKey` and nowhere else. Restating the field checks here would let the create form accept a file the mint then refuses, which is the create-time validation and the run-time validation disagreeing about the same bytes.
-// cm:guard the file is validated for SHAPE and never reshaped — Forge stores the bytes Google issued, so a key carrying a field Forge did not think to model still signs correctly. Parsing it into named columns is how a future Google field goes missing in silence.
-const googleSecretsSchema = z.object({
-  serviceAccountJson: z
-    .string()
-    .min(100)
-    .max(20000)
-    .superRefine((value, ctx) => {
-      try {
-        parseServiceAccountKey(value);
-      } catch {
-        ctx.addIssue({ code: 'custom', message: SERVICE_ACCOUNT_SHAPE_REFUSAL });
-      }
-    }),
-});
-
 // cm:why the release channel `agent` is declared here rather than left as free-text: the REST create path validates through the discriminated union below, so a provider absent from it cannot be created at all — `provider` being a `text` column only means no MIGRATION is needed. It carries no credential and has no adapter because nothing is integrated: the deploy is the project's own script, run by the release session on a box that already holds the key.
 const agentReleaseConfigSchema = z.object(releaseChannelFields);
 
@@ -417,7 +369,7 @@ export const connectionCreateSchema = z.discriminatedUnion('provider', [
   z.object({
     provider: z.literal('google'),
     displayName: z.string().min(1).max(200).optional(),
-    config: googleConfigBase,
+    config: googleConnectionConfigSchema,
     secrets: googleSecretsSchema,
     orgId: z.uuid().optional(),
   }),
@@ -441,6 +393,23 @@ export function configSchemaForProvider(provider: string): z.ZodTypeAny {
   if (provider === 'google') return googleConfigBase.partial();
   if (provider === 'agent') return agentReleaseConfigSchema.partial();
   return coolifyConfigSchema.partial();
+}
+
+/**
+ * The config schema for an OWNER-SCOPED connection PATCH, where a binding-tier
+ * key does not belong.
+ *
+ * cm:guard only `google` is narrowed, and that is a statement about scope rather
+ * than about the other providers: `coolify` carries `targets` and every provider
+ * carries the three release-channel keys through this same door, so a connection
+ * PATCH can put a binding-tier key on a shared credential for all of them. That
+ * is a pre-existing hole ISS-1036 found and did not widen; narrowing the rest
+ * changes what six live providers accept and is somebody's own change to make.
+ */
+export function connectionConfigSchemaForProvider(provider: string): z.ZodTypeAny {
+  // Both of its fields are already optional, so there is no `.partial()` to take.
+  if (provider === 'google') return googleConnectionConfigSchema;
+  return configSchemaForProvider(provider);
 }
 
 /** Per-provider partial secrets schema for the two PATCH paths. */

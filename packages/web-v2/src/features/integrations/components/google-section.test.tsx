@@ -20,8 +20,17 @@ const createMutate = vi.fn();
 const updateMutate = vi.fn();
 const listItems = vi.fn<() => IntegrationSummary[]>();
 
+const listIsError = vi.fn<() => boolean>();
+const listRefetch = vi.fn();
+
 vi.mock("../hooks", () => ({
-  useIntegrationsList: () => ({ data: { items: listItems() }, isLoading: false, refetch: vi.fn() }),
+  useIntegrationsList: () => ({
+    data: listIsError() ? undefined : { items: listItems() },
+    isLoading: false,
+    isError: listIsError(),
+    error: new Error("network"),
+    refetch: listRefetch,
+  }),
   useCreateProviderIntegration: () => ({ mutateAsync: createMutate, isPending: false }),
   useUpdateProviderIntegration: () => ({ mutateAsync: updateMutate, isPending: false }),
   useDeleteProviderIntegration: () => ({ mutate: vi.fn(), isPending: false }),
@@ -60,6 +69,19 @@ function binding(overrides: Partial<IntegrationSummary> = {}): IntegrationSummar
 beforeEach(() => {
   vi.clearAllMocks();
   listItems.mockReturnValue([]);
+  listIsError.mockReturnValue(false);
+});
+
+describe("a failed read is not an absent connection", () => {
+  // cm:guard falling through to the connect form under a failed list is how an operator pastes a second key file for an account that is already connected
+  it("shows the failure and a retry, never the connect form", () => {
+    listIsError.mockReturnValue(true);
+    render(<GoogleSection projectId="proj-1" />);
+    expect(screen.queryByRole("button", { name: /connect account/i })).toBeNull();
+    expect(screen.getByText(/whether a Google account is already connected is unknown/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /retry|try again/i }));
+    expect(listRefetch).toHaveBeenCalled();
+  });
 });
 
 describe("connecting an account", () => {
@@ -73,6 +95,30 @@ describe("connecting an account", () => {
     });
     expect(button).toBeDisabled();
     expect(screen.getByText(/not a service-account key file yet/i)).toBeInTheDocument();
+  });
+
+  // cm:guard the enabling read is the WHOLE file, not `client_email` alone: any JSON carrying that one field would otherwise clear the form and the server would refuse the paste the screen had just called valid
+  it("a document carrying client_email but no key is still refused", () => {
+    render(<GoogleSection projectId="proj-1" />);
+    fireEvent.change(screen.getByPlaceholderText(/"type":"service_account"/), {
+      target: { value: JSON.stringify({ client_email: "x@example.com" }) },
+    });
+    expect(screen.getByRole("button", { name: /connect account/i })).toBeDisabled();
+    expect(screen.getByText(/not a service-account key file yet/i)).toBeInTheDocument();
+  });
+
+  it("an authorized_user credential is refused too", () => {
+    render(<GoogleSection projectId="proj-1" />);
+    fireEvent.change(screen.getByPlaceholderText(/"type":"service_account"/), {
+      target: {
+        value: JSON.stringify({
+          type: "authorized_user",
+          client_email: "x@example.com",
+          private_key: "-----BEGIN PRIVATE KEY-----",
+        }),
+      },
+    });
+    expect(screen.getByRole("button", { name: /connect account/i })).toBeDisabled();
   });
 
   it("sends the key file as the secret and the sheet as config", async () => {
@@ -177,6 +223,12 @@ describe("the connections directory (criterion 28)", () => {
     expect(DIRECTORY_STATUS_META.needs_scope.label).not.toBe(
       DIRECTORY_STATUS_META.needs_reauth.label,
     );
+  });
+
+  // cm:guard the exact string, not just "different from needs_reauth". The label is shared by Coolify, GitHub and Google, whose remedies are three different pages, so it has to name the CLASS of problem and leave the page to the provider's own panel. "Needs wider scope" sent a Google operator hunting an OAuth setting they do not have.
+  it("names the permission rather than an OAuth scope", () => {
+    expect(DIRECTORY_STATUS_META.needs_scope.label).toBe("Permission needed");
+    expect(DIRECTORY_STATUS_META.needs_scope.label).not.toMatch(/scope/i);
   });
 });
 

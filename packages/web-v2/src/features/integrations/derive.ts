@@ -188,9 +188,10 @@ export const DIRECTORY_STATUS_META: Record<
     bg: "var(--amberw-50)",
   },
   // cm:guard needs_scope must never share needs_reauth's label — one says replace the credential, the other says the credential is fine and its permissions are not, and an operator who reads the wrong one does work that reproduces the state exactly (ISS-924)
+  // cm:guard the label says PERMISSION and not "scope", and it is shared by three providers whose remedies are not the same page: Coolify wants a token ability, GitHub an App permission, and Google the spreadsheet shared with the service account. "Needs wider scope" sent a Google operator hunting an OAuth setting that does not exist for them (ISS-1036). The precise sentence belongs on the provider's own panel, which is the only place that knows which of the three this is.
   needs_scope: {
     icon: "lock",
-    label: "Needs wider scope",
+    label: "Permission needed",
     fg: "var(--amberw-700)",
     bg: "var(--amberw-50)",
   },

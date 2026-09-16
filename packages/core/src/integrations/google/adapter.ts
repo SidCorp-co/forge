@@ -11,7 +11,7 @@
 import { logger } from '../../logger.js';
 import { getAdapter, registerAdapter } from '../registry.js';
 import { isPreviousCredentialValid } from '../rotation.js';
-import { updateConnection } from '../store.js';
+import { findConnectionById, updateConnection } from '../store.js';
 import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
 import { googleAccessToken, parseServiceAccountKey } from './auth.js';
 import { getSpreadsheet } from './client.js';
@@ -77,6 +77,26 @@ function identityFrom(serviceAccountJson: string): { clientEmail: string; projec
   };
 }
 
+/**
+ * The connection config to persist: the CONNECTION's own stored config with the
+ * identity merged in.
+ *
+ * cm:guard never build this from `ctx.config`. That is `effectiveConfig` —
+ * connection overlaid with binding — so writing it back promotes this project's
+ * binding-tier keys onto the shared credential, and `defaultSpreadsheetId` is
+ * exactly such a key. One org account bound to two projects would then have
+ * whichever project was health-checked last decide the fallback sheet for the
+ * other, which is the `wholesale-config-clobber` red flag reached by a write
+ * rather than a PATCH (ISS-1036).
+ */
+async function connectionConfigWithIdentity(
+  connectionId: string,
+  identity: { clientEmail: string; projectId?: string },
+): Promise<Record<string, unknown>> {
+  const connection = await findConnectionById(connectionId);
+  return { ...((connection?.config ?? {}) as Record<string, unknown>), ...identity };
+}
+
 async function failHealth(
   connectionId: string,
   status: 'error' | 'needs_reauth' | 'needs_scope',
@@ -127,7 +147,7 @@ export const googleAdapter: IntegrationAdapter<GoogleConfig, GoogleSecrets> = {
     // cm:guard a valid credential with nothing to read is `degraded`, never `ok` — "the account authenticates" is a weaker claim than this card makes anywhere else, and reporting it green is how a binding that can reach no sheet passes test-connection and fails at the first job (ISS-1036)
     if (typeof spreadsheetId !== 'string' || spreadsheetId.length === 0) {
       await updateConnection(ctx.connectionId, {
-        config: { ...(ctx.config ?? {}), ...identity },
+        config: await connectionConfigWithIdentity(ctx.connectionId, identity),
         lastHealthStatus: 'degraded',
         lastHealthAt: new Date(),
       });
@@ -140,11 +160,16 @@ export const googleAdapter: IntegrationAdapter<GoogleConfig, GoogleSecrets> = {
 
     try {
       const sheet = await getSpreadsheet(
-        { connectionId: ctx.connectionId, serviceAccountJson },
+        {
+          connectionId: ctx.connectionId,
+          serviceAccountJson: mint.usedPrevious
+            ? (ctx.secrets.previousServiceAccountJson as string)
+            : serviceAccountJson,
+        },
         spreadsheetId,
       );
       await updateConnection(ctx.connectionId, {
-        config: { ...(ctx.config ?? {}), ...identity },
+        config: await connectionConfigWithIdentity(ctx.connectionId, identity),
         lastHealthStatus: 'ok',
         lastHealthAt: new Date(),
       });

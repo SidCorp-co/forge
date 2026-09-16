@@ -288,3 +288,87 @@ describe('the commands themselves', () => {
     expect(JSON.stringify(await listGoogleIntegrations(PROJECT))).not.toContain('PRIVATE KEY');
   });
 });
+
+const ROTATED_KEY_FILE = JSON.stringify({
+  type: 'service_account',
+  private_key: privateKey,
+  client_email: 'rotated@forge-sheets-1.iam.gserviceaccount.com',
+  token_uri: 'https://oauth2.googleapis.com/token',
+});
+
+/** A Google that accepts only the named account at its token endpoint. */
+function wireGoogleAccepting(accepted: string) {
+  const issuers: string[] = [];
+  globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    const url = String(input);
+    if (url.startsWith('https://oauth2.googleapis.com/token')) {
+      const body = new URLSearchParams(String(init?.body));
+      const claims = JSON.parse(
+        Buffer.from(String(body.get('assertion')).split('.')[1] ?? '', 'base64url').toString(
+          'utf8',
+        ),
+      ) as { iss: string };
+      issuers.push(claims.iss);
+      if (claims.iss !== accepted)
+        return new Response('{"error":"invalid_grant"}', { status: 400 });
+      return new Response(JSON.stringify({ access_token: 'ya29.tok', expires_in: 3600 }), {
+        status: 200,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
+    return new Response(JSON.stringify({ range: 'A1', values: [['ok']] }), {
+      status: 200,
+      headers: { 'content-type': 'application/json' },
+    });
+  }) as unknown as typeof fetch;
+  return { issuers };
+}
+
+const OLD_ACCOUNT = 'forge@forge-sheets-1.iam.gserviceaccount.com';
+
+describe('the ISS-405 rotation window governs the command path too (criterion 19)', () => {
+  beforeEach(() => {
+    __resetGoogleTokenCache();
+  });
+
+  afterEach(() => {
+    globalThis.fetch = originalFetch;
+    vi.restoreAllMocks();
+  });
+
+  it('inside the window, a key Google has not propagated yet still serves the read', async () => {
+    const g = wireGoogleAccepting(OLD_ACCOUNT);
+    listBindingsForProjectMock.mockResolvedValue([
+      row({
+        secrets: {
+          serviceAccountJson: ROTATED_KEY_FILE,
+          previousServiceAccountJson: KEY_FILE,
+          previousTokenExpiresAt: new Date(Date.now() + 3_600_000).toISOString(),
+        },
+      }),
+    ]);
+    const out = await googleSheetsRead({ projectId: PROJECT, range: 'A1' });
+    expect(out.values).toEqual([['ok']]);
+    expect(g.issuers).toEqual(['rotated@forge-sheets-1.iam.gserviceaccount.com', OLD_ACCOUNT]);
+  });
+
+  // cm:guard the window closing is what ends the fallback. Carrying the retained
+  // key past `previousTokenExpiresAt` would make the 24-hour bound decorative and
+  // leave a revoked account able to read a project's sheet indefinitely (ISS-405).
+  it('once the window has closed the retained key is not offered at all', async () => {
+    const g = wireGoogleAccepting(OLD_ACCOUNT);
+    listBindingsForProjectMock.mockResolvedValue([
+      row({
+        secrets: {
+          serviceAccountJson: ROTATED_KEY_FILE,
+          previousServiceAccountJson: KEY_FILE,
+          previousTokenExpiresAt: new Date(Date.now() - 1_000).toISOString(),
+        },
+      }),
+    ]);
+    await expect(googleSheetsRead({ projectId: PROJECT, range: 'A1' })).rejects.toMatchObject({
+      code: 'ACCOUNT_REJECTED',
+    });
+    expect(g.issuers).toEqual(['rotated@forge-sheets-1.iam.gserviceaccount.com']);
+  });
+});

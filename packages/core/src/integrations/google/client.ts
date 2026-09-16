@@ -9,7 +9,7 @@
 
 import { googleAccessToken } from './auth.js';
 import { type SheetsAccess, scopeFor } from './scopes.js';
-import { GoogleApiError } from './types.js';
+import { GoogleApiError, GoogleAuthError } from './types.js';
 
 const SHEETS_BASE = 'https://sheets.googleapis.com/v4/spreadsheets';
 const CALL_TIMEOUT_MS = 20_000;
@@ -38,6 +38,9 @@ export interface WriteResult {
 export interface GoogleClientArgs {
   connectionId: string;
   serviceAccountJson: string;
+  /** The key retained by the ISS-405 rotation window, when one is still inside
+   *  it. Absent means no rotation is in progress. */
+  previousServiceAccountJson?: string;
   fetchImpl?: typeof fetch;
 }
 
@@ -71,6 +74,44 @@ function describeSheetsFailure(
   return new GoogleApiError(status, route, `the Google Sheets API answered HTTP ${status}`);
 }
 
+/**
+ * Mint for one operation, falling back once to the key the rotation window
+ * retained.
+ *
+ * cm:guard the fallback belongs HERE and not only in the adapter's healthcheck.
+ * With it in one place, an operator who rotates to a key Google has not
+ * propagated yet sees a green card — the healthcheck recovers — while every
+ * agent call fails `ACCOUNT_REJECTED`, which is a directory saying the opposite
+ * of what the surface does. The two paths recover on the same terms or the
+ * health verdict is a claim about a code path nobody uses (ISS-1036).
+ */
+async function mintFor(args: GoogleClientArgs, access: SheetsAccess): Promise<string> {
+  const scope = scopeFor(access);
+  const fetchOpt = args.fetchImpl ? { fetchImpl: args.fetchImpl } : {};
+  try {
+    return (
+      await googleAccessToken({
+        connectionId: args.connectionId,
+        serviceAccountJson: args.serviceAccountJson,
+        scope,
+        ...fetchOpt,
+      })
+    ).token;
+  } catch (err) {
+    const recoverable =
+      err instanceof GoogleAuthError && err.kind === 'rejected' && args.previousServiceAccountJson;
+    if (!recoverable) throw err;
+    return (
+      await googleAccessToken({
+        connectionId: args.connectionId,
+        serviceAccountJson: args.previousServiceAccountJson as string,
+        scope,
+        ...fetchOpt,
+      })
+    ).token;
+  }
+}
+
 /** One authenticated Sheets call. The scope is the operation's, not the
  *  connection's, so a read never carries a token that could write. */
 async function call<T>(
@@ -80,12 +121,7 @@ async function call<T>(
   spreadsheetId: string,
   init: RequestInit,
 ): Promise<T> {
-  const { token } = await googleAccessToken({
-    connectionId: args.connectionId,
-    serviceAccountJson: args.serviceAccountJson,
-    scope: scopeFor(access),
-    ...(args.fetchImpl ? { fetchImpl: args.fetchImpl } : {}),
-  });
+  const token = await mintFor(args, access);
   const doFetch = args.fetchImpl ?? fetch;
   const res = await doFetch(route, {
     ...init,

@@ -2,8 +2,10 @@ import { generateKeyPairSync } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const updateConnectionMock = vi.fn();
+const findConnectionByIdMock = vi.fn();
 vi.mock('../store.js', () => ({
   updateConnection: (...a: unknown[]) => updateConnectionMock(...(a as [])),
+  findConnectionById: (...a: unknown[]) => findConnectionByIdMock(...(a as [])),
 }));
 
 const { googleAdapter } = await import('./adapter.js');
@@ -98,6 +100,9 @@ afterEach(() => {
 
 beforeEach(() => {
   updateConnectionMock.mockResolvedValue({});
+  // The CONNECTION's own stored config — deliberately not the binding overlay
+  // the adapter context carries.
+  findConnectionByIdMock.mockResolvedValue({ id: CONN_ID, config: { someExistingKey: 'kept' } });
 });
 
 describe('googleAdapter.healthcheck (criteria 10, 11, 12, 13)', () => {
@@ -121,13 +126,22 @@ describe('googleAdapter.healthcheck (criteria 10, 11, 12, 13)', () => {
     expect(updateConnectionMock).toHaveBeenCalledWith(
       CONN_ID,
       expect.objectContaining({
-        config: expect.objectContaining({
+        config: {
+          someExistingKey: 'kept',
           clientEmail: 'forge@forge-sheets-1.iam.gserviceaccount.com',
           projectId: 'forge-sheets-1',
-          defaultSpreadsheetId: SHEET,
-        }),
+        },
       }),
     );
+  });
+
+  // cm:guard the binding-tier key must NOT appear in that write. `ctx.config` is the connection overlaid with the binding, so writing it back would put THIS project's default sheet on a credential its org shares — and the next project bound to it, declaring none, would silently read the first project's spreadsheet.
+  it("does not promote this binding's default spreadsheet onto the shared credential", async () => {
+    wireGoogle();
+    await googleAdapter.healthcheck(buildCtx({ serviceAccountJson: keyFile() }));
+    const written = updateConnectionMock.mock.calls[0]?.[1] as { config: Record<string, unknown> };
+    expect(written.config.defaultSpreadsheetId).toBeUndefined();
+    expect(JSON.stringify(written.config)).not.toContain(SHEET);
   });
 
   it('nothing it returns carries the key', async () => {
