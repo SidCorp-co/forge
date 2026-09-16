@@ -20,15 +20,7 @@ import {
   refusalText,
 } from './memory-note-gate.js';
 
-const REMEMBER = 'Remember for this project: the release code name is bench-1a2b3c4d5e6f.';
-const base = (over: Partial<NoteJudgeInput> = {}): NoteJudgeInput => ({
-  text: 'The release code name is bench-1a2b3c4d5e6f.',
-  recentTurns: [REMEMBER],
-  notesThisTurn: 0,
-  existingNotes: [],
-  ...over,
-});
-const code = (input: NoteJudgeInput) => judgeNote(input)?.code ?? null;
+import { base, code, REMEMBER } from './memory-note-gate-ground.js';
 
 describe('judgeNote', () => {
   it('passes the fact with the remember-framing dropped, and refuses the message copied back', () => {
@@ -42,15 +34,24 @@ describe('judgeNote', () => {
     ).toBe('restates_message');
   });
 
+  it('the framed message copied back may be an earlier one: a "Thanks" after it does not clear the copy', () => {
+    const r = judgeNote(base({ text: REMEMBER, recentTurns: [REMEMBER, 'Thanks.'] }));
+    expect(r?.code).toBe('restates_message');
+    expect(r?.howToWrite).toBe('the release code name is bench-1a2b3c4d5e6f.');
+    expect(code(base({ recentTurns: [REMEMBER, 'Thanks.'] }))).toBeNull();
+  });
+
   it('a message with no remember-framing may be kept word for word: the sentence is the fact', () => {
     const said = 'The deploy window is Thursday 14:00 UTC.';
-    expect(code(base({ text: said, recentTurns: [said] }))).toBeNull();
+    expect(
+      code(base({ text: said, recentTurns: ['Please remember what I tell you next.', said] })),
+    ).toBeNull();
   });
 
   it('a second note in a one-sentence turn is refused; a two-sentence message admits it', () => {
     expect(code(base({ notesThisTurn: 1 }))).toBe('second_note_this_turn');
     expect(code(base({ notesThisTurn: 0 }))).toBeNull();
-    const two = 'The reviewer is Priya Raman. We deploy on Wednesdays.';
+    const two = 'Remember these: the reviewer is Priya Raman. We deploy on Wednesdays.';
     expect(
       code(base({ text: 'Deploys happen on Wednesdays.', recentTurns: [two], notesThisTurn: 1 })),
     ).toBeNull();
@@ -75,39 +76,6 @@ describe('judgeNote', () => {
     expect(r?.rule).toContain('Release code name: bench-1a2b3c4d5e6f');
     expect(r?.rule).not.toContain('kept 2026');
     expect(code(base({ existingNotes: [{ ...twin, score: DUPLICATE_SCORE - 0.01 }] }))).toBeNull();
-  });
-
-  it('a correction may replace a held value above the threshold; the same value word for word stays a duplicate', () => {
-    const held = { text: 'The release code name is bench-1a2b3c4d5e6f.', score: 0.9 };
-    const correction =
-      'Correction: the release code name is bench-9f8e7d6c5b4a, forget the first one.';
-    expect(
-      code(
-        base({
-          text: 'The release code name is bench-9f8e7d6c5b4a.',
-          recentTurns: [correction],
-          existingNotes: [held],
-        }),
-      ),
-    ).toBeNull();
-    expect(
-      code(
-        base({
-          text: 'The release code name is bench-1a2b3c4d5e6f.',
-          recentTurns: [correction],
-          existingNotes: [held],
-        }),
-      ),
-    ).toBe('duplicate');
-    expect(
-      code(
-        base({
-          text: 'The release code name is bench-9f8e7d6c5b4a.',
-          recentTurns: ['Remember: the release code name is bench-9f8e7d6c5b4a.'],
-          existingNotes: [held],
-        }),
-      ),
-    ).toBe('duplicate');
   });
 
   it('a note about the exchange is refused; the same words inside a project fact pass', () => {

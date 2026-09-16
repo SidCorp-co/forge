@@ -35,6 +35,7 @@ export const EXISTING_TOP_K = 3;
 const CONTEXT_MARKER = '\n\n---\n\n';
 
 export type NoteRefusalCode =
+  | 'unasked'
   | 'restates_message'
   | 'second_note_this_turn'
   | 'too_short'
@@ -72,6 +73,32 @@ const FRAMING =
 
 const ABOUT_THE_CONVERSATION =
   /^\s*(?:the\s+(?:user|person|speaker|human|customer)\s+(?:asked|said|wants|wanted|told|requested|mentioned|is asking)|(?:i|we)\s+(?:was|were|have been)\s+(?:asked|told)|in\s+this\s+(?:conversation|chat|room|thread)|(?:this|the)\s+(?:conversation|chat)\s+(?:is|was)\s+about|user\s+(?:asked|said|wants))/iu;
+
+/** An ask to keep something, anywhere in a message: the framing above unanchored, plus the ways a person says it mid-sentence. */
+const ASKED =
+  /\b(?:remember|store|save|note(?=\s*(?::|that|this|down|it|for))|keep (?:in mind|this|that|a note)|don['’]t forget|for the record|write (?:this|that|it) down|make a note|take a note|memori[sz]e)\b/iu;
+
+/** A standing request that covers what follows: it exempts later statements, an ask about one thing does not (codex F1, fifth pass). */
+const STANDING =
+  /\b(?:remember|note|keep (?:track|notes?) of|write down|memori[sz]e)\s+(?:everything|all|anything|whatever|what)\s+(?:i|we)\s+(?:say|tell|mention|give)\b|\bfrom (?:here|now) on,?\s+(?:remember|note|keep)\b/iu;
+
+/** The share of the note's words the asking message carries: an ask covers a fact it names. */
+const covers = (message: string, text: string): boolean => {
+  const want = new Set(
+    normalise(text)
+      .split(' ')
+      .filter((t) => t.length > 2),
+  );
+  if (want.size === 0) return false;
+  const have = new Set(normalise(message).split(' '));
+  let shared = 0;
+  for (const t of want) if (have.has(t)) shared += 1;
+  return shared / want.size >= 0.5;
+};
+
+/** A decision or a standing preference is worth keeping whether or not anyone asked. */
+const DECIDED =
+  /\b(?:decid(?:ed|e|ion)|agreed|we (?:will|won['’]t|are going to)|from now on|always|never|prefer(?:s|red)?|policy|the rule is|must|going forward|settled on)\b/iu;
 
 /** The person is changing a value already given: the duplicate rule stands aside for a note that differs from the twin (codex F2). */
 const CORRECTION =
@@ -158,15 +185,29 @@ export function judgeNote(input: NoteJudgeInput): NoteRefusal | null {
           .trim() || 'The fact they gave you, stated once.',
     };
   const newest = input.recentTurns.at(-1) ?? '';
-  const framed = FRAMING.test(newest) && FRAMING.exec(newest)?.[0].trim().length !== 0;
-  if (framed && input.recentTurns.some((m) => FRAMING.test(m) && sameWords(text, m))) {
-    const fact = newest.replace(FRAMING, '').trim();
+  // cm:guard the framed message the note copies may be an earlier one, not the newest: "Remember: X" then "Thanks." then a note of "Remember: X" is still the request copied back (codex F1, third pass)
+  const copied = input.recentTurns.find((m) => FRAMING.test(m) && sameWords(text, m));
+  if (copied) {
+    const fact = copied.replace(FRAMING, '').trim();
     return {
       code: 'restates_message',
       rule: 'the note is the message copied back; keep the fact, not the request to remember it.',
       howToWrite: fact.length >= NOTE_TEXT_MIN ? fact : 'The value they gave, as one sentence.',
     };
   }
+  // cm:guard a fact merely stated is the room's, not the store's: the ISS-1061 thread trials kept one note per sentence the person typed (8, 8, 9 over ten turns) and every one of them was a plain statement; what earns a note is an ask to keep it anywhere in the person's recent messages, a correction of a kept value, or a decision or preference in the text itself
+  // cm:guard the ask is read on the newest message, or as a standing request in a recent one: "Remember: releases are on Thursdays" three turns ago does not make "the staging build finished at noon" a note (codex F1, fifth pass)
+  const asked =
+    ASKED.test(newest) ||
+    CORRECTION.test(newest) ||
+    input.recentTurns.some((m) => STANDING.test(m) || (ASKED.test(m) && covers(m, text)));
+  if (!asked && !DECIDED.test(text) && !DECIDED.test(newest))
+    return {
+      code: 'unasked',
+      rule: 'nobody asked to keep this and it is not a decision; the conversation holds it.',
+      howToWrite:
+        'Nothing, unless they ask you to remember it or it settles how the project works.',
+    };
   // cm:why one note per sentence the person stated, at least one: a one-sentence turn carries one fact and a second note is a copy or a split, and a longer message may carry as many facts as sentences (D4)
   const stated = Math.max(1, sentences(newest));
   if (input.notesThisTurn >= stated)
@@ -181,7 +222,8 @@ export function judgeNote(input: NoteJudgeInput): NoteRefusal | null {
     };
   const twin = [...input.existingNotes].sort((a, b) => b.score - a.score)[0];
   // cm:guard a correction is not a duplicate: "the code name is X2, forget the first one" scores above the threshold against the note holding X1, and refusing it would freeze the wrong value in the store; the twin word for word is still refused, correction or not (codex F2)
-  const correcting = CORRECTION.test(newest) && !(twin && sameWords(text, twin.text));
+  // cm:guard exact words, not the 0.9 overlap `sameWords` reads: a long note whose one changed word is the correction overlaps its twin above 0.9 and would be refused as the value it replaces (codex F2, third pass)
+  const correcting = CORRECTION.test(newest) && !(twin && normalise(text) === normalise(twin.text));
   if (twin && twin.score >= DUPLICATE_SCORE && !correcting)
     return {
       code: 'duplicate',
