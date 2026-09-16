@@ -66,14 +66,20 @@ describe('createNotification obeys the switch', () => {
 });
 
 /**
- * The switch is only a silence if nothing writes the table around it. Two
- * producers do write it directly and must consult it themselves
- * (`admin/alert-sweeper.ts`, `pm/auto-disable.ts`); a third that appears later
- * and does neither is the hole this scan exists to refuse.
+ * An INVENTORY of the files allowed to write the table, not a proof that each
+ * write consults the switch — a text scan cannot tell a call from a mention,
+ * and this one does not claim to. What it does refuse is the thing that
+ * actually goes wrong: a FOURTH producer appearing in a file nobody reviewed
+ * against this gate. Adding a write to one of the three named files still needs
+ * a reader; adding one anywhere else fails here naming the file.
  */
-describe('no producer writes notifications without consulting the switch', () => {
+describe('only the three known files write the notifications table', () => {
   const root = join(import.meta.dirname, '..');
-  const OWNS_THE_GATE = join('notifications', 'routes.ts');
+  const WRITERS = [
+    join('notifications', 'routes.ts'),
+    join('admin', 'alert-sweeper.ts'),
+    join('pm', 'auto-disable.ts'),
+  ];
 
   function sourceFiles(dir: string): string[] {
     return readdirSync(dir).flatMap((name) => {
@@ -84,16 +90,23 @@ describe('no producer writes notifications without consulting the switch', () =>
     });
   }
 
-  it('every file that inserts a notifications row imports emission-switch', () => {
-    const offenders: string[] = [];
+  it('no file outside the inventory writes a notifications row', () => {
+    const writers: string[] = [];
     for (const file of sourceFiles(root)) {
       const src = readFileSync(file, 'utf8');
       const writes =
         /\.insert\(\s*notifications\s*\)/.test(src) || /INSERT INTO notifications/i.test(src);
-      if (!writes) continue;
-      if (file.endsWith(OWNS_THE_GATE)) continue;
-      if (!src.includes('emission-switch.js')) offenders.push(file.slice(root.length + 1));
+      if (writes) writers.push(file.slice(root.length + 1));
     }
-    expect(offenders).toEqual([]);
+    expect(writers.sort()).toEqual([...WRITERS].sort());
+  });
+
+  it('each of the three consults the switch', () => {
+    for (const writer of WRITERS) {
+      const src = readFileSync(join(root, writer), 'utf8');
+      const consults =
+        writer.endsWith(join('notifications', 'routes.ts')) || src.includes('emissionAllowed(');
+      expect({ writer, consults }).toEqual({ writer, consults: true });
+    }
   });
 });

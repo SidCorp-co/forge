@@ -59,10 +59,19 @@ export const SUPPRESSED_TYPES: ReadonlySet<NotificationType> = new Set<Notificat
 /**
  * Whether a notification of this type may be written at all.
  *
- * Called from `createNotification` and from nowhere else, so that every
- * producer obeys it: the two that used to write the table directly
- * (`admin/alert-sweeper.ts`, `pm/auto-disable.ts`) route through that function
- * as of this change precisely so neither can escape this gate.
+ * Three callers, and there are three because three places write the table:
+ * - `notifications/routes.ts:createNotification` — the funnel every emitter
+ *   that can use it goes through;
+ * - `admin/alert-sweeper.ts:claimOrEscalate` — writes `INSERT ... ON CONFLICT`
+ *   directly, because that conflict clause against
+ *   `notifications_ops_alert_active_uq` is what makes the claim atomic across
+ *   core replicas; a select-then-insert helper would put the race back;
+ * - `pm/auto-disable.ts` — writes with the caller's `tx`, because the row and
+ *   the cadence disable must land together or neither, and `createNotification`
+ *   uses the module-level `db`.
+ *
+ * A fourth writer is refused by `emission-switch.test.ts`, which holds the
+ * three above as a closed inventory.
  */
 export function emissionAllowed(type: NotificationType): boolean {
   return !SUPPRESSED_TYPES.has(type);
