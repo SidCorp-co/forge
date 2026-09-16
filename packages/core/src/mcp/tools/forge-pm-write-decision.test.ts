@@ -102,40 +102,36 @@ describe('forge_pm.write_decision', () => {
     );
   });
 
-  // cm:why ISS-1063 — while the emission switch has `pm_escalation` off, the notification
-  // is not written and the hook does not fire. The decision and the escalation still are,
-  // and `notificationId` comes back null rather than the call throwing: a silence about
-  // notifications must not become an outage about deciding.
-  it('with escalate while the surface is off: writes the decision, tells nobody, returns a null notificationId', async () => {
+  // cm:why ISS-1063 — while the emission switch has `pm_escalation` off there is nowhere
+  // for the escalation's question and options to live: they are the notification's body
+  // and nothing else persists them. So the call refuses BY NAME after the decision row
+  // is already committed, rather than returning a shape that reads as "escalated". The
+  // decision survives; the escalation does not, and the caller is told which.
+  it('with escalate while the surface is off: writes the decision, then refuses naming the switch', async () => {
     const tool = forgePmWriteDecisionTool();
     const decisionInsert = [{ id: DECISION_ID }];
     const escalationProjectLookup = [{ createdBy: OWNER_ID }];
     queue.push(decisionInsert, escalationProjectLookup);
 
-    const result = (await tool.handler({
-      projectId: PROJECT_ID,
-      cause: 'needs-info',
-      summary: 'Need owner sign-off',
-      actions: [],
-      escalate: {
-        severity: 'high',
-        summary: 'Approve plan?',
-        question: 'Pick one',
-        options: [
-          { id: 'a', label: 'Approve' },
-          { id: 'b', label: 'Reject' },
-        ],
-        expiresAt: '2026-06-01T00:00:00.000Z',
-      },
-    })) as {
-      decisionId: string;
-      indexed: 'queued';
-      escalation: { notificationId: string | null; expiresAt: string };
-    };
+    await expect(
+      tool.handler({
+        projectId: PROJECT_ID,
+        cause: 'needs-info',
+        summary: 'Need owner sign-off',
+        actions: [],
+        escalate: {
+          severity: 'high',
+          summary: 'Approve plan?',
+          question: 'Pick one',
+          options: [
+            { id: 'a', label: 'Approve' },
+            { id: 'b', label: 'Reject' },
+          ],
+          expiresAt: '2026-06-01T00:00:00.000Z',
+        },
+      }),
+    ).rejects.toThrow(/ISS-1063 emission switch/);
 
-    expect(result.decisionId).toBe(DECISION_ID);
-    expect(result.escalation.notificationId).toBeNull();
-    expect(result.escalation.expiresAt).toBe('2026-06-01T00:00:00.000Z');
     expect(hooksEmitSpy).not.toHaveBeenCalledWith(
       'notificationCreated',
       expect.objectContaining({ type: 'pm_escalation' }),
