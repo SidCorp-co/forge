@@ -6,7 +6,10 @@
 // one of them ends up proving its own SQL instead of the batch's.
 
 import { randomUUID } from 'node:crypto';
+import { createServer, type Server } from 'node:http';
+import type { AddressInfo } from 'node:net';
 import { sql } from 'drizzle-orm';
+import { afterAll } from 'vitest';
 import { createTestDevice, type TestDatabase } from './index.js';
 
 export const RELEASE_LABEL = 'release-box';
@@ -25,6 +28,8 @@ export interface StoredJob {
 
 export interface ReleaseBatchFixture {
   declareProduction(config?: Record<string, unknown>): Promise<void>;
+  /** What the default probe server is serving right now. */
+  serving(): string;
   seedReleaseRunner(): Promise<void>;
   insertIssue(status?: string, note?: unknown): Promise<string>;
   stored(id: string): Promise<StoredIssue>;
@@ -41,10 +46,35 @@ export function releaseBatchFixture(
 ): ReleaseBatchFixture {
   let seq = 0;
 
+  // cm:guard every case that CLAIMS now needs declared probes, because `createReleaseBatch` and
+  // `finishReleaseBatch` both refuse a production project without them (ISS-1042). One real server
+  // over a mocked `fetch`: the probe path is `fetch` plus a cache-buster plus `pluck`, and a mock
+  // asserts the call rather than the read. A case wanting a project with NO probes passes
+  // `{ verify: null }`, and one wanting its own passes `verify` — both override this default.
+  let probe: Server | null = null;
+  let served = 'commit-before-any-release';
+
+  async function probeUrl(): Promise<string> {
+    if (!probe) {
+      const server = createServer((_req, res) => res.end(served));
+      await new Promise<void>((done) => server.listen(0, '127.0.0.1', done));
+      probe = server;
+    }
+    return `http://127.0.0.1:${(probe.address() as AddressInfo).port}/version`;
+  }
+
+  afterAll(async () => {
+    if (probe) await new Promise<void>((done) => probe?.close(() => done()));
+    probe = null;
+  });
+
   // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveProductionDeclaration` reads exactly a production branch distinct from the base plus an active `prod` binding; seed one half and every case dies on NO_RELEASE_GATE before reaching what it asserts
   async function declareProduction(config: Record<string, unknown> = {}): Promise<void> {
     const { projectId, ownerId } = ids();
     const connectionId = randomUUID();
+    // cm:why `stableReads: 1` so one read confirms. The default is two, five seconds apart, and no
+    // case here is about the poll loop's patience.
+    const verify = { probes: [{ url: await probeUrl() }], timeoutSeconds: 20, stableReads: 1 };
     await harness().db.execute(sql`
       UPDATE projects SET base_branch = 'main', production_branch = 'production'
       WHERE id = ${projectId}
@@ -57,7 +87,7 @@ export function releaseBatchFixture(
       INSERT INTO integration_bindings (connection_id, project_id, provider, environment, active, config)
       VALUES (
         ${connectionId}, ${projectId}, 'coolify', 'prod', true,
-        ${JSON.stringify({ releaseRunnerLabel: RELEASE_LABEL, ...config })}::jsonb
+        ${JSON.stringify({ releaseRunnerLabel: RELEASE_LABEL, verify, ...config })}::jsonb
       )
     `);
   }
@@ -133,7 +163,13 @@ export function releaseBatchFixture(
   async function claim(idList: string[]) {
     const { projectId, ownerId } = ids();
     const { createReleaseBatch } = await import('../../src/release-batch/service.js');
-    return createReleaseBatch({ projectId, issueIds: idList, userId: ownerId });
+    const result = await createReleaseBatch({ projectId, issueIds: idList, userId: ownerId });
+    // cm:guard the served commit MOVES here and nowhere else. `createReleaseBatch` records what was
+    // live before anything moved, and `verifyDeployed` refuses a live commit equal to it — so a
+    // server answering one constant makes every finish in every suite fail verification for the
+    // right reason and the wrong case. This is the release actually happening.
+    served = `commit-pushed-by-run-${result.runId}`;
+    return result;
   }
 
   // cm:why the claim subscriber is fire-and-forget by design (it must not hold up a run close), so an assertion has to wait for the write rather than assume it landed
@@ -147,6 +183,7 @@ export function releaseBatchFixture(
 
   return {
     declareProduction,
+    serving: () => served,
     seedReleaseRunner,
     insertIssue,
     stored,
