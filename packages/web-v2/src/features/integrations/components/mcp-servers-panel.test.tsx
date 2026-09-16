@@ -123,11 +123,13 @@ describe("McpServersPanel — the switch (ISS-1038)", () => {
   });
 
   it("refuses a second write while one is in flight, and says it is busy", async () => {
-    let release: ((v: McpInjectionStateResponse) => void) | null = null;
+    // A holder rather than a bare `let`: TypeScript narrows an assignment made
+    // inside a callback back to `null` at the call site below.
+    const held: { release?: (v: McpInjectionStateResponse) => void } = {};
     setMcpInjection.mockImplementation(
       () =>
         new Promise<McpInjectionStateResponse>((resolve) => {
-          release = resolve;
+          held.release = resolve;
         }),
     );
     renderPanel();
@@ -142,7 +144,7 @@ describe("McpServersPanel — the switch (ISS-1038)", () => {
     expect(setMcpInjection).toHaveBeenCalledTimes(1);
     expect(isLocked(EPOD_TOGGLE)).toBe(true);
 
-    release?.({ providers: [providerState({ declaredDefault: true })], canEdit: true });
+    held.release?.({ providers: [providerState({ declaredDefault: true })], canEdit: true });
     await waitFor(() => expect(isOn(EPOD_TOGGLE)).toBe(true));
   });
 
