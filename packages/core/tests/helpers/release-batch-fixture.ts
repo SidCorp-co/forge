@@ -30,6 +30,8 @@ export interface ReleaseBatchFixture {
   declareProduction(config?: Record<string, unknown>): Promise<void>;
   /** What the default probe server is serving right now. */
   serving(): string;
+  /** Announce the method a run loaded, as an agent would. */
+  announceMethod(runId: string, over?: { skill?: string; loaded?: boolean }): Promise<void>;
   seedReleaseRunner(): Promise<void>;
   insertIssue(status?: string, note?: unknown): Promise<string>;
   stored(id: string): Promise<StoredIssue>;
@@ -169,7 +171,27 @@ export function releaseBatchFixture(
     // server answering one constant makes every finish in every suite fail verification for the
     // right reason and the wrong case. This is the release actually happening.
     served = `commit-pushed-by-run-${result.runId}`;
+    await announceMethodFor(result.runId);
     return result;
+  }
+
+  // cm:guard `claim()` announces the method because a REAL run does: the batch prompt tells the
+  // agent to load its skill and post it, and `finishReleaseBatch` refuses a run that never did
+  // (ISS-1042 criterion 26). A fixture that skipped it would leave every finish case in every suite
+  // asserting the method refusal instead of what it is about.
+  async function announceMethodFor(
+    runId: string,
+    over: { skill?: string; loaded?: boolean } = {},
+  ): Promise<void> {
+    const [{ announceMethod }, { RELEASE_BATCH_SKILL }] = await Promise.all([
+      import('../../src/release-batch/method.js'),
+      import('../../src/release-batch/plan.js'),
+    ]);
+    await announceMethod({
+      runId,
+      skill: over.skill ?? RELEASE_BATCH_SKILL,
+      loaded: over.loaded ?? true,
+    });
   }
 
   // cm:why the claim subscriber is fire-and-forget by design (it must not hold up a run close), so an assertion has to wait for the write rather than assume it landed
@@ -184,6 +206,7 @@ export function releaseBatchFixture(
   return {
     declareProduction,
     serving: () => served,
+    announceMethod: announceMethodFor,
     seedReleaseRunner,
     insertIssue,
     stored,

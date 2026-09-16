@@ -12,9 +12,9 @@
 // claim release to `releasing-recovery.ts`, which is also what a batch that
 // died without either outcome goes through.
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, desc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IssueStatus, issues, pipelineRuns } from '../db/schema.js';
+import { type IssueStatus, issues, jobs, pipelineRuns } from '../db/schema.js';
 import type { TransitionActor } from '../issues/actor-agency.js';
 import { TransitionError, transitionIssueStatus } from '../issues/apply-transition.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
@@ -27,7 +27,8 @@ import { readProjectBranches } from '../projects/service.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
 import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
-import { ReleaseBranchesUndeclaredError, RELEASE_BATCH_SKILL, releaseBranches } from './plan.js';
+import { assertMethodFor, readMethod } from './method.js';
+import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
@@ -425,6 +426,26 @@ export async function finishReleaseBatch(
   if (run?.status === 'completed' && claimed.length === 0) return { closed: [], failed: [] };
 
   if (run) {
+    // cm:guard the expected skill is read off the RUN'S OWN JOB and never off `RELEASE_BATCH_SKILL`
+    // directly: a run cut before the constant last moved is still working from the skill its job
+    // named, and comparing it to today's constant would refuse a release for having been dispatched
+    // last week. The job is the record of what this run was asked to run.
+    // cm:edge lockstep -> packages/core/src/release-batch/method.ts — `assertMethodFor` is the
+    // predicate and this is its one caller. An announcement whose `loaded` is false passes on
+    // purpose; the guard there prices that amnesty.
+    // cm:why `skillName` is a key of `jobs.payload` and not a column of `jobs` — `insertAndEnqueueJob` writes it into the payload jsonb beside `promptString`, and `feedback_reports.skill_name` is a different field about a different thing.
+    const [job] = await db
+      .select({ payload: jobs.payload })
+      .from(jobs)
+      .where(and(eq(jobs.pipelineRunId, runId), eq(jobs.type, 'release_batch')))
+      .orderBy(desc(jobs.queuedAt))
+      .limit(1);
+    const jobSkill = (job?.payload as { skillName?: unknown } | null)?.skillName;
+    assertMethodFor(
+      readMethod(run.metadata),
+      typeof jobSkill === 'string' && jobSkill.length > 0 ? jobSkill : RELEASE_BATCH_SKILL,
+    );
+
     const channel = await resolveReleaseChannel(run.projectId);
     // cm:guard `if (channel.verify)` used to wrap the whole block, so a project declaring no probes fell straight through to the closes — the shape this issue is named for. It is a REFUSAL now and not a skip: an unverifiable release is not a verified one, and the operator's way out is to declare probes or abort.
     if (!channel.verify) throw new ReleaseProbesUndeclaredError();

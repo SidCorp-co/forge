@@ -156,10 +156,10 @@ export async function readLiveState(cfg: VerifyConfig): Promise<LiveState> {
   const reads = await Promise.all(cfg.probes.map(readProbe));
   const readings = reads.map((r, i) => describeProbeReading(cfg.probes[i] as VerifyProbe, r));
   const unhealthy = reads
-    .map((r, i) => (probeIsHealthy(r) ? null : readings[i] ?? null))
+    .map((r, i) => (probeIsHealthy(r) ? null : (readings[i] ?? null)))
     .filter((s): s is string => s !== null);
   const unidentified = reads
-    .map((r, i) => (probeIsHealthy(r) && r.kind !== 'commit' ? readings[i] ?? null : null))
+    .map((r, i) => (probeIsHealthy(r) && r.kind !== 'commit' ? (readings[i] ?? null) : null))
     .filter((s): s is string => s !== null);
 
   const commits = reads.filter((r): r is { kind: 'commit'; commit: string } => r.kind === 'commit');

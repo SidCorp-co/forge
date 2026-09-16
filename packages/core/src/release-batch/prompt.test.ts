@@ -48,7 +48,7 @@ describe('buildReleaseBatchPrompt', () => {
   // cm:guard the declaration is still QUOTED, and quoted as the human's option. A human deciding
   // whether to roll back wants to read it; dropping it would make the agent's abort comment the
   // only place it appears, which is nowhere.
-  it('quotes the declared way back as the human\'s, not as a step', () => {
+  it("quotes the declared way back as the human's, not as a step", () => {
     const out = buildReleaseBatchPrompt({
       ...BASE,
       plan: plan({ rollback: { kind: 'manual', text: 'promote the previous theme revision' } }),

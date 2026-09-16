@@ -178,7 +178,11 @@ describe('loadReleaseReadiness', () => {
 
   it('reports no probe gap once the binding declares them', async () => {
     project({ productionBranch: 'production' });
-    prodBinding({ releaseRunnerLabel: 'prod-box', verify: PROBES, rollback: { mode: 'coolify-image' } });
+    prodBinding({
+      releaseRunnerLabel: 'prod-box',
+      verify: PROBES,
+      rollback: { mode: 'coolify-image' },
+    });
 
     const out = await loadReleaseReadiness(PROJECT_ID);
 
