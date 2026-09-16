@@ -17,7 +17,7 @@ import { z } from 'zod';
 import { phaseJournalOutcomes } from '../db/schema-journal.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { endPhase, resumePoint, startPhase } from './phase-journal.js';
+import { endPhase, listPhases, resumePoint, startPhase } from './phase-journal.js';
 import { readPipelineRun } from './runs.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
@@ -119,6 +119,35 @@ phaseRoutes.get(
       resumePoint: row
         ? { phase: row.phase, attempt: row.attempt, startedAt: row.startedAt }
         : null,
+    });
+  },
+);
+
+// cm:guard `viewer`, the same role `resume-point` takes, and NOT `member`. This is a read of what a
+// run did; gating it above the role that can already read the run's status would leave the people
+// who look at a stuck release unable to see what it had done.
+// cm:edge lockstep -> packages/core/src/prompt/facts/drive-rules.ts — that preamble told every
+// driver "there is no listing, and a GET of `phases` answers 404". It says otherwise now; the two
+// are read in one context window and a driver believes the preamble.
+phaseRoutes.get(
+  '/:id/phases',
+  zValidator('param', idParamSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { id } = c.req.valid('param');
+    await runProjectFor(id, c.get('userId'), 'viewer');
+    const rows = await listPhases(id);
+    return c.json({
+      phases: rows.map((row) => ({
+        phase: row.phase,
+        attempt: row.attempt,
+        source: row.source,
+        outcome: row.outcome,
+        startedAt: row.startedAt,
+        endedAt: row.endedAt,
+        artifact: row.artifact,
+      })),
     });
   },
 );

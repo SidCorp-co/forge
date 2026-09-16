@@ -6,7 +6,7 @@
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
-import { and, desc, eq, isNull, or, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs } from '../db/schema.js';
 import {
@@ -102,6 +102,23 @@ export async function closeDanglingPhasesForJob(
     .where(and(unowned ? or(owned, unowned) : owned, isNull(phaseJournal.endedAt)))
     .returning({ id: phaseJournal.id });
   return closed.length;
+}
+
+/**
+ * Every phase of one run, in the order it happened.
+ *
+ * `resumePoint` answers where to restart and was the ONLY way in: an operator
+ * could not read what a run had done, only what it was stuck on. That is the
+ * same blindness the release ledger removes one table over — a run's own
+ * account of itself existing nowhere a reader can reach (ISS-1042).
+ */
+// cm:guard ordered by `started_at` and then by `attempt`, never by `id`: `id` is a random uuid and a journal in insertion order is not a journal. The tie-break matters because a phase re-entered inside the same millisecond is exactly the retry a reader is looking for, and `attempt` is the only field that separates the two.
+export async function listPhases(runId: string): Promise<PhaseJournalRow[]> {
+  return db
+    .select()
+    .from(phaseJournal)
+    .where(eq(phaseJournal.runId, runId))
+    .orderBy(asc(phaseJournal.startedAt), asc(phaseJournal.attempt));
 }
 
 /**
