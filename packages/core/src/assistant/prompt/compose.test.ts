@@ -147,6 +147,13 @@ const MANIFEST: Record<LayerId, Record<string, string>> = {
     'preference-bullets': 'the door where a preference is set',
     'memory-followup': 'the multi-turn rule that is true here and false in a room',
   },
+  'door-web-agent': {
+    'out-of-reach-tests':
+      'the same task read from the other side: this door CAN reach a file, so what it measures here is the absence of the refusal `door-web` owes',
+    'preference-bullets':
+      'the door where a preference is set, in the other mode of the same surface',
+    'memory-followup': 'the multi-turn rule, which is true of both modes of the web app',
+  },
   'door-rocketchat': {},
 };
 

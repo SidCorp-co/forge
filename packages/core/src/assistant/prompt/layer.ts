@@ -14,6 +14,7 @@ export const LAYER_IDS = [
   'tools',
   'linking',
   'door-web',
+  'door-web-agent',
   'door-rocketchat',
 ] as const;
 export type LayerId = (typeof LAYER_IDS)[number];

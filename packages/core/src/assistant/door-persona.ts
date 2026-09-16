@@ -6,7 +6,7 @@
 
 // cm:guard this module parses NO environment and must not start to: `web-door.test.ts` and `conversation-send.test.ts` mock `db/client.js` precisely so that composing a persona needs no env, and an `env` import here makes both fail to COLLECT rather than fail an assertion — a whole file's coverage gone for a string. A door that has a web origin passes it in (ISS-1007).
 import { composeLayers } from './prompt/layer.js';
-import { ROCKETCHAT_DOOR_LAYERS, WEB_DOOR_LAYERS } from './prompt/layers.js';
+import { ROCKETCHAT_DOOR_LAYERS, WEB_AGENT_DOOR_LAYERS, WEB_DOOR_LAYERS } from './prompt/layers.js';
 
 /** What a door tells `assistantOpening` about itself. */
 export interface DoorOpening {
@@ -65,6 +65,28 @@ export function webConversationPersona(
     ...openingValues({
       projectName,
       venue: 'answering a person in the Forge web app',
+      projectSlug,
+    }),
+    askedBy,
+  });
+}
+
+/**
+ * The same assistant, in a conversation opened in Agent mode.
+ */
+// cm:guard it is built HERE beside the other two for the reason the Rocket.Chat one is: the three
+// arrangements are one file apart, so a layer added to one is visibly absent from the others. What
+// differs is the door layer alone (ISS-1039).
+export function webAgentConversationPersona(
+  projectName: string,
+  projectSlug: string,
+  askedBy: string | null,
+): string {
+  return composeLayers(WEB_AGENT_DOOR_LAYERS, {
+    ...openingValues({
+      projectName,
+      venue:
+        "answering a person in the Forge web app, from a session on this project's own checkout",
       projectSlug,
     }),
     askedBy,

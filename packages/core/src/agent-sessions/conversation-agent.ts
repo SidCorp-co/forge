@@ -226,6 +226,20 @@ export async function readConversationAgentTurns(
 }
 
 /**
+ * Whether a box could take a turn for this project right now.
+ */
+// cm:guard the SAME resolver `startConversationAgentTurn` uses and not a second answer of its own:
+// the composer offers Agent disabled on the strength of this, and a probe that disagreed with the
+// dispatcher would either grey out a control that would have worked or offer one that refuses a
+// second later — which is the lie ISS-1039 offers the disabled control to avoid.
+// cm:guard it is a claim about NOW and never a guarantee: a device can go between this read and the
+// send, which is why the send refuses by name rather than trusting it (ISS-1039).
+export async function conversationAgentDeviceAvailable(projectId: string): Promise<boolean> {
+  const client = await resolveChatDevice({ projectId, deviceId: null, metadata: null }, undefined);
+  return Boolean(client.deviceId);
+}
+
+/**
  * Hand one conversation turn to a Claude Code session on a paired device.
  */
 // cm:guard this module never delivers anything itself — `conversation-agent-bridge.ts` is the only path its output reaches a venue, and a post from here would race the bridge's at-most-once claim.

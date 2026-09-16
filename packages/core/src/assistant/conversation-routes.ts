@@ -18,6 +18,10 @@ import { eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
+import {
+  conversationAgentDeviceAvailable,
+  readConversationAgentTurns,
+} from '../agent-sessions/conversation-agent.js';
 import { resolveProjectHandle } from '../conversations/handles.js';
 import {
   assertPersonReachesScope,
@@ -29,6 +33,7 @@ import { derivedScope } from '../conversations/scope.js';
 import {
   type ConversationRow,
   deleteConversation,
+  effectiveConversationMode,
   getConversation,
   listConversationsInProject,
   openConversationIn,
@@ -39,6 +44,7 @@ import {
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { db } from '../db/client.js';
 import { users } from '../db/schema.js';
+import { conversationModes } from '../db/schema-conversations.js';
 import { assertProjectRole, effectiveProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -49,7 +55,7 @@ import {
 } from './conversation-access.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
 import { withDisplayNames } from './conversation-people.js';
-import { sendWebConversationMessage } from './conversation-send.js';
+import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
 
 const READ_WINDOW = 200;
 
@@ -110,7 +116,16 @@ const patchSchema = z
     error: 'a PATCH body must carry `title` (a string or null) or `archived` (a boolean), or both',
   });
 
-const sendSchema = z.object({ content: z.string().min(1).max(40_000) }).strict();
+// cm:guard `mode` is OPTIONAL and a body carrying it into a room that already holds a message is
+// refused by name rather than accepted and ignored: a client that believes it switched lanes over a
+// room that did not is the defect the whole first-send rule exists to prevent. There is no value of
+// this field that means "leave it as it is" — absence means that (ISS-1039).
+const sendSchema = z
+  .object({
+    content: z.string().min(1).max(40_000),
+    mode: z.enum(conversationModes).optional(),
+  })
+  .strict();
 
 /** A room's name, taken from the first thing said in it. */
 // cm:guard cut on a CHARACTER count and not on a word boundary, and never asked of a model: a title is a label in a list, an auto-title turn is a second model call a person is waiting behind, and the first sentence of what they typed is what they would have written anyway.
@@ -257,11 +272,12 @@ conversationRoutes.get(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
     const conversation = await readableConversation(id, userId);
-    const [participants, messages, scope, windows] = await Promise.all([
+    const [participants, messages, scope, windows, agentTurns] = await Promise.all([
       listParticipants(id),
       readMessages(id, READ_WINDOW),
       derivedScope(id),
       listWindowsForConversation(id, WINDOW_PAGE),
+      readConversationAgentTurns(id),
     ]);
     // cm:guard the projects are NAMED here rather than left as ids for the client to resolve: the scope is derived, so a screen printing it has no list of its own to look them up in, and a banner reading "this room is about 2 projects" with two uuids under it says nothing a person can act on (ISS-1011 criteria 5, 30).
     const scopeProjects = await projectsNamed(scope);
@@ -271,6 +287,15 @@ conversationRoutes.get(
       scopeProjects,
       // cm:guard the CAPABILITY travels with the room rather than being derived on the client from a project role: a group room is readable by anybody holding a role on its projects, and a screen deciding on that alone offers Add agent to somebody every press of which is refused (ISS-1011, review F6).
       canChangeMembership: await mayChangeMembership(conversation, userId),
+      // cm:guard SERVED and not derived on the client, the same rule `canChangeMembership` follows
+      // one line above: whether a box could take a turn is a fleet read the browser cannot make, and
+      // a composer that guessed would offer a control every press of which is refused. It is only
+      // meaningful while `mode` is null, which is the one moment the control is on screen (ISS-1039).
+      agentMode: await agentModeOffer(conversation, scope, messages.length),
+      // cm:guard the FOUR states, served per window, for the reason the states exist: a thread that
+      // showed one blank gap for dispatched, running, delivered and failed is this feature failing in
+      // the field (ISS-1039).
+      agentTurns,
       participants: await withDisplayNames(participants),
       messages,
       windows,
@@ -318,6 +343,37 @@ conversationRoutes.delete(
 );
 
 /**
+ * Whether this room may still be opened in Agent mode, and why not where it may not.
+ */
+// cm:guard the reason travels with the `false` and is never left for the client to compose: "Agent
+// is unavailable" tells a person nothing they can act on, and the two reasons are acted on
+// differently — a room that has already been answered needs a NEW conversation, and a project with
+// no box needs one paired (ISS-1039).
+async function agentModeOffer(
+  row: ConversationRow,
+  scope: string[],
+  messageCount: number,
+): Promise<{ available: boolean; reason: string | null }> {
+  if (row.mode !== null || messageCount > 0) {
+    return {
+      available: false,
+      reason: `this conversation already answers in ${effectiveConversationMode(row)} mode — open another one to talk to the other`,
+    };
+  }
+  const projectId = scope.length === 1 ? scope[0] : undefined;
+  if (!projectId) {
+    return {
+      available: false,
+      reason: 'a turn runs under exactly one project, and this room is about ' + scope.length,
+    };
+  }
+  if (!(await conversationAgentDeviceAvailable(projectId))) {
+    return { available: false, reason: 'this project has no box paired' };
+  }
+  return { available: true, reason: null };
+}
+
+/**
  * Say something in this room, and get back what the room now holds.
  */
 // cm:guard the turn is routed INLINE and the whole thread comes back with it, rather than answered by a socket the caller then has to wait on: the person pressing enter is the one waiting, and an endpoint that returned 202 would make a delivered answer and a lost one look identical to the only client that could tell. The socket push in `conversation-adapter.ts:deliver` is for the OTHER tabs (ISS-1004 step 5).
@@ -332,7 +388,7 @@ conversationRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { content } = c.req.valid('json');
+    const { content, mode } = c.req.valid('json');
     const userId = c.get('userId');
 
     const conversation = await writableConversation(id, userId);
@@ -345,29 +401,77 @@ conversationRoutes.post(
     const scope = await derivedScope(id);
     const projectId = soleProject(conversation, scope);
 
+    // cm:guard the read is "does this room hold a message", not "is its mode column set": a room
+    // opened before ISS-1039 has a null mode and a transcript, and it answers in `assistant` — so a
+    // body naming a mode for it is refused naming `assistant` rather than silently settling one
+    // over a conversation already under way (ISS-1039, plan consult F6).
+    const already = await readMessages(id, 1);
+    const settled = conversation.mode !== null || already.length > 0;
+    if (mode !== undefined && settled) {
+      throw new HTTPException(409, {
+        message: `conversation ${id} already answers in ${effectiveConversationMode(conversation)} mode; a room's mode is written by its first message and never changes, so open another conversation to talk to the other one`,
+        cause: { code: 'CONVERSATION_MODE_SETTLED' },
+      });
+    }
+    // cm:guard refused BEFORE the message is collected and never after: a person who asked for a box
+    // has spent nothing yet, and the alternative — collect it and answer in Assistant mode — is the
+    // silent fall back this issue forbids by name. The composer offers Agent disabled for the same
+    // reason; this is the floor under a device that goes away between the pick and the send.
+    const asking = mode ?? effectiveConversationMode(conversation);
+    if (asking === 'agent' && !(await conversationAgentDeviceAvailable(projectId))) {
+      throw new HTTPException(409, {
+        message: `no paired device is free to take an Agent turn for project ${projectId}, so this message was not taken in — nothing was answered in Assistant mode in its place`,
+        cause: { code: 'CONVERSATION_AGENT_NO_DEVICE', details: { projectId } },
+      });
+    }
+
     const [me] = await db
       .select({ displayName: users.displayName, email: users.email })
       .from(users)
       .where(eq(users.id, userId))
       .limit(1);
 
-    const sent = await sendWebConversationMessage({
-      room: { id: conversation.id, externalId: conversation.externalId, shape: conversation.shape },
-      projectId,
-      userId,
-      userLabel: me?.displayName ?? me?.email ?? null,
-      content,
-    });
+    let sent: Awaited<ReturnType<typeof sendWebConversationMessage>>;
+    try {
+      sent = await sendWebConversationMessage({
+        room: {
+          id: conversation.id,
+          externalId: conversation.externalId,
+          shape: conversation.shape,
+        },
+        projectId,
+        userId,
+        userLabel: me?.displayName ?? me?.email ?? null,
+        content,
+        mode: asking,
+      });
+    } catch (err) {
+      // cm:guard the LOSER of two first sends racing in one empty room, which the read above cannot
+      // catch because both of them passed it: the settle inside the collector is the admission, and
+      // this is that refusal reaching the caller with the winner's mode named (ISS-1039, F2).
+      if (err instanceof ConversationModeSettledError) {
+        throw new HTTPException(409, {
+          message: `conversation ${id} was opened in ${err.settled} mode by a message that landed first; this one was not taken in — send it again, or open another conversation to talk to the other mode`,
+          cause: { code: 'CONVERSATION_MODE_SETTLED' },
+        });
+      }
+      throw err;
+    }
 
     // cm:guard the room is named from its FIRST message and only its first: a list of rooms all reading "New conversation" is a list nobody can pick from, and renaming on every message would overwrite a name a person typed. `seq === 0` is the one moment both are false.
     if (conversation.title === null && sent.seq === 0) {
       await renameConversation(id, roomNameFrom(content));
     }
 
-    const [messages, windows] = await Promise.all([
+    const [messages, windows, agentTurns] = await Promise.all([
       readMessages(id, READ_WINDOW),
       listWindowsForConversation(id, WINDOW_PAGE),
+      readConversationAgentTurns(id),
     ]);
-    return c.json({ ...sent, messages, windows }, 201);
+    // cm:guard 202 for an Agent turn and 201 for an Assistant one, and the split is the honest
+    // half of the fork rather than decoration: 201 says the thing this call was for is in the body,
+    // which is true of an inline answer and false of a turn a box has only just been asked to take.
+    // A caller reading 201 here would show the room as settled with nothing in it (ISS-1039).
+    return c.json({ ...sent, messages, windows, agentTurns }, sent.mode === 'agent' ? 202 : 201);
   },
 );
