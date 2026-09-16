@@ -127,13 +127,65 @@ describe("ReleaseTimeline — 42: the machine's reading backs the account", () =
 		render(
 			<ReleaseTimeline
 				attempts={[
-					attempt({ commit: null, providerRef: null, health: null, identity: null, verdict: null }),
+					attempt({
+						commit: null,
+						providerRef: null,
+						health: null,
+						identity: null,
+						verdict: null,
+						readings: null,
+					}),
 				]}
 			/>,
 		);
 		const backing = screen.getByTestId("attempt-backing");
 		expect(backing).toHaveTextContent("Provider reference");
 		expect(within(backing).getAllByText("not recorded")).toHaveLength(5);
+	});
+
+	it("keeps what the agent reported apart from what Forge read", () => {
+		render(<ReleaseTimeline attempts={[attempt()]} />);
+		const reported = screen.getByTestId("backing-reported");
+		const read = screen.getByTestId("backing-read");
+		// `providerRef` and `commit` reach the row through the agent's own routes —
+		// `ledger.ts` refuses to let `settleAttempt` write either — so presenting
+		// them as Forge's reading would put the agent's word back inside it.
+		expect(reported).toHaveTextContent("Reported by the agent");
+		expect(reported).toHaveTextContent("Commit");
+		expect(reported).toHaveTextContent("Provider reference");
+		expect(read).toHaveTextContent("Read by Forge");
+		expect(read).toHaveTextContent("Health");
+		expect(read).toHaveTextContent("Identity");
+		expect(read).toHaveTextContent("Verdict");
+		expect(read).not.toHaveTextContent("Provider reference");
+		expect(reported).not.toHaveTextContent("Verdict");
+	});
+
+	it("separates an identity nobody checked from one the fleet did not agree on", () => {
+		render(
+			<ReleaseTimeline
+				attempts={[
+					attempt({
+						identity: null,
+						readings: ["https://a/health -> abc123", "https://b/health -> def456"],
+						verdict: "failed",
+					}),
+				]}
+			/>,
+		);
+		expect(screen.getByTestId("identity-unagreed")).toHaveTextContent(
+			"no agreed identity",
+		);
+		const readings = screen.getByTestId("attempt-readings");
+		expect(readings).toHaveTextContent("https://a/health -> abc123");
+		expect(readings).toHaveTextContent("https://b/health -> def456");
+	});
+
+	it("says an identity was not recorded only where nothing was read at all", () => {
+		render(<ReleaseTimeline attempts={[attempt({ identity: null, readings: null })]} />);
+		expect(screen.queryByTestId("identity-unagreed")).toBeNull();
+		expect(screen.queryByTestId("attempt-readings")).toBeNull();
+		expect(screen.getByTestId("backing-read")).toHaveTextContent("not recorded");
 	});
 
 	it("keeps the agent's account and the machine's verdict as separate elements", () => {
@@ -274,32 +326,53 @@ const STATE: ReleaseRunState = {
 	methodUnloaded: false,
 };
 
+function mockQuery(over: Record<string, unknown> = {}) {
+	query.mockReturnValue({
+		data: STATE,
+		isLoading: false,
+		isError: false,
+		error: null,
+		refetch: vi.fn(),
+		isFetching: false,
+		dataUpdatedAt: Date.now(),
+		...over,
+	});
+}
+
 describe("ReleaseRunScreen — 41: the surface that shows the timeline", () => {
 	it("renders the run's timeline on the screen itself", () => {
-		query.mockReturnValue({
-			data: STATE,
-			isLoading: false,
-			isError: false,
-			error: null,
-			refetch: vi.fn(),
-		});
+		mockQuery();
 		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
 		expect(screen.getByTestId("release-timeline")).toBeInTheDocument();
 		expect(screen.getByTestId("attempt-account")).toHaveTextContent(
 			"Deployed the merge commit and watched the container come up.",
 		);
-		expect(screen.getByTestId("live-reading")).toHaveTextContent("read just now");
+		expect(screen.getByTestId("live-read-at")).toHaveTextContent("read just now");
+	});
+
+	// `staleTime: 0` starts a refetch; it does not withhold the cached answer
+	// while that refetch is in flight. A page that says "read just now" because
+	// it rendered would show a person coming back to a tab the reading from
+	// before the outage they came back to look at.
+	it("does not call an hour-old cached reading one taken just now", () => {
+		mockQuery({ isFetching: true, dataUpdatedAt: Date.now() - 3_600_000 });
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+		const at = screen.getByTestId("live-read-at");
+		expect(at).not.toHaveTextContent("read just now");
+		expect(at).toHaveTextContent("reading now");
+		expect(at).toHaveTextContent("3600s ago");
+	});
+
+	it("dates a settled reading that is no longer fresh instead of calling it now", () => {
+		mockQuery({ isFetching: false, dataUpdatedAt: Date.now() - 120_000 });
+		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
+		const at = screen.getByTestId("live-read-at");
+		expect(at).not.toHaveTextContent("read just now");
+		expect(at).toHaveTextContent("read 120s ago");
 	});
 
 	it("renders a retryable error rather than an empty page", () => {
-		const refetch = vi.fn();
-		query.mockReturnValue({
-			data: undefined,
-			isLoading: false,
-			isError: true,
-			error: new Error("boom"),
-			refetch,
-		});
+		mockQuery({ data: undefined, isError: true, error: new Error("boom") });
 		render(<ReleaseRunScreen projectId="p1" runId="run-1" />);
 		expect(screen.getByText("Couldn't load this release run")).toBeInTheDocument();
 	});

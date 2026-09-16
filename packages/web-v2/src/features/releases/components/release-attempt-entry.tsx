@@ -36,9 +36,38 @@ function Unrecorded() {
 }
 
 /**
- * The machine's half, always all five fields.
+ * A null identity is two different answers and they are not interchangeable.
  *
- * Every field is rendered whether or not it holds a value: a backing block that
+ * With no readings beside it, core never took one. With readings beside it,
+ * core DID look and the fleet did not agree on a commit — `readLiveState`
+ * returns `identity: null` for exactly that case. Calling the second one "not
+ * recorded" tells a reader nothing was checked on the one attempt where the
+ * check is the whole story, so the readings are shown as the evidence for it.
+ */
+function AttemptIdentity({ attempt }: { attempt: ReleaseAttempt }) {
+	if (attempt.identity) return <MonoTag>{shortCommit(attempt.identity)}</MonoTag>;
+	if (attempt.readings && attempt.readings.length > 0) {
+		return (
+			<span className="text-amber" data-testid="identity-unagreed">
+				no agreed identity
+			</span>
+		);
+	}
+	return <Unrecorded />;
+}
+
+/**
+ * The five fields that back the account, split by who authored them.
+ *
+ * `commit` and `providerRef` reach the row through the agent's own routes —
+ * `ledger.ts` says so in as many words: a deployment uuid "is a fact only the
+ * caller holds, so it travels with the account, where it is read as something
+ * reported rather than as something measured". `health`, `identity` and
+ * `verdict` are what core read itself and no route lets an agent write them.
+ * Presenting all five under one heading would put the agent's word back inside
+ * Forge's reading, which is the collapse this whole table exists to undo.
+ *
+ * Every field renders whether or not it holds a value: a backing block that
  * hides its empty rows reads as a complete record with fewer questions asked,
  * and "Forge never read an identity here" is exactly the thing a person
  * debugging a release needs to see.
@@ -46,48 +75,68 @@ function Unrecorded() {
 function AttemptBacking({ attempt }: { attempt: ReleaseAttempt }) {
 	return (
 		<div
-			className="mt-2 grid gap-3 rounded-md border border-line-subtle bg-sunken p-2.5 sm:grid-cols-5"
+			className="mt-2 flex flex-col gap-2 rounded-md border border-line-subtle bg-sunken p-2.5"
 			data-testid="attempt-backing"
 		>
-			<Backing label="Commit">
-				{attempt.commit ? (
-					<MonoTag>{shortCommit(attempt.commit)}</MonoTag>
-				) : (
-					<Unrecorded />
-				)}
-			</Backing>
-			<Backing label="Provider reference">
-				{attempt.providerRef ? (
-					<MonoTag>{attempt.providerRef}</MonoTag>
-				) : (
-					<Unrecorded />
-				)}
-			</Backing>
-			<Backing label="Health">
-				{attempt.health ? (
-					<Badge tone={attempt.health === "up" ? "green" : "red"}>
-						{attempt.health}
-					</Badge>
-				) : (
-					<Unrecorded />
-				)}
-			</Backing>
-			<Backing label="Identity">
-				{attempt.identity ? (
-					<MonoTag>{shortCommit(attempt.identity)}</MonoTag>
-				) : (
-					<Unrecorded />
-				)}
-			</Backing>
-			<Backing label="Verdict">
-				{attempt.verdict ? (
-					<Badge tone={attempt.verdict === "ok" ? "green" : "red"}>
-						{attempt.verdict}
-					</Badge>
-				) : (
-					<Unrecorded />
-				)}
-			</Backing>
+			<section data-testid="backing-reported">
+				<h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+					Reported by the agent
+				</h4>
+				<div className="mt-1 grid gap-3 sm:grid-cols-2">
+					<Backing label="Commit">
+						{attempt.commit ? (
+							<MonoTag>{shortCommit(attempt.commit)}</MonoTag>
+						) : (
+							<Unrecorded />
+						)}
+					</Backing>
+					<Backing label="Provider reference">
+						{attempt.providerRef ? (
+							<MonoTag>{attempt.providerRef}</MonoTag>
+						) : (
+							<Unrecorded />
+						)}
+					</Backing>
+				</div>
+			</section>
+
+			<section data-testid="backing-read">
+				<h4 className="text-[10px] font-semibold uppercase tracking-wide text-muted">
+					Read by Forge
+				</h4>
+				<div className="mt-1 grid gap-3 sm:grid-cols-3">
+					<Backing label="Health">
+						{attempt.health ? (
+							<Badge tone={attempt.health === "up" ? "green" : "red"}>
+								{attempt.health}
+							</Badge>
+						) : (
+							<Unrecorded />
+						)}
+					</Backing>
+					<Backing label="Identity">
+						<AttemptIdentity attempt={attempt} />
+					</Backing>
+					<Backing label="Verdict">
+						{attempt.verdict ? (
+							<Badge tone={attempt.verdict === "ok" ? "green" : "red"}>
+								{attempt.verdict}
+							</Badge>
+						) : (
+							<Unrecorded />
+						)}
+					</Backing>
+				</div>
+				{attempt.readings && attempt.readings.length > 0 ? (
+					<ul className="mt-1.5 flex flex-col gap-0.5" data-testid="attempt-readings">
+						{attempt.readings.map((reading) => (
+							<li key={reading} className="font-mono text-[11px] text-muted">
+								{reading}
+							</li>
+						))}
+					</ul>
+				) : null}
+			</section>
 		</div>
 	);
 }

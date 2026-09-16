@@ -29,7 +29,38 @@ import type {
 } from "../types";
 import { ReleaseTimeline } from "./release-timeline";
 
-function LiveReading({ live }: { live: ReleaseLiveState | null }) {
+/**
+ * When the reading on screen was actually taken.
+ *
+ * `staleTime: 0` starts a refetch; it does not hide the cached answer while
+ * that refetch is in flight, so a screen that says "read just now" because it
+ * rendered is saying it about a reading that may be an hour old — and the
+ * reader this page exists for is the one coming back to a tab they left open
+ * during an outage. So the words come from `dataUpdatedAt`, and a refresh in
+ * flight says so rather than being silently presented as its own result.
+ */
+function ReadAt({ at, refreshing }: { at: number; refreshing: boolean }) {
+	const seconds = Math.max(0, Math.round((Date.now() - at) / 1000));
+	return (
+		<span className="text-xs text-subtle" data-testid="live-read-at">
+			{refreshing
+				? `reading now · showing a reading from ${seconds}s ago`
+				: seconds < 5
+					? "read just now"
+					: `read ${seconds}s ago`}
+		</span>
+	);
+}
+
+function LiveReading({
+	live,
+	readAt,
+	refreshing,
+}: {
+	live: ReleaseLiveState | null;
+	readAt: number;
+	refreshing: boolean;
+}) {
 	if (!live) {
 		return (
 			<p className="text-sm text-muted">
@@ -49,7 +80,7 @@ function LiveReading({ live }: { live: ReleaseLiveState | null }) {
 				) : (
 					<span className="text-xs text-subtle">no agreed identity</span>
 				)}
-				<span className="text-xs text-subtle">read just now</span>
+				<ReadAt at={readAt} refreshing={refreshing} />
 			</div>
 			<ul className="flex flex-col gap-0.5">
 				{live.readings.map((reading) => (
@@ -158,10 +189,8 @@ export interface ReleaseRunScreenProps {
 }
 
 export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
-	const { data, isLoading, isError, error, refetch } = useReleaseRunState(
-		projectId,
-		runId,
-	);
+	const { data, isLoading, isError, error, refetch, isFetching, dataUpdatedAt } =
+		useReleaseRunState(projectId, runId);
 
 	if (isLoading) {
 		return (
@@ -201,7 +230,11 @@ export function ReleaseRunScreen({ projectId, runId }: ReleaseRunScreenProps) {
 						<CardTitle>Production, right now</CardTitle>
 					</CardHeader>
 					<CardContent>
-						<LiveReading live={data.live} />
+						<LiveReading
+							live={data.live}
+							readAt={dataUpdatedAt}
+							refreshing={isFetching}
+						/>
 					</CardContent>
 				</Card>
 				<Card>
