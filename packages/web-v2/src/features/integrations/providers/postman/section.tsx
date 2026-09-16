@@ -32,8 +32,7 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl,
-} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { postman } from "./index";
@@ -142,7 +141,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
         role: "service",
         config: { ...toConfig(form) },
         secrets: { apiKey: form.apiKey.trim() },
-        agentAccess,
+        ...agentAccessBody(postman.agentPathKind, agentAccess),
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
       setForm((f) => ({ ...f, apiKey: "" }));

@@ -31,8 +31,7 @@ import type {
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl,
-} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { sentry } from "./index";
@@ -213,7 +212,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
         role: "service",
         config: { ...toConfig(form) },
         secrets: { authToken: form.authToken.trim() },
-        agentAccess,
+        ...agentAccessBody(sentry.agentPathKind, agentAccess),
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
       setForm((f) => ({ ...f, authToken: "" }));

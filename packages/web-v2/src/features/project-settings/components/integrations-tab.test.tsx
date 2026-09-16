@@ -117,7 +117,10 @@ describe("ShareExistingCard — the role is declared, not derived", () => {
     expect(bindMutate).toHaveBeenCalledWith(
       expect.objectContaining({
         id: "conn-coolify",
-        body: { projectId: "proj-1", role: "deploy", stages: ["live"] },
+        // ISS-1071 — sharing a credential into a project IS a connect, so the body carries the
+        // grant the switch showed, closed unless the person opened it. Coolify is core-mediated, so
+        // the switch is rendered and its value is submitted.
+        body: { projectId: "proj-1", role: "deploy", stages: ["live"], agentAccess: "none" },
       }),
       expect.anything(),
     );
@@ -129,7 +132,7 @@ describe("ShareExistingCard — the role is declared, not derived", () => {
     fireEvent.click(screen.getByRole("button", { name: /Share with this project/i }));
 
     const body = bindMutate.mock.calls[0]?.[0]?.body as Record<string, unknown>;
-    expect(body).toEqual({ projectId: "proj-1", role: "service" });
+    expect(body).toEqual({ projectId: "proj-1", role: "service", agentAccess: "none" });
     expect(body).not.toHaveProperty("stages");
   });
 });
@@ -173,6 +176,7 @@ describe("ShareExistingCard — the stage control under `service`", () => {
     expect(bindMutate.mock.calls[0]?.[0]?.body).toEqual({
       projectId: "proj-1",
       role: "service",
+      agentAccess: "none",
     });
   });
 });

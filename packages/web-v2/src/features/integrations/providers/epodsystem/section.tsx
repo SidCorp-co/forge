@@ -35,8 +35,7 @@ import type { EpodsystemReadConfig } from "./config";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl,
-} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { epodsystem } from "./index";
@@ -413,7 +412,7 @@ function AddEpodsystemForm({
         provider: "epodsystem",
         config: {},
         secrets: { apiKey: apiKey.trim() },
-        agentAccess,
+        ...agentAccessBody(epodsystem.agentPathKind, agentAccess),
         ...(label.trim() ? { label: label.trim() } : {}),
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       } as const;

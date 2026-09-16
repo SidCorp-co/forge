@@ -22,8 +22,7 @@ import type { GoogleReadConfig } from "./config";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl,
-} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { google } from "./index";
@@ -322,7 +321,7 @@ function AddGoogleForm({ projectId }: { projectId: string }) {
         role: "service",
         config: spreadsheetId.trim() ? { defaultSpreadsheetId: spreadsheetId.trim() } : {},
         secrets: { serviceAccountJson: keyJson.trim() },
-        agentAccess,
+        ...agentAccessBody(google.agentPathKind, agentAccess),
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
     } catch (err) {

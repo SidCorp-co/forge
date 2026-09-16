@@ -17,8 +17,7 @@ import {
 } from "@/design";
 import {
   AGENT_ACCESS_CLOSED,
-  AgentAccessChoice,
-} from "@/features/integrations/components/agent-access-control";
+  AgentAccessChoice, agentAccessBody} from "@/features/integrations/components/agent-access-control";
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
 import { useBindExistingConnection, useConnections } from "@/features/integrations/hooks";
 import { providerLabel, providerModule } from "@/features/integrations/providers/registry";
@@ -128,7 +127,7 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
           projectId,
           role,
           ...(role === "deploy" ? { stages } : {}),
-          agentAccess,
+          ...agentAccessBody(agentPathKind, agentAccess),
         },
       },
       {

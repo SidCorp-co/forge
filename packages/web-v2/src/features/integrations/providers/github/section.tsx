@@ -32,8 +32,7 @@ import type { GitHubConnectStart, IntegrationSummary } from "../../types";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl,
-} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { github } from "./index";
@@ -158,7 +157,7 @@ function UseExistingApp({
           repo: chosen.repo,
           installationId: chosen.installationId,
         },
-        agentAccess,
+        ...agentAccessBody(github.agentPathKind, agentAccess),
       },
     });
   };

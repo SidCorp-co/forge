@@ -8,7 +8,7 @@ export const rocketchat: ProviderModule = {
   secretField: "authToken",
   secretPlaceholder: "bot personal-access token",
   drillable: true,
-  agentPathKind: "core-mediated",
+  agentPathKind: "none",
   mcpServerName: null,
   multiBinding: false,
   target: (config) => urlHost(config.serverUrl),

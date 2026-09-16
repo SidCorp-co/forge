@@ -11,7 +11,7 @@ export const github: ProviderModule = {
   secretField: null,
   secretPlaceholder: null,
   drillable: true,
-  agentPathKind: "core-mediated",
+  agentPathKind: "none",
   mcpServerName: null,
   multiBinding: false,
   target: (config) => {

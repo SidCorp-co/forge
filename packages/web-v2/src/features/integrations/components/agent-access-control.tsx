@@ -42,6 +42,23 @@ const KIND_COPY: Record<
 };
 
 /**
+ * The grant as a request-body fragment: `{ agentAccess }` where the provider HAS an agent path,
+ * and `{}` where it does not.
+ *
+ * Spread into a connect or bind body so the key appears exactly where `AgentAccessChoice` rendered
+ * a switch. A provider declaring `none` shows no control, so a body carrying `agentAccess: 'none'`
+ * for it would be the screen answering a question it never asked — and the server refuses a real
+ * grant on such a provider by name, so the two sides would disagree about whether the field means
+ * anything.
+ */
+export function agentAccessBody(
+  pathKind: AgentPathKind,
+  value: AgentAccess,
+): { agentAccess?: AgentAccess } {
+  return pathKind === "none" ? {} : { agentAccess: value };
+}
+
+/**
  * The control itself, with no opinion about where the value is stored — the connect forms drive it
  * from their own state, the binding rows drive it from a PATCH.
  *

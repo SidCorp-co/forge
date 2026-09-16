@@ -24,8 +24,7 @@ import { useMemo, useState } from "react";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl,
-} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { coolify } from "./index";
@@ -216,7 +215,7 @@ function StagePanel({
           stages: [stage],
           config: { baseUrl, targets: cleanTargets },
           secrets: { apiToken: apiToken.trim() },
-          agentAccess,
+          ...agentAccessBody(coolify.agentPathKind, agentAccess),
           ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
         });
       }

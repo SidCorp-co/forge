@@ -48,6 +48,7 @@ export const DEFAULT_CAPABILITIES: CardCapabilities = {
   liveConfirmGate: false,
   hasDeliveryLog: false,
   multiBinding: false,
+  structuredRollback: false,
 };
 
 /** Card key → provider; a stage-suffixed key and a bare one map to the same provider. */

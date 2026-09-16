@@ -39,8 +39,7 @@ import type { RocketchatReadConfig } from "./config";
 import {
   AGENT_ACCESS_CLOSED,
   AgentAccessChoice,
-  AgentAccessControl,
-} from "../../components/agent-access-control";
+  AgentAccessControl, agentAccessBody} from "../../components/agent-access-control";
 import type { AgentAccess } from "../../types";
 import { ConnectionOwnerField } from "../../components/connection-owner-field";
 import { rocketchat } from "./index";
@@ -465,7 +464,7 @@ function AddRocketchatForm({ projectId }: { projectId: string }) {
         role: "service",
         config: { serverUrl: serverUrl.trim().replace(/\/+$/, ""), rids: [rid.trim()] },
         secrets: { authToken: authToken.trim(), userId: botUserId.trim() },
-        agentAccess,
+        ...agentAccessBody(rocketchat.agentPathKind, agentAccess),
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
       });
     } catch (err) {
