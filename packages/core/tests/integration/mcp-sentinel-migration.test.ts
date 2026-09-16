@@ -237,6 +237,71 @@ describe('0255_down.sql — the way back', () => {
     }
   }, 120_000);
 
+  // F2, found by review. Refusal 1 asks whether a grant moved AWAY from what 0255 set, and a
+  // binding created afterwards has no image row, so its `none` matches the default baseline and
+  // reads as a pass. It is the opposite of safe: the old model gates direct-MCP per PROJECT and
+  // does not gate core-mediated at all, so going back ADDS access to a row somebody deliberately
+  // closed — silently, with the column dropped and nothing left to show it was ever closed.
+  it.each([
+    ['google', 'core-mediated: ungated once the column is gone'],
+    ['epodsystem', "direct-mcp: the project's restored sentinel re-enables its whole active set"],
+  ])('refuses a denied %s binding created after the forward run', async (provider) => {
+    const f = await fresh();
+    try {
+      const g = await ground(f.sql);
+      // The seed binding exists only so the forward run has a sentinel to strip and the rollback
+      // has something to restore; it is `postman` so the late binding below, which is the subject,
+      // does not collide with it on `integration_bindings_service_uq`.
+      const projectId = await plantProject(f.sql, g, 'new-denial', config({ postman: true }));
+      await plantBinding(f.sql, g, { projectId, provider: 'postman' });
+
+      await runForward(f.sql);
+      const stripped = await allConfigs(f.sql);
+      // Created AFTER the forward run, so it has no row in the image table, and left closed.
+      const lateId = await plantBinding(f.sql, g, { projectId, provider });
+      expect(await grantOf(f.sql, lateId)).toBe('none');
+
+      const err = await runDown(f.sql).then(
+        () => null,
+        (e: unknown) => (e instanceof Error ? e.message : String(e)),
+      );
+      expect(err).toMatch(new RegExp(lateId));
+      expect(err).toMatch(/new-denial/);
+
+      const cols = await f.sql.unsafe(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'integration_bindings'`,
+      );
+      expect(cols.map((c) => c.column_name as string)).toContain('agent_access');
+      expect(await allConfigs(f.sql)).toEqual(stripped);
+    } finally {
+      await f.drop();
+    }
+  }, 120_000);
+
+  // A provider with no agent path at all was never reachable, so going back grants it nothing and
+  // 1b must let it through — otherwise the refusal is a blanket "any new binding" and an operator
+  // learns to wave it away, which is how a real denial gets waved away with it.
+  it('lets a denied binding of a provider with no agent path roll back', async () => {
+    const f = await fresh();
+    try {
+      const g = await ground(f.sql);
+      const projectId = await plantProject(f.sql, g, 'no-path', config({ postman: true }));
+      await plantBinding(f.sql, g, { projectId, provider: 'postman' });
+      await runForward(f.sql);
+      const lateId = await plantBinding(f.sql, g, { projectId, provider: 'github' });
+      expect(await grantOf(f.sql, lateId)).toBe('none');
+
+      await runDown(f.sql);
+
+      const cols = await f.sql.unsafe(
+        `SELECT column_name FROM information_schema.columns WHERE table_name = 'integration_bindings'`,
+      );
+      expect(cols.map((c) => c.column_name as string)).not.toContain('agent_access');
+    } finally {
+      await f.drop();
+    }
+  }, 120_000);
+
   // cm:guard the image is a photograph of one moment, and a grant changed since is a decision
   // it cannot speak for: the map it would restore is not the state that grant came from, and
   // the column is about to be dropped, so nothing would record that the decision existed.

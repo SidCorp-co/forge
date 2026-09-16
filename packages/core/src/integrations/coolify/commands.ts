@@ -78,11 +78,17 @@ export function assertAgentMayDeployCoolify(
 ): void {
   if (rows.length === 0) return;
   const candidates = integrationId ? rows.filter((r) => r.id === integrationId) : rows;
-  const first = candidates[0];
-  if (!first) return;
+  if (candidates.length === 0) return;
   const decl = getIntegration('coolify');
-  if (candidates.some((r) => grantHolds(decl, r.pair.binding))) return;
-  throw new CoolifyCommandError(notGrantedMessage('coolify', first.id));
+  // EVERY candidate, not `some`. Without an id, `status`, `logs`, `cancel` and `rollback` read the
+  // project's whole Coolify set, so one granted binding letting the action through would hand the
+  // agent an ungranted binding's deliveries — a per-binding switch that only holds per project.
+  const ungranted = candidates.find((r) => !grantHolds(decl, r.pair.binding));
+  if (!ungranted) return;
+  if (integrationId) throw new CoolifyCommandError(notGrantedMessage('coolify', ungranted.id));
+  throw new CoolifyCommandError(
+    `${notGrantedMessage('coolify', ungranted.id)} This call named no integrationId, so it would have read every Coolify binding on the project, that one included. Name the binding you mean with integrationId and a granted one still answers.`,
+  );
 }
 
 /**

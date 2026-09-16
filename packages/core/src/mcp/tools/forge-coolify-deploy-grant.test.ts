@@ -55,14 +55,15 @@ registerAllIntegrations();
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const INT_ID = 'a1111111-1111-4111-8111-111111111111';
+const OTHER_INT = 'a2222222-2222-4222-8222-222222222222';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
 const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
 const ctx = () => ({ principal: fakePrincipal, projectSlug: null });
 
-function pair(agentAccess: string) {
-  const base = { id: INT_ID, provider: 'coolify', active: true };
+function pair(agentAccess: string, id: string = INT_ID) {
+  const base = { id, provider: 'coolify', active: true };
   return {
     binding: {
       ...base,
@@ -125,6 +126,19 @@ describe('forge_coolify_deploy — the agent-access gate', () => {
       projectId: PROJECT_ID,
     })) as { integrations: unknown[] };
     expect(result.integrations).toHaveLength(1);
+  });
+
+  it('refuses an un-targeted action while ANY binding is ungranted, and says how to target one', async () => {
+    // F1, found by review. `status` and `logs` without an integrationId read the project's WHOLE
+    // Coolify set, so a gate that passed when SOME binding was granted handed the agent the
+    // deliveries of one that was not — a per-binding switch degraded to a per-project one.
+    resultQueue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+    resultQueue.push([pair('all'), pair('none', OTHER_INT)]);
+    const err = await forgeCoolifyDeployTool(ctx())
+      .handler({ action: 'status', projectId: PROJECT_ID })
+      .catch((e: Error) => e);
+    expect((err as Error).message).toContain(OTHER_INT);
+    expect((err as Error).message).toContain('integrationId');
   });
 
   it('lets a granted binding deploy, so the gate is the grant and nothing else', async () => {

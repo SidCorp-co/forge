@@ -54,8 +54,11 @@ END $$;
 -- newer decision away with no record that it existed.
 --
 -- A binding created after 0255 ran has no image row; its baseline is the column's own
--- default, `none`. At `none` it is losing nothing and passes. At `all` it is a grant somebody
--- made deliberately, and it stops this file exactly like any other.
+-- default, `none`. At `all` it is a grant somebody made deliberately, and it stops this file
+-- exactly like any other. At `none` it matches that baseline and passes HERE — which is not
+-- the same as being safe, because going back ADDS access to a denied row rather than removing
+-- it. Section 1b is where that case is refused; this one only ever asks about a grant that
+-- moved away from what 0255 set.
 DO $$
 DECLARE moved text; n int;
 BEGIN
@@ -78,6 +81,55 @@ BEGIN
       'first (a `direct-mcp` grant is a `<provider>: true` sentinel; a `core-mediated` one had '
       'no representation at all and is simply lost on the way back) and update '
       'iss1071_agent_access_set to match before re-running.', n, moved;
+  END IF;
+END $$;
+
+-- === 1b. refuse a DENIAL the old model cannot say ========================
+--
+-- Refusal 1 asks whether a grant moved AWAY from what 0255 set. This one asks the other
+-- question, which that check reads as a pass: a binding created AFTER the forward run has no
+-- image row, so its baseline is the column default `none` and it matches. The comment above
+-- called that "losing nothing", and it is exactly backwards. Going back does not take access
+-- away from such a row, it ADDS it: the old model had no way to deny a single binding, so a
+-- core-mediated one an operator deliberately left closed becomes agent-callable the moment the
+-- column is dropped, and a direct-MCP one becomes injectable as soon as another binding's
+-- restored `<provider>: true` sentinel re-enables its project's whole active set.
+--
+-- That is the forward file's own rule run backwards: a row the old schema cannot represent
+-- stops the rollback naming the row, rather than being dropped so the DDL succeeds.
+--
+-- cm:guard the kinds below are 0255's own classification, copied deliberately. The forward file
+-- builds `iss1071_provider_agent_path` and DROPS it at the end, so it is not here to read, and
+-- this file is a photograph pinned to that migration — a provider added later is not one 0255
+-- ever classified, and falls to the `IS NULL` arm, which refuses rather than assumes.
+DO $$
+DECLARE denied text; n int;
+BEGIN
+  SELECT string_agg(format('%s (project %s, provider %s, agent path %s)',
+                           b.id, p.slug, b.provider, coalesce(k.kind, 'UNKNOWN to 0255')),
+                    ', ' ORDER BY b.id), count(*)
+    INTO denied, n
+    FROM integration_bindings b
+    JOIN projects p ON p.id = b.project_id
+    LEFT JOIN iss1071_agent_access_set a ON a.binding_id = b.id
+    LEFT JOIN (VALUES
+      ('coolify', 'core-mediated'), ('google', 'core-mediated'),
+      ('postman', 'direct-mcp'), ('sentry', 'direct-mcp'), ('epodsystem', 'direct-mcp'),
+      ('rocketchat', 'none'), ('github', 'none'), ('agent', 'none')
+    ) AS k(provider, kind) ON k.provider = b.provider
+   WHERE a.binding_id IS NULL
+     AND b.agent_access = 'none'
+     AND k.kind IS DISTINCT FROM 'none';
+  IF denied IS NOT NULL THEN
+    RAISE EXCEPTION 'ISS-1071 rollback: % binding(s) were created after 0255 ran and are denied '
+      'to agents: %. The model being restored cannot express that denial — it gates a direct-MCP '
+      'provider per PROJECT, through an mcpServers sentinel, and does not gate a core-mediated '
+      'one at all — so dropping the column would hand agents access somebody deliberately '
+      'withheld, silently and with nothing left to show it was ever withheld. Nothing has been '
+      'changed. For each row: delete or deactivate the binding if the denial must hold, or set '
+      'its agent_access to ''all'' if it may be reached, and re-run this file. A provider '
+      'reported UNKNOWN to 0255 was added after this migration and must be decided the same '
+      'way, by hand.', n, denied;
   END IF;
 END $$;
 
