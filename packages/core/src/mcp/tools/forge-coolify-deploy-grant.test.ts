@@ -50,6 +50,7 @@ vi.mock('../../pipeline/release-coolify.js', () => ({
 }));
 
 const { forgeCoolifyDeployTool } = await import('./forge-coolify-deploy.js');
+const { activeCoolifyIntegrations } = await import('../../integrations/coolify/commands.js');
 const { registerAllIntegrations } = await import('../../integrations/register-all.js');
 registerAllIntegrations();
 
@@ -151,5 +152,22 @@ describe('forge_coolify_deploy — the agent-access gate', () => {
     });
     await forgeCoolifyDeployTool(ctx()).handler({ action: 'deploy', projectId: PROJECT_ID });
     expect(dispatchDirectSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
+// Criteria 29 and 30 — the human's Deploy button and core's own release dispatch must still reach a
+// binding an agent may not use. Both go through `activeCoolifyIntegrations`, and until now the only
+// thing saying so was the ABSENCE of a gate in it, which is what a later refactor deletes by
+// accident: moving the check "down into the resolver where it belongs" is the obvious tidy-up, and
+// it would make an ungranted binding block a release nobody asked an agent about.
+// cm:guard this resolver is shared with `integrations/coolify/routes.ts` (REST) and
+// `pipeline/release-coolify.ts`. It must NOT filter on `agentAccess`; the grant is checked in
+// `forge-coolify-deploy.ts`, which is the only door an agent comes through.
+describe('activeCoolifyIntegrations — the shared resolver is not the gate', () => {
+  it('returns an ungranted binding, so a person and the release pipeline still deploy it', async () => {
+    resultQueue.push([pair('none')]);
+    const rows = await activeCoolifyIntegrations(PROJECT_ID);
+    expect(rows.map((r) => r.id)).toEqual([INT_ID]);
+    expect(rows[0]?.pair.binding.agentAccess).toBe('none');
   });
 });
