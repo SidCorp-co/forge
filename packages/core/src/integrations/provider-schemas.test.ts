@@ -131,7 +131,7 @@ describe('the release channel on every provider that can be the production bindi
   };
 
   // cm:guard coolify is deliberately absent from this loop: ISS-925 made `rollback` the one key whose TYPE differs by provider, and the loop's prose value is exactly what a coolify binding now refuses. Adding it back green would mean the refusal had been undone.
-  for (const provider of ['postman', 'epodsystem', 'sentry', 'rocketchat', 'agent']) {
+  for (const provider of ['postman', 'epodsystem', 'sentry', 'rocketchat', 'google', 'agent']) {
     it(`survives a partial PATCH on ${provider}, on the binding tier`, () => {
       const parsed = configSchemaForProvider(provider).parse(patch) as Record<string, unknown>;
       expect(parsed).toEqual(patch);
@@ -195,5 +195,79 @@ describe('a target label names one application', () => {
 
   it('accepts distinct labels', () => {
     expect(parse([target('api'), target('web')]).success).toBe(true);
+  });
+});
+
+describe("a Google binding's default spreadsheet (ISS-1036, criterion 24)", () => {
+  const SHEET = '1DefaultSheetId';
+
+  // cm:guard this is the assertion the PATCH round-trip below CANNOT make. A key declared in the config schema but left out of `BINDING_CONFIG_KEYS` survives a PATCH perfectly well — it just survives on the CONNECTION, where one org credential shared by three projects gives all three the same sheet. Delete the google entry from that table and this case is the one that goes red.
+  it('is split onto the binding tier, not left on the connection', () => {
+    const tiers = splitProviderConfig('google', {
+      clientEmail: 'forge@forge-sheets-1.iam.gserviceaccount.com',
+      defaultSpreadsheetId: SHEET,
+    });
+    expect(tiers.binding).toEqual({ defaultSpreadsheetId: SHEET });
+    expect(tiers.connection).toEqual({
+      clientEmail: 'forge@forge-sheets-1.iam.gserviceaccount.com',
+    });
+    expect(tiers.connection.defaultSpreadsheetId).toBeUndefined();
+  });
+
+  it('survives a PATCH whose body names only another key', () => {
+    const parsed = configSchemaForProvider('google').parse({
+      defaultSpreadsheetId: SHEET,
+      releaseRunnerLabel: 'release',
+    }) as Record<string, unknown>;
+    expect(parsed.defaultSpreadsheetId).toBe(SHEET);
+    expect(splitProviderConfig('google', parsed).binding).toMatchObject({
+      defaultSpreadsheetId: SHEET,
+    });
+  });
+
+  it('is not silently accepted onto a provider that does not declare it', () => {
+    const parsed = configSchemaForProvider('sentry').parse({
+      host: 'sentry.io',
+      defaultSpreadsheetId: SHEET,
+    }) as Record<string, unknown>;
+    expect(parsed.defaultSpreadsheetId).toBeUndefined();
+  });
+});
+
+describe('a Google connection carries the key file and nothing else (ISS-1036, criterion 1)', () => {
+  const KEY = JSON.stringify({
+    type: 'service_account',
+    client_email: 'forge@forge-sheets-1.iam.gserviceaccount.com',
+    private_key: '-----BEGIN PRIVATE KEY-----\nMIIabc\n-----END PRIVATE KEY-----\n',
+  });
+
+  it('creates from the whole key file Google issued', () => {
+    const parsed = createSchema.parse({
+      provider: 'google',
+      config: { defaultSpreadsheetId: '1Sheet' },
+      secrets: { serviceAccountJson: KEY },
+    });
+    expect(parsed.provider).toBe('google');
+  });
+
+  it('refuses a body that is not a service-account key, naming what one looks like', () => {
+    const result = createSchema.safeParse({
+      provider: 'google',
+      config: {},
+      secrets: { serviceAccountJson: JSON.stringify({ type: 'authorized_user' }).padEnd(120, ' ') },
+    });
+    expect(result.success).toBe(false);
+    expect(JSON.stringify(result.error)).toContain('service_account');
+  });
+
+  it('refuses a bare PEM pasted in place of the file', () => {
+    const result = createSchema.safeParse({
+      provider: 'google',
+      config: {},
+      secrets: {
+        serviceAccountJson: '-----BEGIN PRIVATE KEY-----'.padEnd(120, 'A'),
+      },
+    });
+    expect(result.success).toBe(false);
   });
 });

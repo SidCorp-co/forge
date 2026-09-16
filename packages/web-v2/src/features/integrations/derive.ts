@@ -52,6 +52,7 @@ export const DRILLABLE_PROVIDERS = [
   "sentry",
   "rocketchat",
   "github",
+  "google",
 ] as const;
 export type DrillableProvider = (typeof DRILLABLE_PROVIDERS)[number];
 
@@ -187,9 +188,10 @@ export const DIRECTORY_STATUS_META: Record<
     bg: "var(--amberw-50)",
   },
   // cm:guard needs_scope must never share needs_reauth's label — one says replace the credential, the other says the credential is fine and its permissions are not, and an operator who reads the wrong one does work that reproduces the state exactly (ISS-924)
+  // cm:guard the label says PERMISSION and not "scope", and it is shared by three providers whose remedies are not the same page: Coolify wants a token ability, GitHub an App permission, and Google the spreadsheet shared with the service account. "Needs wider scope" sent a Google operator hunting an OAuth setting that does not exist for them (ISS-1036). The precise sentence belongs on the provider's own panel, which is the only place that knows which of the three this is.
   needs_scope: {
     icon: "lock",
-    label: "Needs wider scope",
+    label: "Permission needed",
     fg: "var(--amberw-700)",
     bg: "var(--amberw-50)",
   },
@@ -221,7 +223,8 @@ export function getCapabilities(card: Pick<StatusCard, "meta"> | undefined | nul
 
 /** Keys whose values must never reach the DOM (ADR 0013). Matched
  *  case-insensitively against object keys when redacting free-form payloads. */
-const SECRET_KEY_RE = /(api[-_]?key|api[-_]?token|secret|webhook[-_]?secret|password|authorization|token|bearer|credential)/i;
+// cm:guard `private[-_]?key` and `service[-_]?account` are NOT covered by the `token`/`secret` alternatives beside them — a GitHub App PEM and a Google service-account key file carry neither word, so before ISS-1036 either would have rendered into the DOM verbatim. Adding a credential shape to the vault means adding its key name here.
+const SECRET_KEY_RE = /(api[-_]?key|api[-_]?token|private[-_]?key|service[-_]?account|secret|webhook[-_]?secret|password|authorization|token|bearer|credential)/i;
 
 export const REDACTED = "[redacted]";
 

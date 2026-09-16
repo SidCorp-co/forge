@@ -19,6 +19,8 @@ const PRIMARY_FIELD = {
   sentry: 'authToken',
   rocketchat: 'authToken',
   github: 'privateKey',
+  // cm:why the whole service-account JSON is the rotating unit, not the PEM inside it — Google reissues a key as a new file whose `private_key_id` and `client_email` travel with the PEM, and rotating the PEM alone would leave the connection signing with a key id Google no longer maps to it
+  google: 'serviceAccountJson',
 } as const;
 
 /** Provider → name of the field used to retain the previous credential. */
@@ -29,6 +31,7 @@ const PREVIOUS_FIELD = {
   sentry: 'previousAuthToken',
   rocketchat: 'previousAuthToken',
   github: 'previousPrivateKey',
+  google: 'previousServiceAccountJson',
 } as const;
 
 export type RotatingProvider = keyof typeof PRIMARY_FIELD;

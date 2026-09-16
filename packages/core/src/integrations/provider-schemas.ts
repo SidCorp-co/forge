@@ -1,17 +1,27 @@
 /**
  * Per-provider integration config + secrets schemas and dispatch tables.
  *
- * Adding a provider = edit THIS file only: its config/secrets schemas, a
- * branch in the two create discriminated unions (project-scoped create +
- * owner-scoped connection create), and the per-provider dispatch functions
- * (configSchemaForProvider / secretsSchemaForProvider /
+ * Adding a provider = its config/secrets schemas, a branch in the two create
+ * discriminated unions (project-scoped create + owner-scoped connection
+ * create), and the per-provider dispatch functions (configSchemaForProvider /
+ * connectionConfigSchemaForProvider / secretsSchemaForProvider /
  * primaryFieldForProvider — plus BINDING_CONFIG_KEYS when the provider has
  * binding-tier config). The route modules stay provider-agnostic.
+ *
+ * A provider that owns a directory may declare its shapes there and be imported
+ * here — `google/schemas.ts` does. The dispatch stays in THIS file either way,
+ * so one place still answers "which providers exist".
  */
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { integrationEnvironments } from '../db/schema.js';
+import {
+  googleConfigBase,
+  googleConnectionConfigSchema,
+  googleSecretsSchema,
+} from './google/schemas.js';
+import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from './release-channel-schema.js';
 import { isRotatingProvider, mergeRotatedSecrets, type RotatingProvider } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
 
@@ -32,31 +42,6 @@ const coolifyTargetSchema = z
     resourceUuid: t.resourceUuid,
     ...(t.healthUrl ? { healthUrl: t.healthUrl } : {}),
   }));
-
-const releaseVerifyProbeSchema = z.object({
-  url: z.string().url().max(500),
-  commitPath: z.string().min(1).max(200).optional(),
-});
-
-// cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseChannel` reads these three keys off `effectiveConfig(pair)` of the production binding whatever its provider, so EVERY provider config schema below must spread these fields and every provider must list them in BINDING_CONFIG_KEYS. A schema that omits them strips them on PATCH (zod objects drop unknown keys) and the roster then reports the label as undeclared behind a 200 — measured on sidpeak's coolify binding 2026-09-03, and again on pixelight's epodsystem binding 2026-09-04, where it made the storefront project's release gate undeclarable.
-const releaseChannelFields = {
-  /** Matched against `runners.labels`; only those boxes may run the release. */
-  releaseRunnerLabel: z.string().min(1).max(60).optional(),
-  verify: z
-    .object({
-      probes: z.array(releaseVerifyProbeSchema).min(1).max(10),
-      timeoutSeconds: z.number().int().min(10).max(3600).optional(),
-      stableReads: z.number().int().min(1).max(10).optional(),
-    })
-    .optional(),
-  /**
-   * What to do when a deploy replaces a working build with a dead one, for a
-   * channel whose API cannot do it. Prose here is read by a release agent.
-   */
-  rollback: z.string().max(4000).optional(),
-};
-
-const RELEASE_CHANNEL_KEYS = ['releaseRunnerLabel', 'verify', 'rollback'] as const;
 
 export const COOLIFY_ROLLBACK_MODE = 'coolify-image' as const;
 
@@ -133,6 +118,8 @@ const BINDING_CONFIG_KEYS: Record<string, readonly string[]> = {
   sentry: RELEASE_CHANNEL_KEYS,
   // cm:guard `installationId` is binding-tier with owner/repo, not connection-tier — ONE App can hold several installations, and splitProviderConfig drops from the binding every key missing here, so leaving it out lets a bind succeed with the repository recorded and no way to mint a token for it (adapter.ts reads all three together)
   github: ['installationId', 'owner', 'repo', ...RELEASE_CHANNEL_KEYS],
+  // cm:edge contract -> packages/core/src/integrations/provider-schemas.ts — `defaultSpreadsheetId` is binding-tier because ONE service account is shared org-wide while the sheet it reads is the project's own; deleting it from this list moves the key to the connection and silently strips it from every PATCH (ISS-1036)
+  google: ['defaultSpreadsheetId', ...RELEASE_CHANNEL_KEYS],
   agent: RELEASE_CHANNEL_KEYS,
 };
 
@@ -310,6 +297,13 @@ export const createSchema = z.discriminatedUnion('provider', [
     orgId: z.uuid().optional(),
   }),
   z.object({
+    provider: z.literal('google'),
+    environment: environmentSchema.default('prod'),
+    config: googleConfigBase,
+    secrets: googleSecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
+  z.object({
     provider: z.literal('agent'),
     environment: environmentSchema.default('prod'),
     config: agentReleaseConfigSchema,
@@ -372,6 +366,13 @@ export const connectionCreateSchema = z.discriminatedUnion('provider', [
     secrets: githubSecretsSchema,
     orgId: z.uuid().optional(),
   }),
+  z.object({
+    provider: z.literal('google'),
+    displayName: z.string().min(1).max(200).optional(),
+    config: googleConnectionConfigSchema,
+    secrets: googleSecretsSchema,
+    orgId: z.uuid().optional(),
+  }),
 ]);
 
 export const connectionUpdateSchema = z.object({
@@ -389,8 +390,26 @@ export function configSchemaForProvider(provider: string): z.ZodTypeAny {
   if (provider === 'sentry') return sentryConfigBase.partial();
   if (provider === 'rocketchat') return rocketchatConfigBase.partial();
   if (provider === 'github') return githubConfigBase.partial();
+  if (provider === 'google') return googleConfigBase.partial();
   if (provider === 'agent') return agentReleaseConfigSchema.partial();
   return coolifyConfigSchema.partial();
+}
+
+/**
+ * The config schema for an OWNER-SCOPED connection PATCH, where a binding-tier
+ * key does not belong.
+ *
+ * cm:guard only `google` is narrowed, and that is a statement about scope rather
+ * than about the other providers: `coolify` carries `targets` and every provider
+ * carries the three release-channel keys through this same door, so a connection
+ * PATCH can put a binding-tier key on a shared credential for all of them. That
+ * is a pre-existing hole ISS-1036 found and did not widen; narrowing the rest
+ * changes what six live providers accept and is somebody's own change to make.
+ */
+export function connectionConfigSchemaForProvider(provider: string): z.ZodTypeAny {
+  // Both of its fields are already optional, so there is no `.partial()` to take.
+  if (provider === 'google') return googleConnectionConfigSchema;
+  return configSchemaForProvider(provider);
 }
 
 /** Per-provider partial secrets schema for the two PATCH paths. */
@@ -399,6 +418,7 @@ function secretsSchemaForProvider(provider: RotatingProvider): z.ZodTypeAny {
   if (provider === 'sentry') return sentrySecretsSchema.partial();
   if (provider === 'rocketchat') return rocketchatSecretsSchema.partial();
   if (provider === 'github') return githubSecretsSchema.partial();
+  if (provider === 'google') return googleSecretsSchema.partial();
   return postmanSecretsSchema.partial();
 }
 
@@ -407,6 +427,7 @@ function primaryFieldForProvider(provider: RotatingProvider): string {
   if (provider === 'coolify') return 'apiToken';
   if (provider === 'sentry' || provider === 'rocketchat') return 'authToken';
   if (provider === 'github') return 'privateKey';
+  if (provider === 'google') return 'serviceAccountJson';
   return 'apiKey';
 }
 

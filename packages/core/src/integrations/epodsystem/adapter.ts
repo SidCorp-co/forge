@@ -16,7 +16,7 @@
 import { logger } from '../../logger.js';
 import { getAdapter, registerAdapter } from '../registry.js';
 import { isPreviousCredentialValid } from '../rotation.js';
-import { updateConnection } from '../store.js';
+import { findConnectionById, updateConnection } from '../store.js';
 import type { HealthCheckResult, IntegrationAdapter } from '../types.js';
 import { epodsystemGraphqlBase } from './endpoints.js';
 import type {
@@ -209,7 +209,19 @@ export const epodsystemAdapter: IntegrationAdapter<EpodsystemConfig, EpodsystemS
       // when actually resolved, so a partial response never wipes prior values.
       // `draftThemeId` is build-time (created by customize_theme), not here.
       // The crmk_ key is NEVER written here.
-      const resolved: Record<string, unknown> = { ...(ctx.config ?? {}) };
+      // cm:guard read the CONNECTION's own config here, never `ctx.config`.
+      // `ctx.config` is `effectiveConfig(pair)` — the connection overlaid with
+      // THIS project's binding — and writing it back promotes the binding's own
+      // keys onto the credential every other project bound to it inherits. The
+      // three release-channel keys are binding-tier for exactly that reason, so
+      // health-checking project A's binding would hand A's `releaseRunnerLabel`
+      // and `verify` probes to project B as its fallback. Same defect as
+      // ISS-1036's F1 on the Google adapter, and already measured in the field
+      // on pixelight's epodsystem binding, 2026-09-04.
+      const connection = await findConnectionById(ctx.connectionId);
+      const resolved: Record<string, unknown> = {
+        ...((connection?.config ?? {}) as Record<string, unknown>),
+      };
       if (orgId != null) resolved.orgId = orgId;
       if (scopes != null) resolved.scopes = scopes;
       if (store?.slug != null) resolved.storeSlug = store.slug;

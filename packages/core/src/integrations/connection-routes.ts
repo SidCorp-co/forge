@@ -24,6 +24,7 @@ import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
   configSchemaForProvider,
+  connectionConfigSchemaForProvider,
   connectionCreateSchema,
   connectionUpdateSchema,
   environmentSchema,
@@ -302,7 +303,7 @@ integrationConnectionsRoutes.patch(
     if (patch.displayName !== undefined) connPatch.displayName = patch.displayName;
     if (patch.active !== undefined) connPatch.active = patch.active;
     if (patch.config) {
-      const parsed = configSchemaForProvider(existing.provider).safeParse(patch.config);
+      const parsed = connectionConfigSchemaForProvider(existing.provider).safeParse(patch.config);
       if (!parsed.success) throw badRequest(z.flattenError(parsed.error));
       connPatch.config = {
         ...((existing.config ?? {}) as object),

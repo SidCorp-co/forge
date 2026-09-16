@@ -1,8 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
 const updateConnectionMock = vi.fn();
+const findConnectionByIdMock = vi.fn();
 vi.mock('../store.js', () => ({
   updateConnection: (...a: unknown[]) => updateConnectionMock(...(a as [])),
+  findConnectionById: (...a: unknown[]) => findConnectionByIdMock(...(a as [])),
 }));
 
 const { epodsystemAdapter } = await import('./adapter.js');
@@ -17,10 +19,12 @@ afterEach(() => {
   globalThis.fetch = originalFetch;
   vi.clearAllMocks();
   updateConnectionMock.mockReset();
+  findConnectionByIdMock.mockReset();
 });
 
 beforeEach(() => {
   updateConnectionMock.mockResolvedValue({});
+  findConnectionByIdMock.mockResolvedValue({ id: CONN_ID, config: {} });
 });
 
 function buildCtx(secrets: Record<string, unknown>) {
@@ -172,5 +176,62 @@ describe('epodsystemAdapter.healthcheck — rotation-window fallback (ISS-405)',
       CONN_ID,
       expect.objectContaining({ lastHealthStatus: 'needs_reauth' }),
     );
+  });
+});
+
+describe('what the healthcheck may write back onto a shared connection', () => {
+  function healthyFetch() {
+    globalThis.fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
+      const text = init?.body ? String(init.body) : '';
+      if (text.includes('storeThemes')) {
+        return new Response(JSON.stringify({ data: {} }), { status: 200 });
+      }
+      return new Response(JSON.stringify(apiKeyContextOk), { status: 200 });
+    }) as unknown as typeof fetch;
+  }
+
+  // cm:guard `ctx.config` is `effectiveConfig(pair)` — the connection overlaid
+  // with THIS project's binding — so writing it back promotes the binding's own
+  // keys onto the credential every other project bound to it inherits. The three
+  // release-channel keys are binding-tier for exactly that reason. Same defect as
+  // ISS-1036's F1 on the Google adapter.
+  it('writes the resolved store identity and none of the binding tier keys', async () => {
+    healthyFetch();
+    findConnectionByIdMock.mockResolvedValue({ id: CONN_ID, config: { orgId: 'org-0' } });
+    const ctx = buildCtx({ apiKey: 'crmk_current' });
+    ctx.config = {
+      environment: 'prod',
+      releaseRunnerLabel: 'project-a-box',
+      verify: { probes: [{ url: 'https://a.example/version' }] },
+      rollback: 'project A says redeploy the previous tag',
+    };
+
+    const result = await epodsystemAdapter.healthcheck(ctx);
+
+    expect(result.status).toBe('ok');
+    const written = updateConnectionMock.mock.calls[0]?.[1] as {
+      config: Record<string, unknown>;
+    };
+    expect(written.config.orgId).toBe('org-1');
+    expect(written.config.storeSlug).toBe('s');
+    expect(written.config.releaseRunnerLabel).toBeUndefined();
+    expect(written.config.verify).toBeUndefined();
+    expect(written.config.rollback).toBeUndefined();
+  });
+
+  it('keeps a connection-tier key the probes did not resolve', async () => {
+    healthyFetch();
+    findConnectionByIdMock.mockResolvedValue({
+      id: CONN_ID,
+      config: { orgId: 'org-0', domain: 'kept.example' },
+    });
+    const ctx = buildCtx({ apiKey: 'crmk_current' });
+
+    await epodsystemAdapter.healthcheck(ctx);
+
+    const written = updateConnectionMock.mock.calls[0]?.[1] as {
+      config: Record<string, unknown>;
+    };
+    expect(written.config.domain).toBe('kept.example');
   });
 });
