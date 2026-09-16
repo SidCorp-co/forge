@@ -36,6 +36,14 @@ beforeAll(async () => {
   // this file's disposable schema BEFORE that import, or it connects to whatever DATABASE_URL the
   // shell happened to hold.
   process.env.DATABASE_URL = harness.url;
+  // `config/env.ts` parses the whole environment at module scope and `db/client.ts` imports it, so
+  // importing the service below throws before any test body runs unless these are present. They are
+  // absent on CI and were present in the shell that first ran this file, which is exactly how this
+  // passed locally and failed there. Set per file, the way every other integration test that
+  // imports a service does it; ISS-1067 is the issue that stops import-time parsing being a thing
+  // each test has to know about.
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
   const user = await createTestUser(harness.db);
   const project = await createTestProject(harness.db, user.id, {
     name: `iss1048-${randomUUID().slice(0, 8)}`,
