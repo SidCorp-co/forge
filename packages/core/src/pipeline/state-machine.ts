@@ -119,6 +119,18 @@ export function isReopenEntry(from: IssueStatus, to: IssueStatus): boolean {
   return to === 'reopen' && from !== 'reopen' && from !== 'in_progress';
 }
 
+/**
+ * The soft-skip resolver was deleted here by ISS-897, and re-adding one is re-adding the staged
+ * lane. `STAGE_FORWARD`, `SKIPPABLE_STAGES`, `MAX_SKIP_CHAIN`, `resolveSkipTarget` and
+ * `validateStatesConfig` walked a nine-rung ladder past stages an operator had disabled; there are
+ * four statuses now, only `open` dispatches, and disabling it is the human gate rather than a dead
+ * end to route around.
+ *
+ * This file is the ONE place those five names may appear, which is not a convention but a thing
+ * `pipeline/soft-skip-stays-deleted.test.ts` scans the whole source tree to assert. Deleting this
+ * block does not tidy a comment away, it makes that test red.
+ */
+
 export type StagesConfig = Partial<
   Record<
     IssueStatus,

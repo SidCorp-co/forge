@@ -37,6 +37,21 @@ Three kinds are still carried, and each is carried because something reads it:
   one.
 - **`cm:ignore`** — 37 of them. A directive to the `cm` tool, not a claim about the code.
 
+There is a fourth shape, which carries no marker at all: **a comment a test reads**. Two exist
+today, and each is load-bearing in the literal sense that deleting it turns a suite red rather than
+tidying a file:
+
+| The comment | What reads it |
+|---|---|
+| the `decomposes` waiver above `issueDependencyKinds` in `db/schema.ts` | `issues/dependency-effects.test.ts`, by a per-line regex |
+| the deletion record above `StagesConfig` in `pipeline/state-machine.ts` | `pipeline/soft-skip-stays-deleted.test.ts`, which scans every source file |
+
+These are not an exception to the rule at the top of this document, they are the rule: each is a
+claim with a checker, which is the only thing that separates a comment worth keeping from one worth
+deleting. Both were removed by ISS-1049's first pass and restored when their suites went red — which is the evidence that a comment nothing reads is indistinguishable, to a
+sweep, from one everything depends on, and that the difference has to live somewhere a scan can
+find. Writing a new one means writing its reader in the same change.
+
 ## What was removed, and the count
 
 ISS-1049 removed **8,861 annotations across 1,672 files** — 6,772 `cm:guard`, 1,297 `cm:why` and
