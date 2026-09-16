@@ -66,6 +66,11 @@ export interface ConversationTransport {
   // cm:guard it is a cheap read and never the authority: `deliver` makes the same check again at the moment it posts, and it has to, because everything between the two takes time a rebind fits inside. What this buys is that a completion bridge does not spend a failover redispatch and a screening turn producing an answer for a room that moved. Absent: the transport has nothing to lose by trying, which is the browser's case (ISS-1039, plan consult F1).
   canDeliver?(venue: ConversationVenue): Promise<boolean>;
   /**
+   * Tell whoever is watching this venue that it has settled — after the row committed, not before.
+   */
+  // cm:guard a SECOND signal and not a substitute for `deliver`: `deliver` happens before the transcript row commits, so a reader that refetched on it alone can read the room back without the reply in it. This one is called after, and it exists because a turn answered minutes later by a session has no request left for its answer to come back on (ISS-1004 step 5 review F2, ISS-1039 plan consult F3).
+  notifySettled?(venue: ConversationVenue): Promise<void>;
+  /**
    * Whether a room's shape follows who is in it — both ways — or is settled
    * when its venue is first seen. Absent: settled (ISS-1034).
    */

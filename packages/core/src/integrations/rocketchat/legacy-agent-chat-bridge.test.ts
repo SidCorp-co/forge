@@ -53,7 +53,7 @@ vi.mock('./agent-chat.js', () => ({
     redispatchAgentChatSessionOnFailover(...args),
 }));
 
-const { deliverAgentChatReplyOnce } = await import('./agent-chat-bridge.js');
+const { deliverLegacyAgentChatReplyOnce } = await import('./legacy-agent-chat-bridge.js');
 
 const AUTH = { serverUrl: 'https://chat.example.co', authToken: 'tok', userId: 'bot-1' };
 
@@ -103,16 +103,16 @@ function resetAgentChatMocks(): void {
   redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
 }
 
-describe('deliverAgentChatReplyOnce', () => {
+describe('deliverLegacyAgentChatReplyOnce', () => {
   beforeEach(resetAgentChatMocks);
 
   it('is a no-op for a session with no agentChat metadata', async () => {
-    await deliverAgentChatReplyOnce(makeSession({ metadata: {} }));
+    await deliverLegacyAgentChatReplyOnce(makeSession({ metadata: {} }));
     expect(claimRoomReplyDelivery).not.toHaveBeenCalled();
   });
 
   it('is a no-op when already delivered (deliveredAt already set)', async () => {
-    await deliverAgentChatReplyOnce(
+    await deliverLegacyAgentChatReplyOnce(
       makeSession({
         metadata: {
           agentChat: {
@@ -129,14 +129,14 @@ describe('deliverAgentChatReplyOnce', () => {
 
   it('no-ops (does not post) when the CAS loses the race', async () => {
     claimRoomReplyDelivery.mockResolvedValue(false);
-    await deliverAgentChatReplyOnce(makeSession());
+    await deliverLegacyAgentChatReplyOnce(makeSession());
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
   it('no-ops (does not post) when the connection cannot be resolved', async () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(null);
-    await deliverAgentChatReplyOnce(makeSession());
+    await deliverLegacyAgentChatReplyOnce(makeSession());
     expect(sendFixedReply).not.toHaveBeenCalled();
   });
 
@@ -146,7 +146,7 @@ describe('deliverAgentChatReplyOnce', () => {
     extractFinalAssistantText.mockReturnValue('Here is the final answer.');
     screenRoomReply.mockResolvedValue({ ok: true });
 
-    await deliverAgentChatReplyOnce(makeSession());
+    await deliverLegacyAgentChatReplyOnce(makeSession());
 
     expect(screenRoomReply).toHaveBeenCalledWith('agent-chat-completion', {
       projectId: 'proj-1',
@@ -167,7 +167,7 @@ describe('deliverAgentChatReplyOnce', () => {
     extractFinalAssistantText.mockReturnValue('Created ISS-42 for you.');
     screenRoomReply.mockResolvedValue({ ok: true });
 
-    await deliverAgentChatReplyOnce(
+    await deliverLegacyAgentChatReplyOnce(
       makeSession({
         messages: [
           { type: 'user', content: 'please create an issue' },
@@ -197,7 +197,7 @@ describe('deliverAgentChatReplyOnce', () => {
       refusals: [{ ...REFUSAL, why: 'leaks a code fence' }],
     });
 
-    await deliverAgentChatReplyOnce(makeSession());
+    await deliverLegacyAgentChatReplyOnce(makeSession());
 
     const [, postedText] = sendFixedReply.mock.calls[0] as [unknown, string];
     expect(postedText).not.toContain('```');
@@ -209,7 +209,7 @@ describe('deliverAgentChatReplyOnce', () => {
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'exhausted' });
 
-    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
+    await deliverLegacyAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
 
     expect(redispatchAgentChatSessionOnFailover).toHaveBeenCalledTimes(1);
     expect(screenRoomReply).not.toHaveBeenCalled();
@@ -223,9 +223,9 @@ describe('deliverAgentChatReplyOnce', () => {
 
 /**
  * The binding is read twice, and each read answers a question the other cannot. These live in a
- * describe of their own because `deliverAgentChatReplyOnce` above is at its frozen function budget.
+ * describe of their own because `deliverLegacyAgentChatReplyOnce` above is at its frozen function budget.
  */
-describe('deliverAgentChatReplyOnce: the room is read again before the post', () => {
+describe('deliverLegacyAgentChatReplyOnce: the room is read again before the post', () => {
   beforeEach(() => {
     claimRoomReplyDelivery.mockReset();
     claimRoomReplyDelivery.mockResolvedValue(true);
@@ -248,7 +248,7 @@ describe('deliverAgentChatReplyOnce: the room is read again before the post', ()
   it('shows the room nothing when it is rebound during a failover redispatch', async () => {
     roomBoundSequence = [true, false];
 
-    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
+    await deliverLegacyAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
 
     expect(redispatchAgentChatSessionOnFailover.mock.calls).toHaveLength(1);
     expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
@@ -258,7 +258,7 @@ describe('deliverAgentChatReplyOnce: the room is read again before the post', ()
   it('shows the room nothing when it is rebound during the screening turn', async () => {
     roomBoundSequence = [true, false];
 
-    await deliverAgentChatReplyOnce(makeSession());
+    await deliverLegacyAgentChatReplyOnce(makeSession());
 
     expect(screenRoomReply.mock.calls).toHaveLength(1);
     expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
@@ -269,7 +269,7 @@ describe('deliverAgentChatReplyOnce: the room is read again before the post', ()
   it('leaves the claim spent rather than re-queueing the answer', async () => {
     roomBoundSequence = [true, false];
 
-    await deliverAgentChatReplyOnce(makeSession());
+    await deliverLegacyAgentChatReplyOnce(makeSession());
 
     expect(claimRoomReplyDelivery.mock.calls).toHaveLength(1);
   });
@@ -278,7 +278,7 @@ describe('deliverAgentChatReplyOnce: the room is read again before the post', ()
   it('spends no failover and no screening turn when the FIRST read refuses', async () => {
     roomBoundSequence = [false];
 
-    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
+    await deliverLegacyAgentChatReplyOnce(makeSession({ status: 'failed', failureReason: null }));
 
     expect(roomStillBoundToCalls.mock.calls).toHaveLength(1);
     expect(redispatchAgentChatSessionOnFailover.mock.calls).toHaveLength(0);
@@ -289,14 +289,14 @@ describe('deliverAgentChatReplyOnce: the room is read again before the post', ()
   it('shows the room the answer once when it is bound at both reads', async () => {
     roomBoundSequence = [true, true];
 
-    await deliverAgentChatReplyOnce(makeSession());
+    await deliverLegacyAgentChatReplyOnce(makeSession());
 
     expect(roomStillBoundToCalls.mock.calls).toHaveLength(2);
     expect(postedTexts()).toEqual(['answer']);
   });
 });
 
-describe('deliverAgentChatReplyOnce: the repair budget this door declares', () => {
+describe('deliverLegacyAgentChatReplyOnce: the repair budget this door declares', () => {
   // cm:guard zero repairs is DECLARED at the `agent-chat-completion` door, not absent by omission: the runner session whose final message this carries has already ended, so there is nothing to ask again. If a repair ever appears here it means the door's row changed, and this reds first.
   it('asks the session for no rewrite, because that session has already ended', async () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
@@ -307,7 +307,7 @@ describe('deliverAgentChatReplyOnce: the repair budget this door declares', () =
       refusals: [{ ...REFUSAL, why: 'leaks a code fence' }],
     });
 
-    await deliverAgentChatReplyOnce(makeSession());
+    await deliverLegacyAgentChatReplyOnce(makeSession());
 
     expect(screenRoomReply).toHaveBeenCalledTimes(1);
     expect(sendFixedReply.mock.calls).toHaveLength(1);
@@ -319,7 +319,7 @@ describe('deliverAgentChatReplyOnce: the repair budget this door declares', () =
  * Which failures earn a redispatch, and which go straight to the fallback. Their own describe
  * because the one above is at its frozen function budget.
  */
-describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
+describe('deliverLegacyAgentChatReplyOnce: which failures earn a redispatch', () => {
   beforeEach(resetAgentChatMocks);
 
   it('re-dispatches a failed/transient session to a healthy runner instead of posting the fallback', async () => {
@@ -331,7 +331,7 @@ describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
       deviceId: 'device-2',
     });
 
-    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
+    await deliverLegacyAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
 
     expect(redispatchAgentChatSessionOnFailover).toHaveBeenCalledTimes(1);
     expect(resolveRoomPostAuth).not.toHaveBeenCalled();
@@ -342,7 +342,7 @@ describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
 
-    await deliverAgentChatReplyOnce(
+    await deliverLegacyAgentChatReplyOnce(
       makeSession({ status: 'failed', failureReason: 'user_cancelled', messages: [] }),
     );
 
@@ -358,7 +358,7 @@ describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
 
-    await deliverAgentChatReplyOnce(
+    await deliverLegacyAgentChatReplyOnce(
       makeSession({ status: 'failed', failureReason: 'skill_not_synced', messages: [] }),
     );
 
@@ -374,7 +374,7 @@ describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
 
-    await deliverAgentChatReplyOnce(
+    await deliverLegacyAgentChatReplyOnce(
       makeSession({ status: 'failed', failureReason: 'ws-publish-failed', messages: [] }),
     );
 
@@ -391,7 +391,7 @@ describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     redispatchAgentChatSessionOnFailover.mockResolvedValue({ ok: false, status: 'error' });
 
-    await deliverAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
+    await deliverLegacyAgentChatReplyOnce(makeSession({ status: 'failed', messages: [] }));
 
     expect(sendFixedReply).toHaveBeenCalledTimes(1);
     expect(sendFixedReply).toHaveBeenCalledWith(
@@ -410,7 +410,7 @@ describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
       refusals: [{ ...REFUSAL, why: 'leaks a code fence' }],
     });
 
-    await deliverAgentChatReplyOnce(makeSession({ status: 'completed' }));
+    await deliverLegacyAgentChatReplyOnce(makeSession({ status: 'completed' }));
 
     expect(redispatchAgentChatSessionOnFailover).not.toHaveBeenCalled();
     expect(sendFixedReply).toHaveBeenCalledWith(
@@ -426,7 +426,7 @@ describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
     extractFinalAssistantText.mockReturnValue('answer');
     screenRoomReply.mockResolvedValue({ ok: true });
 
-    await deliverAgentChatReplyOnce(
+    await deliverLegacyAgentChatReplyOnce(
       makeSession({
         metadata: {
           agentChat: {
@@ -454,6 +454,6 @@ describe('deliverAgentChatReplyOnce: which failures earn a redispatch', () => {
     screenRoomReply.mockResolvedValue({ ok: true });
     sendFixedReply.mockRejectedValue(new Error('network error'));
 
-    await expect(deliverAgentChatReplyOnce(makeSession())).resolves.toBeUndefined();
+    await expect(deliverLegacyAgentChatReplyOnce(makeSession())).resolves.toBeUndefined();
   });
 });

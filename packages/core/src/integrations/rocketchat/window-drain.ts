@@ -13,6 +13,7 @@
  * (ISS-1004).
  */
 
+import { conversationAgentTurnForWindow } from '../../agent-sessions/conversation-agent.js';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { env } from '../../config/env.js';
 import { routeWindow, type WindowMessage } from '../../conversations/route-window.js';
@@ -119,6 +120,8 @@ export async function routeOne(
   const outcome = await routeWindow({
     window,
     manySpeakersPrincipalUserId: route.principalUserId,
+    // cm:guard a window reclaimed after this core died mid-handoff has a reservation and no delivered row, which `route-window.ts` alone reads as a delivery whose outcome was lost. This says which it was, so the room's record names the session still writing the answer rather than announcing one that was never sent (ISS-1039).
+    handoffFor: conversationAgentTurnForWindow,
     // cm:guard the refusal is asked of the SPEAKER PORT rather than written here, with the key the collector kept: it names the exact steps that link that chat account, which is ISS-977's contract, and a copy here would drift the day those endpoints move (ISS-1004).
     refusalFor: async ({ authorKey, authorLabel }) => {
       if (!authorKey) return null;
@@ -134,7 +137,7 @@ export async function routeOne(
       } as never);
       return resolved.linked ? null : resolved.refusal.message;
     },
-    inputs: ({ venue, messages, reserve }) => {
+    inputs: ({ venue, conversationId, windowId, deliveryKey, messages, reserve }) => {
       const spoken = messages.filter((m) => m.role === 'user');
       return rocketChatTurn({
         bot: {
@@ -155,6 +158,7 @@ export async function routeOne(
         shape: venue.shape,
         webBaseUrl,
         beforeDivert: reserve,
+        window: { venue, conversationId, windowId, deliveryKey },
       });
     },
   });

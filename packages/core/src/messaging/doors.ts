@@ -59,6 +59,13 @@ export const DOORS: readonly DoorPolicy[] = [
     repairs: 0,
     why: 'somebody is waiting, so a fallback is owed — but the runner session whose final message this carries has already ended, so there is no turn to ask again and a declared budget would be one this door could never spend',
   },
+  {
+    id: 'web-agent-completion',
+    cell: 'role:chat',
+    ending: 'fallback',
+    repairs: 0,
+    why: "the browser's own runner-hosted reply, and it is NOT `agent-chat-completion`: that door's `public:report` cell is written for a reader holding no role, and its `no-developer-detail` rule refuses a file path, a fenced block and a raw status word — which are the three things a person opens Agent mode to ask for. The reader here is the one `web-chat-reply` already argues for: `conversation-routes.ts` lets nobody send without `assertProjectRole` member, and every later reader is re-checked at the push and at the read. Zero repairs, for `agent-chat-completion`'s reason and not `web-chat-reply`'s — the session that wrote this has already ended, so there is no turn to ask again (ISS-1039)",
+  },
 ];
 
 const byId = new Map<DoorId, DoorPolicy>(DOORS.map((d) => [d.id, d]));

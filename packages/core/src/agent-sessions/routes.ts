@@ -775,10 +775,7 @@ agentSessionRoutes.patch(
       messages: patch.messages ?? existing.messages,
     });
 
-    // cm:guard the REVOKE reads the PERSISTED `updated.status`; the bridges below read the REPORTED `patch.status`. The split is deliberate and is NOT a bug fix — every rewrite core performs today maps one terminal status onto another (ISS-733 skill-not-synced, `audit_ran_blind`), so the two agree and no test can tell them apart. It is priced as hardening in one direction: a `...Once` bridge that fires on a status core did not accept sends a duplicate room reply, while a revoke that does kills the credential of a session still running. `writeBackScheduleLastStatus` above already reads the persisted value for its own version of this reason. The condition that would end the split is a rewrite mapping a terminal report onto a NON-terminal status — none exists, and if one is added it belongs here first.
-    if (TERMINAL_SESSION_STATUSES.has(updated.status)) {
-    }
-
+    // cm:guard the bridges read the REPORTED `patch.status` while everything above reads the PERSISTED `updated.status`. The split is deliberate and is NOT a bug fix — every rewrite core performs today maps one terminal status onto another (ISS-733 skill-not-synced, `audit_ran_blind`), so the two agree and no test can tell them apart. It is priced as hardening in one direction: a `...Once` bridge that fires on a status core did not accept sends a duplicate room reply, while a revoke that does kills the credential of a session still running. `writeBackScheduleLastStatus` above already reads the persisted value for its own version of this reason. The condition that would end the split is a rewrite mapping a terminal report onto a NON-terminal status — none exists, and if one is added it belongs here first.
     if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
       await onTerminalPatch(updated);
     }

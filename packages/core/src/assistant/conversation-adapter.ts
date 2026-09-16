@@ -132,6 +132,16 @@ export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame
     return (await findConversation('web', venue.externalId)) !== null;
   },
 
+  // cm:guard the SETTLED event and not the message one: the message already went out through `deliver`, and what a tab watching a runner-hosted turn is waiting for is the state change — the turn is no longer running, and the room's own rows now hold whatever it produced.
+  async notifySettled(venue: ConversationVenue): Promise<void> {
+    const conversation = await findConversation('web', venue.externalId);
+    if (!conversation) return;
+    await publishToConversationReaders(conversation.id, {
+      event: WEB_CONVERSATION_SETTLED_EVENT,
+      data: { conversationId: conversation.id, windowId: null, decision: 'handed-off' },
+    });
+  },
+
   // cm:guard EMPTY, and deliberately: every other adapter's history is a backlog the transport holds and the store has never seen, and this transport holds none — the conversation's own rows ARE the browser's history, and `external-chat.ts` already reads them for the turn. Returning anything here would be reading the store twice and showing the model its own transcript a second time.
   async fetchHistory(): Promise<ConversationHistoryMessage[]> {
     return [];

@@ -38,7 +38,10 @@ export interface InboundCollection<Frame> {
    * One more write the caller wants committed with this message, or not at all.
    */
   // cm:guard it is handed the transaction and told NOTHING about what it writes, which is the whole of why it is here rather than a branch in this function: the adapter that needs a second write knows what it is, and a collector that knew would be a collector with an adapter's decision in it. A throw from it takes the message and its window with it, which is the point — a caller whose own write lost has not collected anything (ISS-1039, plan consult F2).
-  withinCollection?: (tx: Executor, collected: { conversationId: string; seq: number }) => Promise<void>;
+  withinCollection?: (
+    tx: Executor,
+    collected: { conversationId: string; seq: number },
+  ) => Promise<void>;
 }
 
 /**

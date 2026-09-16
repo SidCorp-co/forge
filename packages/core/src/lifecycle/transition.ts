@@ -14,6 +14,10 @@
 
 import { eq, type SQL } from 'drizzle-orm';
 import type { PgColumn } from 'drizzle-orm/pg-core';
+import {
+  fireTerminalSessionBridges,
+  sessionCarriesBridgeMarker,
+} from '../agent-sessions/terminal-effects.js';
 import { type KernelExecutor, stampKernelTxn } from '../db/kernel-marker.js';
 import {
   agentSessions,
@@ -189,16 +193,16 @@ async function fireSessionBridges(
   whole: boolean,
 ): Promise<void> {
   for (const row of rows) {
-    const metadata = row.metadata as { escalation?: unknown; agentChat?: unknown } | null;
-    if (!metadata?.escalation && !metadata?.agentChat) continue;
+    // cm:guard the gate is the bridge LIST's own markers and no longer two names written here: a third bridge used to be two edits in two files with nothing to catch a forgotten half, and this file was the half that got forgotten last (ISS-1039).
+    if (!sessionCarriesBridgeMarker(row.metadata)) continue;
     let full = row as unknown as SessionRow;
     if (!whole) {
       const hydrated = await hydrateSession(exec, row.id);
       if (!hydrated) continue;
       full = hydrated;
     }
-    fireEscalationBridge(full);
-    fireAgentChatBridge(full);
+    // cm:guard NOT awaited here, unlike the runner's PATCH: this can be sweeping hundreds of rows and must not hold its caller open behind a REST post. `fireTerminalSessionBridges` swallows per bridge, so the floating promise cannot reject.
+    void fireTerminalSessionBridges(full);
   }
 }
 
@@ -297,30 +301,4 @@ async function writeTransition(
   }
 
   return updated;
-}
-
-function fireEscalationBridge(row: SessionRow): void {
-  const metadata = row.metadata as { escalation?: unknown } | null;
-  if (!metadata?.escalation) return;
-  void import('../integrations/rocketchat/escalation-bridge.js')
-    .then((mod) => mod.deliverEscalationReplyOnce(row))
-    .catch((err) => {
-      logger.error({ err, sessionId: row.id }, 'lifecycle.transition: escalation bridge failed');
-    });
-}
-
-/**
- * ISS-727 — the `agent`-mode counterpart to {@link fireEscalationBridge}.
- * Same chokepoint, distinct metadata marker (`metadata.agentChat`), distinct
- * bridge module — see that function's JSDoc for why this chokepoint is the
- * only reliable catch-all for non-happy-path terminal writes.
- */
-function fireAgentChatBridge(row: SessionRow): void {
-  const metadata = row.metadata as { agentChat?: unknown } | null;
-  if (!metadata?.agentChat) return;
-  void import('../integrations/rocketchat/agent-chat-bridge.js')
-    .then((mod) => mod.deliverAgentChatReplyOnce(row))
-    .catch((err) => {
-      logger.error({ err, sessionId: row.id }, 'lifecycle.transition: agent-chat bridge failed');
-    });
 }

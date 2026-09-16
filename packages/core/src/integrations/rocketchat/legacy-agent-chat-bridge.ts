@@ -1,9 +1,17 @@
 /**
- * ISS-727 — the `agent`-mode completion bridge. Unlike the escalation bridge
- * it runs NO synthesis turn: the session already produced the final
- * user-facing reply, so delivery screens it and posts it verbatim.
+ * The completion bridge for Rocket.Chat `agent`-mode sessions dispatched under
+ * ISS-727's metadata shape — a connection id, a room id, a thread id and a bot
+ * name, and no venue.
+ *
+ * ISS-1039 moved that lane onto `agent-sessions/conversation-agent-bridge.ts`,
+ * which reads a venue and delivers through that venue's own transport. Nothing
+ * writes `metadata.agentChat` any more. This exists for the sessions that were
+ * already running when that landed and go terminal afterwards: their rows name
+ * a room the neutral bridge cannot read, so without this the room they were
+ * asked in is simply never answered.
  */
-// cm:guard must be fired from BOTH terminal writers — agent-sessions/routes.ts PATCH (runner happy-path) and lifecycle/transition.ts (sweeper, cascade, cancel, dispatch-failure) — or a whole class of replies hangs silent
+// cm:hack ISS-1039 until: no `agent_sessions` row with a non-terminal status carries a `metadata.agentChat` key. What it costs: one extra reader on every terminal session write, and the failover this lane used to have — an in-flight legacy session whose runner dies on infrastructure now gets the honest fallback sentence rather than another box, because the redispatch it called was rebuilt around the venue shape these rows do not have. That is the price of not carrying a second copy of the dispatcher for rows nobody will create again.
+// cm:guard NOT a compatibility branch inside the neutral bridge, deliberately: a row this shape is a different contract, not a variant of the new one, and reading both from one function is how the old shape survives the condition above. It is a separate file so deleting it is one `rm` and one line off the bridge list.
 
 import type { agentSessions as agentSessionsTable } from '../../db/schema.js';
 import { logger } from '../../logger.js';
@@ -11,8 +19,7 @@ import { problemsOf } from '../../messaging/contract.js';
 import type { ProgressFacts } from '../../messaging/facts.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
-import { resolveFailureCause } from '../../pipeline/failure-causes.js';
-import { AGENT_CHAT_FALLBACK_REPLY, redispatchAgentChatSessionOnFailover } from './agent-chat.js';
+import { AGENT_CHAT_FALLBACK_REPLY } from './agent-chat.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import {
   claimRoomReplyDelivery,
@@ -67,7 +74,7 @@ function extractToolCalls(messages: unknown): Array<{ name: string; arguments: s
   return calls;
 }
 
-export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<void> {
+export async function deliverLegacyAgentChatReplyOnce(session: SessionRow): Promise<void> {
   const meta = readRoomReplyMeta(session.metadata, 'agentChat');
   if (!meta) return;
   if (meta.deliveredAt) return;
@@ -82,7 +89,7 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
     await claimRoomReplyDelivery(session, 'agentChat');
     logger.error(
       { sessionId: session.id, rid: meta.rid, projectId: session.projectId },
-      'rocketchat.agent-chat-bridge: the room is no longer bound to this project; the answer is not posted',
+      'rocketchat.legacy-agent-chat-bridge: the room is no longer bound to this project; the answer is not posted',
     );
     return;
   }
@@ -90,20 +97,9 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
 
   // cm:why the CAS claim above already stamped THIS session's deliveredAt, so retrying here can never double-post — its "delivery" is really a hand-off to the retry; a content-side outcome (completed, no usable/screened text) is never retried, since retrying would just reproduce the same content decision; deterministic non-infra failures (skill_not_synced, ws_publish_failed) are excluded because retrying them on every runner produces the same outcome
   // cm:guard compare the RESOLVED cause, never the raw column — rows written before ISS-877 carry `ws-publish-failed` with a hyphen, and a literal comparison silently starts failing over the one class this list exists to exclude
-  const failureCause = resolveFailureCause(session.failureReason);
-  if (
-    session.status !== 'completed' &&
-    failureCause !== 'user_cancelled' &&
-    failureCause !== 'skill_not_synced' &&
-    failureCause !== 'ws_publish_failed'
-  ) {
-    const failover = await redispatchAgentChatSessionOnFailover(session);
-    if (failover.ok) return;
-  }
-
   const auth = await resolveRoomPostAuth(meta.connectionId, {
     sessionId: session.id,
-    source: 'rocketchat.agent-chat-bridge',
+    source: 'rocketchat.legacy-agent-chat-bridge',
   });
   if (!auth) return;
 
@@ -135,7 +131,7 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
     } else {
       logger.warn(
         { sessionId: session.id, rid: meta.rid, problems: problemsOf(outcome.verdict) },
-        'rocketchat.agent-chat: the session reply failed the screen; honest fallback',
+        'rocketchat.legacy-agent-chat: the session reply failed the screen; honest fallback',
       );
       reply = AGENT_CHAT_FALLBACK_REPLY(meta.botName);
     }
@@ -152,7 +148,7 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   ) {
     logger.error(
       { sessionId: session.id, rid: meta.rid, projectId: session.projectId },
-      'rocketchat.agent-chat-bridge: the room was rebound while this answer was prepared; the answer is not posted',
+      'rocketchat.legacy-agent-chat-bridge: the room was rebound while this answer was prepared; the answer is not posted',
     );
     return;
   }
@@ -166,7 +162,7 @@ export async function deliverAgentChatReplyOnce(session: SessionRow): Promise<vo
   } catch (err) {
     logger.error(
       { err, sessionId: session.id, rid: meta.rid },
-      'rocketchat.agent-chat-bridge: chat.postMessage failed',
+      'rocketchat.legacy-agent-chat-bridge: chat.postMessage failed',
     );
   }
 }

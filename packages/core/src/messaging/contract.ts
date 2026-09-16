@@ -112,7 +112,8 @@ export type DoorId =
   | 'chat-sync'
   | 'web-chat-reply'
   | 'escalation-synthesis'
-  | 'agent-chat-completion';
+  | 'agent-chat-completion'
+  | 'web-agent-completion';
 
 /** The refusal a caller gets when it reaches a write door with a message that cannot pass. */
 export class MessageRefusedError extends Error {

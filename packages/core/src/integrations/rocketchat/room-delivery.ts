@@ -14,7 +14,7 @@ import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } fro
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
-// cm:edge contract -> packages/core/src/lifecycle/transition.ts — the kernel's terminal-session writers fan out on exactly these marker keys, so adding a reply kind here needs a matching fire site there
+// cm:edge contract -> packages/core/src/agent-sessions/terminal-effects.ts — the terminal-session bridge list fans out on marker keys, and these are the ones still written in Rocket.Chat's own room vocabulary. `agentChat` is no longer written by anything: ISS-1039 moved that lane onto a venue, and what remains is the dated legacy bridge reading rows dispatched before it.
 export type RoomReplyMarker = 'escalation' | 'agentChat';
 
 export interface RoomPostAuth {

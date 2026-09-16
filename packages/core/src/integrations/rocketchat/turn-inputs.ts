@@ -19,7 +19,7 @@ import {
   buildExternalMcpToolsets,
   type ExternalMcpToolsets,
 } from '../../assistant/tools/external-mcp.js';
-import { codeAuthored } from '../../conversations/ports.js';
+import { type ConversationVenue, codeAuthored } from '../../conversations/ports.js';
 import type { WindowTurnInputs } from '../../conversations/route-window.js';
 import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
 import { db } from '../../db/client.js';
@@ -77,6 +77,16 @@ export interface RocketChatTurnArgs {
    */
   // cm:guard both diversions hand the answer to a session whose reply arrives LATER, out of this turn's reach and out of the delivery key's: so the intent is written down before the dispatch, and a window re-claimed after a crash reads that stamp and dispatches nothing. Without it the reclaim started a second session, whose in-flight dedup posted a "already working on it" line into the room the first session was about to answer (ISS-1004 rule 2, review pass 2 F1).
   beforeDivert?: () => Promise<boolean>;
+  /**
+   * How the conversation store addresses this turn's room, for the diversion that answers later.
+   */
+  // cm:guard handed in from the WINDOW's own context and never rebuilt here out of a rid and a tmid: the runner-hosted lane is shared with the Forge UI and addresses a room the way the store does, so a second derivation here would be this transport's vocabulary re-entering the lane ISS-1039 took it out of.
+  window: {
+    venue: ConversationVenue;
+    conversationId: string;
+    windowId: string;
+    deliveryKey: string;
+  };
 }
 
 /** Everything the neutral turn takes bar what the window and its venue settle. */
@@ -153,11 +163,11 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       if (args.beforeDivert && !(await args.beforeDivert()))
         return { send: false, reason: 'superseded-before-agent-chat' };
       const started = await startAgentChat({
-        projectId: route.projectId,
+        venue: args.window.venue,
+        conversationId: args.window.conversationId,
+        windowId: args.window.windowId,
+        deliveryKey: args.window.deliveryKey,
         project: { ...project, repoPath: s.repoPath },
-        connectionId: args.connectionId,
-        rid: subject.rid,
-        tmid: subject.tmid,
         botName: bot.botName,
         message: subject.text,
         askedByUsername: subject.username,
