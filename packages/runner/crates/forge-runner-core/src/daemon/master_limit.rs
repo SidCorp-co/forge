@@ -23,7 +23,7 @@ use serde_json::Value;
 
 use super::master::{LIMITED_POLL_INTERVAL, NUDGE_REFRESH};
 
-/// How far back a decisive record may sit and still describe the account NOW.
+/// How far from now a decisive record may sit and still describe the account.
 ///
 /// Derived rather than chosen: `LIMITED_POLL_INTERVAL` is the widest this box
 /// spaces its sweeps once a limit stands, and `NUDGE_REFRESH` is the longest a
@@ -35,7 +35,7 @@ use super::master::{LIMITED_POLL_INTERVAL, NUDGE_REFRESH};
 pub(crate) const FRESH_WITHIN: Duration =
     Duration::from_secs(2 * (LIMITED_POLL_INTERVAL.as_secs() + NUDGE_REFRESH.as_secs()));
 
-/// How recent a successful turn must be before it may LIFT a limit.
+/// How near to now a successful turn must sit before it may LIFT a limit.
 ///
 /// Tighter than [`FRESH_WITHIN`], and the asymmetry is the point.
 // cm:guard reporting a cap and lifting one are not equally safe, so they do not get the same bound. A late report costs a few wasted turns; a late CLEAR re-opens this box to dispatch against an account that is still refusing. The box cannot see WHEN core's stamp was written — `/me/runners` carries the remaining seconds and not the instant — so a stamp the job lane made two minutes ago is indistinguishable here from one made an hour ago, and a success older than it would lift it.
@@ -238,8 +238,9 @@ fn clamp_detail(detail: &str, reason: Reason) -> String {
 ///
 /// Backwards from the end, stopping at the first record that classifies — so the
 /// usual sweep parses one line. A record that is `Unreadable` stops the scan
-/// with that answer, and one older than [`FRESH_WITHIN`] stops it with none,
-/// because everything before it is older still.
+/// with that answer, and one [`FRESH_WITHIN`] away from now in EITHER direction
+/// stops it with none.
+// cm:why the window is a distance and not an age. Older than the bound stops the scan because everything before it is older still; dated AHEAD of it stops the scan because a clock that ran forward is not one this box may then trust backwards either, and the safe half is to answer nothing and keep sweeping. Read as a signed age instead, a future record is not merely fresh but fresher than anything real, and it wins every ranking `decide` makes.
 pub(crate) fn newest_decisive(tail: &str, now_unix: i64) -> Option<Decisive> {
     for line in tail.lines().rev() {
         let Ok(record) = serde_json::from_str::<Value>(line) else {
@@ -314,7 +315,8 @@ pub(crate) fn decide(
                 Action::Report(r.clone(), newest.uuid.clone())
             }
         }
-        // cm:guard the CLEAR carries its own, tighter age bound, and the report does not. See `CLEAR_WITHIN`: this box cannot see when core's stamp was written, so the only thing standing between a stale success and a limit another lane wrote seconds ago is how recent the success itself is.
+        // cm:guard the CLEAR carries its own, tighter bound, and the report does not. See `CLEAR_WITHIN`: this box cannot see when core's stamp was written, so the only thing standing between a stale success and a limit another lane wrote seconds ago is how near to now the success itself sits.
+        // cm:why the bound is a DISTANCE from now, not an age, in the same way the scan's is. A success dated ahead of this box reads as a negative age, which is inside every upper bound written as `<=` — so read as an age it would be the one verdict that always clears.
         Verdict::Worked => {
             let fresh = now_unix.saturating_sub(newest.at).unsigned_abs() <= CLEAR_WITHIN.as_secs();
             if core_limited && fresh {

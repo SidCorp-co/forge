@@ -556,7 +556,7 @@ async fn sweep(
     }
 
     // cm:guard AFTER the project loop and never inside it, and that placement IS the decision. One account serves every pane on this box and core's route fans out to every binding of the device, so a report sent per project would let an older success on one delete the stamp a newer refusal on another had just written — with the winner decided by the order `/me/runners` happened to return the rows in.
-    report_account_limit(client, &served, &account_said, account_limit_said).await;
+    report_account_limit(client, &served, &account_said, account_limit_said, now_unix).await;
 
     // cm:guard BEFORE `give_back_lost_runs` and at the same brace depth, both deliberately. A run
     // declared this sweep has no core session yet, and `reconcile` reads a row with none as a run
@@ -627,14 +627,16 @@ fn account_verdict(
 /// Tell core what this box's Claude account said, once for the whole device.
 // cm:guard this path reports and does NOTHING else. A cap is not a fault: it must not change a runner's status, must not end a master, must not touch an issue, and must not stop the sweep — work already running finishes and only the STARTING of new turns backs off, which the existing `next_poll_delay` does on its own once the row is stamped.
 // cm:guard `core_limited` is read off core's own rows rather than off a memo, and the clear is authorised by nothing finer. One Claude account serves every pane, every job and every chat on this box — one `~/.claude`, one credential — so a master's successful turn is proof the account works whoever stamped the row, exactly as a successful JOB already clears a stamp the master lane wrote. Making the clear conditional on who stamped it would strand a box whose account an operator had just fixed, which is the one failure `LIMITED_POLL_INTERVAL` is a backoff rather than a blackout to avoid. The condition that ends this: per-project Claude credentials on one box, which would make "the account" ambiguous and this read wrong.
+// cm:guard `now_unix` is the SWEEP's instant, taken once at the top and passed down, never re-read here. The verdicts were classified against it and the two freshness bounds are distances from it, so reading the clock a second time would judge those verdicts against an instant they were not measured from — and the gap is the whole project loop, network calls to core included.
 async fn report_account_limit(
     client: &CoreClient,
     served: &[runners::MeRunner],
     said: &[master_limit::Decisive],
     memo: &mut Option<String>,
+    now_unix: i64,
 ) {
     let core_limited = served.iter().any(|r| r.limit_reason.is_some());
-    match master_limit::decide(said, core_limited, memo.as_deref(), master_limit::now_unix()) {
+    match master_limit::decide(said, core_limited, memo.as_deref(), now_unix) {
         master_limit::Action::Nothing => {}
         master_limit::Action::Unreadable(slug) => tracing::warn!(
             "[master] this box's Claude account refused a turn with `{slug}`, which this binary has not been taught to read — nothing was reported, so core will go on calling this box healthy until it is taught that name"
@@ -2148,13 +2150,7 @@ mod give_back_tests {
     // which kills the pane on spawn, and the next sweep rebuilds it and kills it again, a loop whose
     // only trace is a pane that keeps disappearing (ISS-1050).
     /// What the daemon log SAYS when a recorded conversation cannot be resumed.
-    ///
-    /// cm:why captured through a real subscriber rather than asserted on a returned string:
-    /// criterion 18 is a claim about the operator-facing log, and `resume_for` returns `None` for
-    /// "nothing stored" and for "stored but unreachable" alike. The return value cannot tell those
-    /// two apart, so a test reading only the return value passes just as happily when the warning
-    /// is deleted — and the warning is the entire difference between a pane that silently forgot
-    /// what it was doing and one whose operator can see why.
+    // cm:why captured through a real subscriber rather than asserted on a returned string: `resume_for` answers `None` for "nothing stored" and for "stored but unreachable" alike, so a test reading only the return value passes just as happily when the warning is deleted — and that warning is the whole difference between a pane that silently forgot what it was doing and one whose operator can see why.
     fn logged_while(f: impl FnOnce()) -> String {
         use std::sync::{Arc, Mutex};
         #[derive(Clone)]
@@ -2985,6 +2981,19 @@ mod give_back_tests {
                 "`{banned}` on the reporting path would quarantine the box; the limit column is what core stamps, and the status is an operator's decision"
             );
         }
+    }
+
+    // cm:guard ONE clock for the whole sweep. The verdicts are classified against the instant taken at the top of `sweep`, and both freshness bounds are DISTANCES from it — so a second reading here would judge those verdicts against an instant they were never measured from, with the whole project loop and its calls to core in between.
+    #[test]
+    fn the_decision_is_taken_against_the_sweeps_own_instant() {
+        assert!(
+            !reporting_path().contains("now_unix()"),
+            "the reporting path must take the sweep's `now_unix` as an argument, never re-read the clock: re-read, every verdict silently ages by however long the project loop took"
+        );
+        assert!(
+            reporting_path().contains("now_unix: i64"),
+            "and it takes that instant as a parameter, so there is exactly one place the sweep's clock is read"
+        );
     }
 
     #[test]
