@@ -423,14 +423,6 @@ export async function finishReleaseBatch(
     }
   }
 
-  // PLANT-5: codex's proposed fix — reselect the roster after the probes
-  const claimed2 = await db
-    .select({ id: issues.id, status: issues.status, reopenCount: issues.reopenCount, projectId: issues.projectId })
-    .from(issues)
-    .where(eq(issues.releaseBatchRunId, runId));
-  claimed.length = 0;
-  claimed.push(...claimed2);
-
   const closed: string[] = [];
   const failed: Array<{ id: string; reason: string }> = [];
 
