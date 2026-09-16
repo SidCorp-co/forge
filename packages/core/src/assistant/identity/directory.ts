@@ -10,12 +10,12 @@
  */
 
 import type { ConversationAdapter } from '../../db/schema-conversations.js';
+import { activeRocketChatBinding } from '../../integrations/rocketchat/binding.js';
 import { fetchUserProfile } from '../../integrations/rocketchat/rest-client.js';
 import type { RocketChatConfig, RocketChatSecrets } from '../../integrations/rocketchat/types.js';
 import {
   decryptConnectionSecrets,
   effectiveConfig,
-  listActiveBindingsForProjectProvider,
 } from '../../integrations/store.js';
 import {
   isConversationAdapter,
@@ -89,7 +89,7 @@ export async function lookupSpeakerProfile(args: {
       'this channel has no implementation yet, so there is no directory to read a speaker from. Link speakers on a channel that is connected.',
     );
   }
-  const [pair] = await listActiveBindingsForProjectProvider(projectId, 'rocketchat');
+  const pair = await activeRocketChatBinding(projectId);
   if (!pair) {
     return {
       found: false,

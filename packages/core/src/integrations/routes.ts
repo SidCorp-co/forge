@@ -25,7 +25,7 @@ import {
 } from './agent-access.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { registerCoolifyDeployRoutes } from './coolify-routes.js';
+import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
 import {
@@ -37,6 +37,7 @@ import {
 } from './provider-schemas.js';
 import { enqueueCoolifyDispatch } from './queue.js';
 import { getAdapter, getIntegration } from './registry.js';
+import { rocketChatBindingOfProject } from './rocketchat/binding.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
 import {
   alreadyExists,
@@ -382,14 +383,8 @@ integrationsRoutes.post(
 
     let auth: { serverUrl: string; authToken: string; userId: string };
     if (body.integrationId) {
-      const existing = await findBindingWithConnectionById(body.integrationId);
-      if (
-        !existing ||
-        existing.binding.projectId !== projectId ||
-        existing.binding.provider !== 'rocketchat'
-      ) {
-        throw notFound();
-      }
+      const existing = await rocketChatBindingOfProject(projectId, body.integrationId);
+      if (!existing) throw notFound();
       const ctx = buildContextFromBinding(existing);
       const cfg = ctx.config as { serverUrl?: string } | null;
       const secrets = ctx.secrets as { authToken?: string; userId?: string } | null;

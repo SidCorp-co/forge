@@ -18,7 +18,7 @@ import { problemsOf } from '../../messaging/contract.js';
 import { screenAtDoor } from '../../messaging/screen.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';
 import { emitNotification } from '../../notifications/emit.js';
-import { listActiveBindingsForProjectProvider } from '../store.js';
+import { activeRocketChatBinding } from './binding.js';
 import { sendFixedReply } from './outbound.js';
 import { agentAuthoredSegments, renderRound } from './question-render.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
@@ -102,7 +102,7 @@ export interface RoomBinding {
 /** The room this project's questions go to, or null when nobody has bound one. */
 // cm:guard the FIRST rid of the first active binding, matching `connection-manager.ts:buildRoutes`, which takes the first binding per room from a `desc(createdAt)` ordering — two answers to "which room is this project's" is how a question is delivered to a room nobody is watching.
 export async function roomForProject(projectId: string): Promise<RoomBinding | null> {
-  const bindings = await listActiveBindingsForProjectProvider(projectId, 'rocketchat');
+  const bindings = await activeRocketChatBinding(projectId).then((p) => (p ? [p] : []));
   for (const { binding } of bindings) {
     const rid = ((binding.config as RocketChatBindingConfig | null)?.rids ?? [])[0];
     if (rid) return { connectionId: binding.connectionId, rid };

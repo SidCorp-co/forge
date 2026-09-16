@@ -78,7 +78,7 @@ import {
   stopRocketChatManager,
 } from './integrations/rocketchat/connection-manager.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
-import { integrationTargetRoutes } from './integrations/target-routes.js';
+import { integrationTargetRoutes } from './integrations/postman/target-routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';

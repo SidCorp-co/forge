@@ -164,6 +164,34 @@
         {
           "glob": "packages/core/src/webhooks/github-adapter.ts",
           "why": "`'github'` here is `issues.source`, whose enum is `['manual','github']` (db/schema.ts, `issueSources`) — the issue-INTAKE vocabulary, not the integration-provider one. Same word, different column: every literal in this file is a value compared against `issues.source`, and the registry knows nothing about it."
+        },
+        {
+          "glob": "packages/core/src/assistant/bench/history/cli-ground.ts",
+          "why": "`source: 'rocketchat'` here is a CONVERSATION source — the `conversations.source` vocabulary in db/schema-conversations.ts, beside 'web', 'widget' and 'telegram' — not the integration provider. Same word, different column, and this is a bench fixture describing where an utterance arrived from."
+        },
+        {
+          "glob": "packages/web-v2/src/features/conversations/types.ts",
+          "why": "The `ConversationAdapter` union: which surface a conversation happened on. It mirrors the `conversations.source` column, not `integration_bindings.provider`, and it carries 'web' and 'widget' which are not integrations at all."
+        },
+        {
+          "glob": "packages/web-v2/src/features/projects/components/project-card.tsx",
+          "why": "`<Icon name=\"github\" />` is an icon in the design system's icon set, labelling `project.repoPath`. It names a glyph, not a provider — the card renders no integration binding and would render this mark for a repository hosted anywhere."
+        },
+        {
+          "glob": "packages/core/src/integrations/status-service.ts",
+          "why": "The one hand-built card, keyed 'github', is derived from `projects.repoPath` and NOT from any integration binding — which is exactly why `githubIntegration` declares `presentation: null`, so the registry loop cannot emit a second card that collides with it. Every other card in this file comes from a declaration."
+        },
+        {
+          "glob": "packages/core/src/mcp/tools/forge-storefront-target.ts",
+          "why": "An MCP tool module dedicated to one provider, sitting in `mcp/tools/` because that is where the MCP server discovers its `forge-*.ts` tools — the directory is the server's convention, not a generic path. The tool exists only to answer questions about epodsystem; no other provider's request reaches it."
+        },
+        {
+          "glob": "packages/core/src/pipeline/release-coolify.ts",
+          "why": "The Coolify release path, named for the provider in the file name because the whole module is that provider's deploy dispatch. `release-batch/plan.ts` no longer decides WHETHER to use it by naming coolify — that is `declaration.releaseStep` now — so nothing generic reads this file to learn a provider exists."
+        },
+        {
+          "glob": "packages/core/src/git/github-app-credential.ts",
+          "why": "Resolves the GitHub App installation credential a runner presents. Both literals filter `integration_bindings.provider` to find that App's binding, and the registry cannot answer 'which provider is the GitHub App' without naming it. The module is github's by name and purpose; it holds no branch that would have to grow a case when a provider is added."
         }
       ]
     },

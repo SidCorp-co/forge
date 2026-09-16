@@ -195,7 +195,7 @@ describe('the operator keeps the rollback this gate gave up', () => {
   it('leaves runCoolifyRollback and listCoolifyRollbackImages reachable from the integration routes', async () => {
     const { readFile } = await import('node:fs/promises');
     const routes = await readFile(
-      new URL('../coolify-routes.ts', import.meta.url).pathname,
+      new URL('./routes.ts', import.meta.url).pathname,
       'utf8',
     );
 

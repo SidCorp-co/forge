@@ -8,10 +8,10 @@
  */
 
 import { Hono } from 'hono';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import type { PostmanConfig } from './postman/types.js';
-import { assertProjectMember } from './route-helpers.js';
-import { effectiveConfig, listActiveBindingsForProjectProvider } from './store.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
+import type { PostmanConfig } from './types.js';
+import { assertProjectMember } from '../route-helpers.js';
+import { effectiveConfig, listActiveBindingsForProjectProvider } from '../store.js';
 
 export const integrationTargetRoutes = new Hono<{ Variables: AuthVars }>();
 integrationTargetRoutes.use('*', requireAuth(), assertEmailVerified());

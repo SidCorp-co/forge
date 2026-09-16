@@ -20,13 +20,13 @@
 import type { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import type { AuthVars } from '../middleware/auth.js';
+import type { AuthVars } from '../../middleware/auth.js';
 import {
   CoolifyCommandError,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
   runCoolifyDeploy,
-} from './coolify/commands.js';
+} from './commands.js';
 import {
   credentialFromSecrets,
   fetchCoolifyApplications,
@@ -34,15 +34,15 @@ import {
   resolveCoolifyTargets,
   runCoolifyCancel,
   runCoolifyRollback,
-} from './coolify/controls.js';
-import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
+} from './controls.js';
+import type { CoolifyConfig, CoolifySecrets } from './types.js';
 import {
   assertAdmin,
   assertProjectMember,
   broadcastIntegrationChanged,
   notFound,
-} from './route-helpers.js';
-import { buildContextFromBinding, findBindingWithConnectionById } from './store.js';
+} from '../route-helpers.js';
+import { buildContextFromBinding, findBindingWithConnectionById } from '../store.js';
 
 const deployBodySchema = z
   .object({
@@ -253,7 +253,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
       });
     }
     // cm:guard keep this import lazy — `release-coolify` imports the Coolify adapter, which transitively imports this module, so a top-level import closes the cycle. The commands module above can import it eagerly because nothing imports the commands module back.
-    const { confirmPendingProdDeploy } = await import('../pipeline/release-coolify.js');
+    const { confirmPendingProdDeploy } = await import('../../pipeline/release-coolify.js');
     const result = await confirmPendingProdDeploy(id);
     broadcastIntegrationChanged(projectId, {
       bindingId: id,
