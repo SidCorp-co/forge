@@ -9,6 +9,15 @@ updates:
       - "/.github/actions/setup-workspace"
     schedule:
       interval: "weekly"
+    # Dependabot rebases an open PR on EVERY push to main, and each rebase fires a
+    # full CI run. Measured 2026-09-09..16: `majors-90b0c84545` ran CI 4 times and
+    # failed identically all 4; `minor-and-patch-9d2cc350ae` ran 5 times and failed
+    # all 5 — ~9 full runs on two PRs that were never going to go green, against 89
+    # direct pushes to main in the same week. Disabled means the PR keeps the base
+    # it opened against; `@dependabot rebase` still works when a rebase is wanted,
+    # and branch protection (`strict: true`) refuses a stale branch at merge time,
+    # so nothing lands un-rebased.
+    rebase-strategy: "disabled"
     open-pull-requests-limit: 5
     labels: ["dependencies", "ci"]
     groups:
@@ -32,6 +41,15 @@ updates:
       - "/packages/web-v2"
     schedule:
       interval: "weekly"
+    # Dependabot rebases an open PR on EVERY push to main, and each rebase fires a
+    # full CI run. Measured 2026-09-09..16: `majors-90b0c84545` ran CI 4 times and
+    # failed identically all 4; `minor-and-patch-9d2cc350ae` ran 5 times and failed
+    # all 5 — ~9 full runs on two PRs that were never going to go green, against 89
+    # direct pushes to main in the same week. Disabled means the PR keeps the base
+    # it opened against; `@dependabot rebase` still works when a rebase is wanted,
+    # and branch protection (`strict: true`) refuses a stale branch at merge time,
+    # so nothing lands un-rebased.
+    rebase-strategy: "disabled"
     open-pull-requests-limit: 5
     labels: ["dependencies"]
     groups:
@@ -51,6 +69,15 @@ updates:
     directory: "/packages/runner/"
     schedule:
       interval: "weekly"
+    # Dependabot rebases an open PR on EVERY push to main, and each rebase fires a
+    # full CI run. Measured 2026-09-09..16: `majors-90b0c84545` ran CI 4 times and
+    # failed identically all 4; `minor-and-patch-9d2cc350ae` ran 5 times and failed
+    # all 5 — ~9 full runs on two PRs that were never going to go green, against 89
+    # direct pushes to main in the same week. Disabled means the PR keeps the base
+    # it opened against; `@dependabot rebase` still works when a rebase is wanted,
+    # and branch protection (`strict: true`) refuses a stale branch at merge time,
+    # so nothing lands un-rebased.
+    rebase-strategy: "disabled"
     open-pull-requests-limit: 5
     labels: ["dependencies", "rust"]
     groups:
