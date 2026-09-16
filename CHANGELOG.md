@@ -5303,7 +5303,13 @@
   a machine as well as in the release itself, because those are asked at different moments. A
   project that declares two live destinations is refused by name rather than half-released: a run
   records one check of one address, and closing the whole list on it would claim a delivery nobody
-  looked at. No project has two today. Two projects that should have had a release step and did not
+  looked at, and the project's own settings screen says so with the reason and a remedy rather than
+  letting the refusal arrive the first time somebody tries to release. No project has two today.
+  Where a project declares a release Forge has no default procedure for — a strategy other than
+  moving a branch, or a destination Forge cannot deploy to — the instructions it hands the release
+  agent are now the refusal and nothing else. They used to lead with "merge and push" and carry the
+  refusal underneath, so the one irreversible step ran on the way to being told the release could
+  not be finished. Two projects that should have had a release step and did not
   now have one. No connection was deleted in the change, and no branch anyone had recorded was
   discarded. (ISS-1046)
 

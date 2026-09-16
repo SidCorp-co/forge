@@ -251,7 +251,65 @@ describe('loadReleaseReadiness', () => {
     expect(out?.gaps).toContain('verify-probes');
     expect(out?.hasVerify).toBe(false);
   });
+});
 
+// cm:why its own describe rather than a longer one above: the block was at the 150-line function
+// budget, and the two cases here are one subject — what settings says about a project with more
+// than one live deploy channel.
+describe('loadReleaseReadiness — more than one live channel', () => {
+  // cm:guard THE case a codex review found on the landing head: two live channels that AGREE on
+  // their runner label and declare every fact have no gap by every other measure, so settings
+  // rendered the project complete while `createReleaseBatch` refused it by name. A refusal nothing
+  // on the screen predicts is the arrival this module exists to move earlier — the same rule the
+  // `verify-probes` guard above states, for the refusal added by this very change.
+  it('names two live channels as their own gap, even where nothing else is missing', async () => {
+    project({
+      releaseModel: 'publish',
+      facts: { ...CONTRACT_FACTS, 'release-procedure': 'ship it' },
+    });
+    listBindings.mockResolvedValue(
+      ['b-1', 'b-2'].map((id) => ({
+        binding: {
+          id,
+          provider: 'coolify',
+          config: {
+            releaseRunnerLabel: 'prod-box',
+            verify: PROBES,
+            rollback: { mode: 'coolify-image' },
+          },
+          instructions: null,
+          label: id,
+          role: 'deploy',
+          stages: ['live'],
+        },
+        connection: { config: {} },
+      })),
+    );
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps).toEqual(['release-multi-channel']);
+    expect(out?.releaseRunnerLabel).toBe('prod-box');
+  });
+
+  it('reports no multi-channel gap for the one-channel projects the fleet actually has', async () => {
+    project({
+      releaseModel: 'publish',
+      facts: { ...CONTRACT_FACTS, 'release-procedure': 'ship it' },
+    });
+    liveBinding({
+      releaseRunnerLabel: 'prod-box',
+      verify: PROBES,
+      rollback: { mode: 'coolify-image' },
+    });
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps).toEqual([]);
+  });
+});
+
+describe('loadReleaseReadiness — the declared probes', () => {
   it('reports no probe gap once the binding declares them', async () => {
     project({ releaseModel: 'promote', liveBranch: 'production', releaseStrategy: 'merge-branch' });
     liveBinding({

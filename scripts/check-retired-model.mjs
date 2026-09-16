@@ -145,16 +145,44 @@ function walk(dir, out) {
  * that only ever appears inside a template literal. Newlines are kept because the caller reports
  * `i + 1` as the line number, and a multi-line block comment replaced by one space renumbers
  * every finding below it — wrong, and wrong in silence.
+ *
+ * cm:guard a `${` inside a template re-enters CODE and its `}` returns to the template. Without
+ * that frame the lexer read `` `${`//`}`; const b = row.productionBranch; `` as a template running
+ * to the end of the file, and blanked the reader on the next line — the same blindness the regex
+ * had, one nesting level down, and the version of this function that replaced the regex still had
+ * it. The frame carries a brace depth so `${ {a: 1} }` closes on the right `}`.
  */
 export function stripComments(src) {
   let out = '';
   let i = 0;
   // 'code' | 'line' | 'block' | "'" | '"' | '`'
   let state = 'code';
+  // One frame per OPEN `${`, holding how many plain `{` are nested inside it. A template
+  // substitution is code again, so `` `${'//'}` `` opens a string the scan must not read as a
+  // comment, and the `}` that closes it must return to the template rather than to top-level code.
+  const subs = [];
   while (i < src.length) {
     const c = src[i];
     const next = src[i + 1];
     if (state === 'code') {
+      if (subs.length > 0 && c === '{') {
+        subs[subs.length - 1].depth += 1;
+        out += c;
+        i += 1;
+        continue;
+      }
+      if (subs.length > 0 && c === '}') {
+        const frame = subs[subs.length - 1];
+        if (frame.depth === 0) {
+          subs.pop();
+          state = '`';
+        } else {
+          frame.depth -= 1;
+        }
+        out += c;
+        i += 1;
+        continue;
+      }
       if (c === '/' && next === '/') {
         state = 'line';
         out += '  ';
@@ -195,6 +223,13 @@ export function stripComments(src) {
       continue;
     }
     // inside a string or template: copy verbatim, honouring the escape
+    if (state === '`' && c === '$' && next === '{') {
+      subs.push({ depth: 0 });
+      state = 'code';
+      out += '${';
+      i += 2;
+      continue;
+    }
     if (c === '\\') {
       out += c + (next ?? '');
       i += 2;

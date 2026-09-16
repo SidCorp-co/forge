@@ -102,6 +102,14 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
       gaps.push('release-runner');
     // cm:edge lockstep -> packages/core/src/release-batch/service.ts — `createReleaseBatch` REFUSES on this, and reporting it here is what gives the operator the gap before a release discovers it. Drop this line and the refusal arrives with nothing in settings having said it was coming.
     if (channels.some((c) => !c.verify)) gaps.push('verify-probes');
+    // cm:edge lockstep -> packages/core/src/release-batch/service.ts — the SAME rule as the line
+    // above, for `ReleaseMultiChannelUnsupportedError`. A project with two live channels that agree
+    // on their runner label and declare every fact has no gap at all by every other measure, so
+    // settings rendered it complete while `createReleaseBatch` refused it by name. Widening what a
+    // release RETURNS to the live set did not widen the attempt ledger, which records one reading
+    // and closes the whole roster on it; until per-binding verification lands, this is the gap that
+    // says so where the operator can act on it.
+    if (channels.length > 1) gaps.push('release-multi-channel');
     if (channels.some((c) => !c.rollback)) gaps.push('rollback');
     else if (channels.some((c) => c.rollback?.kind === 'unrepresentable'))
       gaps.push('rollback-prose');

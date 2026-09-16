@@ -230,6 +230,29 @@ describe("ReleaseSection", () => {
     );
   });
 
+  // cm:guard the refusal this very change introduced has to be PREDICTED here. Two live deploy
+  // bindings that agree on their runner label and declare every fact leave `gaps` otherwise empty,
+  // so the panel read complete while `createReleaseBatch` answered 409 — a project whose releases
+  // had stopped, with nothing on the one screen that could say why. The sentence has to carry the
+  // reason (one check of one address) and a remedy, or it is the generic banner this panel replaced.
+  it("says why a project with two live deploy bindings cannot cut a release", () => {
+    renderWith({
+      hasReleaseGate: true,
+      releaseModel: "publish",
+      providers: ["coolify", "coolify"],
+      releaseRunnerLabel: "prod-box",
+      hasVerify: true,
+      rollbackMode: "coolify-image",
+      gaps: ["release-multi-channel"],
+    });
+
+    expect(screen.getByText(/ONE check of ONE address/i)).toBeInTheDocument();
+    expect(screen.getByText(/refused by name until then/i)).toBeInTheDocument();
+    expect(
+      screen.getByRole("link", { name: /Review the live deploy bindings/i }),
+    ).toHaveAttribute("href", "/projects/forge-dev/settings?tab=integrations");
+  });
+
   it("shows no banner at all when nothing is missing", () => {
     renderWith({ hasReleaseGate: true, releaseModel: "promote", liveBranch: "production", gaps: [] });
 

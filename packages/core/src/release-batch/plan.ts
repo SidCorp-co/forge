@@ -41,11 +41,36 @@ export interface DefaultProcedureInput {
 // cm:guard step 1 is rendered ONLY under `releaseModel: 'promote'`. It used to be hardcoded for everyone as `liveBranch ≠ baseBranch`, which is `gate.ts`'s old branch comparison rewritten as prose for an agent — a `publish` project merges nothing (pixelight publishes a theme) and a `none` project has no release step at all, so the unconditional step told 28 of 32 projects to promote a branch nobody was promoting.
 // cm:guard the steps are NUMBERED from the list rather than by an index shifted per model. The `n(k)` arithmetic this replaced encoded "there are exactly three steps and one of them is conditional", which is false the moment a fourth branch exists — and an agent handed "2. deploy" with no step 1 goes looking for the step it was not given.
 export function defaultReleaseProcedure(input: DefaultProcedureInput): string {
+  const refusal = procedureRefusal(input);
+  if (refusal !== null) return refusal;
   const steps: string[] = [];
   if (input.releaseModel === 'promote') steps.push(promoteStep(input.releaseStrategy));
   steps.push(deployStep(input.channels));
   steps.push(CHANGELOG_STEP);
   return steps.map((step, i) => `${i + 1}. ${step}`).join('\n');
+}
+
+/**
+ * The whole procedure, where what was declared has no default at all.
+ *
+ * Both refusals used to render as a numbered STEP among the executable ones, and the deploy one
+ * rendered SECOND — so a `promote`/`merge-branch` project on an epodsystem channel was handed
+ * "1. Merge baseBranch → liveBranch and push." and then, underneath it, "Forge has NO default
+ * deploy step for epodsystem … abort". An agent that reads top to bottom promotes the branch and
+ * then discovers the release cannot be finished: the configuration was unreleasable before the run
+ * started, and the first thing it did was move the live branch.
+ */
+// cm:guard a refusal is the WHOLE body or it is not a refusal. Emitting it beside steps that change
+// something is the silent-substitution defect wearing a warning label — the branch still moves, and
+// the abort arrives after the only irreversible instruction in the procedure. A new executable step
+// added below must be reachable only past this function returning `null`.
+function procedureRefusal(input: DefaultProcedureInput): string | null {
+  if (input.releaseModel === 'promote' && input.releaseStrategy !== 'merge-branch') {
+    return promoteStep(input.releaseStrategy);
+  }
+  const foreign = undeployableChannels(input.channels);
+  if (foreign.length > 0) return foreignChannelRefusal(foreign);
+  return null;
 }
 
 /**
@@ -73,13 +98,13 @@ function promoteStep(strategy: ReleaseStrategy | null): string {
 }
 
 /**
- * The deploy step, per live channel, naming the provider each instruction is for.
+ * The deploy step, for a channel set Forge HAS a default for — reached only past `procedureRefusal`.
  *
  * The one it replaced ended `If a deploy channel is declared above: forge_coolify_deploy { … }` for
  * every project. An epodsystem-only `publish` project — butlocs, mowment, pixelight, anhome — was
  * therefore told to release through Coolify, a tool that does not reach its storefront at all.
  */
-// cm:guard the Coolify call is emitted ONLY for a channel whose provider IS `coolify`, and a provider Forge has no default for gets a refusal rather than the nearest tool. `gate.ts` already forbids reading a provider name to decide what a binding is FOR; this is the same rule for what a step DOES, and the old text broke it for four fleet projects.
+// cm:guard the Coolify call is emitted ONLY for a channel whose provider IS `coolify`. `gate.ts` already forbids reading a provider name to decide what a binding is FOR; this is the same rule for what a step DOES, and the old text broke it for four fleet projects. A provider Forge has no default for is refused by `foreignChannelRefusal` INSTEAD of this step rather than beside it, so do not reintroduce a branch here that renders both.
 function deployStep(channels: ReleaseChannel[]): string {
   if (channels.length === 0) {
     return `No deploy channel is declared, so there is nothing here for you to deploy. Cut the version
@@ -87,23 +112,27 @@ function deployStep(channels: ReleaseChannel[]): string {
    prompt; this project has not declared one.`;
   }
   const coolify = channels.filter((c) => c.provider === 'coolify').map(namedChannel);
-  const foreign = [...new Set(channels.filter((c) => c.provider !== 'coolify').map(namedChannel))];
-  const parts: string[] = [];
-  if (coolify.length > 0) {
-    const named = coolify.join(', ');
-    parts.push(`Deploy the coolify channel(s) — ${named} — with \`forge_coolify_deploy { action:'deploy', pipelineRunId: runId }\`.
+  const named = coolify.join(', ');
+  return `Deploy the coolify channel(s) — ${named} — with \`forge_coolify_deploy { action:'deploy', pipelineRunId: runId }\`.
    Poll \`forge_coolify_deploy { action:'status' }\` in the FOREGROUND until every target is
    'ok' or 'failed' — never end the turn while polling. pendingHumanConfirm:true → abort.
-   Any 'failed' → abort.`);
-  }
-  if (foreign.length > 0) {
-    const named = foreign.join(', ');
-    const those = foreign.length > 1 ? 'those channels' : 'that channel';
-    parts.push(`Forge has NO default deploy step for ${named}, and \`forge_coolify_deploy\` does not
-   reach ${those}. \`abort\` naming the channel rather than deploying it some other way, and tell the
-   operator the steps belong in the \`${RELEASE_PROCEDURE_FACT}\` project fact.`);
-  }
-  return parts.join('\n   ');
+   Any 'failed' → abort.`;
+}
+
+/** Every declared channel Forge has no default deploy step for, named, each one once. */
+function undeployableChannels(channels: ReleaseChannel[]): string[] {
+  return [...new Set(channels.filter((c) => c.provider !== 'coolify').map(namedChannel))];
+}
+
+function foreignChannelRefusal(foreign: string[]): string {
+  const named = foreign.join(', ');
+  const those = foreign.length > 1 ? 'those channels' : 'that channel';
+  return `STOP — Forge has NO default deploy step for ${named}, and \`forge_coolify_deploy\` does not
+   reach ${those}. There is nothing below this line: do NOT merge, do NOT promote, and do NOT deploy
+   the other channels first — a release that can only be half-finished is not started.
+   \`abort\` naming the channel rather than deploying it some other way, and tell the operator the
+   steps belong in the \`${RELEASE_PROCEDURE_FACT}\` project fact — that text replaces this entire
+   default when it exists.`;
 }
 
 /** `provider` on its own, or `provider [label]` for an ISS-558 multi-store binding. */

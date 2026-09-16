@@ -18,6 +18,8 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
     "The live binding names no release runner — a release is refused rather than sent to an arbitrary box.",
   "release-runner-ambiguous":
     "Two live bindings name different release runners — a release is refused rather than sent to whichever was created first. Give them the same label, or retire one.",
+  "release-multi-channel":
+    "Two live deploy bindings are declared, and a release run records ONE check of ONE address — so closing the batch on it would claim a delivery nobody looked at. Cutting a release is refused by name until then. Retire one of the two, or keep both and cut this project's releases by hand.",
   "release-target":
     "This project declares a release but has no live deploy binding to send it to — every issue would wait for a release nobody can cut. Add one, or set the release model to none.",
   rollback:
@@ -35,6 +37,7 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
 const INTEGRATION_GAP_LINK: Partial<Record<ReleaseReadiness["gaps"][number], string>> = {
   "release-target": "Add a live deploy binding",
   "release-runner-ambiguous": "Reconcile the release runner labels",
+  "release-multi-channel": "Review the live deploy bindings",
 };
 
 // cm:edge contract -> packages/core/src/release-batch/channel.ts — the three modes are decided by `classifyRollback`; rendering `unrepresentable` as "declared" would show a green-looking declaration for a release that will abort (ISS-925).

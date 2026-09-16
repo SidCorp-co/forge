@@ -27,6 +27,12 @@ Measured over the fleet at the 0253 cutover: of the 12 projects carrying a live 
 **zero** carry two. The refusal therefore takes nothing away from anybody today; it stands between
 the first operator who adds a second live binding and a silently half-verified release.
 
+`loadReleaseReadiness` reports it as the `release-multi-channel` gap, so the project's settings
+screen carries the reason and a remedy before anybody tries to cut a release. Without that, a
+project whose two live bindings agree on their runner label and declare every fact had no gap at
+all by any other measure: settings rendered it complete and the refusal arrived in a job. That is
+the same lockstep the `verify-probes` gap already keeps with its own refusal.
+
 It is a refusal and not a fix. The operator who meets it is told to leave one binding active or to
 split the project, and neither is what they asked for.
 
@@ -43,7 +49,8 @@ Make the reading per binding rather than per run:
 4. `ReleaseReadiness` returns per-binding entries, with the aggregate gaps derived from them, so
    settings can name the binding whose rollback declaration needs correcting rather than showing
    the first one's for the set.
-5. Remove `ReleaseMultiChannelUnsupportedError` and this file in the same change.
+5. Remove `ReleaseMultiChannelUnsupportedError`, the `release-multi-channel` gap and its copy, and
+   this file, in the same change.
 
 Until (5) lands, the refusal is the honest answer.
 

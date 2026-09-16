@@ -155,13 +155,45 @@ describe('defaultReleaseProcedure — the live channel set', () => {
     expect(text).toContain('NO default deploy step');
   });
 
-  it('emits the Coolify instruction only for the coolify half of a mixed set', () => {
+  // cm:guard a refusal is the WHOLE procedure or it is not a refusal. This used to render the
+  // Coolify deploy FIRST and the epodsystem refusal underneath it, which is an instruction to
+  // half-release: one endpoint deployed, the other aborted, and no way back to the state before.
+  it('refuses a mixed set outright rather than deploying the half it can', () => {
     const text = procedure({
       channels: [channel({ provider: 'coolify' }), channel({ provider: 'epodsystem' })],
     });
 
-    expect(text).toContain("forge_coolify_deploy { action:'deploy'");
+    expect(text).not.toContain("forge_coolify_deploy { action:'deploy'");
     expect(text).toContain('NO default deploy step for epodsystem');
+    expect(text).toContain('do NOT deploy\n   the other channels first');
+  });
+
+  // cm:guard THE F1 case. `promote` + `merge-branch` + a channel Forge cannot deploy rendered
+  // "1. Merge baseBranch → liveBranch and push." and then, below it, the abort. The configuration
+  // was unreleasable before the run started and the first thing the run did was move the live
+  // branch — the one irreversible instruction in the whole procedure, executed on the way to a stop.
+  it('names no merge step when the live channel has no default deploy step', () => {
+    const text = procedure({
+      channels: [channel({ provider: 'epodsystem', label: 'aurelle' })],
+    });
+
+    expect(text).not.toMatch(/Merge baseBranch/);
+    expect(text).not.toMatch(/^1\./);
+    expect(text).not.toContain('CHANGELOG.md');
+    expect(text).toMatch(/^STOP —/);
+    expect(text).toContain('do NOT merge');
+    expect(text).toContain('epodsystem [aurelle]');
+  });
+
+  // cm:guard the promote-strategy refusal is the whole body for the same reason: rendered as
+  // "1. STOP …" it was followed by "2. Deploy …" and "3. Append to CHANGELOG.md", two executable
+  // steps under a line telling the agent to abort.
+  it('renders no deploy or changelog step under a strategy it refuses', () => {
+    const text = procedure({ releaseStrategy: 'cherry-pick' });
+
+    expect(text).not.toContain("forge_coolify_deploy { action:'deploy'");
+    expect(text).not.toContain('CHANGELOG.md');
+    expect(text).not.toMatch(/^1\./);
   });
 
   // cm:guard a project with no channel must be TOLD there is none rather than handed a conditional
