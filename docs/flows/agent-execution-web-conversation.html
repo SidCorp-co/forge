@@ -239,9 +239,15 @@ The persona says so in its own words <em>and names where a runner still is</em>
 and where to go instead rather than only the first. Six affordances
 went with the runner — model pick, runner pick, fork, rerun, per-turn edit, regenerate — because each
 names a <em>run</em>, and a conversation is an append-only log whose <code>appendMessages</code>
-leaves every row already in it alone. The way back is one function:
-<code>divertBeforeTurn</code> on the turn inputs, exactly as
-<code>integrations/rocketchat/turn-inputs.ts</code> uses it for the <code>agent</code> answer mode.
-Priced at <code>docs/proposals/the-forge-ui-conversation-cannot-reach-a-runner.md</code>.</div>
+leaves every row already in it alone. <span class="warn">The way back was taken by ISS-1039, and the loss above is now a
+<em>mode</em> rather than a ceiling.</span> A conversation is opened in one of two, picked in the
+composer of an empty room and settled by its first send: <em>Assistant</em> is everything described
+above, and <em>Agent</em> diverts the turn through <code>divertBeforeTurn</code> &mdash; the same
+function <code>integrations/rocketchat/turn-inputs.ts</code> uses for its <code>agent</code> answer
+mode &mdash; onto a Claude Code session on a paired box, with the repository checked out and a
+shell. The send answers <code>202</code> and the reply is pushed back through the conversation's own
+transport when the session finishes. <code>CHAT_TOOL_ALLOWLIST</code> is <em>unchanged</em> by that
+work and is meant to stay so: Agent mode reaches the repository by being a run, not by widening the
+in-core fence.</div>
 
 </main>

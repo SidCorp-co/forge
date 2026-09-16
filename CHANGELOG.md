@@ -117,6 +117,10 @@
   of the real counts, pipeline and filing rules, so a confident wrong answer fails. A question the
   project cannot be asked is recorded, not failed.
 
+- **A conversation now opens in one of two modes, picked in the composer.** Assistant answers in
+  core; Agent runs the turn as a session on a paired box, with the repository checked out. The
+  first message settles which, for good.
+
 - **The assistant benchmark now judges project understanding, memory storing and long-context
   handling, and reports each as its own score.** Every task names what it measures, and seven new
   tasks join the ten: three read the project itself before asking (its issue counts by status, its

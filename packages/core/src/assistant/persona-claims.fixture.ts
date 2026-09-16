@@ -371,7 +371,8 @@ export const LEDGER: readonly Claim[] = [
     clauses: [
       'that needs a session on a paired box',
       'You CANNOT edit a file, run a command or drive a pipeline',
-      '/agents. Say so, and name that screen',
+      'a fresh conversation opened in Agent mode',
+      '/agents. Say so, and name the first of those',
     ],
     origin: 'kept',
   },
