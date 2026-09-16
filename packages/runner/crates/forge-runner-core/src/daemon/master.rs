@@ -1547,8 +1547,12 @@ mod give_back_tests {
     struct Alive(bool);
     #[async_trait::async_trait]
     impl recovery::MasterLiveness for Alive {
-        async fn is_alive(&self, _id: &str) -> bool {
-            self.0
+        async fn state(&self, _id: &str) -> recovery::MasterPresence {
+            if self.0 {
+                recovery::MasterPresence::Alive
+            } else {
+                recovery::MasterPresence::Gone
+            }
         }
         async fn live_master_for_project(&self, _: &str) -> Option<String> {
             None

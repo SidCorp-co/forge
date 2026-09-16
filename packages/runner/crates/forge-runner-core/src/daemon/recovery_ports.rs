@@ -8,7 +8,7 @@
  */
 
 use crate::daemon::master::Masters;
-use crate::daemon::recovery::{Heartbeat, MasterLiveness, ProcessLiveness};
+use crate::daemon::recovery::{Heartbeat, MasterLiveness, MasterPresence, ProcessLiveness};
 use crate::daemon::terminal;
 use crate::error::Result;
 use crate::runner::close_loop::{LeaseKeeper, Outcome, RunCloser, SessionReader};
@@ -22,10 +22,18 @@ pub struct PaneMasters<'a> {
 
 #[async_trait::async_trait]
 impl MasterLiveness for PaneMasters<'_> {
-    async fn is_alive(&self, master_session_id: &str) -> bool {
+    // cm:guard a registry MISS answers `Unknown` and never `Gone`, and the difference is what the
+    // caller spends it on. The map is in-process: a daemon restart empties it, and a project no
+    // longer in `/me/runners` is never re-adopted into it, so a miss is this box having no record
+    // rather than a pane having ended. Answering `Gone` there let an absence license telling core a
+    // live run had died and removing the checkout it was still writing into (ISS-1050).
+    async fn state(&self, master_session_id: &str) -> MasterPresence {
         match self.masters.pane_for_session(master_session_id) {
-            Some(name) => terminal::pane_pid(&name).await.is_some(),
-            None => false,
+            Some(name) => match terminal::pane_pid(&name).await {
+                Some(_) => MasterPresence::Alive,
+                None => MasterPresence::Gone,
+            },
+            None => MasterPresence::Unknown,
         }
     }
 
@@ -115,5 +123,45 @@ pub struct CoreBeat<'a> {
 impl Heartbeat for CoreBeat<'_> {
     async fn beat(&self, session_id: &str) -> Result<()> {
         run_sessions::beat(self.client, session_id).await
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use crate::daemon::master::Masters as Registry;
+
+    // cm:guard the PRODUCTION port, not a double. Every other assertion about this distinction runs
+    // against a test impl that answers what the test asked it to, so none of them would notice this
+    // arm collapsing `Unknown` back into `Gone` — and this arm is the one that decides whether an
+    // absence can license removing a checkout. Measured: planting `None => Gone` here left all 224
+    // daemon tests green before this existed (ISS-1050).
+    #[tokio::test]
+    async fn a_session_this_registry_has_no_entry_for_is_unknown_and_never_gone() {
+        let registry = Registry::new();
+        let port = PaneMasters { masters: &registry };
+
+        assert_eq!(
+            port.state("a-session-this-box-never-registered").await,
+            MasterPresence::Unknown,
+            "an empty registry is this box having no record, not a pane that ended — a daemon restart empties it while every master is still running"
+        );
+    }
+
+    // cm:guard the other half of the same distinction: a registry entry naming a pane tmux does not
+    // have IS a positive observation, and must not be softened to `Unknown` along with the miss.
+    // The pane name used here cannot exist, so tmux answers for it the way it answers for a pane
+    // that has gone.
+    #[tokio::test]
+    async fn a_registered_pane_tmux_does_not_have_is_gone_rather_than_unknown() {
+        let registry = Registry::new();
+        registry.remember_for_test("proj-1", "sess-1", "forge-no-such-pane-iss1050");
+        let port = PaneMasters { masters: &registry };
+
+        assert_eq!(
+            port.state("sess-1").await,
+            MasterPresence::Gone,
+            "the registry named a pane and tmux has no such pane; that is an observation, and softening it would leave every dead master unrecoverable"
+        );
     }
 }
