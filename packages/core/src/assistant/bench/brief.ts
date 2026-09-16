@@ -64,11 +64,22 @@ export class BriefRefusal extends Error {
 
 const errorText = (err: unknown): string => (err instanceof Error ? err.message : String(err));
 
+/** One line of author text inside the grounding block, clamped so "never truncated" stays true of it. */
+const clamp = (text: string, max: number): string =>
+  text.length <= max ? text : `${text.slice(0, max)}…`;
+
+// cm:guard the grounding block is the half `projectBrief` never truncates, so every author-supplied
+// string in it is clamped HERE: a project name or a waiting issue's title is unbounded, and one long
+// enough would push the counts and the pipeline past the cap and out of the brief through the final
+// slice — which is exactly the failure the two budgets exist to prevent (ISS-1066).
+const NAME_MAX = 120;
+const TITLE_MAX = 200;
+
 const groundingLines = (src: ProjectBriefSource): string[] => {
   const counts = Object.entries(src.counts.byStatus).sort((a, b) => b[1] - a[1]);
   const total = counts.reduce((sum, [, n]) => sum + n, 0);
   return [
-    `# ${src.detail.name} (${src.slug})`,
+    `# ${clamp(src.detail.name, NAME_MAX)} (${clamp(src.slug, NAME_MAX)})`,
     '',
     '## Issue counts by status',
     counts.length === 0
@@ -88,7 +99,7 @@ const groundingLines = (src: ProjectBriefSource): string[] => {
     '',
     '## Issue waiting on information',
     src.waitingIssue
-      ? `${src.waitingIssue.key} — ${src.waitingIssue.title}`
+      ? `${src.waitingIssue.key} — ${clamp(src.waitingIssue.title, TITLE_MAX)}`
       : 'The project holds no issue waiting on information.',
   ];
 };

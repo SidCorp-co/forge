@@ -250,3 +250,32 @@ describe('readProjectBrief (ISS-1066)', () => {
     );
   });
 });
+
+// cm:why this is its own case: "the grounding block is never truncated" is only true while the
+// block is BOUNDED, and two of its strings are author text a tracker does not bound for us.
+describe('the grounding block stays bounded (ISS-1066)', () => {
+  it('keeps the counts and the pipeline when the project name and the waiting title are enormous', () => {
+    const text = projectBrief(
+      source({
+        detail: { name: 'N'.repeat(20_000), description: null, issuePrefix: 'QA' },
+        waitingIssue: { id: 'bbbb', key: 'QA-4', title: 'T'.repeat(20_000) },
+      }),
+    );
+    expect(text.length).toBeLessThanOrEqual(BRIEF_MAX_CHARS);
+    expect(text).toContain('open 5 · closed 2 · draft 1 — 8 in all.');
+    expect(text).toContain('open → confirmed → approved');
+    expect(text).toContain('`QA-<number>`');
+    expect(text).toContain('QA-4 — ');
+  });
+
+  it('keeps every section inside the cap when the counts map is large', () => {
+    const byStatus = Object.fromEntries(
+      Array.from({ length: 17 }, (_, i) => [`status_number_${i}`, i * 13]),
+    );
+    const text = projectBrief(
+      source({ counts: { openCount: 5, closedCount: 2, draftCount: 1, byStatus } }),
+    );
+    expect(text.length).toBeLessThanOrEqual(BRIEF_MAX_CHARS);
+    expect(text).toContain('status_number_16 208');
+  });
+});
