@@ -17,6 +17,7 @@ import {
   type HealthCheckResult,
   type IntegrationAdapterMethods,
 } from '../types.js';
+import { postmanRestBase } from './endpoints.js';
 import { buildPostmanMcpEntry } from './resolver.js';
 import {
   POSTMAN_BINDING_CONFIG_KEYS,
@@ -24,7 +25,6 @@ import {
   postmanConfigSchema,
   postmanSecretsSchema,
 } from './schemas.js';
-import { postmanRestBase } from './endpoints.js';
 import type { PostmanConfig, PostmanMeResponse, PostmanSecrets } from './types.js';
 
 const ME_TIMEOUT_MS = 15_000;
@@ -35,7 +35,6 @@ const notSupported = (op: string): never => {
 };
 
 const postmanAdapterMethods: IntegrationAdapterMethods<PostmanConfig, PostmanSecrets> = {
-
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const apiKey = ctx.secrets?.apiKey;
     if (!apiKey) {

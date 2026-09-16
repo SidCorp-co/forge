@@ -533,37 +533,3 @@ export async function listConnectionsForPrincipalUser(
     )
     .orderBy(desc(integrationConnections.createdAt));
 }
-
-/**
- * Every binding of one provider on one project that an agent may actually use: granted, with both
- * tiers active and a credential stored, oldest first.
- *
- * Oldest-first because a provider that does NOT declare `multiBinding` takes row zero as its one
- * winner, and that pick has to be stable across dispatches.
- */
-// cm:edge lockstep -> packages/core/src/integrations/mcp-resolver.ts — the dispatch resolver and
-// the preview service both take their binding set from here, so neither can drift from the other
-// about which binding wins.
-export async function listAgentGrantedBindings(
-  projectId: string,
-  provider: string,
-): Promise<BindingWithConnection[]> {
-  const rows = await db
-    .select({ binding: integrationBindings, connection: integrationConnections })
-    .from(integrationBindings)
-    .innerJoin(
-      integrationConnections,
-      eq(integrationBindings.connectionId, integrationConnections.id),
-    )
-    .where(
-      and(
-        eq(integrationBindings.projectId, projectId),
-        eq(integrationBindings.provider, provider),
-        eq(integrationBindings.active, true),
-        eq(integrationBindings.agentAccess, 'all'),
-        eq(integrationConnections.active, true),
-      ),
-    )
-    .orderBy(asc(integrationBindings.createdAt));
-  return rows as BindingWithConnection[];
-}

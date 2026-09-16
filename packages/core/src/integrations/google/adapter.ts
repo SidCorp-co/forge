@@ -17,13 +17,13 @@ import {
   type IntegrationAdapterMethods,
 } from '../types.js';
 import { googleAccessToken, parseServiceAccountKey } from './auth.js';
+import { getSpreadsheet } from './client.js';
 import {
   GOOGLE_BINDING_CONFIG_KEYS,
   googleConfigBase,
   googleConnectionConfigSchema,
   googleSecretsSchema,
 } from './schemas.js';
-import { getSpreadsheet } from './client.js';
 import { SHEETS_READONLY_SCOPE } from './scopes.js';
 import { GoogleApiError, GoogleAuthError, type GoogleConfig, type GoogleSecrets } from './types.js';
 
@@ -117,7 +117,6 @@ async function failHealth(
 }
 
 const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecrets> = {
-
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const serviceAccountJson = ctx.secrets?.serviceAccountJson;
     if (typeof serviceAccountJson !== 'string' || serviceAccountJson.length === 0) {

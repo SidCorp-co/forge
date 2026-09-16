@@ -76,7 +76,6 @@ const { requestId } = await import('../middleware/request-id.js');
 const { registerAllIntegrations } = await import('./register-all.js');
 registerAllIntegrations();
 
-
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());

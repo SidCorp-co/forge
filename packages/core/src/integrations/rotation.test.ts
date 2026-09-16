@@ -19,6 +19,19 @@ const { isPreviousCredentialValid, mergeRotatedSecrets, ROTATION_WINDOW_MS } = a
   './rotation.js'
 );
 
+/**
+ * The declaration, or a failure NAMING the provider.
+ *
+ * `getIntegration(p)!` reported `Cannot read properties of undefined` and no provider name, which
+ * is the least useful possible message for the one thing that can go wrong here — a provider the
+ * registry does not hold.
+ */
+function decl(provider: string) {
+  const found = getIntegration(provider);
+  if (!found) throw new Error(`no declaration registered for provider=${provider}`);
+  return found;
+}
+
 const FIXED_NOW = Date.parse('2026-01-01T00:00:00.000Z');
 
 beforeAll(() => {
@@ -34,21 +47,29 @@ afterEach(() => {
 // this module keeps in lockstep with the first.
 describe('rotation is declared, not listed separately', () => {
   it('a provider rotates iff its declaration carries a primaryCredentialField', () => {
-    const rotating = ['coolify', 'postman', 'epodsystem', 'sentry', 'google', 'rocketchat', 'github'];
+    const rotating = [
+      'coolify',
+      'postman',
+      'epodsystem',
+      'sentry',
+      'google',
+      'rocketchat',
+      'github',
+    ];
     const notRotating = ['agent'];
 
     for (const provider of rotating) {
-      const decl = getIntegration(provider);
-      expect(decl?.schemas.primaryCredentialField, provider).not.toBeNull();
+      expect(decl(provider).schemas.primaryCredentialField, provider).not.toBeNull();
     }
     for (const provider of notRotating) {
-      const decl = getIntegration(provider);
-      expect(decl?.schemas.primaryCredentialField, provider).toBeNull();
+      expect(decl(provider).schemas.primaryCredentialField, provider).toBeNull();
     }
     // Every declared provider is accounted for on one side or the other.
-    expect(listIntegrations().map((d) => d.provider).sort()).toEqual(
-      [...rotating, ...notRotating].sort(),
-    );
+    expect(
+      listIntegrations()
+        .map((d) => d.provider)
+        .sort(),
+    ).toEqual([...rotating, ...notRotating].sort());
   });
 });
 
@@ -56,8 +77,8 @@ describe('mergeRotatedSecrets', () => {
   it('coolify: stores previousApiToken + future expiry when rotating', () => {
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
-    const decl = getIntegration('coolify')!;
-    const merged = mergeRotatedSecrets(decl, { apiToken: 'old-tok' }, { apiToken: 'new-tok' });
+    const coolify = decl('coolify');
+    const merged = mergeRotatedSecrets(coolify, { apiToken: 'old-tok' }, { apiToken: 'new-tok' });
     expect(merged).toEqual({
       apiToken: 'new-tok',
       previousApiToken: 'old-tok',
@@ -68,8 +89,8 @@ describe('mergeRotatedSecrets', () => {
   it('postman: stores previousApiKey + future expiry when rotating', () => {
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
-    const decl = getIntegration('postman')!;
-    const merged = mergeRotatedSecrets(decl, { apiKey: 'PMAK-old' }, { apiKey: 'PMAK-new' });
+    const postman = decl('postman');
+    const merged = mergeRotatedSecrets(postman, { apiKey: 'PMAK-old' }, { apiKey: 'PMAK-new' });
     expect(merged).toEqual({
       apiKey: 'PMAK-new',
       previousApiKey: 'PMAK-old',
@@ -80,8 +101,8 @@ describe('mergeRotatedSecrets', () => {
   it('epodsystem: stores previousApiKey + future expiry when rotating', () => {
     vi.useFakeTimers();
     vi.setSystemTime(FIXED_NOW);
-    const decl = getIntegration('epodsystem')!;
-    const merged = mergeRotatedSecrets(decl, { apiKey: 'crmk_old' }, { apiKey: 'crmk_new' });
+    const epodsystem = decl('epodsystem');
+    const merged = mergeRotatedSecrets(epodsystem, { apiKey: 'crmk_old' }, { apiKey: 'crmk_new' });
     expect(merged).toEqual({
       apiKey: 'crmk_new',
       previousApiKey: 'crmk_old',
@@ -90,8 +111,8 @@ describe('mergeRotatedSecrets', () => {
   });
 
   it('first credential write: omits previous + expiry when no current secret exists', () => {
-    const postman = getIntegration('postman')!;
-    const coolify = getIntegration('coolify')!;
+    const postman = decl('postman');
+    const coolify = decl('coolify');
     expect(mergeRotatedSecrets(postman, null, { apiKey: 'PMAK-first' })).toEqual({
       apiKey: 'PMAK-first',
     });
@@ -101,19 +122,19 @@ describe('mergeRotatedSecrets', () => {
   });
 
   it('returns null when the incoming payload has no primary credential', () => {
-    const postman = getIntegration('postman')!;
-    const coolify = getIntegration('coolify')!;
+    const postman = decl('postman');
+    const coolify = decl('coolify');
     expect(mergeRotatedSecrets(postman, { apiKey: 'old' }, {})).toBeNull();
     expect(mergeRotatedSecrets(coolify, { apiToken: 'old' }, { apiToken: '' })).toBeNull();
   });
 
   it('ignores the wrong-shape incoming key (apiKey supplied for coolify is a no-op)', () => {
-    const coolify = getIntegration('coolify')!;
+    const coolify = decl('coolify');
     expect(mergeRotatedSecrets(coolify, { apiToken: 'old' }, { apiKey: 'PMAK-x' })).toBeNull();
   });
 
   it('returns null for a declaration with no rotating credential (agent)', () => {
-    const agent = getIntegration('agent')!;
+    const agent = decl('agent');
     expect(mergeRotatedSecrets(agent, { anything: 'old' }, { anything: 'new' })).toBeNull();
   });
 });

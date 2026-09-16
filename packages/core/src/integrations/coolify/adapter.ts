@@ -15,15 +15,15 @@ import {
   type OutboundDispatchInput,
   type OutboundDispatchResult,
 } from '../types.js';
+import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
+import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
+import { enqueueCoolifyConfirm } from './confirm.js';
+import { buildClient } from './log-fetch.js';
 import {
   COOLIFY_BINDING_CONFIG_KEYS,
   coolifyConfigSchema,
   coolifySecretsSchema,
 } from './schemas.js';
-import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './circuit-breaker.js';
-import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
-import { enqueueCoolifyConfirm } from './confirm.js';
-import { buildClient } from './log-fetch.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
 const BREADCRUMB_OUT = 'integration.coolify.dispatch';
@@ -78,7 +78,6 @@ function describeCoolifyFailure(err: unknown): string {
 }
 
 const coolifyAdapterMethods: IntegrationAdapterMethods<CoolifyConfig, CoolifySecrets> = {
-
   async healthcheck(ctx) {
     const started = Date.now();
     const client = buildClient(ctx);

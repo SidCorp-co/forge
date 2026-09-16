@@ -9,8 +9,8 @@
  * `rocketchat` exists in order to do their own jobs.
  */
 
-import { findBindingWithConnectionById, listActiveBindingsForProjectProvider } from '../store.js';
 import type { BindingWithConnection } from '../store.js';
+import { findBindingWithConnectionById, listActiveBindingsForProjectProvider } from '../store.js';
 
 /** This project's Rocket.Chat binding, or null. Oldest-first, so the pick is stable. */
 export async function activeRocketChatBinding(

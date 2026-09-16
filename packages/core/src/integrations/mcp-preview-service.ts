@@ -24,16 +24,12 @@
 // binding-pick order live in both files, and the preview lies about what a runner receives if they
 // drift. The pair is deliberately NOT one shared function: that one decrypts, this one must not.
 
-import { type BindingRole, type DeployStage } from '../db/schema.js';
+import type { BindingRole, DeployStage } from '../db/schema.js';
 import { grantHolds } from './agent-access.js';
+import { listAgentGrantedBindings } from './agent-access-store.js';
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
 import { toIso } from './route-helpers.js';
-import {
-  type BindingWithConnection,
-  effectiveConfig,
-  listAgentGrantedBindings,
-  listBindingsForProject,
-} from './store.js';
+import { type BindingWithConnection, effectiveConfig, listBindingsForProject } from './store.js';
 import type { IntegrationDeclaration, IntegrationProvider } from './types.js';
 
 /** One MCP-injection provider entry in the preview (mirrors contracts type). */

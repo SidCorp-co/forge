@@ -26,14 +26,10 @@ import {
   type HealthCheckResult,
   type IntegrationAdapterMethods,
 } from '../types.js';
-import { buildSentryMcpEntry } from './resolver.js';
-import { renderSentryTargetsLine, resolveSentryTargets } from './targets.js';
-import {
-  SENTRY_BINDING_CONFIG_KEYS,
-  sentryConfigBase,
-  sentrySecretsSchema,
-} from './schemas.js';
 import { sentryRestBase } from './endpoints.js';
+import { buildSentryMcpEntry } from './resolver.js';
+import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
+import { renderSentryTargetsLine, resolveSentryTargets } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 15_000;
@@ -51,7 +47,6 @@ const notSupported = (op: string): never => {
 };
 
 const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecrets> = {
-
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const authToken = ctx.secrets?.authToken;
     if (!authToken) {

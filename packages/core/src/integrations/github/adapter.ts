@@ -12,6 +12,7 @@
  * until it does.
  */
 
+import type { BindingRole } from '../../db/schema.js';
 import { handleGitHubEvent } from '../../webhooks/github-adapter.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery } from '../deliveries.js';
@@ -24,14 +25,9 @@ import {
   type InboundDispatchResult,
   type IntegrationAdapterMethods,
 } from '../types.js';
-import {
-  GITHUB_BINDING_CONFIG_KEYS,
-  githubConfigBase,
-  githubSecretsSchema,
-} from './schemas.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
-import type { BindingRole } from '../../db/schema.js';
+import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 8000;

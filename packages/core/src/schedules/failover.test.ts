@@ -96,7 +96,6 @@ const { redispatchScheduleSessionOnFailover } = await import('./failover.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
-
 const SCHEDULE_ID = 'sch-1';
 const SOURCE_PROJECT_ID = 'proj-source';
 const USER_ID = 'user-1';

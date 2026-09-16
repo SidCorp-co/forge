@@ -209,7 +209,8 @@ describe('renderIntegrations — Sentry targets (ISS-526)', () => {
         lastHealthStatus: 'ok',
         // ISS-1071 — the row carries the provider's OWN rendered line now. `loadActiveIntegrationRows`
         // builds it from the sentry declaration's `usage.renderExtra`; the renderer only places it.
-        extraLine: '  - Backend: org=acme project=be — 5xx errors\n  - Mobile: org=acme project=mob',
+        extraLine:
+          '  - Backend: org=acme project=be — 5xx errors\n  - Mobile: org=acme project=mob',
       },
     ]);
     expect(text).toContain('- **sentry** [service] (health: ok)');

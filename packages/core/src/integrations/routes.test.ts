@@ -47,6 +47,9 @@ vi.mock('./queue.js', () => ({
   enqueueCoolifyDispatch: (job: unknown) => enqueueCoolifyDispatch(job),
 }));
 
+vi.mock('./agent-access-store.js', () => ({
+  listAgentGrantedBindings: (...a: unknown[]) => listAgentGrantedBindings(...(a as [])),
+}));
 vi.mock('./store.js', () => ({
   createConnection: (a: unknown) => createConnection(a),
   createBinding: (a: unknown) => createBinding(a),
@@ -64,7 +67,6 @@ vi.mock('./store.js', () => ({
   listConnectionsForPrincipalUser: (id: string) => listConnectionsForOwner(id),
   listActiveBindingsForProjectProvider: (...a: unknown[]) =>
     listActiveBindingsForProjectProvider(...(a as [])),
-  listAgentGrantedBindings: (...a: unknown[]) => listAgentGrantedBindings(...(a as [])),
   buildContextFromBinding: vi.fn(),
   // Real overlay so summaries carry the effective config.
   effectiveConfig: (pair: { connection: { config?: object }; binding: { config?: object } }) => ({

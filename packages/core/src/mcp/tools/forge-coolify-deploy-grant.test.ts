@@ -1,0 +1,141 @@
+/**
+ * ISS-1071 — the agent boundary for Coolify: which verbs the grant gates, and which it does not.
+ *
+ * Coolify is core-mediated. Core holds the API token and performs the deploy, so the SAME binding
+ * backs both an agent asking for a deploy and the release pipeline running one for a human. The
+ * grant answers only the first question, which is why it is checked here, in the agent's tool, and
+ * NOT inside `activeCoolifyIntegrations` — that resolver is shared with `integrations/coolify/
+ * routes.ts`, the REST surface a human's own Deploy button goes through, and a gate there would let
+ * an ungranted binding block a release nobody asked an agent about.
+ *
+ * A file of its own rather than a describe in `forge-coolify-deploy.test.ts` because `vi.mock` is
+ * per-module and cannot move to a `.fixture.ts`: the two files share a shape, not a harness.
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { makeFakePrincipal } from '../fake-principal.fixture.js';
+
+vi.mock('../../config/env.js', () => ({
+  env: {
+    JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef',
+    NODE_ENV: 'test',
+    DATABASE_URL: 'postgres://localhost/stub',
+  },
+}));
+
+const resultQueue: unknown[] = [];
+// biome-ignore lint/suspicious/noExplicitAny: minimal chainable drizzle stub
+function makeThenable(): any {
+  // biome-ignore lint/suspicious/noExplicitAny: see above
+  const p: any = {
+    from: () => p,
+    innerJoin: () => p,
+    leftJoin: () => p,
+    where: () => p,
+    orderBy: () => p,
+    limit: () => p,
+    then: (resolve: (v: unknown) => void) => resolve(resultQueue.shift() ?? []),
+  };
+  return p;
+}
+vi.mock('../../db/client.js', () => ({ db: { select: vi.fn(() => makeThenable()) } }));
+
+const tryDispatchSpy = vi.fn();
+const dispatchDirectSpy = vi.fn();
+vi.mock('../../pipeline/release-coolify.js', () => ({
+  tryDispatchCoolifyRelease: (a: unknown) => tryDispatchSpy(a),
+  resolveLatestIssueRunId: vi.fn(),
+  dispatchCoolifyDeployDirect: (a: unknown) => dispatchDirectSpy(a),
+  isIssueAtReleaseStage: vi.fn(),
+}));
+
+const { forgeCoolifyDeployTool } = await import('./forge-coolify-deploy.js');
+const { registerAllIntegrations } = await import('../../integrations/register-all.js');
+registerAllIntegrations();
+
+const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
+const INT_ID = 'a1111111-1111-4111-8111-111111111111';
+const OWNER_ID = '44444444-4444-4444-8444-444444444444';
+const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
+
+const fakePrincipal = makeFakePrincipal(DEVICE_ID, OWNER_ID);
+const ctx = () => ({ principal: fakePrincipal, projectSlug: null });
+
+function pair(agentAccess: string) {
+  const base = { id: INT_ID, provider: 'coolify', active: true };
+  return {
+    binding: {
+      ...base,
+      role: 'deploy',
+      stages: ['preview'],
+      projectId: PROJECT_ID,
+      config: {},
+      agentAccess,
+    },
+    connection: { ...base, config: {}, lastHealthStatus: null, breakerOpenedAt: null },
+  };
+}
+
+/** Membership, then the project's deploy bindings — the two reads the gate makes. */
+function queue(agentAccess: string) {
+  resultQueue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
+  resultQueue.push([pair(agentAccess)]);
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  resultQueue.length = 0;
+});
+
+describe('forge_coolify_deploy — the agent-access gate', () => {
+  it('refuses a deploy against an ungranted binding, naming the switch', async () => {
+    queue('none');
+    await expect(
+      forgeCoolifyDeployTool(ctx()).handler({ action: 'deploy', projectId: PROJECT_ID }),
+    ).rejects.toThrow(/agent access is `none`/);
+    // Refused BEFORE anything was dispatched — the point of a gate is that nothing happened.
+    expect(dispatchDirectSpy).not.toHaveBeenCalled();
+    expect(tryDispatchSpy).not.toHaveBeenCalled();
+  });
+
+  it('names the binding, so an operator knows which row to open', async () => {
+    queue('none');
+    const err = await forgeCoolifyDeployTool(ctx())
+      .handler({ action: 'deploy', projectId: PROJECT_ID })
+      .catch((e: Error) => e);
+    expect((err as Error).message).toContain(INT_ID);
+  });
+
+  it('gates cancel and rollback by the same switch a deploy is gated by', async () => {
+    for (const action of ['cancel', 'rollback'] as const) {
+      resultQueue.length = 0;
+      queue('none');
+      await expect(
+        forgeCoolifyDeployTool(ctx()).handler({ action, projectId: PROJECT_ID }),
+      ).rejects.toThrow(/agent access is `none`/);
+    }
+  });
+
+  it('leaves `list` readable, so an agent can see WHY it was refused', async () => {
+    // A gate an agent cannot see the other side of reads to it as a broken integration. `list`
+    // reports rather than acts, so it stays open and the binding shows up ungranted.
+    queue('none');
+    const result = (await forgeCoolifyDeployTool(ctx()).handler({
+      action: 'list',
+      projectId: PROJECT_ID,
+    })) as { integrations: unknown[] };
+    expect(result.integrations).toHaveLength(1);
+  });
+
+  it('lets a granted binding deploy, so the gate is the grant and nothing else', async () => {
+    queue('all');
+    queue('all'); // again: the deploy branch re-reads membership and the bindings after the gate
+    dispatchDirectSpy.mockResolvedValueOnce({
+      dispatched: true,
+      pendingHumanConfirm: false,
+      integrationIds: [INT_ID],
+    });
+    await forgeCoolifyDeployTool(ctx()).handler({ action: 'deploy', projectId: PROJECT_ID });
+    expect(dispatchDirectSpy).toHaveBeenCalledTimes(1);
+  });
+});

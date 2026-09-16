@@ -329,7 +329,6 @@ export const pipelineConfigSchema = z
           'intakeGate is on, which parks every new issue at `draft` for a human to approve — so `draft` cannot also be admitted to `poolBacklog.statuses`, which lets a master approve it instead. Turn off `intakeGate`, or admit a status other than `draft`.',
       });
     }
-
   });
 
 export type PipelineConfig = z.infer<typeof pipelineConfigSchema>;

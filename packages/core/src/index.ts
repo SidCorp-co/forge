@@ -68,17 +68,17 @@ import { opsHealthMeRoutes, opsHealthProjectRoutes, publicHealthRoutes } from '.
 import { improvementMessageRoutes } from './improvement-messages/routes.js';
 import { registerRunnerReleaseRefetch } from './install/fetch-release.js';
 import { installRoutes } from './install/routes.js';
-import { registerAllIntegrations } from './integrations/register-all.js';
 import { githubCallbackRoutes, githubConnectRoutes } from './integrations/github/connect-routes.js';
 import { registerIntegrationsHealthSweep } from './integrations/health-sweep.js';
+import { integrationTargetRoutes } from './integrations/postman/target-routes.js';
 import { registerIntegrationsWorker } from './integrations/queue.js';
+import { registerAllIntegrations } from './integrations/register-all.js';
 import { registerCommentMirror } from './integrations/rocketchat/comment-mirror.js';
 import {
   startRocketChatManager,
   stopRocketChatManager,
 } from './integrations/rocketchat/connection-manager.js';
 import { integrationConnectionsRoutes, integrationsRoutes } from './integrations/routes.js';
-import { integrationTargetRoutes } from './integrations/postman/target-routes.js';
 import { assertVaultBootSafety } from './integrations/vault.js';
 import { issueActivityRoutes, projectActivityRoutes } from './issues/activity-routes.js';
 import { attachmentRoutes, issueAttachmentRoutes } from './issues/attachment-routes.js';

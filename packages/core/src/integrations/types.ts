@@ -397,7 +397,9 @@ export type IntegrationDeclarationInput<
 export function declareIntegration<
   TConfig extends Record<string, unknown> = Record<string, unknown>,
   TSecrets extends Record<string, unknown> = Record<string, unknown>,
->(input: IntegrationDeclarationInput<TConfig, TSecrets>): IntegrationDeclaration<TConfig, TSecrets> {
+>(
+  input: IntegrationDeclarationInput<TConfig, TSecrets>,
+): IntegrationDeclaration<TConfig, TSecrets> {
   return {
     ...input,
     capabilities: {

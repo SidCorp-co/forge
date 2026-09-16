@@ -13,9 +13,9 @@
  */
 
 import { logger } from '../logger.js';
-
+import { listAgentGrantedBindings } from './agent-access-store.js';
 import { directMcpIntegrations, mcpServerNameFor } from './registry.js';
-import { decryptConnectionSecrets, effectiveConfig, listAgentGrantedBindings } from './store.js';
+import { decryptConnectionSecrets, effectiveConfig } from './store.js';
 import type { IntegrationDeclaration } from './types.js';
 
 /**

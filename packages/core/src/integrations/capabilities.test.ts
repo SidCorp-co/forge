@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it } from 'vitest';
+import { z } from 'zod';
 import {
   __resetRegistry,
   deployCapableProviders,
@@ -11,7 +12,6 @@ import {
   declareIntegration,
   type IntegrationDeclarationInput,
 } from './types.js';
-import { z } from 'zod';
 
 // Contract test for the registry mechanics ISS-1071 introduced: `declareIntegration`'s default,
 // and the two registry readers (`providerCanDeploy` / `deployCapableProviders`,

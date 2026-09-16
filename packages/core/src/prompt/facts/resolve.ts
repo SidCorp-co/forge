@@ -18,14 +18,9 @@ import {
   type ReleaseModel,
 } from '../../db/schema.js';
 import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/integration-guides.js';
-import {
-  renderSentryTargetsLine,
-  resolveSentryTargets,
-} from '../../integrations/sentry/targets.js';
-import type { SentryConfig, SentryTarget } from '../../integrations/sentry/types.js';
-import { effectiveConfig, listBindingsForProject } from '../../integrations/store.js';
 import { grantHolds } from '../../integrations/agent-access.js';
 import { getIntegration } from '../../integrations/registry.js';
+import { effectiveConfig, listBindingsForProject } from '../../integrations/store.js';
 import {
   selectAllSlugsFromKnowledge,
   selectAlwaysInjectFromKnowledge,
@@ -158,7 +153,7 @@ const GENERIC_USAGE = 'Project-specific integration.';
 
 /** The sentence a connected-but-ungranted binding renders in place of its usage hint. */
 function ungrantedNote(provider: string): string {
-  return `connected, but agents on this project may NOT use it: agent access is off for this binding. You will not be given its tools; do not treat their absence as a credential or auth fault, and do not retry. An org owner or admin turns it on beside the integration under Settings → Integrations.`;
+  return `connected, but agents on this project may NOT use it: agent access is off for this \`${provider}\` binding. You will not be given its tools; do not treat their absence as a credential or auth fault, and do not retry. An org owner or admin turns it on beside the integration under Settings → Integrations.`;
 }
 
 // cm:why indented as a markdown sub-block so multi-line operator text cannot break out of its bullet and read as a new top-level instruction to the agent

@@ -21,13 +21,13 @@ import {
   type HealthCheckResult,
   type IntegrationAdapterMethods,
 } from '../types.js';
+import { epodsystemGraphqlBase } from './endpoints.js';
 import { buildEpodsystemMcpEntry } from './resolver.js';
 import {
   EPODSYSTEM_BINDING_CONFIG_KEYS,
   epodsystemConfigBase,
   epodsystemSecretsSchema,
 } from './schemas.js';
-import { epodsystemGraphqlBase } from './endpoints.js';
 import type {
   ApiKeyContextResponse,
   EpodsystemConfig,
@@ -80,7 +80,6 @@ async function gqlPost(
 }
 
 const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, EpodsystemSecrets> = {
-
   async healthcheck(ctx): Promise<HealthCheckResult> {
     const apiKey = ctx.secrets?.apiKey;
     if (!apiKey) {

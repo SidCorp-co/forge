@@ -8,10 +8,10 @@
 
 import { HTTPException } from 'hono/http-exception';
 import type { BindingRole, DeployStage } from '../db/schema.js';
-import type { AgentAccess } from './agent-access.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
+import type { AgentAccess } from './agent-access.js';
 import { raceWithTimeout } from './probe.js';
 import { getAdapter, getIntegration } from './registry.js';
 import {

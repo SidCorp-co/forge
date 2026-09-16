@@ -69,13 +69,10 @@ vi.mock('../pipeline/runs.js', () => ({ openOneShotRun: vi.fn(async () => ({ id:
 
 const { dispatchChatTurn } = await import('./chat-turn.js');
 
-// The dispatch path asks the integration registry which providers render an MCP server for a
-// granted binding (ISS-1071). It is process-global and empty until something fills it, and reading
-// it empty THROWS rather than answering "no integrations exist" — so this file registers, as the
-// app does at boot, instead of dispatching against a vocabulary nobody declared.
+// ISS-1071 — the dispatch path reads the integration registry, which throws while empty rather than
+// answering "no integrations exist", so this file registers as the app does at boot.
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
-
 
 const PROJECT = { id: 'proj-1', slug: 'apiflow', repoPath: '/repo' };
 const DEVICE = 'dev-1';

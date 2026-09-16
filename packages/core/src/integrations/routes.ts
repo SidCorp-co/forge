@@ -17,14 +17,14 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { integrationDeliveries } from '../db/schema.js';
 import { effectiveProjectRole, orgRoleAtLeast } from '../lib/authz.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
-  type AgentAccess,
   AGENT_ACCESS_CLOSED,
+  type AgentAccess,
   agentAccessTier,
   noAgentPathMessage,
 } from './agent-access.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { registerCoolifyDeployRoutes } from './coolify/routes.js';
 import { findDeliveryById } from './deliveries.js';
 import { buildMcpPreview } from './mcp-preview-service.js';
@@ -71,7 +71,6 @@ import {
 // `src/index.ts` keeps importing both routers from `./integrations/routes.js`.
 export { integrationConnectionsRoutes } from './connection-routes.js';
 
-
 /**
  * Authorize a write to a binding's agent-access grant, and refuse one that means nothing.
  *
@@ -95,7 +94,6 @@ async function authorizeAgentAccessWrite(
   const access = await effectiveProjectRole(userId, projectId);
   if (!orgRoleAtLeast(access?.orgRole ?? null, 'admin')) throw forbidden();
 }
-
 
 export const integrationsRoutes = new Hono<{ Variables: AuthVars }>();
 integrationsRoutes.use('*', requireAuth(), assertEmailVerified());

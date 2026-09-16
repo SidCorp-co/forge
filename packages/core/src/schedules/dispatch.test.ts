@@ -197,7 +197,6 @@ const hooksModule = await import('../pipeline/hooks.js');
 const { registerAllIntegrations } = await import('../integrations/register-all.js');
 registerAllIntegrations();
 
-
 const SCHEDULE_ID = 'sch-1';
 const SOURCE_PROJECT_ID = 'proj-source';
 const TARGET_PROJECT_ID = 'proj-target';

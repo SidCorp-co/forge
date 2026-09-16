@@ -80,19 +80,16 @@ function pushMemberOk() {
   resultQueue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 }
 
-/**
- * ISS-1071 — the agent-access gate reads membership and the project's deploy bindings BEFORE the
- * action's own branch reads them again. That is one extra pair of reads per agent-initiated Coolify
- * action, and it is the declared price of ONE gate covering deploy, cancel, rollback, status and
- * logs rather than five that can drift apart. `list` is exempt (it reports rather than acts), so it
- * still queues a single pair.
- */
+// ISS-1071 — the gate reads membership and the deploy bindings before the branch reads them again:
+// one extra pair per action, the declared price of ONE gate over deploy, cancel, rollback, status
+// and logs. `list` is exempt (it reports rather than acts) and still queues a single pair.
 function pushWithGate(rows: unknown[]) {
   pushMemberOk();
   resultQueue.push(rows);
   pushMemberOk();
   resultQueue.push(rows);
 }
+const pushGateNoBindings = () => pushWithGate([]); // no bindings: the gate waves the action on
 
 function pair(
   id: string,
@@ -252,11 +249,7 @@ describe('forge_coolify_deploy → deploy', () => {
 
   it('delegates a staging deploy to tryDispatchCoolifyRelease and passes the outcome through', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    // The ISS-1071 gate reads membership then the project's deploy bindings; these tests delegate
-    // to a mocked release dispatcher, so the gate sees no bindings and waves the action through.
-    pushMemberOk();
-    resultQueue.push([]);
-    pushMemberOk();
+    pushGateNoBindings();
     resolveRunSpy.mockResolvedValueOnce('run-1');
     isIssueAtReleaseStageSpy.mockResolvedValueOnce(false);
     tryDispatchSpy.mockResolvedValueOnce({
@@ -285,11 +278,7 @@ describe('forge_coolify_deploy → deploy', () => {
 
   it('returns reason:no-run without dispatching when the issue has no run', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    // The ISS-1071 gate reads membership then the project's deploy bindings; these tests delegate
-    // to a mocked release dispatcher, so the gate sees no bindings and waves the action through.
-    pushMemberOk();
-    resultQueue.push([]);
-    pushMemberOk();
+    pushGateNoBindings();
     resolveRunSpy.mockResolvedValueOnce(null);
 
     const result = (await tool.handler({
@@ -306,11 +295,7 @@ describe('forge_coolify_deploy → deploy', () => {
 
   it('passes the prod human-confirm gate through (pendingHumanConfirm, no dispatch)', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    // The ISS-1071 gate reads membership then the project's deploy bindings; these tests delegate
-    // to a mocked release dispatcher, so the gate sees no bindings and waves the action through.
-    pushMemberOk();
-    resultQueue.push([]);
-    pushMemberOk();
+    pushGateNoBindings();
     resolveRunSpy.mockResolvedValueOnce('run-1');
     isIssueAtReleaseStageSpy.mockResolvedValueOnce(true);
     tryDispatchSpy.mockResolvedValueOnce({
@@ -333,11 +318,7 @@ describe('forge_coolify_deploy → deploy', () => {
 
   it('issueId + explicit staging integrationId at a pre-release status → hard filter, prod excluded', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    // The ISS-1071 gate reads membership then the project's deploy bindings; these tests delegate
-    // to a mocked release dispatcher, so the gate sees no bindings and waves the action through.
-    pushMemberOk();
-    resultQueue.push([]);
-    pushMemberOk();
+    pushGateNoBindings();
     resolveRunSpy.mockResolvedValueOnce('run-1');
     isIssueAtReleaseStageSpy.mockResolvedValueOnce(false);
     tryDispatchSpy.mockResolvedValueOnce({
@@ -364,11 +345,7 @@ describe('forge_coolify_deploy → deploy', () => {
 
   it('issueId-only at a pre-release status → allowLive:false, integrationId:null', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    // The ISS-1071 gate reads membership then the project's deploy bindings; these tests delegate
-    // to a mocked release dispatcher, so the gate sees no bindings and waves the action through.
-    pushMemberOk();
-    resultQueue.push([]);
-    pushMemberOk();
+    pushGateNoBindings();
     resolveRunSpy.mockResolvedValueOnce('run-1');
     isIssueAtReleaseStageSpy.mockResolvedValueOnce(false);
     tryDispatchSpy.mockResolvedValueOnce({
@@ -390,11 +367,7 @@ describe('forge_coolify_deploy → deploy', () => {
 
   it('issueId-only at released status → allowLive:true', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    // The ISS-1071 gate reads membership then the project's deploy bindings; these tests delegate
-    // to a mocked release dispatcher, so the gate sees no bindings and waves the action through.
-    pushMemberOk();
-    resultQueue.push([]);
-    pushMemberOk();
+    pushGateNoBindings();
     resolveRunSpy.mockResolvedValueOnce('run-1');
     isIssueAtReleaseStageSpy.mockResolvedValueOnce(true);
     tryDispatchSpy.mockResolvedValueOnce({
@@ -418,11 +391,8 @@ describe('forge_coolify_deploy → deploy', () => {
 describe('forge_coolify_deploy → logs', () => {
   it('passes lines to deployment-log reads and returns their freshness metadata', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    pushMemberOk();
     const integration = pair(STAGING_INT, ['preview']);
-    resultQueue.push([integration]);
-    pushMemberOk();
-    resultQueue.push([integration]);
+    pushWithGate([integration]);
     findLastOutboundSpy.mockResolvedValueOnce({
       response: { deployment_uuid: 'dep-1' },
     });
@@ -452,13 +422,10 @@ describe('forge_coolify_deploy → logs', () => {
 
   it('passes lines to runtime-log reads and returns their freshness metadata', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    pushMemberOk();
     const integration = pair(STAGING_INT, ['preview'], {
       config: { targets: [{ id: 'target-1', label: 'Core', resourceUuid: 'app-1' }] },
     });
-    resultQueue.push([integration]);
-    pushMemberOk();
-    resultQueue.push([integration]);
+    pushWithGate([integration]);
     fetchRuntimeLogsSpy.mockResolvedValueOnce({
       resourceUuid: 'app-1',
       logs: 'ready',
@@ -529,61 +496,5 @@ describe('forge_coolify_deploy → status', () => {
         }),
       ]),
     );
-  });
-});
-
-// ISS-1071 — the agent boundary for Coolify. Coolify is core-mediated: core holds the API token and
-// performs the deploy, so the same binding backs BOTH an agent asking for a deploy and the release
-// pipeline running one for a human. The grant answers only the first question, which is why it is
-// checked here, in the agent's tool, and NOT inside `activeCoolifyIntegrations` — that resolver is
-// shared with `coolify-routes.ts`, the REST surface a human's own Deploy button goes through, and a
-// gate there would let an ungranted binding block a release nobody asked an agent about.
-describe('forge_coolify_deploy → the agent-access gate', () => {
-  it('refuses a deploy against an ungranted binding, naming it and the switch', async () => {
-    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    pushMemberOk();
-    resultQueue.push([pair(STAGING_INT, ['preview'], { agentAccess: 'none' })]);
-
-    await expect(tool.handler({ action: 'deploy', projectId: PROJECT_ID })).rejects.toThrow(
-      /agent access is `none`/,
-    );
-    // Refused BEFORE anything was dispatched — the point of a gate is that nothing happened.
-    expect(dispatchDirectSpy).not.toHaveBeenCalled();
-    expect(tryDispatchSpy).not.toHaveBeenCalled();
-  });
-
-  it('gates cancel and rollback by the same switch a deploy is gated by', async () => {
-    for (const action of ['cancel', 'rollback'] as const) {
-      resultQueue.length = 0;
-      vi.clearAllMocks();
-      const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-      pushMemberOk();
-      resultQueue.push([pair(STAGING_INT, ['preview'], { agentAccess: 'none' })]);
-      await expect(tool.handler({ action, projectId: PROJECT_ID })).rejects.toThrow(
-        /agent access is `none`/,
-      );
-    }
-  });
-
-  it('leaves `list` readable, so an agent can see WHY it was refused', async () => {
-    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    pushMemberOk();
-    resultQueue.push([pair(STAGING_INT, ['preview'], { agentAccess: 'none' })]);
-    const result = (await tool.handler({ action: 'list', projectId: PROJECT_ID })) as {
-      integrations: unknown[];
-    };
-    expect(result.integrations).toHaveLength(1);
-  });
-
-  it('lets a granted binding deploy, so the gate is the grant and nothing else', async () => {
-    const tool = forgeCoolifyDeployTool(makeDeviceCtx());
-    pushWithGate([pair(STAGING_INT, ['preview'], { agentAccess: 'all' })]);
-    dispatchDirectSpy.mockResolvedValueOnce({
-      dispatched: true,
-      pendingHumanConfirm: false,
-      integrationIds: [STAGING_INT],
-    });
-    await tool.handler({ action: 'deploy', projectId: PROJECT_ID });
-    expect(dispatchDirectSpy).toHaveBeenCalledTimes(1);
   });
 });

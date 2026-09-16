@@ -22,6 +22,13 @@ import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import type { AuthVars } from '../../middleware/auth.js';
 import {
+  assertAdmin,
+  assertProjectMember,
+  broadcastIntegrationChanged,
+  notFound,
+} from '../route-helpers.js';
+import { buildContextFromBinding, findBindingWithConnectionById } from '../store.js';
+import {
   CoolifyCommandError,
   coolifyDeliveryStatus,
   listCoolifyIntegrations,
@@ -36,13 +43,6 @@ import {
   runCoolifyRollback,
 } from './controls.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
-import {
-  assertAdmin,
-  assertProjectMember,
-  broadcastIntegrationChanged,
-  notFound,
-} from '../route-helpers.js';
-import { buildContextFromBinding, findBindingWithConnectionById } from '../store.js';
 
 const deployBodySchema = z
   .object({

@@ -126,9 +126,7 @@ function deployStep(channels: ReleaseChannel[]): string {
 /** Every declared channel Forge has no default deploy step for, named, each one once. */
 function undeployableChannels(channels: ReleaseChannel[]): string[] {
   return [
-    ...new Set(
-      channels.filter((c) => !getIntegration(c.provider)?.releaseStep).map(namedChannel),
-    ),
+    ...new Set(channels.filter((c) => !getIntegration(c.provider)?.releaseStep).map(namedChannel)),
   ];
 }
 
@@ -156,8 +154,8 @@ const CHANGELOG_STEP = `Append ONE line under \`## [Unreleased]\` in CHANGELOG.m
    Commit message: \`docs(changelog): batch release <runId first 8> (<n> issues)\`.`;
 
 import { type ProjectLike, resolveIssueBranches } from '../branches/resolve.js';
-import { getIntegration, listIntegrations } from '../integrations/registry.js';
 import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
+import { getIntegration, listIntegrations } from '../integrations/registry.js';
 import type { VerifyConfig } from './verify.js';
 
 /** The project has no `baseBranch`, so there is nothing a release could promote from. */

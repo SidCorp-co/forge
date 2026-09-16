@@ -24,12 +24,8 @@ vi.mock('../config/env.js', () => ({
 }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
-const {
-  bindingShapeFields,
-  cannotDeployMessage,
-  checkBindingShape,
-  checkRoleStagesPairing,
-} = await import('./binding-shape.js');
+const { bindingShapeFields, cannotDeployMessage, checkBindingShape, checkRoleStagesPairing } =
+  await import('./binding-shape.js');
 const { registerAllIntegrations } = await import('./register-all.js');
 
 // The registry is process-global and empty until something fills it; reading it empty THROWS

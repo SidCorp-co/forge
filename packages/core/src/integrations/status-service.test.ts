@@ -26,7 +26,6 @@ const { buildProviderCards } = await import('./status-service.js');
 const { registerAllIntegrations } = await import('./register-all.js');
 registerAllIntegrations();
 
-
 function row(over: Partial<Parameters<typeof buildProviderCards>[0]['rows'][number]> = {}) {
   return {
     id: 'b1',

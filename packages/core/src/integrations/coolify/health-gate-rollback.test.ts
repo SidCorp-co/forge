@@ -194,10 +194,7 @@ describe('a window that closes unhealthy repairs nothing by itself', () => {
 describe('the operator keeps the rollback this gate gave up', () => {
   it('leaves runCoolifyRollback and listCoolifyRollbackImages reachable from the integration routes', async () => {
     const { readFile } = await import('node:fs/promises');
-    const routes = await readFile(
-      new URL('./routes.ts', import.meta.url).pathname,
-      'utf8',
-    );
+    const routes = await readFile(new URL('./routes.ts', import.meta.url).pathname, 'utf8');
 
     expect(routes).toContain('runCoolifyRollback(');
     expect(routes).toContain('listCoolifyRollbackImages(');

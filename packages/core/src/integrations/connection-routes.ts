@@ -16,23 +16,21 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { effectiveProjectRole, loadOrgRole, orgRoleAtLeast } from '../lib/authz.js';
+import { isUniqueViolation } from '../lib/db-errors.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
-  type AgentAccess,
   AGENT_ACCESS_CLOSED,
   AGENT_ACCESS_VALUES,
+  type AgentAccess,
   agentAccessTier,
   noAgentPathMessage,
 } from './agent-access.js';
-import { isUniqueViolation } from '../lib/db-errors.js';
-import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import {
   cannotDeployMessage,
   checkRoleStagesPairing,
   roleSchema,
   stagesSchema,
 } from './binding-shape.js';
-import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './github/bind-effects.js';
-import type { GitHubConfig } from './github/types.js';
 import { raceWithTimeout } from './probe.js';
 import {
   applySecretsPatch,
@@ -42,7 +40,7 @@ import {
   connectionUpdateSchema,
   splitProviderConfig,
 } from './provider-schemas.js';
-import { getAdapter, getIntegration } from './registry.js';
+import { getAdapter, getIntegration, providerCanDeploy } from './registry.js';
 import {
   alreadyExists,
   assertAdmin,
@@ -72,7 +70,6 @@ import {
   softDeleteConnection,
   updateConnection,
 } from './store.js';
-import { providerCanDeploy } from './registry.js';
 import type { IntegrationProvider } from './types.js';
 
 async function loadManageableConnection(
@@ -244,7 +241,7 @@ integrationConnectionsRoutes.post(
     // own (`adapter.inboundSecret`). GitHub does: it signs every delivery with the secret created with
     // the App, so a binding minting its own fails every signature check while reading as configured.
     const integrationSecret =
-      (getAdapter(provider)?.inboundSecret?.(connection) ?? null) ??
+      getAdapter(provider)?.inboundSecret?.(connection) ??
       `whsec_${randomBytes(24).toString('hex')}`;
     let binding: Awaited<ReturnType<typeof createBinding>>;
     try {

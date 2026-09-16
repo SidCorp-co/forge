@@ -12,8 +12,6 @@
  */
 
 import type { DeployStage } from '../../db/schema.js';
-import { grantHolds, notGrantedMessage } from '../agent-access.js';
-import { getIntegration } from '../registry.js';
 import { effectiveConfig, listActiveDeployBindingsForProvider } from '../../integrations/store.js';
 import {
   type DispatchOutcome,
@@ -23,7 +21,9 @@ import {
   tryDispatchCoolifyRelease,
 } from '../../pipeline/release-coolify.js';
 import { isOpenReleaseBatchRun } from '../../release-batch/service.js';
+import { grantHolds, notGrantedMessage } from '../agent-access.js';
 import { findLastOutbound, findLastOutboundForTarget } from '../deliveries.js';
+import { getIntegration } from '../registry.js';
 import type { CoolifyConfig } from './types.js';
 
 export class CoolifyCommandError extends Error {

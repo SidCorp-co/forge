@@ -14,11 +14,11 @@
  */
 
 import { z } from 'zod';
+import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import { bindingShapeFields, checkBindingShape } from './binding-shape.js';
 import { getIntegration, providerNames } from './registry.js';
 import { mergeRotatedSecrets } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
-import { AGENT_ACCESS_VALUES } from './agent-access.js';
 import type { IntegrationDeclaration } from './types.js';
 
 /** The sentence a caller gets for a provider this deployment does not declare. */
@@ -31,13 +31,14 @@ export function undeclaredProviderMessage(provider: string): string {
  *
  * Returns `null` on refusal so the caller can stop rather than validate against a guessed shape.
  */
-function declarationOrIssue(
-  provider: string,
-  ctx: z.RefinementCtx,
-): IntegrationDeclaration | null {
+function declarationOrIssue(provider: string, ctx: z.RefinementCtx): IntegrationDeclaration | null {
   const decl = getIntegration(provider);
   if (decl) return decl;
-  ctx.addIssue({ code: 'custom', path: ['provider'], message: undeclaredProviderMessage(provider) });
+  ctx.addIssue({
+    code: 'custom',
+    path: ['provider'],
+    message: undeclaredProviderMessage(provider),
+  });
   return null;
 }
 
@@ -215,8 +216,7 @@ export async function applySecretsPatch(opts: {
   const secondaryFields = Object.keys(incoming).filter(
     (k) => k !== primaryField && independent.includes(k),
   );
-  const hasSecretInput =
-    typeof incoming[primaryField] === 'string' || secondaryFields.length > 0;
+  const hasSecretInput = typeof incoming[primaryField] === 'string' || secondaryFields.length > 0;
   if (!hasSecretInput) return undefined;
   if (opts.vaultGuardTiming === 'on-secret-input') assertVaultConfigured();
   const currentSecrets = opts.secretsEnc
