@@ -1,0 +1,4 @@
+ALTER TABLE "conversation_windows" DROP CONSTRAINT "conversation_windows_decision_known";--> statement-breakpoint
+ALTER TABLE "conversations" ADD COLUMN "mode" text;--> statement-breakpoint
+ALTER TABLE "conversation_windows" ADD CONSTRAINT "conversation_windows_decision_known" CHECK ("conversation_windows"."decision" IS NULL OR "conversation_windows"."decision" IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined','handed-off'));--> statement-breakpoint
+ALTER TABLE "conversations" ADD CONSTRAINT "conversations_mode_known" CHECK ("conversations"."mode" IS NULL OR "conversations"."mode" IN ('assistant','agent'));
