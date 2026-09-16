@@ -9,6 +9,7 @@
 import { scrubLogText } from '@forge/observability';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { MessageRule, RuleBreak } from './contract.js';
+import type { MessageFacts } from './facts.js';
 import { issueTokenRe } from './issue-tokens.js';
 import { OPTION_LINE_RE } from './option-line.js';
 
@@ -151,7 +152,47 @@ export const NO_DEVELOPER_DETAIL: MessageRule = {
   },
 };
 
-/** An issue cited to a stakeholder that this turn did not actually verify. */
+/**
+ * The names of the tools whose results are the TRACKER speaking.
+ */
+// cm:guard an allowlist and not "every tool that did not error": a room-history or a memory-search
+// result is user-authored text, so an issue key somebody once typed into a chat message would
+// verify itself — which is the fabrication this rule exists to catch, arriving by a longer road
+// (ISS-1057, codex F2). `forge` is the tracker's own CLI; a tracker tool added later joins it here.
+const TRACKER_TOOLS = new Set(['forge', 'forge_issues']);
+
+/**
+ * Every issue reference this turn's own tracker calls RETURNED.
+ */
+// cm:guard an id present in the call's own ARGUMENTS is not returned by it, however it came back:
+// a model that invents `ISS-9999`, asks for it and reads it out of the refusal would otherwise
+// have verified its own invention. Measured over beta's QA window at 45d92580 this keeps exactly
+// that case refused — a fabricated `ISS-1028` the model asked for, was refused, then echoed into a
+// search — while admitting the 21 real ids the screen was refusing (ISS-1057, codex F1).
+function refsTheTrackerReturned(facts: MessageFacts): Set<string> {
+  const returned = new Set<string>();
+  for (const call of facts.toolCalls) {
+    if (call.isError === true) continue;
+    if (!TRACKER_TOOLS.has(call.name)) continue;
+    const args = call.arguments ?? '';
+    for (const ref of call.resultIssueRefs ?? []) {
+      if (!args.toUpperCase().includes(ref)) returned.add(ref);
+    }
+  }
+  return returned;
+}
+
+/**
+ * An issue cited to a reader that this turn did not actually verify.
+ */
+// cm:guard "verified" means EITHER the project holds it OR this turn's tracker call returned it,
+// and the second arm is what the rule's own `shape` has always claimed to screen for. Without it
+// the rule asked a different question — does this project hold the row — and refused a reply
+// quoting an issue's own title back, because a title may name another project's key: measured over
+// beta's QA window at 45d92580, `ISS-538` in the title `ISS-538 TC2 exe reject` was refused 28
+// times, and the corrective message the refusal sends says *cite issue ids only exactly as tools
+// returned them*, which is precisely what the reply had done. The single-issue task was 0/6 with a
+// correct first attempt every time (ISS-1057).
 export const ONLY_VERIFIED_CITATIONS: MessageRule = {
   id: 'only-verified-citations',
   shape: 'cite no issue id to a stakeholder unless this turn looked it up',
@@ -159,15 +200,16 @@ export const ONLY_VERIFIED_CITATIONS: MessageRule = {
   needs: ['prefixes', 'issue-rows'],
   check: (text, f) => {
     if (f.issueLookupFailed) return none;
+    const returned = refsTheTrackerReturned(f);
     const breaks: RuleBreak[] = [];
     for (const m of text.matchAll(issueTokenRe(f.prefixes))) {
       const seq = Number(m[2]);
-      if (!f.knownIssueSeqs.has(seq)) {
-        breaks.push({
-          quote: m[0],
-          why: `reply cites "${formatIssueRef(f.prefix, seq)}" which was not verified this turn — ${REPHRASE}`,
-        });
-      }
+      if (f.knownIssueSeqs.has(seq)) continue;
+      if (returned.has((m[0] as string).toUpperCase())) continue;
+      breaks.push({
+        quote: m[0],
+        why: `reply cites "${formatIssueRef(f.prefix, seq)}" which was not verified this turn — ${REPHRASE}`,
+      });
     }
     return breaks;
   },

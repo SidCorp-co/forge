@@ -18,7 +18,14 @@ export interface ReplyScreenInput {
   readonly projectId: string;
   /** The message as its reader will see it; more than one where it renders as parts. */
   readonly segments: readonly string[];
-  readonly toolCalls: readonly { name: string; arguments: string }[];
+  readonly toolCalls: readonly {
+    name: string;
+    arguments: string;
+    /** Every issue-shaped reference the whole result named (ISS-1057). */
+    resultIssueRefs?: readonly string[];
+    /** MCP's own flag on the result; an errored call verifies nothing. */
+    isError?: boolean;
+  }[];
   /**
    * The snapshot the writer's own turn was shown.
    */

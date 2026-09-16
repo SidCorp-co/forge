@@ -2,10 +2,15 @@
  * ISS-1009 — `forge` as one chat tool, in place of a wrapper per verb.
  *
  * The description is deliberately short: `DESCRIPTION_CAP` is 1024 and
- * `forge_issues` already loses 76% of its own text to it. The read forms the
- * model repeats every turn ARE carried (`forge-cli-forms.ts`), held to the
- * bundled `-h` by a whole-form test; everything else is `forge <verb> -h`,
- * one call away and the copy that cannot go stale (ISS-1041).
+ * `forge_issues` already loses 76% of its own text to it. The forms the model
+ * repeats every turn ARE carried (`forge-cli-forms.ts`), held to the bundled
+ * `-h` by a whole-form test; everything else is `forge <verb> -h`, one call
+ * away and the copy that cannot go stale (ISS-1041).
+ *
+ * This description no longer OPENS a task with `-h`. It used to, and measured over beta's 146-turn
+ * QA window at 45d92580 the round-trip was paid on 25 of them — `forge issue -h` 15, `forge -h` 11,
+ * `forge new -h` 3, `forge guide -h` 2 — with the same sentence standing in the method text the
+ * model also reads. Carrying `new` and `comment` beside the reads is what lets it go (ISS-1057).
  */
 
 import { z } from 'zod';
@@ -32,13 +37,11 @@ const DESCRIPTION = [
   'Run the `forge` CLI as the person you are talking to, scoped to this project.',
   'This is the tracker: filing, reading, searching, comments, status, guides.',
   readFormsLine(),
-  'For anything else start with `{"argv":["-h"]}` to see the verbs, then `forge <verb> -h` for its arguments —',
-  'do NOT guess a flag. File with `{"argv":["new","-","--title","...","--category","bug"],"body":"..."}`',
-  '— the `-` is where your body is substituted.',
-  'it reads the body against the sections that category owes, refuses a filing that is missing one',
+  'Send one as it stands, `-` being where `body` is substituted; do NOT guess a flag.',
+  '`-h` is for a verb whose form this description does not carry.',
+  '`new` reads the body against the sections that category owes, refuses a filing missing one',
   'naming the heading, folds onto a near neighbour when it finds one, and takes `--with ISS-45` for',
   'a relates edge or `--new` to file anyway and say what it passed over.',
-  'Ask it rather than guessing: `forge guide <slug>` is the method for anything here.',
 ].join(' ');
 
 export const forgeCliTool: ContextScopedMcpToolFactory = (ctx) => ({

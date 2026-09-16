@@ -98,7 +98,16 @@ export interface ExternalChatTurnResult {
   error: string | null;
   iterations: number;
   /** Tool calls the model made this turn — callers verify reply claims (cited issue ids) against what was actually done. */
-  toolCalls: Array<{ name: string; arguments: string }>;
+  // cm:guard `resultIssueRefs` and `isError` ride along because the reply screen reads them: an
+  // issue id this turn's own tracker call RETURNED is an id the turn looked up, which is what
+  // `only-verified-citations` says it screens for, and narrowing this type to the name and the
+  // arguments is what hid that from it for so long (ISS-1057).
+  toolCalls: Array<{
+    name: string;
+    arguments: string;
+    resultIssueRefs?: readonly string[];
+    isError?: boolean;
+  }>;
   /** The progress snapshot injected into THIS turn's system prompt (ISS-671), or `null` on a computation failure; callers screen the reply against it rather than re-querying, so the guard never bounces a reply that matched what the model was shown. */
   progress: ProjectProgress | null;
 }

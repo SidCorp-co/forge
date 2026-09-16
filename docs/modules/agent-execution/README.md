@@ -27,6 +27,7 @@ flowchart LR
 |---|---|---|---|
 | [tool-catalog-cost.md](tool-catalog-cost.md) | What does the chat tool catalog cost per request, and does anything cache? | `before-change` | the change itself |
 | [assistant-bench.md](assistant-bench.md) | How is a change to the assistant measured, and what does a pass^k comparison between two builds mean? | `before-change` | the change itself |
+| [assistant-prompt-layers.md](assistant-prompt-layers.md) | Where does the text the assistant is given come from, which door renders which layers, and what does a layer change owe? | `before-change` | the change itself |
 
 ## What it owns
 

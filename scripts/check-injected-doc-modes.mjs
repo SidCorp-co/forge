@@ -39,7 +39,13 @@ const SURFACES = [
   { file: 'packages/core/src/guides/registry.ts', openers: ['body:'] },
   // cm:guard every guide MODULE is listed, not only the aggregator: `registry.ts` imports its tiers, and a body defined in one of them is injected text this gate cannot see through the import. `conformance-guide.ts` sat unread that way from the day it was split out until ISS-1007 added it here.
   { file: 'packages/core/src/guides/conformance-guide.ts', openers: ['body:'] },
-  { file: 'packages/core/src/guides/assistant-method-guide.ts', openers: ['body:'] },
+  // cm:guard the assistant method's body is COMPOSED from the two layer modules below since
+  // ISS-1057, so `assistant-method-guide.ts` carries no text of its own for this gate to read and
+  // is no longer a surface. `COMPOSED_ONLY` below is what keeps that true: a body literal written
+  // back into that file would otherwise be injected text nobody checks, which is the exact hole the
+  // guard one entry down was written to close.
+  { file: 'packages/core/src/assistant/prompt/base.ts', openers: ['text:'] },
+  { file: 'packages/core/src/assistant/prompt/tools.ts', openers: ['text:'] },
   {
     file: 'packages/core/src/prompt/facts/registry.ts',
     openers: ['render: \\([^)]*\\) =>', '(?:export )?const \\w+ ='],
@@ -49,6 +55,14 @@ const SURFACES = [
     file: 'packages/core/src/prompt/facts/drive-rules.ts',
     openers: ['(?:export )?const \\w+ ='],
   },
+];
+
+/** Files whose injected text must be composed from a surface above, never written out here. */
+// cm:guard a file that left SURFACES because its text moved has to be held to having left: without
+// this, restoring a `body:` literal to the guide puts an unread body back in front of every agent
+// session, and the gate that exists to notice exactly that would report green (ISS-1057).
+const COMPOSED_ONLY = [
+  { file: 'packages/core/src/guides/assistant-method-guide.ts', openers: ['body:'] },
 ];
 
 class CannotRun extends Error {}
@@ -119,6 +133,15 @@ function main() {
     );
 
     stepNames = stepVocabulary();
+
+    for (const composed of COMPOSED_ONLY) {
+      const stray = extractBodies(read(composed.file), composed.openers);
+      if (stray.length > 0) {
+        throw new CannotRun(
+          `${composed.file}: carries ${stray.length} ${composed.openers.join('/')} literal(s), but its text must be composed from the layers this gate reads — move the text into packages/core/src/assistant/prompt/ or add this file back to SURFACES`,
+        );
+      }
+    }
 
     for (const surface of SURFACES) {
       const extracted = extractBodies(read(surface.file), surface.openers);

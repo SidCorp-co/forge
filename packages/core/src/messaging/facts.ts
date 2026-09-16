@@ -28,7 +28,14 @@ export interface MessageFacts {
   readonly knownIssueSeqs: ReadonlySet<number>;
   /** Keyed by issue sequence, for the rules that read what the tracker holds. */
   readonly issueRows: ReadonlyMap<number, IssueRow>;
-  readonly toolCalls: readonly { name: string; arguments: string }[];
+  readonly toolCalls: readonly {
+    name: string;
+    arguments: string;
+    /** Every issue-shaped reference the whole result named (ISS-1057). */
+    resultIssueRefs?: readonly string[];
+    /** MCP's own flag on the result; an errored call verifies nothing. */
+    isError?: boolean;
+  }[];
   readonly progress: ProgressFacts | null;
   /**
    * Set where the issue lookup itself failed. The existence rules stand down

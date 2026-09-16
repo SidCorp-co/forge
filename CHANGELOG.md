@@ -122,6 +122,17 @@
   `bench:assistant advise <file>` prints it for one file: one line per failure pattern over its
   threshold, naming the count, the bar and the harness surface (`file.ts:symbol`) it points at;
   derived from the counts and the judge column, no model, no write. (ISS-1058)
+- **The assistant answers fewer questions with a shrug, and its issue links open.** Three things it
+  did on a quarter of real conversations are gone. It no longer spends a round asking the tracker
+  for help before it can act — the forms it needs come with the tool, so the answer arrives in one
+  step instead of two. It no longer refuses to send a correct answer: quoting an issue's own title
+  back, when that title happens to name another project's issue, was being read as making something
+  up, and a summary that reported the project's real figures in the project's own words was being
+  read as claiming nothing had been done — in both cases the assistant then apologised instead of
+  answering. And a link it gives you to an issue is now one the web can actually open. The
+  instructions behind all of this are now kept in separate pieces, one per subject, each naming the
+  measurements that cover it, so the next change to one of them can be shown to have helped.
+  (ISS-1057)
 - `bench:assistant ladder <run.json>... [--history h.json] [--out ladder.md]`: runs ranked on one
   printed score (mean pass^k over the tasks walked, 0–100) with the lowest task on the same row,
   the judge's served rate as a column, `partial` and `thin` marks, and history windows ranked by

@@ -78,6 +78,7 @@ describe('runTurnEvents', () => {
         isError: false,
         durationMs: expect.any(Number),
         resultPreview: '{"ok":true}',
+        resultIssueRefs: [],
       },
     ]);
   });
