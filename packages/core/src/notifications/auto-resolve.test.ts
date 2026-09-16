@@ -2,10 +2,10 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const dbExecute = vi.fn();
 
-// `sendResolvedNotice` is exercised against a real database in
-// `tests/integration/notification-record-kinds-e2e.test.ts`; here it is stubbed so these
-// tests stay about the UPDATE and its lock, which is what this unit owns.
-vi.mock('./deliver.js', () => ({ deliverExisting: vi.fn() }));
+// `db.select` answers no rows, so `sendResolvedNotice` finds no record and returns
+// without announcing anything: these cases stay about the UPDATE and its lock, which is
+// what this unit owns. The notice itself is exercised against a real database in
+// `tests/integration/notification-record-kinds-e2e.test.ts`.
 vi.mock('../db/client.js', () => ({
   db: {
     execute: (...a: unknown[]) => dbExecute(...a),
