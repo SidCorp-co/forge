@@ -174,8 +174,9 @@ describe('buildChatPreamble — integrations + MCP diagnostics', () => {
 
     const preamble = await buildChatPreamble(PROJECT_ID, null, ['technical']);
 
-    expect(preamble).toContain('epodsystem');
-    expect(preamble).toContain('agent access is off for this binding');
+    // The provider is named INSIDE the reason. A preamble carries every connected integration, so
+    // "agent access is off for this binding" on its own would not say WHICH one was refused.
+    expect(preamble).toContain('agent access is off for this `epodsystem` binding');
     expect(preamble).toContain('Settings → Integrations');
     // The usage hint is REPLACED, not accompanied: a line saying how to use a tool the session will
     // not be given is the thing being removed, not something to print beside the reason.
