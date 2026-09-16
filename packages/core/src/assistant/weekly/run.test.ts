@@ -392,6 +392,29 @@ describe('readWeek', () => {
     expect(asked).toEqual([]);
   });
 
+  it('a gone room that spoke nothing but task messages is set aside and counted apart from the titled bench rooms (ISS-1065)', async () => {
+    const { judge, asked } = judgeOf();
+    const rows = [
+      row(1),
+      row(2, { sessionId: 'room-titled', query: 'bench query' }),
+      row(3, { sessionId: 'room-gone', query: 'How many open issues does it have?' }),
+      row(4, { sessionId: 'room-gone', query: 'Which project is this room scoped to? Name it.' }),
+    ];
+    const result = await readWeek(
+      project(),
+      weekBefore(MONDAY),
+      judge,
+      MONDAY,
+      io(rows, ['room-titled'], ['room-gone']),
+    );
+    expect(result.excludedSessions).toEqual(['room-titled']);
+    expect(result.excludedRows).toBe(1);
+    expect(result.excludedSessionsByTask).toEqual(['room-gone']);
+    expect(result.excludedRowsByTask).toBe(2);
+    expect(result.groups.map((g) => g.rows)).toEqual([1]);
+    expect(asked).toEqual(['how many open issues are open']);
+  });
+
   it('judges the newest rows up to the sample, never a bench room, and carries the window and the exclusions', async () => {
     const { judge, asked } = judgeOf();
     const rows = Array.from({ length: JUDGE_SAMPLE + 5 }, (_, i) => row(i));
