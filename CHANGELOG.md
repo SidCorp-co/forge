@@ -2719,6 +2719,21 @@
   is no clone left to authenticate. Alongside it, the install now stops up front and says so by
   name when any dependency can only be fetched over SSH — which nothing in this project's checks
   can fetch — rather than dying inside the install with nothing a reader can act on. (ISS-1045)
+- **A project with no code repository can now be set up on a machine without someone logging in to
+  create a folder by hand.** Some projects have no repository at all — a storefront whose real
+  content lives in the shop itself, reached through a connected tool rather than checked out. That
+  shape has always been supported once the project's folder existed on the machine, and refused
+  outright when it did not: setup stopped and asked an operator to either invent a repository the
+  project does not have, or create the empty folder themselves, after which the very same setup
+  succeeded unchanged. Whether a directory happened to be lying around was the only thing dividing
+  a project that could be set up from one that could not, and until somebody noticed, nothing
+  automatic could run on it at all. Setup now creates that folder itself and carries on. The
+  refusals that mean something are untouched: a folder holding files this machine did not put
+  there is still refused and still lists them, a project that does have a repository still fails
+  loudly when it cannot be fetched, and a machine with nowhere configured to put projects is still
+  refused as before. A folder that genuinely cannot be created now says which folder and why,
+  instead of offering advice about a repository the project was never going to have.
+
 - **A project that declares MCP servers now actually gives them to the agents working on it.** A
   project can name the tools its work needs — a storefront's own API, a browser — and the settings
   screen has shown those names as configured for as long as the feature has existed. Nothing put

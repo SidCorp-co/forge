@@ -112,22 +112,17 @@ async fn process_one(client: &CoreClient, cfg: &Config, p: &Provision) {
     match classify_workspace(&repo_path, p.repo_url.as_deref()) {
         WorkspaceMode::AlreadyRepo => {}
         WorkspaceMode::RepoLess => {
+            // cm:guard the mkdir is an EXPLICIT gate and never an implicit consequence. `finish_workspace` reaches `orientation::write_orientation`, which does `create_dir_all(repo_path/.forge)` of its own — so a version that merely skipped the mkdir would half-create the workspace as a side effect, swallow the failure as a warning and still report `ready`. The directory this provisioner is about to fill has to be one it decided to create and said so.
+            if let Err(detail) = ensure_repo_less_dir(&repo_path) {
+                report(client, &p.runner_id, "needs_manual_setup", Some(&detail)).await;
+                return;
+            }
             tracing::info!(
                 "[provision] project={} has no repo URL and no git work tree — treating {} as a repo-less workspace",
                 p.slug,
                 repo_path.display()
             );
             finish_workspace(client, cfg, p, &repo_path).await;
-            return;
-        }
-        WorkspaceMode::ManualSetup => {
-            report(
-                client,
-                &p.runner_id,
-                "needs_manual_setup",
-                Some("folder missing — set the project repo URL (and a deploy key) or create the folder manually, then re-assign"),
-            )
-            .await;
             return;
         }
         WorkspaceMode::Occupied(extra) => {
@@ -399,8 +394,6 @@ enum WorkspaceMode {
     Adopt,
     /// Occupied by content this runner did not write; the names that are in the way.
     Occupied(Vec<String>),
-    /// Nothing to work with — no folder and nothing to clone from.
-    ManualSetup,
 }
 
 /// Everything this provisioner writes into a workspace itself.
@@ -424,6 +417,22 @@ fn foreign_entries(dir: &Path) -> std::io::Result<Vec<String>> {
     Ok(extra)
 }
 
+/// Create the folder a repo-less workspace IS, or say why not in the words an
+/// operator is given.
+///
+/// Separated from `process_one` so the creation and its refusal are reachable
+/// without a core client: they are the whole of what ISS-1037 changes, and a
+/// classifier test cannot see either.
+// cm:guard the failure must name the PATH and the OS reason. The message this replaced said "folder missing — set the project repo URL (and a deploy key) or create the folder manually", which for a storefront project is advice to invent a repository that does not exist; an operator who cannot act on the first sentence reads the rest as noise.
+fn ensure_repo_less_dir(repo_path: &Path) -> std::result::Result<(), String> {
+    std::fs::create_dir_all(repo_path).map_err(|e| {
+        format!(
+            "could not create the workspace folder {}: {e} — this project has no repo URL, so the folder is the whole workspace; check the path is writable by this runner",
+            repo_path.display()
+        )
+    })
+}
+
 // cm:guard an existing folder + a repo URL is NOT automatically `Clone` — `git clone` refuses a non-empty destination ("destination path '...' already exists and is not an empty directory"), and provisioning is what put files there: a repo-less workspace gets `.mcp.json`/`.forge`/`CLAUDE.md`, so the day someone sets the repo URL every re-provision fails identically, forever, with a raw git error and no way forward (ubuntu1/anhome, 2026-08-14).
 // cm:guard an existing folder without a URL is an MCP-driven project that has no codebase by design — it must stay `RepoLess`. Refusing it is what forced a fake `git init` before any such store could be provisioned at all.
 fn classify_workspace(repo_path: &Path, repo_url: Option<&str>) -> WorkspaceMode {
@@ -435,7 +444,8 @@ fn classify_workspace(repo_path: &Path, repo_url: Option<&str>) -> WorkspaceMode
         return if has_url {
             WorkspaceMode::Clone
         } else {
-            WorkspaceMode::ManualSetup
+            // cm:guard a missing folder and an existing one must classify the SAME with no URL. An empty directory is not a fact about a project — it is a fact about which box you are standing on, and making it the difference between `RepoLess` and a refusal is what left a whole class of project unable to pair a box until an operator ran `mkdir` (ISS-1037).
+            WorkspaceMode::RepoLess
         };
     }
     if !has_url {
@@ -521,10 +531,123 @@ mod tests {
         );
     }
 
+    // cm:guard the two must classify IDENTICALLY, and the assertion is the equality rather than two separate expectations of `RepoLess`. This test replaces `only_a_missing_folder_with_no_url_needs_manual_setup`, which pinned the refusal ISS-1037 is about: an empty directory happening to exist was the whole difference between a project that could pair a box and one that could not.
     #[test]
-    fn only_a_missing_folder_with_no_url_needs_manual_setup() {
-        let dir = tmp("missing-no-url");
-        assert_eq!(classify_workspace(&dir, None), WorkspaceMode::ManualSetup);
+    fn a_repo_less_project_classifies_the_same_whether_or_not_its_folder_exists() {
+        let absent = tmp("missing-no-url");
+        let present = tmp("present-no-url");
+        fs::create_dir_all(&present).unwrap();
+
+        assert!(!absent.is_dir(), "the absent case must actually be absent");
+        assert_eq!(
+            classify_workspace(&absent, None),
+            classify_workspace(&present, None)
+        );
+        assert_eq!(classify_workspace(&absent, None), WorkspaceMode::RepoLess);
+
+        // and an empty repo URL is no URL, on the absent side too.
+        assert_eq!(
+            classify_workspace(&absent, Some("   ")),
+            WorkspaceMode::RepoLess
+        );
+        let _ = fs::remove_dir_all(&present);
+    }
+
+    fn provision(repo_path: Option<&str>) -> crate::transport::provision::Provision {
+        crate::transport::provision::Provision {
+            runner_id: "r-1".into(),
+            project_id: "p-1".into(),
+            slug: "butlocs".into(),
+            repo_path: repo_path.map(str::to_string),
+            branch: None,
+            repo_url: None,
+            ssh_key_source: None,
+            ssh_public_key: None,
+            ssh_private_key: None,
+            github_app_credential: false,
+        }
+    }
+
+    /// Criterion 10. Nothing is created outside a configured workspace root:
+    /// with nowhere to put a project, `resolve_path` answers `None`, which is
+    /// the single cause of the refusal `process_one` prints.
+    // cm:guard this is the refusal ISS-1037 must NOT have widened. The whole change is that a missing folder gets created; the one place that must still refuse is the one with no folder to create — a `Some` here would have the runner mkdir-ing into whatever relative path it resolved against its own cwd.
+    #[test]
+    fn a_device_with_no_repo_path_and_no_projects_root_still_resolves_nowhere() {
+        let mut cfg = Config {
+            projects_root: None,
+            ..Default::default()
+        };
+
+        assert_eq!(resolve_path(&cfg, &provision(None)), None);
+        assert_eq!(
+            resolve_path(&cfg, &provision(Some("   "))),
+            None,
+            "blank is not a path"
+        );
+
+        // and the two ways there IS somewhere still answer, unchanged.
+        assert_eq!(
+            resolve_path(&cfg, &provision(Some("/srv/butlocs"))),
+            Some(PathBuf::from("/srv/butlocs"))
+        );
+        cfg.projects_root = Some(PathBuf::from("/srv/projects"));
+        assert_eq!(
+            resolve_path(&cfg, &provision(None)),
+            Some(PathBuf::from("/srv/projects/butlocs")),
+            "the server's repo_path wins, and the root is the fallback"
+        );
+    }
+
+    /// Criterion 2. The folder is created, and by THIS gate rather than as a
+    /// side effect of something downstream.
+    #[test]
+    fn provisioning_a_repo_less_project_creates_the_folder_that_was_not_there() {
+        let dir = tmp("repo-less-mkdir").join("nested").join("butlocs");
+        assert!(!dir.exists(), "the absent case must actually be absent");
+        assert_eq!(classify_workspace(&dir, None), WorkspaceMode::RepoLess);
+
+        ensure_repo_less_dir(&dir).expect("a writable path must be created");
+        assert!(dir.is_dir(), "the workspace folder is owed");
+
+        // and the second provision of the same project is not an error.
+        ensure_repo_less_dir(&dir).expect("create_dir_all is idempotent");
+
+        // the folder now exists, so it classifies exactly as it did before.
+        assert_eq!(classify_workspace(&dir, None), WorkspaceMode::RepoLess);
+        let _ = fs::remove_dir_all(tmp("repo-less-mkdir"));
+    }
+
+    /// Criterion 9. A folder that cannot be created is a loud refusal naming
+    /// the path and the reason, never a quiet walk onward into `finish_workspace`.
+    // cm:guard the PATH and the OS reason both have to be in the string. `finish_workspace` would half-create this workspace on its own and still report `ready`, so this refusal is the only thing standing between an unwritable root and a project that reads as provisioned.
+    #[cfg(unix)]
+    #[test]
+    fn a_workspace_folder_that_cannot_be_created_is_refused_naming_the_path_and_why() {
+        use std::os::unix::fs::PermissionsExt;
+        let root = tmp("repo-less-unwritable");
+        fs::create_dir_all(&root).unwrap();
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o500)).unwrap();
+
+        let target = root.join("butlocs");
+        let detail =
+            ensure_repo_less_dir(&target).expect_err("a read-only parent cannot be filled");
+        assert!(
+            detail.contains(&target.display().to_string()),
+            "the operator is owed the path: {detail}"
+        );
+        assert!(
+            detail.contains("could not create the workspace folder"),
+            "{detail}"
+        );
+        assert!(
+            !detail.contains("set the project repo URL"),
+            "a repo-less project must not be told to invent a repository: {detail}"
+        );
+        assert!(!target.exists(), "nothing may be left half-created");
+
+        fs::set_permissions(&root, fs::Permissions::from_mode(0o700)).unwrap();
+        let _ = fs::remove_dir_all(&root);
     }
 
     // cm:guard this is the whole state the Adopt mode exists for — a repo-less workspace that LATER gained a repo URL. Before it, every re-provision reported the raw git refusal and nothing an operator could act on (ubuntu1/anhome, 8 hours, 2026-08-14). If this test ever expects Clone again, the loop is back.
