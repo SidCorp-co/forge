@@ -16,6 +16,12 @@
 // it lost: ISS-1005 moved the browser off a paired box on purpose and accepted the loss rather than
 // bridging it, because the only bridge would have meant widening `CHAT_TOOL_ALLOWLIST` past the
 // fence that issue forbids widening (ISS-1005).
+// cm:edge contract -> packages/web-v2/src/features/session/runner-surface-named.test.ts — that test
+// reads THIS FILE by path and asserts the Agents route below is still named, because web-v2 cannot
+// import core's source and a path read is the only shape this cross-package contract has. It is
+// also invisible to `pnpm test:changed`, whose graph follows imports, which is why CLAUDE.md says
+// `pnpm test` before you push. This back-pointer is what puts an edit to this file in the codemap
+// PR comment, so the coupling is visible from both ends rather than only from the test (ISS-1057).
 import type { PromptLayer } from './layer.js';
 
 export const WEB_DOOR_LAYER: PromptLayer = {
