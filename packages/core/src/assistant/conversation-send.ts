@@ -211,8 +211,18 @@ export async function sendWebConversationMessage(args: {
   userId: string;
   userLabel: string | null;
   content: string;
-  /** What this send asks the room to answer in — honoured on the first message and nowhere else. */
+  /** What this send asks the room to answer in — honoured on the FIRST message and nowhere else. */
   mode: ConversationMode;
+  /**
+   * Whether the caller named a mode at all, as opposed to the route deriving one.
+   */
+  // cm:guard kept APART from `mode`, because the two answer different questions and only this one
+  // decides a refusal: the route's "is this room empty" read and the collector's commit are not one
+  // act, so a send that named a mode can still arrive second — and a second send that named one is
+  // refused whether or not it happens to name the mode that won. A client that believes it chose a
+  // lane over a room that had already chosen is the defect the whole rule exists to prevent
+  // (ISS-1039, plan consult F2).
+  namedMode: boolean;
 }): Promise<WebSendResult> {
   const frame: WebConversationFrame = {
     conversation: args.room,
@@ -232,8 +242,11 @@ export async function sendWebConversationMessage(args: {
     // commit. The `seq === 0` test is what makes it the FIRST message and not every message
     // (ISS-1039, plan consult F2).
     withinCollection: async (tx, { conversationId, seq }) => {
-      if (seq !== 0) return;
-      if (await settleConversationMode(tx, conversationId, args.mode)) return;
+      if (seq === 0 && (await settleConversationMode(tx, conversationId, args.mode))) return;
+      // cm:guard reached two ways and refused the same way in both: this send lost the race to
+      // settle, or it landed behind a message that had already settled one. Neither is a send whose
+      // mode was honoured, and both are refused naming what the room actually answers in.
+      if (seq !== 0 && !args.namedMode) return;
       const row = await getConversation(conversationId, tx);
       throw new ConversationModeSettledError(effectiveConversationMode(row ?? { mode: null }));
     },

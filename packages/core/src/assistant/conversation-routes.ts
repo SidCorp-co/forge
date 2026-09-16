@@ -444,6 +444,7 @@ conversationRoutes.post(
         userLabel: me?.displayName ?? me?.email ?? null,
         content,
         mode: asking,
+        namedMode: mode !== undefined,
       });
     } catch (err) {
       // cm:guard the LOSER of two first sends racing in one empty room, which the read above cannot
