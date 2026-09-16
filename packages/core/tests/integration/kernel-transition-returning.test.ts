@@ -28,8 +28,12 @@ const deliverAgentChatReplyOnce = vi.fn(async (_row: unknown) => {});
 vi.mock('../../src/integrations/rocketchat/escalation-bridge.js', () => ({
   deliverEscalationReplyOnce: (row: unknown) => deliverEscalationReplyOnce(row as never),
 }));
-vi.mock('../../src/integrations/rocketchat/agent-chat-bridge.js', () => ({
-  deliverAgentChatReplyOnce: (row: unknown) => deliverAgentChatReplyOnce(row as never),
+// cm:guard the module under this mock is the LEGACY shim, and that is the point of these two cases
+// after ISS-1039: a session dispatched before the rename still carries `metadata.agentChat`, and the
+// bridge list still has to hydrate its whole row and deliver it exactly once. A mock pointed at the
+// new marker's bridge would pass while every in-flight Rocket.Chat turn went silent (criteria 34, 35).
+vi.mock('../../src/integrations/rocketchat/legacy-agent-chat-bridge.js', () => ({
+  deliverLegacyAgentChatReplyOnce: (row: unknown) => deliverAgentChatReplyOnce(row as never),
 }));
 
 const publish = vi.fn((_room: string, _payload: unknown) => 0);
