@@ -42,7 +42,7 @@ export async function loadIssueSnapshot(
       sessionContext: issues.sessionContext,
       metadata: issues.metadata,
       baseBranch: projects.baseBranch,
-      productionBranch: projects.productionBranch,
+      liveBranch: projects.liveBranch,
     })
     .from(issues)
     .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -63,7 +63,7 @@ export async function loadIssueSnapshot(
         ),
       },
     },
-    { baseBranch: row.baseBranch, productionBranch: row.productionBranch },
+    { baseBranch: row.baseBranch, liveBranch: row.liveBranch },
   );
   return {
     branchConfig,

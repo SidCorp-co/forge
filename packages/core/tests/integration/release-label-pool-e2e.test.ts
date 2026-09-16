@@ -33,7 +33,7 @@ let harness: TestDatabase;
 let mods: {
   readPool: typeof import('../../src/devices/pool.js').readPool;
   prepareJobForMaster: typeof import('../../src/devices/claim.js').prepareJobForMaster;
-  resolveReleaseChannel: typeof import('../../src/release-batch/channel.js').resolveReleaseChannel;
+  resolveReleasePlan: typeof import('../../src/release-batch/channel.js').resolveReleasePlan;
 };
 
 beforeAll(async () => {
@@ -45,8 +45,7 @@ beforeAll(async () => {
   mods = {
     readPool: (await import('../../src/devices/pool.js')).readPool,
     prepareJobForMaster: (await import('../../src/devices/claim.js')).prepareJobForMaster,
-    resolveReleaseChannel: (await import('../../src/release-batch/channel.js'))
-      .resolveReleaseChannel,
+    resolveReleasePlan: (await import('../../src/release-batch/channel.js')).resolveReleasePlan,
   };
 }, 60_000);
 
@@ -106,9 +105,9 @@ async function seed(opts: {
       )
     `);
     await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, environment, active, config)
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
       VALUES (
-        ${connection}, ${project.id}, 'coolify', 'prod', true,
+        ${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true,
         ${JSON.stringify(opts.bindingConfig ?? {})}::jsonb
       )
     `);
@@ -182,7 +181,7 @@ describe('a release job is offered only to the release pool', () => {
     expect(await poolIds(w)).toEqual([]);
   });
 
-  it('offers a release job to nobody when the project has no production binding', async () => {
+  it('offers a release job to nobody when the project has no live deploy binding', async () => {
     const w = await seed({ type: 'release_batch', labels: [LABEL], bindingConfig: null });
 
     expect(await poolIds(w)).toEqual([]);
@@ -262,7 +261,7 @@ describe('the claim answers the same question by name', () => {
   });
 });
 
-// cm:guard the two readings of "which box releases" have to be ONE reading. `resolveReleaseChannel`
+// cm:guard the two readings of "which box releases" have to be ONE reading. `resolveReleaseChannels`
 // overlays the connection's config with the binding's by spreading, so a binding that sets the key
 // to null HIDES the connection's value — a COALESCE in the pool's SQL would not, and the pool would
 // then offer a release to a box the release itself refuses.
@@ -275,8 +274,39 @@ describe('the pool reads the label the release path reads', () => {
       connectionConfig: { releaseRunnerLabel: LABEL },
     });
 
-    expect((await mods.resolveReleaseChannel(w.projectId)).releaseRunnerLabel).toBe(LABEL);
+    expect((await mods.resolveReleasePlan(w.projectId)).releaseRunnerLabel).toBe(LABEL);
     expect(await poolIds(w)).toEqual([w.jobId]);
+  });
+
+  // cm:guard the pool and the claim run at EVERY poll, long after `createReleaseBatch` refused
+  // two disagreeing labels — a second live deploy binding can be activated or relabelled in
+  // between. `LIMIT 1` picked arbitrarily among the survivors here, so the pool offered, and the
+  // claim granted, a release to a box the plan resolver refuses outright. Both readers must
+  // answer the same "there is no one box" and stop.
+  it('offers a release job to nobody when two live bindings name different labels', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: [LABEL],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
+    const otherConnection = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
+      SELECT ${otherConnection}, 'user', p.created_by, 'coolify', true, '{}'::jsonb
+      FROM projects p WHERE p.id = ${w.projectId}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+      VALUES (
+        ${otherConnection}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
+        ${JSON.stringify({ releaseRunnerLabel: 'some-other-box' })}::jsonb
+      )
+    `);
+
+    // The plan resolver refuses outright…
+    await expect(mods.resolveReleasePlan(w.projectId)).rejects.toThrow(/RELEASE_RUNNER_AMBIGUOUS/);
+    // …and the pool answers with nobody rather than picking one of the two.
+    expect(await poolIds(w)).toEqual([]);
   });
 
   it('lets a binding null out the connection-level label, for the pool as for the release', async () => {
@@ -287,7 +317,7 @@ describe('the pool reads the label the release path reads', () => {
       connectionConfig: { releaseRunnerLabel: LABEL },
     });
 
-    expect((await mods.resolveReleaseChannel(w.projectId)).releaseRunnerLabel).toBeNull();
+    expect((await mods.resolveReleasePlan(w.projectId)).releaseRunnerLabel).toBeNull();
     expect(await poolIds(w)).toEqual([]);
   });
 });

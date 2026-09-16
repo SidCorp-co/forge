@@ -20,6 +20,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import type { DeployStage } from '../../src/db/schema.js';
 import type { CoolifyConfig, CoolifySecrets } from '../../src/integrations/coolify/types.js';
 import {
   createTestProject,
@@ -88,7 +89,7 @@ beforeEach(async () => {
 });
 
 async function seedIntegration(opts: {
-  environment: 'staging' | 'prod';
+  stages: DeployStage[];
   secret?: string;
   runStatus?: 'running' | 'completed';
 }) {
@@ -112,24 +113,24 @@ async function seedIntegration(opts: {
     )
   `);
 
-  // Binding = per-project+env link (config overrides + inbound HMAC secret).
+  // Binding = the per-project link (config overrides + inbound HMAC secret).
   const bindingId = randomUUID();
   const integrationSecret = opts.secret ?? `whsec_test_${bindingId.slice(0, 12)}`;
   await harness.db.execute(sql`
     INSERT INTO integration_bindings
-      (id, connection_id, project_id, provider, environment, config, integration_secret, active)
+      (id, connection_id, project_id, provider, role, stages, config, integration_secret, active)
     VALUES (
       ${bindingId},
       ${connectionId},
       ${project.id},
       'coolify',
-      ${opts.environment},
+      'deploy',
+      ${`{${opts.stages.join(',')}}`}::text[],
       ${JSON.stringify({
         // ISS-558 multi-target shape: the adapter fans out one deploy per
         // targets[] entry; a binding without targets refuses to dispatch.
         targets: [{ id: 't-1', label: 'App', resourceUuid: 'res-1' }],
         branch: 'main',
-        environment: opts.environment,
       })}::jsonb,
       ${integrationSecret},
       true
@@ -157,7 +158,7 @@ async function dispatchOnce(
   return mods.coolifyAdapter.dispatchOutbound(ctx, {
     eventName: 'release.requested',
     runId: seed.runId,
-    payload: { runId: seed.runId, issueId: null, environment: 'staging' },
+    payload: { runId: seed.runId, issueId: null },
     requestId: `${seed.runId}:${seed.bindingId}`,
   });
 }
@@ -174,7 +175,7 @@ async function readHolds(runId: string) {
 
 describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
   it('outbound dispatch → records delivery with deployment_uuid', async () => {
-    const seed = await seedIntegration({ environment: 'staging' });
+    const seed = await seedIntegration({ stages: ['preview'] });
 
     // Coolify v4 deploy returns a `deployments[]` array.
     const fetchSpy = vi.spyOn(global, 'fetch').mockResolvedValue(
@@ -192,7 +193,7 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
     const result = await mods.coolifyAdapter.dispatchOutbound(ctx, {
       eventName: 'release.requested',
       runId: seed.runId,
-      payload: { runId: seed.runId, issueId: null, environment: 'staging' },
+      payload: { runId: seed.runId, issueId: null },
       requestId: `${seed.runId}:${seed.bindingId}`,
     });
 
@@ -213,7 +214,7 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
   });
 
   it('three consecutive outbound failures trip the breaker (active=false)', async () => {
-    const seed = await seedIntegration({ environment: 'staging' });
+    const seed = await seedIntegration({ stages: ['preview'] });
 
     vi.spyOn(global, 'fetch').mockResolvedValue(new Response('boom', { status: 500 }));
 
@@ -225,7 +226,7 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
         await mods.coolifyAdapter.dispatchOutbound(ctx, {
           eventName: 'release.requested',
           runId: seed.runId,
-          payload: { runId: seed.runId, issueId: null, environment: 'staging' },
+          payload: { runId: seed.runId, issueId: null },
         });
       } catch {
         // expected — non-2xx
@@ -239,7 +240,7 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
   });
 
   it('a tripped breaker blocks further outbound dispatch', async () => {
-    const seed = await seedIntegration({ environment: 'staging' });
+    const seed = await seedIntegration({ stages: ['preview'] });
     await harness.db.execute(sql`
       UPDATE integration_connections SET active = false WHERE id = ${seed.connectionId}
     `);
@@ -250,7 +251,7 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
       mods.coolifyAdapter.dispatchOutbound(ctx, {
         eventName: 'release.requested',
         runId: seed.runId,
-        payload: { runId: seed.runId, issueId: null, environment: 'staging' },
+        payload: { runId: seed.runId, issueId: null },
       }),
     ).rejects.toThrow(/inactive|circuit breaker/i);
   });
@@ -258,7 +259,7 @@ describe('ISS-234 — coolify deploy dispatch and its breaker', () => {
 
 describe('ISS-922 — the deploy a run has to prove before it may close', () => {
   it('records one confirmation hold per target on the run, against real jsonb', async () => {
-    const seed = await seedIntegration({ environment: 'staging', runStatus: 'running' });
+    const seed = await seedIntegration({ stages: ['preview'], runStatus: 'running' });
     await dispatchOnce(seed, 'deploy-uuid-B');
 
     const holds = await readHolds(seed.runId);
@@ -269,14 +270,14 @@ describe('ISS-922 — the deploy a run has to prove before it may close', () => 
   });
 
   it('refuses the hold on a run that already went terminal — a closed run cannot witness a deploy', async () => {
-    const seed = await seedIntegration({ environment: 'staging', runStatus: 'completed' });
+    const seed = await seedIntegration({ stages: ['preview'], runStatus: 'completed' });
     await dispatchOnce(seed, 'deploy-uuid-C');
 
     expect(await readHolds(seed.runId)).toBeUndefined();
   });
 
   it('a settled hold and a deferred close survive a real jsonb round trip', async () => {
-    const seed = await seedIntegration({ environment: 'staging', runStatus: 'running' });
+    const seed = await seedIntegration({ stages: ['preview'], runStatus: 'running' });
     const res = await dispatchOnce(seed, 'deploy-uuid-D');
 
     await mods.markCloseDeferred(seed.runId);

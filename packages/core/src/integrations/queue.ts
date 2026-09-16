@@ -102,7 +102,7 @@ function healthGateDeps(data: CoolifyHealthGateJob) {
 
 async function runCoolifyDispatch(data: CoolifyDispatchJob): Promise<void> {
   const binding = await findBindingById(data.bindingId);
-  if (!binding || !binding.active) {
+  if (!binding?.active) {
     logger.warn(
       { bindingId: data.bindingId },
       'coolify dispatch worker: binding missing or inactive — dropping job',
@@ -110,7 +110,7 @@ async function runCoolifyDispatch(data: CoolifyDispatchJob): Promise<void> {
     return;
   }
   const connection = await findConnectionById(binding.connectionId);
-  if (!connection || !connection.active) {
+  if (!connection?.active) {
     logger.warn(
       { bindingId: data.bindingId, connectionId: binding.connectionId },
       'coolify dispatch worker: connection missing or inactive (breaker open?) — dropping job',
@@ -120,7 +120,7 @@ async function runCoolifyDispatch(data: CoolifyDispatchJob): Promise<void> {
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>({ binding, connection });
   await coolifyAdapter.dispatchOutbound(ctx, {
     eventName: data.eventName,
-    payload: { runId: data.runId, issueId: data.issueId, environment: ctx.environment },
+    payload: { runId: data.runId, issueId: data.issueId, stages: ctx.stages },
     ...(data.requestId ? { requestId: data.requestId } : {}),
     runId: data.runId,
   });

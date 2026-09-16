@@ -63,7 +63,7 @@ export async function resolveSentryMcpEntry(
     logger.warn({ err, projectId }, 'sentry-resolver: integration lookup failed, skipping inject');
     return null;
   }
-  if (!pair || !pair.connection.secretsEnc) return null;
+  if (!pair?.connection.secretsEnc) return null;
 
   try {
     const secrets = decryptConnectionSecrets<SentrySecrets>(pair.connection);

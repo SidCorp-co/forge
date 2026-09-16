@@ -1,7 +1,8 @@
 "use client";
 
-// Project settings → Repository. repoPath + base/production branches, persisted
-// via PATCH /api/projects/:id. The pipeline branches from these.
+// Project settings → Repository. repoPath + baseBranch, and — only under
+// `releaseModel: 'promote'` — the live branch, persisted via
+// PATCH /api/projects/:id. The pipeline branches from these.
 import { useEffect, useState } from "react";
 import { Button, Card, CardContent, Field, Input } from "@/design";
 import type { ProjectDetail } from "@/features/projects/types";
@@ -12,31 +13,39 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
 
   const [repoPath, setRepoPath] = useState(project.repoPath ?? "");
   const [baseBranch, setBaseBranch] = useState(project.baseBranch ?? "");
-  const [productionBranch, setProductionBranch] = useState(project.productionBranch ?? "");
+  const [liveBranch, setLiveBranch] = useState(project.liveBranch ?? "");
 
   useEffect(() => {
     setRepoPath(project.repoPath ?? "");
     setBaseBranch(project.baseBranch ?? "");
-    setProductionBranch(project.productionBranch ?? "");
-  }, [project.repoPath, project.baseBranch, project.productionBranch]);
+    setLiveBranch(project.liveBranch ?? "");
+  }, [project.repoPath, project.baseBranch, project.liveBranch]);
 
   // Empty string → null (clears the column); a set value trims.
   const norm = (v: string) => (v.trim() === "" ? null : v.trim());
   const dirty =
     norm(repoPath) !== (project.repoPath ?? null) ||
     norm(baseBranch) !== (project.baseBranch ?? null) ||
-    norm(productionBranch) !== (project.productionBranch ?? null);
+    norm(liveBranch) !== (project.liveBranch ?? null);
 
-  // cm:why single-env is a legal, deliberate configuration (owner decision 2026-08-13), so this states the consequence and never gates the save — a project whose base IS production simply has no staging buffer between a merge and a deploy
-  const singleEnv =
-    norm(baseBranch) !== null && norm(baseBranch) === norm(productionBranch);
+  // cm:guard the live branch is read ONLY under `promote`, so it is only editable there. 25 of 32
+  // fleet projects carried a production branch nothing ever promoted to, because this field asked
+  // for one from every project whatever its release was. Under `publish` the release is an act on a
+  // live binding and no ref moves; under `none` there is no release step at all.
+  const promotes = project.releaseModel === "promote";
+
+  // cm:why one branch for both is a legal, deliberate configuration (owner decision 2026-08-13),
+  // so this states the consequence and never gates the save — a project whose base IS its live
+  // branch simply has no buffer between a merge and a deploy.
+  const oneBranch =
+    promotes && norm(baseBranch) !== null && norm(baseBranch) === norm(liveBranch);
 
   function save() {
     const patch: Record<string, unknown> = {};
     if (norm(repoPath) !== (project.repoPath ?? null)) patch.repoPath = norm(repoPath);
     if (norm(baseBranch) !== (project.baseBranch ?? null)) patch.baseBranch = norm(baseBranch);
-    if (norm(productionBranch) !== (project.productionBranch ?? null)) {
-      patch.productionBranch = norm(productionBranch);
+    if (norm(liveBranch) !== (project.liveBranch ?? null)) {
+      patch.liveBranch = norm(liveBranch);
     }
     if (Object.keys(patch).length > 0) update.mutate(patch);
   }
@@ -64,20 +73,29 @@ export function RepoTab({ project, canEdit }: { project: ProjectDetail; canEdit:
               maxLength={100}
             />
           </Field>
-          <Field label="Production branch" hint="Where releases squash-merge (often the same as base).">
-            <Input
-              value={productionBranch}
-              onChange={(e) => setProductionBranch(e.target.value)}
-              disabled={!canEdit}
-              placeholder="main"
-              maxLength={100}
-            />
-          </Field>
-          {singleEnv && (
+          {promotes ? (
+            <Field
+              label="Live branch"
+              hint="Where a release moves code to, by this project's release strategy."
+            >
+              <Input
+                value={liveBranch}
+                onChange={(e) => setLiveBranch(e.target.value)}
+                disabled={!canEdit}
+                placeholder="main"
+                maxLength={100}
+              />
+            </Field>
+          ) : (
             <p className="fg-caption text-subtle">
-              Base and production are the same branch, so every merge lands straight on the
-              deployed branch — there is no staging buffer to catch a bad merge. Supported; just
-              worth knowing.
+              This project's release model is <strong>{project.releaseModel}</strong>, which moves no
+              branch, so it has no live branch. Change the release model under Release to declare one.
+            </p>
+          )}
+          {oneBranch && (
+            <p className="fg-caption text-subtle">
+              Base and live are the same branch, so every merge lands straight on the deployed
+              branch — there is no buffer to catch a bad merge. Supported; just worth knowing.
             </p>
           )}
           {canEdit && (

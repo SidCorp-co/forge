@@ -34,7 +34,8 @@ function makePair(overrides?: {
       connectionId: 'conn-1',
       projectId: 'proj-1',
       provider: 'coolify',
-      environment: 'staging',
+      role: 'deploy',
+      stages: ['preview'],
       config: overrides?.bindingConfig ?? {},
       integrationSecret: overrides?.integrationSecret ?? 'whsec_abc',
       active: true,
@@ -88,7 +89,8 @@ describe('buildContextFromBinding', () => {
     expect(ctx.bindingId).toBe('bind-1');
     expect(ctx.projectId).toBe('proj-1');
     expect(ctx.provider).toBe('coolify');
-    expect(ctx.environment).toBe('staging');
+    expect(ctx.role).toBe('deploy');
+    expect(ctx.stages).toEqual(['preview']);
     expect(ctx.integrationSecret).toBe('whsec_xyz');
     // No secretsEnc → empty secrets, no decrypt attempted.
     expect(ctx.secrets).toEqual({});

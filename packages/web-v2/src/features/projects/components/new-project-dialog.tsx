@@ -6,7 +6,7 @@
 // by hand; client validation mirrors the server schema (slug 3–64
 // lowercase/digits/hyphens, name 1–200). On success we invalidate `['projects']`
 // (done by the hook) and move to step 2 — "Set up pipeline" — which saves
-// repoPath/baseBranch/productionBranch through the EXISTING project PATCH
+// repoPath/baseBranch through the EXISTING project PATCH
 // (`useUpdateProject`) and surfaces the runner-bind checklist. It sends no
 // pipelineConfig: the server's defaults apply until Settings writes one.
 // "Skip for now" routes straight to the project.
@@ -55,7 +55,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
   const [created, setCreated] = useState<CreatedProject | null>(null);
   const [repoPath, setRepoPath] = useState('');
   const [baseBranch, setBaseBranch] = useState('main');
-  const [productionBranch, setProductionBranch] = useState('main');
   const [repoSaved, setRepoSaved] = useState(false);
   const [seedError, setSeedError] = useState<string | null>(null);
   const [onboardError, setOnboardError] = useState<string | null>(null);
@@ -75,7 +74,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       setCreated(null);
       setRepoPath('');
       setBaseBranch('main');
-      setProductionBranch('main');
       setRepoSaved(false);
       setSeedError(null);
       setOnboardError(null);
@@ -158,7 +156,6 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
       const patch: ProjectUpdateInput = {};
       if (norm(repoPath)) patch.repoPath = norm(repoPath);
       if (norm(baseBranch)) patch.baseBranch = norm(baseBranch);
-      if (norm(productionBranch)) patch.productionBranch = norm(productionBranch);
       if (Object.keys(patch).length > 0) await update.mutateAsync(patch);
 
       setRepoSaved(true);
@@ -219,17 +216,11 @@ export function NewProjectDialog({ open, onClose }: NewProjectDialogProps) {
               maxLength={100}
             />
           </Field>
-          <Field
-            label="Production branch"
-            hint="Where releases squash-merge (often the same as base)."
-          >
-            <Input
-              value={productionBranch}
-              onChange={(e) => setProductionBranch(e.target.value)}
-              placeholder="main"
-              maxLength={100}
-            />
-          </Field>
+          {/* cm:guard a new project declares `releaseModel: 'none'`, which reads no live
+              branch at all, so this dialog does not ask for one. Asking here, and defaulting
+              the answer to 'main', is how 25 of 32 fleet projects came to carry a production
+              branch nothing ever promoted to — including projects with no repository. The
+              live branch is declared under Settings → Release, with the model that reads it. */}
 
           <div>
             <Button

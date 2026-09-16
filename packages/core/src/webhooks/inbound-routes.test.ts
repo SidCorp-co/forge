@@ -21,7 +21,10 @@ vi.mock('../integrations/registry.js', () => ({
 }));
 
 const listBindingsMock = vi.fn(async () => [
-  { binding: { id: 'b1', environment: 'prod', integrationSecret: BINDING_SECRET }, connection: {} },
+  {
+    binding: { id: 'b1', role: 'service', stages: [], integrationSecret: BINDING_SECRET },
+    connection: {},
+  },
 ]);
 vi.mock('../integrations/store.js', () => ({
   listActiveBindingsForProjectProvider: (...a: unknown[]) => listBindingsMock(...(a as [])),
@@ -103,10 +106,18 @@ describe('POST /api/webhooks/in/:slug', () => {
       }),
     );
     expect(r.status).toBe(200);
-    const json = (await r.json()) as { handler: string; actions: number; environment: string };
+    const json = (await r.json()) as {
+      handler: string;
+      actions: number;
+      role: string;
+      stages: string[];
+    };
     expect(json.handler).toBe('github');
     expect(json.actions).toBe(1);
-    expect(json.environment).toBe('prod');
+    // github is never a deploy target — `providerCanDeploy('github')` is false —
+    // so an inbound github delivery is always answered by a service binding.
+    expect(json.role).toBe('service');
+    expect(json.stages).toEqual([]);
     expect(handleInboundMock).toHaveBeenCalled();
   });
 

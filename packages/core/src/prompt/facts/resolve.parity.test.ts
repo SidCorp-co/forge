@@ -56,7 +56,7 @@ const BASE_INPUTS = {
     'awaiting_release',
     'closed',
   ] as const,
-  branches: { baseBranch: 'main', productionBranch: 'main' },
+  branches: { baseBranch: 'main', liveBranch: 'main' },
   project: projectResolver,
 } as unknown as Parameters<typeof import('./resolve.js').renderStageFactsText>[0];
 

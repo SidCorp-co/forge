@@ -40,7 +40,7 @@ function renderField(targets = [{ id: "t1", label: "Backend", resourceUuid: "app
   return render(
     <CoolifyTargetsField
       projectId="p1"
-      environment="prod"
+      stage="live"
       integrationId="b1"
       baseUrl="https://coolify.example"
       apiToken=""
@@ -114,7 +114,7 @@ describe("the post-deploy health URL", () => {
     render(
       <CoolifyTargetsField
         projectId="p1"
-        environment="prod"
+        stage="live"
         integrationId="b1"
         baseUrl="https://coolify.example"
         apiToken=""
@@ -140,7 +140,7 @@ describe("the post-deploy health URL", () => {
     render(
       <CoolifyTargetsField
         projectId="p1"
-        environment="prod"
+        stage="live"
         integrationId="b1"
         baseUrl="https://coolify.example"
         apiToken=""

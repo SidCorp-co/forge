@@ -11,7 +11,7 @@
  * and nothing else, so `owner/repo` is the only key the helper can present.
  */
 
-import { and, eq, inArray, sql } from 'drizzle-orm';
+import { and, asc, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { integrationBindings, projects, runners } from '../db/schema.js';
 import { installationTokenWithExpiry } from '../integrations/github/app-auth.js';
@@ -63,7 +63,6 @@ async function findBindingForRepo(deviceId: string, owner: string, repo: string)
       bindingId: integrationBindings.id,
       connectionId: integrationBindings.connectionId,
       projectId: integrationBindings.projectId,
-      environment: integrationBindings.environment,
       config: integrationBindings.config,
       slug: projects.slug,
     })
@@ -78,10 +77,17 @@ async function findBindingForRepo(deviceId: string, owner: string, repo: string)
         sql`lower(integration_bindings.config->>'owner') = lower(${owner})`,
         sql`lower(integration_bindings.config->>'repo') = lower(${repo})`,
       ),
-    );
+    )
+    // cm:guard an ORDER BY is required and is not cosmetic: this used to prefer the `prod` row over
+    // the `staging` one, because a project could hold two github bindings on the same repository
+    // carrying different installations. ISS-1046 makes every github binding `role: 'service'` and
+    // `integration_bindings_service_uq` allows one per (project, provider, label), so that pair cannot
+    // exist inside a project any more — but this query spans every project the DEVICE runs, so the set
+    // can still have more than one member and an unordered pick would make the credential
+    // non-deterministic across identical asks, which is exactly what the old guard was defending.
+    .orderBy(asc(integrationBindings.createdAt));
 
-  // cm:guard prefer `prod` — a project may hold a staging binding on the same repository, and the two carry different installations. Picking whichever row the planner returned first makes the credential non-deterministic across identical asks.
-  return rows.find((r) => r.environment === 'prod') ?? rows[0] ?? null;
+  return rows[0] ?? null;
 }
 
 /**

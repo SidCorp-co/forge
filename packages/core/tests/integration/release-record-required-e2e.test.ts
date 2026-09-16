@@ -52,20 +52,25 @@ describe('release record required E2E', () => {
     projectId = (await createTestProject(harness.db, owner.id)).id;
   });
 
-  // cm:guard the batch gate is now derived from the PROJECT, not from a config key: an active `prod` binding AND a production branch that differs from the base. Seed neither half and every case here fails on NO_RELEASE_GATE long before reaching what it meant to assert.
-  // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveProductionDeclaration` reads exactly these two facts
+  // cm:guard the batch gate is DECLARED on the project since ISS-1046 — `release_model` plus an active deploy binding carrying the `live` stage. Seed neither half and every case here fails on NO_RELEASE_GATE long before reaching what it meant to assert. The branch comparison this replaced could not see a storefront, whose base and live branch are identical by nature.
+  // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveReleaseDeclaration` reads exactly these facts
   async function declareProduction(): Promise<void> {
     const connectionId = randomUUID();
     await harness.db.execute(sql`
-      UPDATE projects SET base_branch = 'main', production_branch = 'production' WHERE id = ${projectId}
+      UPDATE projects
+         SET base_branch = 'main',
+             live_branch = 'production',
+             release_model = 'promote',
+             release_strategy = 'merge-branch'
+       WHERE id = ${projectId}
     `);
     await harness.db.execute(sql`
       INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
       VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)
     `);
     await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, environment, active)
-      VALUES (${connectionId}, ${projectId}, 'coolify', 'prod', true)
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active)
+      VALUES (${connectionId}, ${projectId}, 'coolify', 'deploy', ARRAY['live']::text[], true)
     `);
   }
 

@@ -9,8 +9,14 @@
 // pointer, not the secret).
 //
 // Reserved keys are derived (from project columns / connected integrations) and
-// cannot be shadowed by this map: `base-branch`, `production-branch`,
-// `repo-path`, `test-urls`, `test-creds`, `test-notes`, `integrations`.
+// cannot be shadowed by this map: `base-branch`, `live-branch`, `repo-path`,
+// `test-urls`, `test-creds`, `test-notes`, `integrations`.
+//
+// `production-branch` STAYS reserved after ISS-1046 renamed the column, and it resolves to a
+// one-line refusal naming its replacement rather than to a branch or to nothing. A skill body on any
+// project may still carry `{{project:production-branch}}`, and nothing in this repo can gate a skill
+// body in another one — an unresolved key renders as empty, so dropping the name would delete a
+// sentence from an agent's prompt with nobody told.
 //
 // Everything else is a free-text guide note (we run an LLM — structured field
 // values aren't needed; a `forge_*` MCP fetches live detail, so a how-to-use
@@ -21,6 +27,7 @@ import { z } from 'zod';
 
 export const RESERVED_PROJECT_FACT_KEYS = [
   'base-branch',
+  'live-branch',
   'production-branch',
   'repo-path',
   'test-urls',

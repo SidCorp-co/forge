@@ -14,7 +14,7 @@ export const releaseVerifyProbeSchema = z.object({
   commitPath: z.string().min(1).max(200).optional(),
 });
 
-// cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseChannel` reads these three keys off `effectiveConfig(pair)` of the production binding whatever its provider, so EVERY provider config schema below must spread these fields and every provider must list them in BINDING_CONFIG_KEYS. A schema that omits them strips them on PATCH (zod objects drop unknown keys) and the roster then reports the label as undeclared behind a 200 — measured on sidpeak's coolify binding 2026-09-03, and again on pixelight's epodsystem binding 2026-09-04, where it made the storefront project's release gate undeclarable.
+// cm:edge contract -> packages/core/src/release-batch/channel.ts — `resolveReleaseChannel` reads these three keys off `effectiveConfig(pair)` of each live deploy binding whatever its provider, so EVERY provider config schema below must spread these fields and every provider must list them in BINDING_CONFIG_KEYS. A schema that omits them strips them on PATCH (zod objects drop unknown keys) and the roster then reports the label as undeclared behind a 200 — measured on sidpeak's coolify binding 2026-09-03, and again on pixelight's epodsystem binding 2026-09-04, where it made the storefront project's release gate undeclarable.
 export const releaseChannelFields = {
   /** Matched against `runners.labels`; only those boxes may run the release. */
   releaseRunnerLabel: z.string().min(1).max(60).optional(),

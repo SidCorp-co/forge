@@ -103,7 +103,7 @@ async function bindRocketChat(projectId: string, ownerId: string, serverUrl: str
     connectionId: connection.id,
     projectId,
     provider: 'rocketchat',
-    environment: 'prod',
+    role: 'service',
     config: { rids: ['room-1'] },
   });
 }

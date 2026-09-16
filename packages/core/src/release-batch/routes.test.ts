@@ -1,0 +1,186 @@
+/**
+ * `releaseBatchRoutes` — the HTTP half of the two refusals a project's own release
+ * DECLARATION makes.
+ *
+ * `resolveReleaseGate` and `releaseRunnerLabelOf` each throw a named error (proved in
+ * `gate.test.ts` and `channel.test.ts`); neither was caught here, so a project that
+ * declares `releaseModel` with no live deploy binding — or two live bindings naming
+ * different release runners — answered `500 Internal Server Error` on both the create
+ * and the roster. An operator reading a 500 cannot tell a misdeclared project from a
+ * broken server, which is the same silent shape the declaration exists to remove.
+ */
+
+import { Hono } from 'hono';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+const TEST_SECRET = 'test-secret-at-least-32-chars-long-abcdef';
+
+vi.mock('../config/env.js', () => ({
+  env: { JWT_SECRET: TEST_SECRET, NODE_ENV: 'test', CORS_ORIGINS: 'http://localhost:3000' },
+}));
+
+const selectLimit = vi.fn();
+const selectWhere = vi.fn(() => ({ limit: selectLimit }));
+const selectFrom = vi.fn(() => ({ where: selectWhere }));
+
+vi.mock('../db/client.js', () => ({
+  db: { select: vi.fn(() => ({ from: selectFrom })) },
+}));
+
+const createReleaseBatchMock = vi.fn();
+const loadReleaseRosterMock = vi.fn();
+
+// The error CLASSES stay real: the handler discriminates with `instanceof`, so a stub
+// class would make this test pass against a handler that maps nothing.
+vi.mock('./service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./service.js')>()),
+  createReleaseBatch: (a: unknown) => createReleaseBatchMock(a),
+  loadReleaseRoster: (a: unknown) => loadReleaseRosterMock(a),
+}));
+
+// `loadProjectAccess` is what the handler calls; stubbing the resolver underneath it
+// leaves the real db-touching join in the path.
+const loadAccess = vi.fn();
+vi.mock('../lib/authz.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../lib/authz.js')>()),
+  loadProjectAccess: (...args: unknown[]) => loadAccess(...args),
+}));
+
+const { releaseBatchRoutes } = await import('./routes.js');
+const { ReleaseTargetUndeclaredError } = await import('./gate.js');
+const { ReleaseRunnerAmbiguousError } = await import('./channel.js');
+const { ReleaseMultiChannelUnsupportedError } = await import('./service.js');
+const { signUserToken } = await import('../auth/jwt.js');
+const { errorHandler } = await import('../middleware/error.js');
+const { requestId } = await import('../middleware/request-id.js');
+
+function buildApp() {
+  const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
+  app.use('*', requestId());
+  app.route('/api/projects', releaseBatchRoutes);
+  app.onError(errorHandler);
+  return app;
+}
+
+const USER_ID = '11111111-1111-4111-8111-111111111111';
+const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
+const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
+
+function mockAdmin() {
+  selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+  loadAccess.mockResolvedValueOnce({
+    projectId: PROJECT_ID,
+    orgId: 'org-1',
+    role: 'admin',
+    orgRole: 'owner',
+  });
+}
+
+async function token() {
+  return await signUserToken(USER_ID);
+}
+
+async function createReq() {
+  return await buildApp().request(`/api/projects/${PROJECT_ID}/release-batches`, {
+    method: 'POST',
+    headers: { Authorization: `Bearer ${await token()}`, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ issueIds: [ISSUE_ID] }),
+  });
+}
+
+async function rosterReq() {
+  return await buildApp().request(`/api/projects/${PROJECT_ID}/release-batches/roster`, {
+    headers: { Authorization: `Bearer ${await token()}` },
+  });
+}
+
+beforeEach(() => {
+  vi.clearAllMocks();
+});
+
+describe('POST /:projectId/release-batches — the declaration refusals', () => {
+  it('answers 409 RELEASE_TARGET_UNDECLARED, naming the project and the remedy', async () => {
+    mockAdmin();
+    createReleaseBatchMock.mockRejectedValueOnce(
+      new ReleaseTargetUndeclaredError(PROJECT_ID, 'promote'),
+    );
+
+    const res = await createReq();
+    const body = (await res.json()) as { code?: string; message?: string };
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
+    expect(body.message).toContain(PROJECT_ID);
+    expect(body.message).toContain("releaseModel='promote'");
+    expect(body.message).toContain("no active deploy binding carrying the 'live' stage");
+  });
+
+  it('answers 409 RELEASE_RUNNER_AMBIGUOUS, naming both labels', async () => {
+    mockAdmin();
+    createReleaseBatchMock.mockRejectedValueOnce(
+      new ReleaseRunnerAmbiguousError(PROJECT_ID, ['box-a', 'box-b']),
+    );
+
+    const res = await createReq();
+    const body = (await res.json()) as { code?: string; message?: string };
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('RELEASE_RUNNER_AMBIGUOUS');
+    expect(body.message).toContain('box-a');
+    expect(body.message).toContain('box-b');
+  });
+
+  // cm:guard the set is refused, not collapsed. ISS-1046 widened what core RETURNS to the whole
+  // live set without widening the attempt ledger, which records one reading per run — so a
+  // two-endpoint release would be proved at one and claimed for both.
+  it('answers 409 RELEASE_MULTI_CHANNEL_UNSUPPORTED, saying how many were declared', async () => {
+    mockAdmin();
+    createReleaseBatchMock.mockRejectedValueOnce(new ReleaseMultiChannelUnsupportedError(2));
+
+    const res = await createReq();
+    const body = (await res.json()) as { code?: string; message?: string };
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('RELEASE_MULTI_CHANNEL_UNSUPPORTED');
+    expect(body.message).toContain('2 live deploy bindings');
+    // The way out is carried in the refusal.
+    expect(body.message).toContain('Leave exactly one binding');
+  });
+
+  it('still passes an unrelated failure through as a 500 rather than a 409', async () => {
+    mockAdmin();
+    createReleaseBatchMock.mockRejectedValueOnce(new Error('connection terminated unexpectedly'));
+
+    const res = await createReq();
+
+    expect(res.status).toBe(500);
+  });
+});
+
+describe('GET /:projectId/release-batches/roster — the same two refusals', () => {
+  it('answers 409 RELEASE_TARGET_UNDECLARED rather than 500', async () => {
+    mockAdmin();
+    loadReleaseRosterMock.mockRejectedValueOnce(
+      new ReleaseTargetUndeclaredError(PROJECT_ID, 'publish'),
+    );
+
+    const res = await rosterReq();
+    const body = (await res.json()) as { code?: string };
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('RELEASE_TARGET_UNDECLARED');
+  });
+
+  it('answers 409 RELEASE_RUNNER_AMBIGUOUS rather than 500', async () => {
+    mockAdmin();
+    loadReleaseRosterMock.mockRejectedValueOnce(
+      new ReleaseRunnerAmbiguousError(PROJECT_ID, ['east', 'west']),
+    );
+
+    const res = await rosterReq();
+    const body = (await res.json()) as { code?: string };
+
+    expect(res.status).toBe(409);
+    expect(body.code).toBe('RELEASE_RUNNER_AMBIGUOUS');
+  });
+});

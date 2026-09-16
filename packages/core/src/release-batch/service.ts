@@ -31,7 +31,20 @@ import { ActiveJobConflictError, insertAndEnqueueJob } from '../pipeline/enqueue
 import { cancelConcludedRun, closeRunIfOneShot, openOneShotRun } from '../pipeline/runs.js';
 import { readProjectBranches } from '../projects/service.js';
 import { onlineCapableDeviceIds } from '../runners/select.js';
-import { resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
+import { resolveReleaseChannels, resolveReleaseDeviceIds, resolveReleasePlan } from './channel.js';
+import {
+  BatchInFlightError,
+  ClaimConflictError,
+  NoReleaseGateError,
+  NoRunnerOnlineError,
+  ReleaseBatchAbortedError,
+  ReleaseMultiChannelUnsupportedError,
+  ReleaseNotVerifiedError,
+  ReleasePoolEmptyError,
+  ReleaseProbesUndeclaredError,
+  ReleaseRecordMissingError,
+  ReleaseRunnerUndeclaredError,
+} from './errors.js';
 import { resolveReleaseGate } from './gate.js';
 import { assertMethodFor, readMethod } from './method.js';
 import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
@@ -39,108 +52,10 @@ import { buildReleaseBatchPrompt } from './prompt.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
 
+// cm:why re-exported rather than moved-and-forgotten: `routes.ts`, `refusals.ts` and three test
+// suites import these from `service.js`, which is the module the release API is written against.
+export * from './errors.js';
 export { ReleaseBranchesUndeclaredError };
-
-export class NoReleaseGateError extends Error {
-  constructor() {
-    super('NO_RELEASE_GATE');
-    this.name = 'NoReleaseGateError';
-  }
-}
-
-/**
- * The project named a release pool and no runner is in it. Distinct from
- * `NoRunnerOnlineError` on purpose: "nobody is online" and "the box that holds
- * the deploy credential lost its label" need different remedies.
- */
-export class ReleasePoolEmptyError extends Error {
-  constructor(public readonly label: string) {
-    super('RELEASE_POOL_EMPTY');
-    this.name = 'ReleasePoolEmptyError';
-  }
-}
-
-/**
- * The project has production but its prod binding names no release runner. Rule
- * 3 of ISS-897: a gate without a designated box is a refusal, never a fallback.
- */
-export class ReleaseRunnerUndeclaredError extends Error {
-  constructor() {
-    super('RELEASE_RUNNER_UNDECLARED');
-    this.name = 'ReleaseRunnerUndeclaredError';
-  }
-}
-
-/**
- * The project declares a release gate and no verification probes, so nothing
- * but the agent's own word could say the release happened.
- */
-// cm:guard the gate and the probes are ONE declaration, refused together. `finish` is the only thing in Forge that writes `closed`, and with no probes its whole verification block was skipped — sid-desk ISS-191 is 42 issues closed on a release that was not running. Refusing at creation is what makes the operator declare probes instead of discovering at close time that nothing checked. `finish` refuses too, and must: a run created before this rule existed reaches it with no probes and would close its roster on the agent's word.
-export class ReleaseProbesUndeclaredError extends Error {
-  constructor() {
-    super('RELEASE_PROBES_UNDECLARED');
-    this.name = 'ReleaseProbesUndeclaredError';
-  }
-}
-
-export class NoRunnerOnlineError extends Error {
-  constructor() {
-    super('NO_RUNNER_ONLINE');
-    this.name = 'NoRunnerOnlineError';
-  }
-}
-
-/**
- * The probes did not agree that the release is live. `finish` refuses, so the
- * agent's only remaining move is `abort` — which is the point.
- */
-export class ReleaseNotVerifiedError extends Error {
-  constructor(
-    public readonly reason: string,
-    public readonly live: string | null,
-  ) {
-    super('RELEASE_NOT_VERIFIED');
-    this.name = 'ReleaseNotVerifiedError';
-  }
-}
-
-/**
- * `finish` was called on a run somebody aborted.
- */
-// cm:guard refused BY NAME and never answered with an empty success. ISS-1032's own guard states the rule this completes: `completed` and never "terminal", because a silent empty success on a `cancelled` run makes finish and abort report the same thing. Before ISS-1042's abort cancelled a concluded run, this case fell through to the probes and came back RELEASE_NOT_VERIFIED — a sentence about the deploy for a condition that is about the batch having been called off, which sends an agent to production over a decision a person already took.
-export class ReleaseBatchAbortedError extends Error {
-  constructor() {
-    super('RELEASE_BATCH_ABORTED');
-    this.name = 'ReleaseBatchAbortedError';
-  }
-}
-
-export class ClaimConflictError extends Error {
-  constructor(public readonly issueIds: string[]) {
-    super('CLAIM_CONFLICT');
-    this.name = 'ClaimConflictError';
-  }
-}
-
-/**
- * One or more issues in the batch have no release note, so the batch would
- * close them claiming a ship nobody wrote anything about.
- */
-// cm:guard distinct from ClaimConflictError ON PURPOSE — "wrong status or already claimed" and "nothing written about what shipped" need different remedies, and folding the second into the first is how a caller retries forever against an error that will never clear on its own
-export class ReleaseRecordMissingError extends Error {
-  constructor(public readonly issueIds: string[]) {
-    super(`RELEASE_RECORD_MISSING: ${issueIds.length} issue(s) have no release note`);
-    this.name = 'ReleaseRecordMissingError';
-  }
-}
-
-export class BatchInFlightError extends Error {
-  constructor(public readonly existingJobId: string | null) {
-    super('BATCH_IN_FLIGHT');
-    this.name = 'BatchInFlightError';
-  }
-}
-
 export interface CreateReleaseBatchArgs {
   projectId: string;
   issueIds: string[];
@@ -185,7 +100,8 @@ export async function createReleaseBatch(
   // cm:guard a gated project MUST name its release runner, and an undeclared label refuses here rather than widening to the fleet. The pool exists because one box holds the production credential; `allowDeviceIds: null` means "anyone", and a release that lands on a box without that credential fails halfway through with the merge already pushed. Measured 2026-09-03: 0 of 20 active prod bindings carried `releaseRunnerLabel`, so this refusal is what makes the operator declare one instead of discovering the gap mid-deploy.
   if (!plan.releaseRunnerLabel) throw new ReleaseRunnerUndeclaredError();
   // cm:edge lockstep -> packages/core/src/release-batch/service.ts finishReleaseBatch — the same refusal stands at the close, and deleting either half puts back the path where a project with no probes closes its roster on a sentence an agent wrote.
-  if (!plan.verify) throw new ReleaseProbesUndeclaredError();
+  // cm:guard EVERY channel owes probes, not just the first: `resolveReleaseChannels` returns the whole live set (ISS-1046) and the agent works all of it, so a set where one member declares none is a release one of whose endpoints nothing can prove.
+  if (plan.channels.some((c) => !c.verify)) throw new ReleaseProbesUndeclaredError();
   const allowDeviceIds = await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel);
   if (allowDeviceIds.length === 0) {
     throw new ReleasePoolEmptyError(plan.releaseRunnerLabel);
@@ -195,14 +111,23 @@ export async function createReleaseBatch(
   const releasePool = await onlineCapableDeviceIds(projectId, {}, { allowDeviceIds });
   if (releasePool.length === 0) throw new NoRunnerOnlineError();
 
-  const { baseBranch, productionBranch, productionMergePlanned } = releaseBranches(
-    (await readProjectBranches(projectId)) ?? { baseBranch: null, productionBranch: null },
-  );
+  const project = (await readProjectBranches(projectId)) ?? {
+    baseBranch: null,
+    liveBranch: null,
+    releaseModel: 'none' as const,
+    releaseStrategy: null,
+  };
+  const { baseBranch, liveBranch, promotePlanned } = releaseBranches(project, project.releaseModel);
   // cm:guard `deployPlanned` names the CHANNEL, not the branches. It used to mean "the branches differ", which reported a planned deploy to every project that promotes across branches and deploys nothing — and a planned deploy that cannot happen is the kind of claim this whole gate exists to remove.
-  const deployPlanned = plan.provider !== null;
+  const deployPlanned = plan.channels.length > 0;
 
   // cm:guard read the live commit BEFORE anything moves. Without this baseline a release that deployed nothing verifies perfectly: the probes answer, the commit matches what the agent reports, and what it reports is what was already serving.
-  const commitBefore = plan.verify ? await readLiveCommit(plan.verify) : null;
+  // cm:guard the set is refused above 1 rather than collapsed to its first member. The commit-before
+  // is one string on the run and `finish` closes the whole roster on one reading, so `channels[0]`
+  // would verify one endpoint and claim two. A loud break beats a silent substitution.
+  if (plan.channels.length > 1) throw new ReleaseMultiChannelUnsupportedError(plan.channels.length);
+  const firstVerify = plan.channels[0]?.verify ?? null;
+  const commitBefore = firstVerify ? await readLiveCommit(firstVerify) : null;
 
   const run = await openOneShotRun({
     projectId,
@@ -212,7 +137,7 @@ export async function createReleaseBatch(
       gateStatus,
       issueIds,
       deployPlanned,
-      productionMergePlanned,
+      promotePlanned,
       commitBefore,
     },
   });
@@ -263,7 +188,9 @@ export async function createReleaseBatch(
     runId: run.id,
     projectId,
     baseBranch,
-    productionBranch,
+    liveBranch,
+    releaseModel: project.releaseModel,
+    releaseStrategy: project.releaseStrategy,
     plan,
     issues: issueRows.map((r) => ({
       id: r.id,
@@ -397,12 +324,15 @@ export async function finishReleaseBatch(
       typeof jobSkill === 'string' && jobSkill.length > 0 ? jobSkill : RELEASE_BATCH_SKILL,
     );
 
-    const channel = await resolveReleaseChannel(run.projectId);
+    const channels = await resolveReleaseChannels(run.projectId);
     // cm:guard `if (channel.verify)` used to wrap the whole block, so a project declaring no probes fell straight through to the closes — the shape this issue is named for. It is a REFUSAL now and not a skip: an unverifiable release is not a verified one, and the operator's way out is to declare probes or abort.
-    if (!channel.verify) throw new ReleaseProbesUndeclaredError();
+    const closeVerify = channels[0]?.verify ?? null;
+    if (channels.length === 0 || channels.some((c) => !c.verify) || !closeVerify) {
+      throw new ReleaseProbesUndeclaredError();
+    }
     const meta = (run.metadata ?? {}) as Record<string, unknown>;
     const outcome = await verifyDeployed({
-      cfg: channel.verify,
+      cfg: closeVerify,
       commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
       expected: options.commit ?? null,
     });

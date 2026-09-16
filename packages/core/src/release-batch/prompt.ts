@@ -2,8 +2,9 @@
 // Pattern: buildSmokeCanaryPrompt (skills/smoke-verify.ts:429).
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
+import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
 import { markUntrusted } from '../prompt/sanitize.js';
-import { DEFAULT_RELEASE_PROCEDURE, RELEASE_BATCH_SKILL, type ReleasePlan } from './plan.js';
+import { defaultReleaseProcedure, RELEASE_BATCH_SKILL, type ReleasePlan } from './plan.js';
 
 interface IssueSummary {
   id: string;
@@ -15,28 +16,43 @@ interface BuildReleaseBatchPromptArgs {
   runId: string;
   projectId: string;
   baseBranch: string;
-  productionBranch: string;
+  liveBranch: string;
+  releaseModel: ReleaseModel;
+  /** Non-null exactly under `promote`. The default procedure refuses what it has no default for. */
+  releaseStrategy: ReleaseStrategy | null;
   issues: IssueSummary[];
   plan: ReleasePlan;
 }
 
+// cm:guard the live-branch line is printed only under `promote`, for the same reason
+// `prompt/system.ts` prints it only there: a `publish` project's release moves no ref (pixelight
+// publishes a theme), so naming one states a promotion nobody makes. The deploy channels are a LIST
+// rather than one line — core returns the whole live set and never picks (ISS-1046).
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
-  const { runId, projectId, baseBranch, productionBranch, issues, plan } = args;
+  const { runId, projectId, baseBranch, liveBranch, releaseModel, releaseStrategy, issues, plan } =
+    args;
   const roster = issues
     .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
     .join('\n');
+  const liveLine = releaseModel === 'promote' ? `\nliveBranch: ${liveBranch}` : '';
+  const channelLines =
+    plan.channels.length === 0
+      ? 'deploy channels: none — cut the version and stop; a human deploys'
+      : `deploy channels (${plan.channels.length}, work ALL of them):\n${plan.channels
+          .map((c) => `- ${c.provider}${c.label ? ` [${c.label}]` : ''}`)
+          .join('\n')}`;
 
   return `## Batch Release
 
 projectId: ${projectId}
 runId: ${runId}
-baseBranch: ${baseBranch}
-productionBranch: ${productionBranch}
-deploy channel: ${plan.provider ?? 'none — cut the version and stop; a human deploys'}
+releaseModel: ${releaseModel}
+baseBranch: ${baseBranch}${liveLine}
+${channelLines}
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderMethod()}${renderProcedure(plan)}
+${renderMethod()}${renderProcedure(plan, releaseModel, releaseStrategy)}
 Start by reading the batch context: \`forge-runner api projects/${projectId}/release-batches/${runId}\`.
 `;
 }
@@ -68,19 +84,30 @@ If the skill does not load, announce THAT — do not improvise a release out of 
  * stranger.
  */
 // cm:guard the heading must say WHICH procedure the agent got. "Forge default" vs "this project's" is the difference between a step it may adapt and a step an operator wrote on purpose, and the agent has no other way to tell.
-function renderProcedure(plan: ReleasePlan): string {
+function renderProcedure(
+  plan: ReleasePlan,
+  releaseModel: ReleaseModel,
+  releaseStrategy: ReleaseStrategy | null,
+): string {
   const blocks: string[] = [
     plan.procedure
       ? `### This project's release procedure\n${plan.procedure}`
-      : `### Release procedure (Forge default — this project declared none)\n${DEFAULT_RELEASE_PROCEDURE}`,
+      : `### Release procedure (Forge default — this project declared none)\n${defaultReleaseProcedure(
+          { releaseModel, releaseStrategy, channels: plan.channels },
+        )}`,
   ];
-  if (plan.instructions) {
-    blocks.push(`### Deploy channel notes (${plan.provider})\n${plan.instructions}`);
+  // cm:guard ONE block per channel, each naming its own binding. Folding the set into one block is
+  // how an agent handed two endpoints reads one set of instructions and deploys half the project.
+  for (const channel of plan.channels) {
+    if (!channel.instructions) continue;
+    const named = channel.label ? `${channel.provider} [${channel.label}]` : channel.provider;
+    blocks.push(`### Deploy channel notes (${named})\n${channel.instructions}`);
   }
-  if (plan.verify) {
-    const urls = plan.verify.probes.map((p) => `- ${p.url}`).join('\n');
+  const probeUrls = plan.channels.flatMap((c) => c.verify?.probes.map((p) => p.url) ?? []);
+  if (probeUrls.length > 0) {
+    const urls = probeUrls.map((u) => `- ${u}`).join('\n');
     blocks.push(
-      `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed to the production branch. The server then reads these probes itself:\n${urls}\nIt goes green only when the live build CHANGED from what was serving before this batch started AND matches your \`commit\`. A healthy site still serving the old build is a RED, and \`finish\` will refuse. That refusal is not something to retry or work around: it means the deploy did not land.`,
+      `### Proof (the server checks this, you do not)\nWhen you call \`finish\`, pass \`commit\` — the SHA you pushed. The server then reads these probes itself:\n${urls}\nIt goes green only when the live build CHANGED from what was serving before this batch started AND matches your \`commit\`. A healthy site still serving the old build is a RED, and \`finish\` will refuse. That refusal is not something to retry or work around: it means the deploy did not land.`,
     );
   }
   blocks.push(renderRepairForward(plan));
@@ -104,10 +131,16 @@ function renderProcedure(plan: ReleasePlan): string {
 // cm:guard the declared text must never appear under an instruction to follow it. `classifyRollback` keeps `manual` / `coolify-image` / `unrepresentable` apart for the operator routes and the settings screen, and quoting any of them here as a step is the substitution this block removed.
 // cm:edge lockstep -> packages/core/src/integrations/coolify/health-gate.ts — the same rule on the other path. The gate stopped restoring the previous image in the same change, so an unhealthy deploy now pages on both routes rather than being answered automatically on one of them.
 function renderRepairForward(plan: ReleasePlan): string {
+  const texts = plan.channels
+    .map((c) => c.rollback)
+    .filter((r): r is NonNullable<typeof r> => r !== null);
+  const prose = texts.filter((r) => 'text' in r);
   const declared =
-    plan.rollback && 'text' in plan.rollback
-      ? `\n\nThis project's declared way back, quoted for the human and NOT for you:\n\n> ${plan.rollback.text.replace(/\n/g, '\n> ')}`
-      : plan.rollback?.kind === 'coolify-image'
+    prose.length > 0
+      ? `\n\nThis project's declared way back, quoted for the human and NOT for you:\n\n${prose
+          .map((r) => `> ${(r as { text: string }).text.replace(/\n/g, '\n> ')}`)
+          .join('\n>\n')}`
+      : texts.some((r) => r.kind === 'coolify-image')
         ? "\n\nThis project's declared way back is a Coolify image restore, which a person performs from the integration screen. It is not yours."
         : '';
   return `### If the deploy comes up dead

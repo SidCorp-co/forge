@@ -51,11 +51,7 @@ describe('collectWorkEvidence', () => {
   });
 
   it('the project base branch is NOT evidence — it names where work lands, not that any happened', async () => {
-    setup(
-      [],
-      [],
-      [{ sessionContext: { branch: 'main' }, baseBranch: 'main', productionBranch: 'main' }],
-    );
+    setup([], [], [{ sessionContext: { branch: 'main' }, baseBranch: 'main', liveBranch: 'main' }]);
     const evidence = await collectWorkEvidence('iss-1');
     expect(
       evidence.branch,
@@ -68,7 +64,7 @@ describe('collectWorkEvidence', () => {
     setup(
       [],
       [],
-      [{ sessionContext: { branch: 'ISS-9-x' }, baseBranch: 'main', productionBranch: 'master' }],
+      [{ sessionContext: { branch: 'ISS-9-x' }, baseBranch: 'main', liveBranch: 'master' }],
     );
     const evidence = await collectWorkEvidence('iss-1');
     expect(evidence.branch).toBe('ISS-9-x');
@@ -124,7 +120,7 @@ describe('collectWorkEvidence', () => {
         {
           sessionContext: { worklog: { branch: 'main' } },
           baseBranch: 'main',
-          productionBranch: 'release',
+          liveBranch: 'release',
         },
       ],
     );

@@ -15,7 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { integrationEnvironments } from '../db/schema.js';
+import { bindingShapeFields, checkBindingShape } from './binding-shape.js';
 import {
   googleConfigBase,
   googleConnectionConfigSchema,
@@ -24,8 +24,6 @@ import {
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from './release-channel-schema.js';
 import { isRotatingProvider, mergeRotatedSecrets, type RotatingProvider } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
-
-export const environmentSchema = z.enum(integrationEnvironments);
 
 // cm:why `id` is server-assigned when omitted so it stays STABLE across config edits — it is the key mapping an outbound deploy to the target it was for, so regenerating it would orphan deliveries already recorded against the old one
 const coolifyTargetSchema = z
@@ -243,10 +241,10 @@ const githubSecretsSchema = z.object({
 const agentReleaseConfigSchema = z.object(releaseChannelFields);
 
 // cm:why `environment` defaults to 'prod' on postman because that provider has no staging/prod split, while the binding column and its unique index still require a value
-export const createSchema = z.discriminatedUnion('provider', [
+const createVariants = z.discriminatedUnion('provider', [
   z.object({
     provider: z.literal('coolify'),
-    environment: environmentSchema,
+    ...bindingShapeFields,
     config: coolifyConfigSchema,
     secrets: coolifySecretsSchema,
     // Present = mint the credential as ORG-owned (shared across the org's
@@ -256,14 +254,14 @@ export const createSchema = z.discriminatedUnion('provider', [
   }),
   z.object({
     provider: z.literal('postman'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: postmanConfigSchema,
     secrets: postmanSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('epodsystem'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: epodsystemConfigBase,
     secrets: epodsystemSecretsSchema,
     orgId: z.uuid().optional(),
@@ -277,41 +275,43 @@ export const createSchema = z.discriminatedUnion('provider', [
   }),
   z.object({
     provider: z.literal('sentry'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: sentryConfigBase,
     secrets: sentrySecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('rocketchat'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: rocketchatConfigBase,
     secrets: rocketchatSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('github'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: githubConfigBase,
     secrets: githubSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('google'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: googleConfigBase,
     secrets: googleSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('agent'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: agentReleaseConfigSchema,
     // cm:guard NO secrets, ever. The whole point of this channel is that the production credential stays on the runner box: a deploy key in Forge would put every project's production behind one decryption path, which is the blast radius the release gate was designed to refuse.
     secrets: z.object({}).strict().default({}),
     orgId: z.uuid().optional(),
   }),
 ]);
+
+export const createSchema = createVariants.superRefine(checkBindingShape);
 
 // cm:guard this shape is loose ON PURPOSE — a PATCH carries no provider, so `config`/`secrets` are re-validated against the EXISTING binding's provider inside the handler; tightening it here would validate against a provider nobody named
 export const updateSchema = z.object({

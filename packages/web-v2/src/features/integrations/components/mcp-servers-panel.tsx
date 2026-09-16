@@ -13,7 +13,7 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useMcpPreview, useTestIntegration } from "../hooks";
 import type { IntegrationTestResult, McpServerPreviewEntry } from "../types";
-import { ENV_LABEL, Pill } from "./status-pill";
+import { Pill, scopeLabel } from "./status-pill";
 
 const REASON_META: Record<
   McpServerPreviewEntry["reason"],
@@ -91,9 +91,9 @@ function McpServerRow({
       <div className="flex items-center gap-2">
         <Icon name="command" size={15} className="text-muted" />
         <span className="font-mono text-[13px] font-semibold text-fg">{entry.serverName}</span>
-        {entry.environment && (
+        {entry.role !== null && (
           <span className="fg-body-sm rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-            {ENV_LABEL[entry.environment] ?? entry.environment}
+            {scopeLabel(entry.role, entry.stages)}
           </span>
         )}
         <span className="ml-auto">

@@ -37,7 +37,7 @@ function buildCtx(secrets: Record<string, unknown>) {
 describe('postmanAdapter.healthcheck — rotation-window 401 fallback (ISS-405)', () => {
   it('retries with previousApiKey on 401 within the rotation window and returns status:ok', async () => {
     const calls: string[] = [];
-    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       const key = (init?.headers as Record<string, string>)['X-Api-Key'] ?? '';
       calls.push(key);
       if (key === 'PMAK-current') return new Response('unauthorized', { status: 401 });
@@ -66,7 +66,7 @@ describe('postmanAdapter.healthcheck — rotation-window 401 fallback (ISS-405)'
 
   it('does NOT retry when the previousTokenExpiresAt window has expired', async () => {
     const calls: string[] = [];
-    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       calls.push((init?.headers as Record<string, string>)['X-Api-Key'] ?? '');
       return new Response('unauthorized', { status: 401 });
     }) as unknown as typeof fetch;
@@ -92,7 +92,7 @@ describe('postmanAdapter.healthcheck — rotation-window 401 fallback (ISS-405)'
 
   it('does NOT retry when no previousApiKey is stored', async () => {
     const calls: string[] = [];
-    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       calls.push((init?.headers as Record<string, string>)['X-Api-Key'] ?? '');
       return new Response('unauthorized', { status: 401 });
     }) as unknown as typeof fetch;
@@ -110,7 +110,7 @@ describe('postmanAdapter.healthcheck — rotation-window 401 fallback (ISS-405)'
 
   it('surfaces non-401 HTTP errors without retrying', async () => {
     const calls: string[] = [];
-    globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    globalThis.fetch = vi.fn(async (_input: string | URL | Request, init?: RequestInit) => {
       calls.push((init?.headers as Record<string, string>)['X-Api-Key'] ?? '');
       return new Response('boom', { status: 500 });
     }) as unknown as typeof fetch;

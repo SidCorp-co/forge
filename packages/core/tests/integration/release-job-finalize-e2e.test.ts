@@ -65,8 +65,8 @@ describe('release deploy dispatch and job finalize E2E', () => {
       VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)
     `);
     await harness.db.execute(sql`
-      INSERT INTO integration_bindings (id, connection_id, project_id, provider, environment, active)
-      VALUES (${bindingId}, ${connectionId}, ${projectId}, 'coolify', 'prod', true)
+      INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, active)
+      VALUES (${bindingId}, ${connectionId}, ${projectId}, 'coolify', 'deploy', ARRAY['live'], true)
     `);
     return bindingId;
   }
@@ -125,7 +125,7 @@ describe('release deploy dispatch and job finalize E2E', () => {
         projectId,
         issueId: null,
         runId,
-        allowProd: false,
+        allowLive: false,
       });
 
       expect(outcome.reason).toBe('no-integration');

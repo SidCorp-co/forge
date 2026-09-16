@@ -52,7 +52,6 @@ import {
   buildContextFromBinding,
   createBinding,
   createConnection,
-  findActiveBindingByLabel,
   findBindingWithConnectionById,
   listBindingsForProject,
   softDeleteBinding,
@@ -94,30 +93,18 @@ integrationsRoutes.post(
 
     const body = c.req.valid('json');
 
-    // cm:guard the clash check must match the UNIQUE index, which is (project_id, provider, environment, label) since ISS-558 — checking env-only for epodsystem refuses a second labeled storefront the index would have accepted, and checking by label for anyone else lets a duplicate through
-    const bindingLabel =
-      body.provider === 'epodsystem' && 'label' in body && body.label ? body.label : '';
-
-    if (body.provider === 'epodsystem') {
-      const clash = await findActiveBindingByLabel(
-        projectId,
-        body.provider,
-        body.environment,
-        bindingLabel,
-      );
-      if (clash) {
-        const labelSuffix = bindingLabel ? ` (label "${bindingLabel}")` : '';
-        throw alreadyExists(
-          `integration already exists for this provider+environment${labelSuffix}`,
-        );
-      }
-    } else {
-      await assertNoActiveBindingClash(projectId, body.provider, body.environment);
-    }
+    // cm:guard ONE clash rule, matching the UNIQUE index exactly: (project_id, provider, label)
+    // WHERE role = 'service'. There were two, and each dropped half the key — the epodsystem branch
+    // asked by label without the role, so a service binding clashed with a DEPLOY one at the same
+    // label (the common shape after ISS-1046: all three fleet epodsystem bindings are `deploy`), and
+    // the other branch asked by role without the label, so a second NAMED storefront was refused.
+    // `label` is NOT NULL DEFAULT '', so the unlabelled providers need no branch of their own.
+    const bindingLabel = 'label' in body && body.label ? body.label : '';
+    await assertNoActiveBindingClash(projectId, body.provider, body.role, bindingLabel);
 
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
 
-    // Create the credential (connection) then bind it into this project+env.
+    // Create the credential (connection) then bind it into this project.
     // Connection-tier config (e.g. coolify baseUrl) lives on the connection;
     // binding-tier deploy-target fields (coolify resourceUuid/branch) live on
     // the binding so a later share to another project can override them.
@@ -141,7 +128,10 @@ integrationsRoutes.post(
       provider: body.provider,
       // cm:edge contract -> packages/core/src/integrations/connection-routes.ts — BOTH create paths must name the connection; this is the one an operator actually walks (project settings → Integrations), and naming only the other one leaves the anonymous rows still arriving
       displayName: defaultConnectionDisplayName(body.provider, tiers.connection),
-      config: { ...tiers.connection, environment: body.environment },
+      // cm:guard the binding's role/stages are NOT mirrored into `connection.config` — the old code
+      // wrote `environment` here as well, a second copy `effectiveConfig` then overlaid, so one
+      // connection shared across projects carried whichever binding was created last (ISS-1046).
+      config: tiers.connection,
       secrets: body.secrets,
     });
     let binding: Awaited<ReturnType<typeof createBinding>>;
@@ -150,7 +140,8 @@ integrationsRoutes.post(
         connectionId: connection.id,
         projectId,
         provider: body.provider,
-        environment: body.environment,
+        role: body.role,
+        ...(body.role === 'deploy' && body.stages ? { stages: body.stages } : {}),
         config: tiers.binding,
         integrationSecret,
         label: bindingLabel,
@@ -160,7 +151,9 @@ integrationsRoutes.post(
       // doesn't leave a dangling credential.
       await softDeleteConnection(connection.id).catch(() => {});
       if (isUniqueViolation(err)) {
-        throw alreadyExists('integration already exists for this provider+environment+label');
+        throw alreadyExists(
+          'an active service binding for this provider and label already exists on this project',
+        );
       }
       throw err;
     }

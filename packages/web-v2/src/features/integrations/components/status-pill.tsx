@@ -1,19 +1,39 @@
 "use client";
 
-// Shared pill primitive + env/provider labels for the integrations feature
-// (ISS-429) — one rendering of the icon + text + tinted pill (never
+// Shared pill primitive + role/stage/provider labels for the integrations
+// feature (ISS-429) — one rendering of the icon + text + tinted pill (never
 // color-only — a11y) instead of per-component copies.
 
 import { Icon, type IconName } from "@/design";
 import { DIRECTORY_STATUS_META, type DirectoryStatus, deriveDirectoryStatus } from "../derive";
-import type { IntegrationEnvironment, StatusCard } from "../types";
+import type { BindingRole, DeployStage, StatusCard } from "../types";
 
-export const ENV_LABEL: Record<string, string> = { staging: "Staging", prod: "Production" };
+export const STAGE_LABEL: Record<string, string> = { preview: "Preview", live: "Live" };
 
-export const ENV_OPTIONS: { value: IntegrationEnvironment; label: string }[] = [
-  { value: "staging", label: "Staging" },
-  { value: "prod", label: "Production" },
+export const STAGE_OPTIONS: { value: DeployStage; label: string; hint: string }[] = [
+  { value: "preview", label: "Preview", hint: "where a change is seen before it ships" },
+  { value: "live", label: "Live", hint: "where the people using this product are" },
 ];
+
+export const ROLE_OPTIONS: { value: BindingRole; label: string; hint: string }[] = [
+  { value: "deploy", label: "Deploy target", hint: "somewhere Forge deploys this project to" },
+  {
+    value: "service",
+    label: "Service",
+    hint: "a project-wide facility — an error tracker, a chat room, a repo host",
+  },
+];
+
+/**
+ * What a binding's scope reads as in a list. A service binding serves no stage,
+ * so it says so rather than printing an empty set; a deploy binding names the
+ * stages it actually serves, which is the thing the old `[prod]` on every sentry
+ * and github row could not say.
+ */
+export function scopeLabel(role: BindingRole, stages: DeployStage[]): string {
+  if (role === "service") return "Service";
+  return stages.length > 0 ? stages.map((s) => STAGE_LABEL[s] ?? s).join(" + ") : "Deploy";
+}
 
 export const PROVIDER_LABEL: Record<string, string> = {
   coolify: "Coolify deploy",

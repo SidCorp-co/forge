@@ -12,10 +12,10 @@ import { formatApiError } from "@/lib/api/error";
 import { formatRelativeTime } from "@/lib/utils/format";
 import { useIntegrationsStatus } from "../hooks";
 import { groupCardsByProvider, isProviderCard } from "../derive";
-import type { StatusCard } from "../types";
+import type { DeployStage, StatusCard } from "../types";
 import { ConnectionDetailDrawer } from "./connection-detail-drawer";
 import { McpServersPanel } from "./mcp-servers-panel";
-import { ENV_LABEL, StatusPill } from "./status-pill";
+import { StatusPill, scopeLabel } from "./status-pill";
 
 const PROVIDER_ICON: Record<string, IconName> = {
   github: "github",
@@ -125,23 +125,27 @@ function baseProviderLabel(card: StatusCard): string {
   return card.label.replace(/\s*\(.*\)$/, "");
 }
 
-/** Human env label for a sub-row: prefer the card's `meta.environment`, fall
- *  back to the `provider:<env>` key suffix, then to the raw value. */
-function envLabel(card: StatusCard): string {
-  const env =
-    (typeof card.meta?.environment === "string" ? card.meta.environment : undefined) ??
-    card.key.split(":")[1] ??
-    "";
-  return ENV_LABEL[env] ?? env;
+/**
+ * What a sub-row's scope reads as: the card's own `meta.role`/`meta.stages`,
+ * falling back to the `provider:<scope>` key suffix the card was built with.
+ * A service binding reads "Service" rather than the `[prod]` it used to print
+ * on every sentry, rocketchat, github and postman row in the fleet.
+ */
+function scopeOf(card: StatusCard): string {
+  const role = card.meta?.role;
+  const stages = card.meta?.stages;
+  if (role === "deploy" || role === "service") {
+    return scopeLabel(role, Array.isArray(stages) ? (stages as DeployStage[]) : []);
+  }
+  return card.key.split(":")[1] ?? "";
 }
 
 /**
- * One consolidated card for an env-split provider (e.g. Coolify): a single
- * provider header followed by one sub-row per environment. Each sub-row keeps
- * its own status pill, last-health detail, synced time, and a Manage
- * affordance that opens the drawer scoped to that environment's card — so
- * per-env drill-in / Test / Rotate / Disconnect is unchanged. No aggregate
- * health pill in the header (we never fabricate combined health).
+ * One consolidated card for a provider with more than one binding (e.g.
+ * Coolify): a single provider header followed by one sub-row per binding. Each
+ * sub-row keeps its own status pill, last-health detail, synced time, and a
+ * Manage affordance that opens the drawer scoped to that binding's card. No
+ * aggregate health pill in the header (we never fabricate combined health).
  */
 function GroupedIntegrationCard({
   provider,
@@ -188,7 +192,7 @@ function GroupedIntegrationCard({
                     : {})}
                 >
                   <div className="flex items-center justify-between gap-2">
-                    <span className="fg-body-sm font-semibold">{envLabel(card)}</span>
+                    <span className="fg-body-sm font-semibold">{scopeOf(card)}</span>
                     <StatusPill card={card} />
                   </div>
                   <p className="fg-body-sm text-muted">{card.detail}</p>

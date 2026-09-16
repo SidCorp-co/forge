@@ -1,0 +1,212 @@
+// @vitest-environment jsdom
+//
+// ISS-1046 — the "Share an existing connection" door, which is where a person
+// DECLARES what a binding is for.
+//
+// Four rules carry it, and each is here because the server or the database
+// refuses the same thing one round trip later, with a message that names neither
+// the field nor the provider. The role is chosen, never derived from the provider
+// — the same ePOD connection is a deploy target on a storefront and a plain
+// service on a project that only borrows its MCP. The stage control is UNMOUNTED
+// and its value DROPPED under `service`, because a hidden control that still
+// submits is how a service binding reaches `integration_bindings_role_stages_chk`
+// and comes back a 500. A deploy binding with no stage is refused on the form.
+// And a provider with no deploy adapter is refused inline, by name.
+
+import * as matchers from "@testing-library/jest-dom/matchers";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { IntegrationsTab } from "./integrations-tab";
+
+expect.extend(matchers);
+afterEach(cleanup);
+
+// The design system's `Select` scrolls the active option into view on open, and
+// jsdom implements no such method.
+Element.prototype.scrollIntoView = vi.fn();
+
+const bindMutate = vi.fn();
+const connectionItems = vi.fn<() => Array<Record<string, unknown>>>();
+
+vi.mock("@/features/integrations/hooks", () => ({
+  useConnections: () => ({ data: { items: connectionItems() }, isLoading: false }),
+  useBindExistingConnection: () => ({
+    mutate: bindMutate,
+    isPending: false,
+    isError: false,
+    error: null,
+  }),
+}));
+
+vi.mock("@/features/integrations/components/project-integrations-panel", () => ({
+  ProjectIntegrationsPanel: () => null,
+}));
+
+const COOLIFY = {
+  id: "conn-coolify",
+  ownerType: "user",
+  ownerId: "u1",
+  provider: "coolify",
+  displayName: "Deploy box",
+  config: {},
+  active: true,
+  hasSecrets: true,
+  lastHealthStatus: null,
+  lastHealthAt: null,
+  breakerOpenedAt: null,
+  createdAt: "2026-01-01T00:00:00.000Z",
+  updatedAt: "2026-01-01T00:00:00.000Z",
+};
+
+const SENTRY = { ...COOLIFY, id: "conn-sentry", provider: "sentry", displayName: "Errors" };
+
+function renderTab() {
+  render(<IntegrationsTab projectId="proj-1" canEdit />);
+}
+
+/**
+ * `Select` is the design system's custom listbox, not a native `<select>`: open
+ * the trigger, then click the option by the text a person reads.
+ */
+function pick(comboboxIndex: number, optionText: RegExp) {
+  const trigger = screen.getAllByRole("combobox")[comboboxIndex];
+  if (!trigger) throw new Error(`no combobox at index ${comboboxIndex}`);
+  fireEvent.click(trigger);
+  fireEvent.click(screen.getByRole("option", { name: optionText }));
+}
+
+/** Pick a connection, then optionally a role, through the two `Select`s in order. */
+function choose(connectionText: RegExp, role?: "service" | "deploy") {
+  pick(0, connectionText);
+  if (role === "service") pick(1, /Service — a project-wide facility/);
+  if (role === "deploy") pick(1, /Deploy target/);
+}
+
+const COOLIFY_OPTION = /Deploy box/;
+const SENTRY_OPTION = /Errors/;
+
+beforeEach(() => {
+  vi.clearAllMocks();
+  connectionItems.mockReturnValue([COOLIFY, SENTRY]);
+});
+
+describe("ShareExistingCard — the role is declared, not derived", () => {
+  it("offers both roles for a provider Forge can deploy to, and neither is preselected from it", () => {
+    renderTab();
+    choose(COOLIFY_OPTION);
+
+    const roleTrigger = screen.getAllByRole("combobox")[1];
+    if (!roleTrigger) throw new Error("no role combobox");
+    // A coolify connection is deploy-CAPABLE and still opens as `service`: the
+    // provider does not choose, the person does.
+    expect(roleTrigger).toHaveTextContent(/Service — a project-wide facility/);
+
+    fireEvent.click(roleTrigger);
+    expect(screen.getAllByRole("option").map((o) => o.textContent)).toEqual([
+      "Service — a project-wide facility",
+      "Deploy target — somewhere Forge deploys to",
+    ]);
+  });
+
+  it("sends the role the person chose, with the stages they chose", () => {
+    renderTab();
+    choose(COOLIFY_OPTION, "deploy");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Live/ }));
+    fireEvent.click(screen.getByRole("button", { name: /Share with this project/i }));
+
+    expect(bindMutate).toHaveBeenCalledWith(
+      expect.objectContaining({
+        id: "conn-coolify",
+        body: { projectId: "proj-1", role: "deploy", stages: ["live"] },
+      }),
+      expect.anything(),
+    );
+  });
+
+  it("sends no stages at all for a service binding", () => {
+    renderTab();
+    choose(SENTRY_OPTION, "service");
+    fireEvent.click(screen.getByRole("button", { name: /Share with this project/i }));
+
+    const body = bindMutate.mock.calls[0]?.[0]?.body as Record<string, unknown>;
+    expect(body).toEqual({ projectId: "proj-1", role: "service" });
+    expect(body).not.toHaveProperty("stages");
+  });
+});
+
+describe("ShareExistingCard — the stage control under `service`", () => {
+  it("shows the stage choice only while the role is deploy", () => {
+    renderTab();
+    choose(COOLIFY_OPTION);
+    expect(screen.queryByRole("checkbox", { name: /Preview/ })).toBeNull();
+
+    choose(COOLIFY_OPTION, "deploy");
+    expect(screen.getByRole("checkbox", { name: /Preview/ })).toBeInTheDocument();
+    expect(screen.getByRole("checkbox", { name: /Live/ })).toBeInTheDocument();
+  });
+
+  // cm:guard hiding is not enough and this is the case that separates the two: a
+  // control unmounted with its value still in state re-submits that value the
+  // moment anything else re-renders, and the database refuses a service binding
+  // carrying a stage. Switching back must show the boxes CLEARED.
+  it("clears the stages it hides, so switching back shows nothing selected", () => {
+    renderTab();
+    choose(COOLIFY_OPTION, "deploy");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Live/ }));
+    expect(screen.getByRole("checkbox", { name: /Live/ })).toBeChecked();
+
+    choose(COOLIFY_OPTION, "service");
+    expect(screen.queryByRole("checkbox", { name: /Live/ })).toBeNull();
+
+    choose(COOLIFY_OPTION, "deploy");
+    expect(screen.getByRole("checkbox", { name: /Live/ })).not.toBeChecked();
+    expect(screen.getByRole("checkbox", { name: /Preview/ })).not.toBeChecked();
+  });
+
+  it("submits no stage key for a binding switched back to service after a stage was picked", () => {
+    renderTab();
+    choose(COOLIFY_OPTION, "deploy");
+    fireEvent.click(screen.getByRole("checkbox", { name: /Live/ }));
+    choose(COOLIFY_OPTION, "service");
+    fireEvent.click(screen.getByRole("button", { name: /Share with this project/i }));
+
+    expect(bindMutate.mock.calls[0]?.[0]?.body).toEqual({
+      projectId: "proj-1",
+      role: "service",
+    });
+  });
+});
+
+describe("ShareExistingCard — the two refusals, on the form", () => {
+  it("refuses a deploy binding with no stage, saying so, and sends nothing", () => {
+    renderTab();
+    choose(COOLIFY_OPTION, "deploy");
+    fireEvent.click(screen.getByRole("button", { name: /Share with this project/i }));
+
+    expect(screen.getByText(/Choose at least one stage/i)).toBeInTheDocument();
+    expect(bindMutate).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the refusal NAMES the provider. "Bad request" sends the operator to
+  // read the request; "Forge cannot deploy to Sentry" sends them to change the
+  // role, which is the only thing that works.
+  it("refuses a deploy role inline for a provider with no deploy adapter, naming it", () => {
+    renderTab();
+    choose(SENTRY_OPTION, "deploy");
+
+    expect(screen.getByText(/Forge cannot deploy to Sentry/i)).toBeInTheDocument();
+    expect(screen.queryByRole("checkbox", { name: /Preview/ })).toBeNull();
+
+    fireEvent.click(screen.getByRole("button", { name: /Share with this project/i }));
+    expect(bindMutate).not.toHaveBeenCalled();
+  });
+
+  it("does not refuse a service binding on that same provider", () => {
+    renderTab();
+    choose(SENTRY_OPTION, "service");
+
+    expect(screen.queryByText(/Forge cannot deploy to/i)).toBeNull();
+    fireEvent.click(screen.getByRole("button", { name: /Share with this project/i }));
+    expect(bindMutate).toHaveBeenCalled();
+  });
+});

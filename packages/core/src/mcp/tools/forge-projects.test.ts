@@ -463,7 +463,7 @@ describe('forge_projects.update', () => {
       description: null,
       repoPath: '/srv/a',
       baseBranch: 'main',
-      productionBranch: null,
+      liveBranch: null,
     });
     const tool = forgeProjectsUpdateTool(patCtx());
     const res = (await tool.handler({
@@ -556,7 +556,7 @@ describe('forge_projects.update', () => {
       description: null,
       repoPath: null,
       baseBranch: null,
-      productionBranch: null,
+      liveBranch: null,
     });
     const tool = forgeProjectsUpdateTool(patCtx());
     const res = (await tool.handler({
@@ -681,7 +681,7 @@ describe('forge_projects.get', () => {
     repoPath: '/srv/a',
     workspaceSetup: 'pnpm install --frozen-lockfile',
     baseBranch: 'main',
-    productionBranch: 'main',
+    liveBranch: 'main',
     defaultDeviceId: DEVICE_ID,
     previewDeploy: {
       stagingUrl: 'https://stg.example.com',
@@ -810,7 +810,9 @@ describe('forge_projects.get', () => {
         'name',
         'orgId',
         'previewDeploy',
-        'productionBranch',
+        'liveBranch',
+        'releaseModel',
+        'releaseStrategy',
         'repoPath',
         'role',
         'slug',

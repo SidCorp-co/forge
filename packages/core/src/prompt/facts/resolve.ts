@@ -9,7 +9,15 @@ import { and, eq } from 'drizzle-orm';
 import { alias } from 'drizzle-orm/pg-core';
 import { env } from '../../config/env.js';
 import { db } from '../../db/client.js';
-import { type IssueStatus, type JobType, labels, projects } from '../../db/schema.js';
+import {
+  type BindingRole,
+  type DeployStage,
+  type IssueStatus,
+  type JobType,
+  labels,
+  projects,
+  type ReleaseModel,
+} from '../../db/schema.js';
 import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/integration-guides.js';
 import {
   renderSentryTargetsLine,
@@ -63,7 +71,7 @@ export interface ProjectFactInputs {
   /** Raw project branch columns — lets a caller that already needs this read
    *  (e.g. the system-prompt builder) reuse it instead of reading `projects`
    *  a second time for the `## Project Config` block. */
-  branches: { baseBranch: string | null; productionBranch: string | null };
+  branches: { baseBranch: string | null; liveBranch: string | null; releaseModel: ReleaseModel };
   /** `pipelineConfig.reopenPolicy.noProgressRounds`, defaulted. Advisory —
    *  rendered into `## Project Config` for the agent to judge against. */
   noProgressRounds: number;
@@ -87,7 +95,8 @@ interface TestingUrl {
 
 interface IntegrationRow {
   provider: string;
-  environment: string;
+  role: BindingRole;
+  stages: DeployStage[];
   lastHealthStatus: string | null;
   /** ISS-526 — Sentry-only: the labelled targets the agent picks between when
    *  querying the Sentry MCP (org/project is passed per call). */
@@ -114,7 +123,8 @@ export async function loadActiveIntegrationRows(
 
   return active.map((p) => ({
     provider: p.binding.provider,
-    environment: p.binding.environment,
+    role: p.binding.role,
+    stages: (p.binding.stages ?? []) as DeployStage[],
     lastHealthStatus: p.connection.lastHealthStatus,
     instructions: p.binding.instructions ?? null,
     hasOrgGuide: orgGuides.has(p.binding.provider),
@@ -146,7 +156,11 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
       ? integrationGuideSlug(r.provider)
       : getIntegrationGuide(r.provider);
     const guidePointer = guideSlug ? ` Full guide: \`forge_guide get ${guideSlug}\`.` : '';
-    const bullet = `- **${r.provider}** [${r.environment}]${health} — ${hint}${guidePointer}`;
+    // cm:why the bracket says `service` or the stages rather than an environment: it used to print
+    // `[prod]` for every sentry, rocketchat, github and postman binding in the fleet, which was the
+    // filler value the column forced them to carry and told the agent nothing.
+    const scope = r.role === 'service' ? 'service' : r.stages.join('+') || 'deploy';
+    const bullet = `- **${r.provider}** [${scope}]${health} — ${hint}${guidePointer}`;
     const extra: string[] = [];
     // ISS-526 — for Sentry, list the configured targets (label → org/project
     // → notes) under the bullet so the agent knows which org/project slug to
@@ -182,13 +196,14 @@ function buildLadder(states: Record<string, { enabled?: boolean } | undefined>):
 
 /**
  * `{{project:<key>}}` resolver: reserved keys derive from first-class project
- * columns (`base-branch`, `production-branch`, `repo-path`, `test-urls`) plus a
+ * columns (`base-branch`, `live-branch`, `repo-path`, `test-urls`) plus a
  * security-safe pointer for `test-creds`; everything else reads the author's
  * `agentConfig.projectFacts` map. Pure.
  */
-function makeProjectResolver(src: {
+export function makeProjectResolver(src: {
   baseBranch: string | null;
-  productionBranch: string | null;
+  liveBranch: string | null;
+  releaseModel: ReleaseModel;
   repoPath: string | null;
   testingUrls: TestingUrl[];
   testNotes: string | null;
@@ -197,7 +212,18 @@ function makeProjectResolver(src: {
 }): ProjectVarResolver {
   const reserved: Record<(typeof RESERVED_PROJECT_FACT_KEYS)[number], () => string | undefined> = {
     'base-branch': () => src.baseBranch ?? undefined,
-    'production-branch': () => src.productionBranch ?? undefined,
+    // cm:guard resolves ONLY under `promote`, for the same reason `formatProjectConfig` prints the
+    // line only there: 25 of 32 fleet projects carry a `live_branch` that nothing promotes to, and a
+    // skill body splicing one in would state a branch as this project's release target when the
+    // project declares it has no release step.
+    'live-branch': () =>
+      src.releaseModel === 'promote' ? (src.liveBranch ?? undefined) : undefined,
+    // cm:guard a REFUSAL and not `undefined`, which is the whole point: an unresolved
+    // `{{project:<key>}}` renders as empty, so leaving this key out would silently delete a sentence
+    // from the prompt of every project whose skill body still uses it — and no gate in this repo can
+    // see a skill body in another one. A loud break beats a silent substitution (ISS-1046).
+    'production-branch': () =>
+      '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where the project declares `releaseModel: promote`. Update this skill body.',
     'repo-path': () => src.repoPath ?? undefined,
     'test-urls': () =>
       src.testingUrls.length > 0
@@ -239,7 +265,8 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let projectFacts: Record<string, string> = {};
   let projectFactsConfig: Record<string, { alwaysInject?: boolean }> = {};
   let baseBranch: string | null = null;
-  let productionBranch: string | null = null;
+  let liveBranch: string | null = null;
+  let releaseModel: ReleaseModel = 'none';
   let repoPath: string | null = null;
   let testingUrls: TestingUrl[] = [];
   let testNotes: string | null = null;
@@ -253,7 +280,8 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
         previewDeploy: projects.previewDeploy,
         repoPath: projects.repoPath,
         baseBranch: projects.baseBranch,
-        productionBranch: projects.productionBranch,
+        liveBranch: projects.liveBranch,
+        releaseModel: projects.releaseModel,
         orgId: projects.orgId,
       })
       .from(projects)
@@ -277,7 +305,8 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     testingUrls = Array.isArray(pd?.testingUrls) ? pd.testingUrls : [];
     testNotes = typeof pd?.notes === 'string' && pd.notes.length > 0 ? pd.notes : null;
     baseBranch = row?.baseBranch ?? null;
-    productionBranch = row?.productionBranch ?? null;
+    liveBranch = row?.liveBranch ?? null;
+    releaseModel = row?.releaseModel ?? 'none';
     repoPath = row?.repoPath ?? null;
 
     integrations = await loadActiveIntegrationRows(projectId, row?.orgId ?? null);
@@ -310,11 +339,12 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
 
   return {
     ladder: buildLadder(states),
-    branches: { baseBranch, productionBranch },
+    branches: { baseBranch, liveBranch, releaseModel },
     noProgressRounds,
     project: makeProjectResolver({
       baseBranch,
-      productionBranch,
+      liveBranch,
+      releaseModel,
       repoPath,
       testingUrls,
       testNotes,

@@ -77,7 +77,7 @@ function pushMemberOk() {
 
 function pair(
   id: string,
-  environment: string,
+  stages: string[],
   opts: {
     config?: Record<string, unknown>;
     lastHealthStatus?: string | null;
@@ -86,7 +86,7 @@ function pair(
 ) {
   const base = { id, provider: 'coolify', active: true };
   return {
-    binding: { ...base, environment, projectId: PROJECT_ID, config: {} },
+    binding: { ...base, role: 'deploy', stages, projectId: PROJECT_ID, config: {} },
     connection: {
       ...base,
       config: opts.config ?? {},
@@ -114,17 +114,17 @@ describe('forge_coolify_deploy → list', () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resultQueue.push([
-      pair(STAGING_INT, 'staging', {
+      pair(STAGING_INT, ['preview'], {
         config: { targets: [{ id: 't-be', label: 'Backend', resourceUuid: 'res-staging' }] },
         lastHealthStatus: 'ok',
       }),
-      pair(PROD_INT, 'prod', { breakerOpenedAt: new Date() }),
+      pair(PROD_INT, ['live'], { breakerOpenedAt: new Date() }),
     ]);
 
     const result = (await tool.handler({ action: 'list', projectId: PROJECT_ID })) as {
       integrations: Array<{
         id: string;
-        environment: string;
+        stages: string[];
         targets: Array<{ id: string; label: string; resourceUuid: string }>;
         breakerOpen: boolean;
       }>;
@@ -133,12 +133,12 @@ describe('forge_coolify_deploy → list', () => {
     expect(result.integrations).toHaveLength(2);
     expect(result.integrations[0]).toMatchObject({
       id: STAGING_INT,
-      environment: 'staging',
+      stages: ['preview'],
       targets: [{ id: 't-be', label: 'Backend', resourceUuid: 'res-staging' }],
       breakerOpen: false,
     });
     expect(result.integrations[1]).toMatchObject({
-      environment: 'prod',
+      stages: ['live'],
       targets: [],
       breakerOpen: true,
     });
@@ -167,7 +167,7 @@ describe('forge_coolify_deploy → deploy', () => {
   it('without issueId, single active integration → run-less deploy via dispatchCoolifyDeployDirect', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
-    resultQueue.push([pair(STAGING_INT, 'staging')]); // single active integration
+    resultQueue.push([pair(STAGING_INT, ['preview'])]); // single active integration
     dispatchDirectSpy.mockResolvedValueOnce({
       dispatched: true,
       pendingHumanConfirm: false,
@@ -192,7 +192,7 @@ describe('forge_coolify_deploy → deploy', () => {
   it('without issueId, multiple active integrations and no integrationId → BAD_REQUEST ambiguous', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
-    resultQueue.push([pair(STAGING_INT, 'staging'), pair(PROD_INT, 'prod')]);
+    resultQueue.push([pair(STAGING_INT, ['preview']), pair(PROD_INT, ['live'])]);
 
     await expect(tool.handler({ action: 'deploy', projectId: PROJECT_ID })).rejects.toThrow(
       /multiple active Coolify integrations/,
@@ -204,7 +204,7 @@ describe('forge_coolify_deploy → deploy', () => {
   it('without issueId, explicit integrationId picks that integration', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
-    resultQueue.push([pair(STAGING_INT, 'staging'), pair(PROD_INT, 'prod')]);
+    resultQueue.push([pair(STAGING_INT, ['preview']), pair(PROD_INT, ['live'])]);
     dispatchDirectSpy.mockResolvedValueOnce({
       dispatched: true,
       pendingHumanConfirm: false,
@@ -247,7 +247,7 @@ describe('forge_coolify_deploy → deploy', () => {
       issueId: ISSUE_ID,
       runId: 'run-1',
       integrationId: null,
-      allowProd: false,
+      allowLive: false,
     });
     expect(result.dispatched).toBe(true);
     expect(result.integrationIds).toEqual([STAGING_INT]);
@@ -316,11 +316,11 @@ describe('forge_coolify_deploy → deploy', () => {
       issueId: ISSUE_ID,
       runId: 'run-1',
       integrationId: STAGING_INT,
-      allowProd: false,
+      allowLive: false,
     });
   });
 
-  it('issueId-only at a pre-release status → allowProd:false, integrationId:null', async () => {
+  it('issueId-only at a pre-release status → allowLive:false, integrationId:null', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resolveRunSpy.mockResolvedValueOnce('run-1');
@@ -338,11 +338,11 @@ describe('forge_coolify_deploy → deploy', () => {
       issueId: ISSUE_ID,
       runId: 'run-1',
       integrationId: null,
-      allowProd: false,
+      allowLive: false,
     });
   });
 
-  it('issueId-only at released status → allowProd:true', async () => {
+  it('issueId-only at released status → allowLive:true', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resolveRunSpy.mockResolvedValueOnce('run-1');
@@ -360,7 +360,7 @@ describe('forge_coolify_deploy → deploy', () => {
       issueId: ISSUE_ID,
       runId: 'run-1',
       integrationId: null,
-      allowProd: true,
+      allowLive: true,
     });
   });
 });
@@ -369,7 +369,7 @@ describe('forge_coolify_deploy → logs', () => {
   it('passes lines to deployment-log reads and returns their freshness metadata', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
-    const integration = pair(STAGING_INT, 'staging');
+    const integration = pair(STAGING_INT, ['preview']);
     resultQueue.push([integration]);
     findLastOutboundSpy.mockResolvedValueOnce({
       response: { deployment_uuid: 'dep-1' },
@@ -401,7 +401,7 @@ describe('forge_coolify_deploy → logs', () => {
   it('passes lines to runtime-log reads and returns their freshness metadata', async () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
-    const integration = pair(STAGING_INT, 'staging', {
+    const integration = pair(STAGING_INT, ['preview'], {
       config: { targets: [{ id: 'target-1', label: 'Core', resourceUuid: 'app-1' }] },
     });
     resultQueue.push([integration]);
@@ -433,7 +433,7 @@ describe('forge_coolify_deploy → status', () => {
     const tool = forgeCoolifyDeployTool(makeDeviceCtx());
     pushMemberOk();
     resultQueue.push([
-      pair(STAGING_INT, 'staging', {
+      pair(STAGING_INT, ['preview'], {
         config: {
           targets: [
             { id: 't-be', label: 'Backend', resourceUuid: 'res-be' },

@@ -22,6 +22,8 @@ const { configSchemaForProvider, createSchema, splitProviderConfig } = await imp
 
 const AGENT = {
   provider: 'agent' as const,
+  role: 'deploy' as const,
+  stages: ['live'] as const,
   config: {
     releaseRunnerLabel: 'epod-prod',
     verify: { probes: [{ url: 'https://admin.example.test/api/health', commitPath: 'commit' }] },
@@ -34,7 +36,8 @@ describe('the agent release channel', () => {
   it('can be created, which is what makes the column value reachable', () => {
     const parsed = createSchema.parse(AGENT);
     expect(parsed.provider).toBe('agent');
-    expect(parsed.environment).toBe('prod');
+    expect(parsed.role).toBe('deploy');
+    expect(parsed.stages).toEqual(['live']);
   });
 
   // cm:guard a deploy key stored here would put every project's production behind one decryption path — the blast radius the design refuses under "Not doing"
@@ -52,11 +55,14 @@ describe('the agent release channel', () => {
   });
 
   it('accepts a channel that declares nothing but itself', () => {
-    expect(createSchema.parse({ provider: 'agent', config: {} }).provider).toBe('agent');
+    expect(
+      createSchema.parse({ provider: 'agent', role: 'deploy', stages: ['live'], config: {} })
+        .provider,
+    ).toBe('agent');
   });
 });
 
-describe('the release channel on a coolify production binding', () => {
+describe('the release channel on a coolify live deploy binding', () => {
   // cm:guard this is the PATCH that returned 200 on sidpeak's prod binding on 2026-09-03 and changed nothing: zod drops unknown keys, so a schema without the field turns "declare the release runner" into a silent no-op the roster then reports as undeclared
   it('keeps releaseRunnerLabel, verify and rollback through a partial PATCH, on the binding tier', () => {
     const patch = {
@@ -122,7 +128,7 @@ describe('the rollback declaration', () => {
   });
 });
 
-describe('the release channel on every provider that can be the production binding', () => {
+describe('the release channel on every provider that can carry a live deploy binding', () => {
   // cm:guard `resolveReleaseChannel` reads the oldest ACTIVE prod binding whatever its provider, so the three keys are generic and every schema owes them. Pixelight's epodsystem binding is the case that proved it: base===production hid the gap until 2026-09-04, and behind it the label PATCH was a 200 that stripped the field, leaving a storefront project no way to declare a release runner at all.
   const patch = {
     releaseRunnerLabel: 'release',
@@ -244,6 +250,7 @@ describe('a Google connection carries the key file and nothing else (ISS-1036, c
   it('creates from the whole key file Google issued', () => {
     const parsed = createSchema.parse({
       provider: 'google',
+      role: 'service',
       config: { defaultSpreadsheetId: '1Sheet' },
       secrets: { serviceAccountJson: KEY },
     });
@@ -253,6 +260,7 @@ describe('a Google connection carries the key file and nothing else (ISS-1036, c
   it('refuses a body that is not a service-account key, naming what one looks like', () => {
     const result = createSchema.safeParse({
       provider: 'google',
+      role: 'service',
       config: {},
       secrets: { serviceAccountJson: JSON.stringify({ type: 'authorized_user' }).padEnd(120, ' ') },
     });

@@ -21,10 +21,20 @@ import type { IntegrationProvider, schema } from '@forge/core/public';
 /** Re-exported, never re-declared — `INTEGRATION_PROVIDERS` in core is the list. */
 export type { IntegrationProvider, IntegrationCapabilities } from '@forge/core/public';
 
+/**
+ * The deploy capability — which providers a binding may take `role: 'deploy'` on — lives in
+ * `./deploy-capability.js` and is reached as `@forge/contracts/deploy-capability`, NOT through this
+ * module or the barrel. This file imports `@forge/core/public` for its types, which a browser build
+ * cannot resolve, so a runtime value placed here is unreachable from web-v2 at build time however
+ * well it type-checks.
+ */
+
 /** `'user' | 'org'` — the connection owner namespace. */
 export type IntegrationOwnerType = schema.IntegrationOwnerType;
-/** `'staging' | 'prod'` — the binding environment split. */
-export type IntegrationEnvironment = schema.IntegrationEnvironment;
+/** `'deploy' | 'service'` — what a binding is FOR. */
+export type BindingRole = schema.BindingRole;
+/** `'preview' | 'live'` — the two environments, named for who is looking at them. */
+export type DeployStage = schema.DeployStage;
 /** `'outbound' | 'inbound'` — delivery direction. */
 export type IntegrationDeliveryDirection = schema.IntegrationDeliveryDirection;
 /** `'pending' | 'ok' | 'failed'` — delivery status. */
@@ -64,7 +74,9 @@ export interface BindingSummary {
   connectionId: string;
   projectId: string;
   provider: IntegrationProvider;
-  environment: IntegrationEnvironment;
+  role: BindingRole;
+  /** Empty for `service`; one or both stages for `deploy`. */
+  stages: DeployStage[];
   config: Record<string, unknown>;
   /** Raw binding-tier overrides (e.g. coolify resourceUuid/branch) — `config`
    *  is the merged connection+binding view; this distinguishes a per-project
@@ -194,7 +206,7 @@ export interface CoolifyTargetInput {
 
 /**
  * Coolify config. `baseUrl` is connection-tier (shared credential); `targets`
- * is binding-tier (per project+environment) and may list several applications
+ * is binding-tier (per project+stage) and may list several applications
  * (e.g. a split backend + frontend) that deploy together.
  */
 export interface CoolifyConfigInput {
@@ -320,63 +332,50 @@ export interface GoogleSecretsInput {
 
 
 /**
- * Body for `POST /:projectId/integrations` — discriminated on `provider`. Each
- * arm validates its own config + secrets. `environment` is required for coolify
- * (staging/prod split); postman + epodsystem default to `prod` server-side, so
- * it is optional here.
+ * What a binding is FOR, and — for a `deploy` one — which stages it serves.
+ *
+ * Discriminated on `role`, so the three shapes the server refuses are not expressible here
+ * either: a `service` binding carrying stages, a `deploy` binding carrying none, and a `deploy`
+ * binding carrying an empty array. `stages?: never` is what makes the first one a compile error
+ * rather than a 400 the caller discovers at runtime.
+ *
+ * The provider-capability rule — `role: 'deploy'` only where Forge has a deploy adapter — is NOT
+ * expressed here and is not meant to be. It is a list that changes (`DEPLOY_CAPABLE_PROVIDERS` in
+ * `@forge/contracts/deploy-capability`), and encoding it in this union would make adding an
+ * adapter a breaking type change for every caller. The server refuses it by name instead.
  */
-export type IntegrationBindingCreateInput =
-  | {
-      provider: 'coolify';
-      environment: IntegrationEnvironment;
-      config: CoolifyConfigInput;
-      secrets: CoolifySecretsInput;
-    }
-  | {
-      provider: 'postman';
-      environment?: IntegrationEnvironment;
-      config: PostmanConfigInput;
-      secrets: PostmanSecretsInput;
-    }
-  | {
-      provider: 'epodsystem';
-      environment?: IntegrationEnvironment;
-      config: EpodsystemConfigInput;
-      secrets: EpodsystemSecretsInput;
-      /** ISS-558 — optional kebab label for a named storefront (e.g. 'partner-a').
-       *  Absent/empty = the default binding. */
-      label?: string;
-    }
-  | {
-      provider: 'sentry';
-      environment?: IntegrationEnvironment;
-      config: SentryConfigInput;
-      secrets: SentrySecretsInput;
-    }
-  | {
-      provider: 'rocketchat';
-      environment?: IntegrationEnvironment;
-      config: RocketchatConfigInput;
-      secrets: RocketchatSecretsInput;
-    }
-  | {
-      provider: 'github';
-      environment?: IntegrationEnvironment;
-      config: GithubConfigInput;
-      secrets: GithubSecretsInput;
-    }
-  | {
-      provider: 'google';
-      environment?: IntegrationEnvironment;
-      config: GoogleConfigInput;
-      secrets: GoogleSecretsInput;
-    }
-  | {
-      provider: 'agent';
-      environment?: IntegrationEnvironment;
-      config: Record<string, unknown>;
-      secrets?: Record<string, never>;
-    };
+export type BindingShapeInput =
+  | { role: 'service'; stages?: never }
+  | { role: 'deploy'; stages: [DeployStage, ...DeployStage[]] };
+
+/**
+ * Body for `POST /:projectId/integrations` — discriminated on `provider`, and on `role` through
+ * `BindingShapeInput`. Each arm validates its own config + secrets. `role` is required on every
+ * arm and has NO default: the column it replaced defaulted on seven of eight providers precisely
+ * because it demanded a value they had no meaning for.
+ */
+export type IntegrationBindingCreateInput = BindingShapeInput &
+  (
+    | { provider: 'coolify'; config: CoolifyConfigInput; secrets: CoolifySecretsInput }
+    | { provider: 'postman'; config: PostmanConfigInput; secrets: PostmanSecretsInput }
+    | {
+        provider: 'epodsystem';
+        config: EpodsystemConfigInput;
+        secrets: EpodsystemSecretsInput;
+        /** ISS-558 — optional kebab label for a named storefront (e.g. 'partner-a').
+         *  Absent/empty = the default binding. */
+        label?: string;
+      }
+    | { provider: 'sentry'; config: SentryConfigInput; secrets: SentrySecretsInput }
+    | { provider: 'rocketchat'; config: RocketchatConfigInput; secrets: RocketchatSecretsInput }
+    | { provider: 'github'; config: GithubConfigInput; secrets: GithubSecretsInput }
+    | { provider: 'google'; config: GoogleConfigInput; secrets: GoogleSecretsInput }
+    | {
+        provider: 'agent';
+        config: Record<string, unknown>;
+        secrets?: Record<string, never>;
+      }
+  );
 
 /** Body for `PATCH /:projectId/integrations/:id` — re-validated against the existing provider. */
 export interface IntegrationBindingUpdateInput {
@@ -452,12 +451,18 @@ export interface ConnectionUpdateInput {
 /**
  * Body for `POST /integration-connections/:id/bindings` — bind an EXISTING
  * connection to a project+env. Carries NO secrets (the connection already holds
- * the credential); only the target project + environment. Caller must own the
+ * the credential); only the target project + role/stages. Caller must own the
  * connection and be an admin of the target project.
  */
 export interface BindExistingConnectionRequest {
   projectId: string;
-  environment: IntegrationEnvironment;
+  role: BindingRole;
+  /**
+   * One or both stages for `deploy`; ABSENT for `service`. Not an empty array —
+   * the server refuses a `stages` key on a service binding by name rather than
+   * ignoring it, so a caller cannot believe it declared a stage that was dropped.
+   */
+  stages?: DeployStage[];
   /** Optional binding-tier overrides (coolify `targets[]`) so the shared
    *  connection deploys different apps in this project. Connection-tier keys
    *  (baseUrl) are dropped server-side. */
@@ -497,7 +502,9 @@ export interface ConnectionUsage {
   bindings: Array<{
     id: string;
     projectId: string;
-    environment: IntegrationEnvironment;
+    role: BindingRole;
+  /** Empty for `service`; one or both stages for `deploy`. */
+  stages: DeployStage[];
     label: string;
     active: boolean;
   }>;
@@ -556,7 +563,8 @@ export interface McpServerPreviewEntry {
   serverName: string;
   /** Binding id backing this entry — null for the synthetic not_configured row. */
   bindingId: string | null;
-  environment: IntegrationEnvironment | null;
+  role: BindingRole | null;
+  stages: DeployStage[];
   configured: boolean;
   active: boolean;
   willInject: boolean;

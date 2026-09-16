@@ -18,11 +18,22 @@ import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { resolveReleaseChannel } from './channel.js';
+import { resolveReleaseChannels } from './channel.js';
 import { openAttempt, readAttempt, recordAccount, settleAttempt } from './ledger.js';
-import { announceMethod, MethodMismatchError, MethodNotAnnouncedError } from './method.js';
-import { RELEASE_BATCH_SKILL } from './plan.js';
+import { announceMethod } from './method.js';
 import { loadReleaseReadiness } from './readiness.js';
+import {
+  badRequest,
+  conflict,
+  declarationRefusal,
+  holding,
+  methodRefusal,
+  notFound,
+  refuseMachineKeys,
+  serviceUnavailable,
+  undeclaredBranches,
+  undeclaredProbes,
+} from './refusals.js';
 import {
   abortReleaseBatch,
   BatchInFlightError,
@@ -54,18 +65,6 @@ const createBodySchema = z
   })
   .strict();
 
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (message: string) =>
-  new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
-
-const conflict = (code: string, message: string) =>
-  new HTTPException(409, { message, cause: { code } });
-
-const serviceUnavailable = (code: string, message: string) =>
-  new HTTPException(503, { message, cause: { code } });
-
 export const releaseBatchRoutes = new Hono<{ Variables: AuthVars }>();
 releaseBatchRoutes.use('*', requireAuth(), assertEmailVerified());
 
@@ -90,13 +89,15 @@ releaseBatchRoutes.post(
       const result = await createReleaseBatch({ projectId, issueIds, userId });
       return c.json(result, 201);
     } catch (err) {
+      const declined = declarationRefusal(err);
+      if (declined) throw declined;
       if (err instanceof NoReleaseGateError) {
         throw conflict('NO_RELEASE_GATE', 'This project has no release gate configured');
       }
       if (err instanceof ReleaseRunnerUndeclaredError) {
         throw conflict(
           'RELEASE_RUNNER_UNDECLARED',
-          'This project has production but its production binding names no release runner — set `releaseRunnerLabel` on it, and label the box that holds the deploy credential',
+          'This project declares a release model but no live deploy binding names a release runner — set `releaseRunnerLabel` on one, and label the box that holds the deploy credential',
         );
       }
       if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
@@ -165,7 +166,13 @@ releaseBatchRoutes.get(
     if (!access) throw notFound('project not found');
     assertProjectRole(access, 'member');
 
-    return c.json(await loadReleaseRoster(projectId));
+    try {
+      return c.json(await loadReleaseRoster(projectId));
+    } catch (err) {
+      const declined = declarationRefusal(err);
+      if (declined) throw declined;
+      throw err;
+    }
   },
 );
 
@@ -200,23 +207,6 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
   const access = await loadProjectAccess(projectId, userId);
   if (!access) throw notFound('project not found');
   assertProjectRole(access, 'member');
-}
-
-// cm:guard the message must name the CONFIG KEY and the shape, because this refusal is the first
-// thing a project with a fresh gate meets and an operator cannot guess `verify.probes` from
-// "no probes declared".
-function undeclaredProbes(): HTTPException {
-  return conflict(
-    'RELEASE_PROBES_UNDECLARED',
-    'This project\'s production binding declares no verification probes, so nothing but the agent\'s own word could say the release happened. Set `verify` on the binding config: `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`',
-  );
-}
-
-function undeclaredBranches(): HTTPException {
-  return conflict(
-    'RELEASE_BRANCHES_UNDECLARED',
-    'This project declares no baseBranch, so there is nothing a release could promote from',
-  );
 }
 
 releaseBatchRoutes.get(
@@ -298,22 +288,6 @@ releaseBatchRoutes.post(
 // cm:guard `health`, `identity`, `verdict`, `verdictReason` and `readings` are refused BY NAME
 // rather than dropped by `.strict()`. A caller that sends one has misread what this route is for,
 // and the whole table exists because "the release happened" used to be a sentence an agent wrote —
-// so the refusal has to say where the verdict actually comes from, or the next caller sends it
-// again under a different spelling.
-const MACHINE_ONLY_KEYS = ['health', 'identity', 'verdict', 'verdictReason', 'readings'] as const;
-
-function refuseMachineKeys(body: Record<string, unknown>): void {
-  const sent = MACHINE_ONLY_KEYS.filter((k) => k in body);
-  if (sent.length === 0) return;
-  throw new HTTPException(400, {
-    message: `\`${sent.join('`, `')}\` ${sent.length === 1 ? 'is' : 'are'} core's reading and not yours to send. Core takes them from this project's declared probes at the moment you record your account, and stores them beside it. Send \`account\`, and \`providerRef\` for the provider's own handle on what you did.`,
-    // cm:why the keys go under `details` and not beside the code — `middleware/error.ts`
-    // `extractCause` copies `code`, `details` and `wwwAuthenticate` and drops every other key, so a
-    // sibling field reaches the caller as nothing at all.
-    cause: { code: 'RELEASE_VERDICT_NOT_YOURS', details: { keys: sent } },
-  });
-}
-
 const attemptBodySchema = z
   .object({
     stage: z.enum(RELEASE_ATTEMPT_STAGES),
@@ -437,8 +411,12 @@ releaseBatchRoutes.post(
     // cm:guard core's reading is taken HERE, at the moment the account lands, and from the project's
     // own probes. It is what makes the two halves an account and its backing rather than one claim
     // written twice: they are about the same act, taken at the same moment, by two parties.
-    const channel = await resolveReleaseChannel(projectId);
-    const live = channel.verify ? await readLiveState(channel.verify) : null;
+    // cm:why the FIRST channel's probes: an attempt is one reading at one moment, and the run carries
+    // one `commitBefore` to compare it against. A set whose members verify separately is its own issue
+    // — ISS-1046 widened what core RETURNS, not what an attempt records.
+    const channels = await resolveReleaseChannels(projectId);
+    const verify = channels[0]?.verify ?? null;
+    const live = verify ? await readLiveState(verify) : null;
     const settled = await settleAttempt({
       runId,
       idempotencyKey: key,
@@ -456,26 +434,3 @@ releaseBatchRoutes.post(
     return c.json(settled);
   },
 );
-
-function holding(err: ReleaseRunHoldingError): HTTPException {
-  return conflict(
-    'RELEASE_RUN_HOLDING',
-    `This release run is past its ${err.crossed.join(' and ')} bound, so it records no further attempts. Read GET .../state, then either finish it or abort it with what you found.`,
-  );
-}
-
-export function methodRefusal(err: unknown): HTTPException | null {
-  if (err instanceof MethodNotAnnouncedError) {
-    return conflict(
-      'RELEASE_METHOD_NOT_ANNOUNCED',
-      `This run never announced the method it was working from, so nothing says it had one. Clear it with POST /api/projects/{projectId}/release-batches/{runId}/method and a body of {"skill":"${RELEASE_BATCH_SKILL}","loaded":true}, or {"loaded":false,"detail":"<why not>"} if the skill would not load — then call finish again.`,
-    );
-  }
-  if (err instanceof MethodMismatchError) {
-    return conflict(
-      'RELEASE_METHOD_MISMATCH',
-      `This run announced the method \`${err.announced}\` and its job names \`${err.expected}\`. A release working from a method nobody chose for it is not one finish can close; announce \`${err.expected}\`, or abort with what you actually ran.`,
-    );
-  }
-  return null;
-}

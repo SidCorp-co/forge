@@ -39,13 +39,18 @@ export interface ProjectFactsPatch {
 
 /** Reserved (derived) keys the server ignores — surfaced for inline validation
  *  so the UI rejects them before a round-trip. Mirrors
- *  `RESERVED_PROJECT_FACT_KEYS` in core `projects/project-facts.ts`. */
+ *  `project-facts.ts:RESERVED_PROJECT_FACT_KEYS` in core, member for member and
+ *  in the same order; core's `mergeProjectFacts` drops a reserved key SILENTLY,
+ *  so a key missing here is a fact the operator types, saves, and never sees
+ *  again. Held by a parity test against core's list. */
 export const RESERVED_PROJECT_FACT_KEYS = [
 	"base-branch",
+	"live-branch",
 	"production-branch",
 	"repo-path",
 	"test-urls",
 	"test-creds",
+	"test-notes",
 	"integrations",
 ] as const;
 
@@ -67,7 +72,9 @@ export interface ProjectUpdateInput {
 	 *  the runner's setup agent; blank means it derives the procedure per job. */
 	workspaceSetup?: string | null;
 	baseBranch?: string | null;
-	productionBranch?: string | null;
+	liveBranch?: string | null;
+	releaseModel?: "none" | "promote" | "publish";
+	releaseStrategy?: "merge-branch" | "cherry-pick" | "tag-mr" | null;
 	previewDeploy?: PreviewDeployConfig | null;
 	orgId?: string;
 	/** ISS-609 — chat/RC-bot reply-style knob; scoped server-side write into
@@ -208,10 +215,17 @@ export interface PluginDesignation {
 /** What a project still has to declare — mirrors `ReleaseReadiness` in core
  *  `release-batch/readiness.ts`. `gaps` is what settings says out loud. */
 export interface ReleaseReadiness {
-	hasProduction: boolean;
+	/** The project declares a release model AND has an active live deploy binding. */
+	hasReleaseGate: boolean;
+	releaseModel: "none" | "promote" | "publish";
+	releaseStrategy: "merge-branch" | "cherry-pick" | "tag-mr" | null;
 	baseBranch: string;
-	productionBranch: string;
-	provider: string | null;
+	/** Non-null only under `promote` — every other model reads no branch. */
+	liveBranch: string | null;
+	/** Declares a release model but has no live deploy binding to send it to. */
+	targetUndeclared: boolean;
+	/** Providers of EVERY live deploy binding; core never picks one. */
+	providers: string[];
 	releaseRunnerLabel: string | null;
 	rollback: string | null;
 	rollbackMode: "manual" | "coolify-image" | "unrepresentable" | null;
@@ -221,8 +235,12 @@ export interface ReleaseReadiness {
 		| "test-commands"
 		| "release-procedure"
 		| "release-runner"
+		| "release-runner-ambiguous"
+		| "release-multi-channel"
+		| "release-target"
 		| "rollback"
 		| "rollback-prose"
+		| "verify-probes"
 	)[];
 }
 

@@ -27,6 +27,7 @@ import {
   projectFactsPatchSchema,
   RESERVED_PROJECT_FACT_KEYS,
 } from '../../projects/project-facts.js';
+import { readableLiveBranch } from '../../projects/release-model.js';
 import { readIssueBranchInputs, readProjectWithConfig } from '../../projects/service.js';
 import {
   assertPrincipalIsAdmin,
@@ -65,7 +66,9 @@ function formatBaseResponse(row: Awaited<ReturnType<typeof readProjectConfig>>) 
     config: {
       repoPath: row.repoPath,
       baseBranch: row.baseBranch,
-      productionBranch: row.productionBranch,
+      liveBranch: readableLiveBranch(row),
+      releaseModel: row.releaseModel,
+      releaseStrategy: row.releaseStrategy,
       categories: (ac.categories as string[] | undefined) ?? [],
       pipelineConfig: (ac.pipelineConfig as Record<string, unknown> | undefined) ?? null,
       projectFacts: (ac.projectFacts as Record<string, string> | undefined) ?? {},
@@ -80,7 +83,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_config',
   // cm:edge contract -> packages/core/src/projects/project-facts.ts — the description ENDS with both notes, appended rather than paraphrased; a rewrite that drops them puts the enforcement promise back
   description:
-    "Read or write project configuration. Action `get` returns `config` with `repoPath`, `baseBranch`, `productionBranch` read DIRECTLY from the `projects` table columns (may be `null` when not configured — callers MUST NOT silently default to 'main'); plus `categories`, `pipelineConfig`, `projectFacts` from `agent_config` JSON. When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config`, a `projectFacts` patch (kebab-case key→text map referenced from skill bodies as `{{project:<key>}}`; per-key merge, value `null` removes a key, whole-map `null` wipes it; reserved keys base-branch/production-branch/repo-path/test-urls/test-creds are derived and ignored here; NEVER store secrets — they would sync to disk), and a `projectFactsConfig` patch (per-key `{ alwaysInject }` map — when a fact key is flagged `alwaysInject: true` its FULL body is injected verbatim into every agent system prompt for this project, unmissable rather than fetch-on-demand; same per-key merge semantics, value `null` removes a key's config, whole-map `null` wipes it; capped at a char budget that warns on overflow rather than truncating), and a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?, autoUpdate?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA). UNLIKE the patches above, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`. " +
+    "Read or write project configuration. Action `get` returns `config` with `repoPath`, `baseBranch`, `liveBranch`, `releaseModel` and `releaseStrategy` read DIRECTLY from the `projects` table columns. `releaseModel` is `none` (no release step — `closed` means closed), `promote` (the release moves code from `baseBranch` to `liveBranch`, by `releaseStrategy`) or `publish` (the ref does not change; the release is an act on a live deploy binding). `liveBranch` is non-null only under `promote` and MUST NOT be read under any other model; `baseBranch` may be `null` when not configured and callers MUST NOT silently default it to 'main'; plus `categories`, `pipelineConfig`, `projectFacts` from `agent_config` JSON. When `issueId` is supplied, also returns a resolved `branchConfig` layering the issue override on top of the project defaults. Action `update` (admin-gated) merges a `pipelineConfig` patch with the same invariants as `PATCH /projects/:id/pipeline-config`, a `projectFacts` patch (kebab-case key→text map referenced from skill bodies as `{{project:<key>}}`; per-key merge, value `null` removes a key, whole-map `null` wipes it; reserved keys base-branch/live-branch/repo-path/test-urls/test-creds are derived and ignored here, and `production-branch` is retired — it still resolves, to a refusal naming `live-branch`; NEVER store secrets — they would sync to disk), and a `projectFactsConfig` patch (per-key `{ alwaysInject }` map — when a fact key is flagged `alwaysInject: true` its FULL body is injected verbatim into every agent system prompt for this project, unmissable rather than fetch-on-demand; same per-key merge semantics, value `null` removes a key's config, whole-map `null` wipes it; capped at a char budget that warns on overflow rather than truncating), and a `plugins` list designating the Claude Code plugins this project's runners must install (`[{marketplace, name, pinnedRef?, autoUpdate?}]`; marketplace is an `owner/repo`, name is kebab-case, pinnedRef is a commit SHA). UNLIKE the patches above, `plugins` REPLACES the whole list — GET first, send the complete list, `null` clears it. Designation is per-project but install is per-DEVICE: a device resolves the union of every project it is bound to via `GET /api/devices/me/plugins`, so a plugin designated by one project is installed for all of them; per-project opt-out belongs in that repo's own `.claude/settings.json` `enabledPlugins`. Errors surface as `BAD_REQUEST: <code>: <message>`. " +
     ALWAYS_INJECT_GUARANTEE_NOTE +
     ' ' +
     ALWAYS_INJECT_ENFORCEMENT_NOTE,
@@ -200,7 +203,7 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
 
     const branchConfig = resolveIssueBranches(
       { metadata: { branchConfig: branchConfigOverride } },
-      { baseBranch: row.baseBranch, productionBranch: row.productionBranch },
+      { baseBranch: row.baseBranch, liveBranch: readableLiveBranch(row) },
     );
 
     return {

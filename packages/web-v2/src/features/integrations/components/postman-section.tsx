@@ -131,7 +131,7 @@ export function PostmanSection({ projectId }: { projectId: string }) {
     } else {
       await create.mutateAsync({
         provider: "postman",
-        environment: "prod",
+        role: "service",
         config: toConfig(form),
         secrets: { apiKey: form.apiKey.trim() },
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),

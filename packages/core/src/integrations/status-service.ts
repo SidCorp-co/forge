@@ -76,10 +76,32 @@ function providerCapabilities(provider: IntegrationProvider) {
   return capabilitiesFor(getAdapter(provider));
 }
 
+/**
+ * The card-key suffix for a binding, which web-v2 parses back out of `key`.
+ *
+ * A `service` binding has no stage, so it keys on its role — `sentry:service` rather than the
+ * `sentry:prod` it used to key on, where `prod` was the filler the old column forced it to carry.
+ */
+// cm:edge contract -> packages/web-v2/src/features/integrations/derive.ts — `envSortKey` and the
+// drawer both split this key on `:` and read the suffix back as a stage; a suffix invented here that
+// is not a stage name or `service` sorts to the end and renders as an unlabelled card
+function stageKey(row: { role: string; stages: string[] }): string {
+  return row.role === 'service' ? 'service' : row.stages.join('+') || 'deploy';
+}
+
+function stageLabel(row: { role: string; stages: string[] }): string {
+  if (row.role === 'service') return 'service';
+  return row.stages.map((s) => (s === 'live' ? 'Live' : 'Preview')).join(' + ') || 'deploy';
+}
+
 /** Flattened binding+connection row the status cards render from. */
 interface ProviderRow {
+  /** The binding's own id. The one thing about a card that is unique whatever else two
+   *  bindings share, and the handle a screen needs to address ONE of them. */
+  id: string;
   provider: string;
-  environment: string;
+  role: string;
+  stages: string[];
   config: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
@@ -92,7 +114,7 @@ interface ProviderRow {
  * the three blocks were ~95% identical; they differ only in env-keying, the
  * never-checked wording, and provider-specific meta fields.
  */
-function buildProviderCards(opts: {
+export function buildProviderCards(opts: {
   rows: ProviderRow[];
   provider: IntegrationProvider;
   label: string;
@@ -118,9 +140,18 @@ function buildProviderCards(opts: {
     ];
   }
   const envKeyed = opts.alwaysEnvKeyed || opts.rows.length > 1;
+  const base = (row: ProviderRow) =>
+    envKeyed ? `${opts.provider}:${stageKey(row)}` : opts.provider;
+  // cm:guard two bindings that serve the SAME stages produce the same base key, and a duplicate
+  // key is a card the screen cannot address: React renders one of them, and every drill-in, test
+  // and delete reaches whichever the list happened to hold first. The old model made that shape
+  // unreachable — one binding per environment — and ISS-1046 made it legal, so the id has to break
+  // the tie. It is appended ONLY where a tie exists, because the stage-keyed spelling is what
+  // existing drill-ins are bookmarked on (ISS-429) and renaming every card would break them all.
+  const collides = new Set(opts.rows.map(base).filter((k, i, all) => all.indexOf(k) !== i));
   return opts.rows.map((row) => ({
-    key: envKeyed ? `${opts.provider}:${row.environment}` : opts.provider,
-    label: envKeyed ? `${opts.label} (${row.environment})` : opts.label,
+    key: collides.has(base(row)) ? `${base(row)}:${row.id}` : base(row),
+    label: envKeyed ? `${opts.label} (${stageLabel(row)})` : opts.label,
     status: healthToStatus(row.lastHealthStatus, row.active),
     detail: !row.active
       ? 'integration disabled'
@@ -130,7 +161,9 @@ function buildProviderCards(opts: {
     lastSyncAt: toIso(row.lastHealthAt),
     configured: true,
     meta: {
-      environment: row.environment,
+      bindingId: row.id,
+      role: row.role,
+      stages: row.stages,
       breakerOpen: row.breakerOpenedAt !== null,
       lastHealthStatus: row.lastHealthStatus,
       capabilities: caps,
@@ -152,8 +185,10 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
   // the connection). Flattened to the shape the cards below already consume.
   const pairs = await listBindingsForProject(projectId);
   const integrationRows = pairs.map((pair) => ({
+    id: pair.binding.id,
     provider: pair.binding.provider,
-    environment: pair.binding.environment,
+    role: pair.binding.role,
+    stages: (pair.binding.stages ?? []) as string[],
     config: effectiveConfig(pair),
     active: pair.binding.active && pair.connection.active,
     lastHealthStatus: pair.connection.lastHealthStatus,

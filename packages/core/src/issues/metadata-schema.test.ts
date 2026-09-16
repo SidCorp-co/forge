@@ -37,7 +37,7 @@ describe('branchConfigOverrideSchema', () => {
 
   it('accepts null fields (used to clear a single override)', () => {
     expect(
-      branchConfigOverrideSchema.safeParse({ baseBranch: null, prodBranch: null }).success,
+      branchConfigOverrideSchema.safeParse({ baseBranch: null, liveBranch: null }).success,
     ).toBe(true);
   });
 

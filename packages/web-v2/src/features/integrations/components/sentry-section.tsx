@@ -203,7 +203,7 @@ export function SentrySection({ projectId }: { projectId: string }) {
     } else {
       await create.mutateAsync({
         provider: "sentry",
-        environment: "prod",
+        role: "service",
         config: toConfig(form),
         secrets: { authToken: form.authToken.trim() },
         ...(ownerOrgId ? { orgId: ownerOrgId } : {}),

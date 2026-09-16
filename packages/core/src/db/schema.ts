@@ -20,6 +20,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
 export { MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
@@ -327,6 +328,10 @@ export const issuePrefixAliases = pgTable(
   }),
 );
 
+// The release vocabulary lives in `release-axes.ts` and is re-exported here, so every existing
+// `from './db/schema.js'` importer still resolves it.
+export * from './release-axes.js';
+
 export const projects = pgTable(
   'projects',
   {
@@ -345,7 +350,19 @@ export const projects = pgTable(
     kind: text('kind').notNull().default('standard'),
     repoPath: text('repo_path'),
     baseBranch: text('base_branch'),
-    productionBranch: text('production_branch'),
+    // cm:guard read ONLY through `releaseModel`: 25 of 32 projects carry a value here that nothing
+    // promotes to, from the era when the column defaulted to 'main', and reading it without the model
+    // is how the old gate answered "this project promotes" for a project that promotes nothing.
+    // cm:edge contract -> packages/core/src/release-batch/gate.ts — `resolveReleaseDeclaration` is the one reader that decides whether this column means anything
+    liveBranch: text('live_branch'),
+    // cm:guard DECLARED, never derived. butlocs, mowment, getcontent and forge-dev are identical on every
+    // other stored column, and three of them ship a storefront while the fourth only borrows the binding
+    // for MCP — no function can separate them, so nothing may try. A column and not a `pipelineConfig`
+    // key because the release gate decides whether an issue may reach `closed`, which makes it kernel.
+    releaseModel: text('release_model', { enum: axes.releaseModels }).notNull().default('none'),
+    // cm:guard set exactly when `releaseModel` is `promote`, held by `projects_release_strategy_chk` in
+    // Postgres rather than in a validator. All four promote projects carry `merge-branch`.
+    releaseStrategy: text('release_strategy', { enum: axes.releaseStrategies }),
     // cm:guard SSH form, and set together with a project git credential or not at all: provision auto-clones from this and a URL with no credential fails on a box nobody is watching.
     repoUrl: text('repo_url'),
     // cm:guard prose ON PURPOSE, and never executed as a command list: any project admin can write this, and the runner would be running it unreviewed on every box. NULL is not an error — it means the setup agent derives the procedure from the repo itself, at a paid model's rates, on every job that needs it.
@@ -376,6 +393,8 @@ export const projects = pgTable(
       columns: [t.id, t.issuePrefix],
       foreignColumns: [issuePrefixAliases.projectId, issuePrefixAliases.prefix],
     }),
+    // the three predicates, and why each is shaped the way it is, live in `./release-axes.ts`
+    ...axes.releaseProjectChecks,
   }),
 );
 
@@ -2662,9 +2681,6 @@ export const projectGitCredentialsRelations = relations(projectGitCredentials, (
   }),
 }));
 
-export const integrationEnvironments = ['staging', 'prod'] as const;
-export type IntegrationEnvironment = (typeof integrationEnvironments)[number];
-
 export const integrationDeliveryDirections = ['outbound', 'inbound'] as const;
 export type IntegrationDeliveryDirection = (typeof integrationDeliveryDirections)[number];
 
@@ -2712,7 +2728,7 @@ export const integrationDeliveriesRelations = relations(integrationDeliveries, (
 }));
 
 // Additive successor to project_integrations: the CREDENTIAL (connection, owned
-// by a principal — user now, org later) is split from the per-project+env LINK
+// by a principal — user now, org later) is split from the per-project LINK
 // (binding). Tables land empty+backfilled; all current read/dispatch paths keep
 // using project_integrations until the REST cutover issue flips them. Owner is a
 // generic principal so org-level sharing arrives without a data migration.
@@ -2771,7 +2787,16 @@ export const integrationBindings = pgTable(
     // Denormalized from the connection so the inbound router + unique index work
     // without a join. Always equals the parent connection's provider.
     provider: text('provider').notNull(),
-    environment: text('environment', { enum: integrationEnvironments }).notNull(),
+    // cm:guard `role` and `stages` replaced one `environment` column answering three questions at once
+    // (ISS-1046): which stage a deploy target serves, whether this binding ships the project, and — for
+    // 12 of 34 fleet bindings — nothing, because the column demanded a value seven of eight providers
+    // had no meaning for. That filler was then read as the answer to the second question, which handed
+    // the release agent a Sentry project on one project and a Rocket.Chat room on another.
+    role: text('role', { enum: axes.bindingRoles }).notNull(),
+    // cm:guard a SET, not a single value: one epodsystem store IS both stages (preview = draft theme,
+    // live = published), while Coolify is two applications and so two bindings of one stage each. Empty
+    // exactly when `role = 'service'`, held by `integration_bindings_role_stages_chk`.
+    stages: text('stages').array().notNull().default(sql`'{}'::text[]`),
     // Per-binding overrides (e.g. coolify `targets[]` deploy apps). Overlaid on
     // top of connection.config at dispatch time.
     config: jsonb('config').notNull().default({}),
@@ -2781,8 +2806,8 @@ export const integrationBindings = pgTable(
     // ISS-558 — multi-store support for epodsystem. Empty string = the default
     // (unlabeled) binding; a non-empty kebab slug = a named extra binding.
     // Non-epodsystem providers always leave this as '' (the DB default), so
-    // UNIQUE(project_id, provider, environment, label) still keeps the
-    // one-per-(project,provider,env) invariant for coolify/postman/sentry.
+    // `integration_bindings_service_uq` still keeps one service binding per
+    // (project, provider) for sentry/rocketchat/github/postman/google.
     label: text('label').notNull().default(''),
     active: boolean('active').notNull().default(true),
     // cm:guard NEVER put a credential here — this text is rendered verbatim into every agent prompt for the project, so anything stored is effectively published to the model
@@ -2796,15 +2821,15 @@ export const integrationBindings = pgTable(
       t.projectId,
       t.provider,
     ),
-    // ISS-558: label column added. UNIQUE(project_id, provider, environment, label)
-    // preserves the one-per-(project,provider,env) invariant for all providers
-    // (label='' for non-epodsystem) while allowing multiple labeled epodsystem bindings.
-    projectProviderEnvLabelUq: uniqueIndex('integration_bindings_project_provider_env_label_uq').on(
-      t.projectId,
-      t.provider,
-      t.environment,
-      t.label,
-    ),
+    // cm:guard uniqueness survives for `service` rows ONLY, and its absence on `deploy` rows is the fix
+    // rather than an oversight: a stage may hold more than one deploy binding and core never picks among
+    // them (ISS-1046 rule 3), so uniqueness there would re-encode "core chooses" — the defect
+    // `bindings[0]` was. Eight fleet projects already carry two coolify bindings at `label = ''`.
+    // cm:edge contract -> packages/core/src/integrations/route-helpers.ts — `assertNoActiveBindingClash` is this index read in application code, and the two must admit the same rows
+    serviceUq: uniqueIndex('integration_bindings_service_uq')
+      .on(t.projectId, t.provider, t.label)
+      .where(axes.SERVICE_ROLE_PRED),
+    ...axes.bindingShapeChecks,
   }),
 );
 

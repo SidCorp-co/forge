@@ -164,6 +164,8 @@ jobs:
           node-version: '22'
       - run: node scripts/check-injected-doc-modes.mjs
       - run: node scripts/check-pat-surface.mjs
+      # ISS-1046 — the readers of the retired release model that no type can see.
+      - run: node scripts/check-retired-model.mjs
 
   archmap:
     runs-on: ubuntu-latest

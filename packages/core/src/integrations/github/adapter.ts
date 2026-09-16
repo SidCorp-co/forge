@@ -35,8 +35,8 @@ export const githubAdapter: IntegrationAdapter<GitHubConfig, GitHubSecrets> = {
     canDispatch: false,
     canReceiveWebhook: true,
     injectsMcp: false,
-    hasEnvironments: false,
-    prodConfirmGate: false,
+    canDeploy: false,
+    liveConfirmGate: false,
     hasDeliveryLog: true,
   },
 

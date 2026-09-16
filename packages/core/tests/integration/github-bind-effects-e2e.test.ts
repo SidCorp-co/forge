@@ -136,7 +136,7 @@ describe('syncRepoUrlFromGitHubBinding', () => {
   it('fills an empty repo URL from the repository just bound', async () => {
     const out = await mods.syncRepoUrlFromGitHubBinding({
       projectId,
-      environment: 'prod',
+      role: 'service',
       config: { owner: OWNER, repo: REPO },
     });
     expect(out).toEqual({ kind: 'set', repoUrl: HTTPS });
@@ -148,7 +148,7 @@ describe('syncRepoUrlFromGitHubBinding', () => {
     await setRepoUrl(ssh);
     const out = await mods.syncRepoUrlFromGitHubBinding({
       projectId,
-      environment: 'prod',
+      role: 'service',
       config: { owner: OWNER, repo: REPO },
     });
     expect(out).toEqual({ kind: 'unchanged' });
@@ -160,17 +160,21 @@ describe('syncRepoUrlFromGitHubBinding', () => {
     await setRepoUrl(other);
     const out = await mods.syncRepoUrlFromGitHubBinding({
       projectId,
-      environment: 'prod',
+      role: 'service',
       config: { owner: OWNER, repo: REPO },
     });
     expect(out).toEqual({ kind: 'conflict', existing: other, bound: HTTPS });
     expect(await storedRepoUrl()).toBe(other);
   });
 
-  it('never lets a staging binding drive the project-tier URL', async () => {
+  // cm:guard the rule is `role === 'service'`, and it stays asserted even though
+  // `providerCanDeploy('github')` makes every github binding service today: it says WHICH
+  // binding may repoint a project's git if the capability list ever widens. The rule it
+  // replaced was `environment !== 'prod'` and refused a fork bound as `staging`.
+  it('never lets a deploy binding drive the project-tier URL', async () => {
     const out = await mods.syncRepoUrlFromGitHubBinding({
       projectId,
-      environment: 'staging',
+      role: 'deploy',
       config: { owner: OWNER, repo: 'a-fork' },
     });
     expect(out).toEqual({ kind: 'unchanged' });
@@ -180,7 +184,7 @@ describe('syncRepoUrlFromGitHubBinding', () => {
   it('does nothing when the binding names no repository yet', async () => {
     const out = await mods.syncRepoUrlFromGitHubBinding({
       projectId,
-      environment: 'prod',
+      role: 'service',
       config: { installationId: 1 },
     });
     expect(out).toEqual({ kind: 'unchanged' });
@@ -201,7 +205,7 @@ describe('POST /integration-connections/:id/bindings', () => {
       method: 'POST',
       body: JSON.stringify({
         projectId,
-        environment: 'prod',
+        role: 'service',
         config: { owner: OWNER, repo: REPO, installationId: 42 },
       }),
       headers: {
@@ -230,7 +234,7 @@ describe('POST /integration-connections/:id/bindings', () => {
     });
     const res = await app.request(`/api/integration-connections/${connection.id}/bindings`, {
       method: 'POST',
-      body: JSON.stringify({ projectId, environment: 'prod' }),
+      body: JSON.stringify({ projectId, role: 'deploy', stages: ['live'] }),
       headers: {
         authorization: `Bearer ${await mods.signUserToken(ownerId)}`,
         'content-type': 'application/json',

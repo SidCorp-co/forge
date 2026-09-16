@@ -61,7 +61,10 @@ vi.mock('../integrations/deliveries.js', () => ({
 // cm:guard Coolify integration resolution goes through the binding→connection store helper and is mocked there, while `pipeline_runs` reads and writes still go through the db stub above — mixing the two is how a case proves the stub instead of the resolver.
 const listBindingsSpy = vi.fn();
 vi.mock('../integrations/store.js', () => ({
-  listActiveBindingsForProjectProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
+  // cm:guard the deploy path resolves through the DEPLOY-scoped helper. A coolify `service`
+  // binding is a facility the project uses, not somewhere Forge pushes to, and the mock is named
+  // for the query the code actually makes so a rename here cannot quietly restore the old one.
+  listActiveDeployBindingsForProvider: (...a: unknown[]) => listBindingsSpy(...(a as [])),
 }));
 
 vi.mock('./runs.js', () => ({
@@ -97,7 +100,8 @@ const stagingPair = {
     id: STAGING_INT,
     projectId: PROJECT_ID,
     provider: 'coolify',
-    environment: 'staging',
+    role: 'deploy',
+    stages: ['preview'],
     config: {},
     active: true,
   },
@@ -108,7 +112,8 @@ const prodPair = {
     id: PROD_INT,
     projectId: PROJECT_ID,
     provider: 'coolify',
-    environment: 'prod',
+    role: 'deploy',
+    stages: ['live'],
     config: {},
     active: true,
   },
@@ -294,7 +299,7 @@ describe('tryDispatchCoolifyRelease — prod autoProdDeploy bypass', () => {
   });
 });
 
-describe('tryDispatchCoolifyRelease — integrationId hard filter + allowProd', () => {
+describe('tryDispatchCoolifyRelease — integrationId hard filter + allowLive', () => {
   it('integrationId filters to only that binding — prod is never touched', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
 
@@ -303,7 +308,7 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowProd', 
       issueId: ISSUE_ID,
       runId: RUN_ID,
       integrationId: STAGING_INT,
-      allowProd: true,
+      allowLive: true,
     });
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);
@@ -313,14 +318,14 @@ describe('tryDispatchCoolifyRelease — integrationId hard filter + allowProd', 
     expect(outcome.integrationIds).toEqual([STAGING_INT]);
   });
 
-  it('allowProd:false excludes prod bindings entirely — no enqueue, no gate', async () => {
+  it('allowLive:false excludes prod bindings entirely — no enqueue, no gate', async () => {
     listBindingsSpy.mockResolvedValueOnce([stagingPair, prodPair]);
 
     const outcome = await tryDispatchCoolifyRelease({
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
       runId: RUN_ID,
-      allowProd: false,
+      allowLive: false,
     });
 
     expect(enqueueSpy).toHaveBeenCalledTimes(1);

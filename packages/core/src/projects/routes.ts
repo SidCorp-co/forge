@@ -43,8 +43,9 @@ import { RETIRED_STATE_CONTEXT_MESSAGE, readAgentConfig } from './agent-config.j
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
-
 import { projectFactsRoutes } from './project-facts-routes.js';
+import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
+import { readableLiveBranch, releaseModelGap, releaseModelPatchFields } from './release-model.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
 
@@ -102,7 +103,7 @@ export const updateProjectSchema = z
     // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/setup_agent.rs — this text IS the setup agent's instruction set; it reaches the box via `/me/runners`, so a rename here silently gives every setup agent an empty procedure and sends it back to deriving one per job
     workspaceSetup: z.string().trim().max(8000).nullable().optional(),
     baseBranch: z.string().trim().max(100).nullable().optional(),
-    productionBranch: z.string().trim().max(100).nullable().optional(),
+    ...releaseModelPatchFields,
     // cm:guard ISS-992 — the shape is checked in the handler, not here, because three of the four refusals need the database (the reserved name, the prefix another project holds, and whether the caller may be told which one). A zod regex here would answer the first and let the other three reach Postgres as a 500 on an ordinary conflict.
     issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
@@ -156,27 +157,6 @@ export type UpdateProjectInput = z.infer<typeof updateProjectSchema>;
 const idParamSchema = z.object({
   id: z.uuid(),
 });
-
-const PATCHED_PROJECT = {
-  id: projects.id,
-  slug: projects.slug,
-  name: projects.name,
-  orgId: projects.orgId,
-  createdBy: projects.createdBy,
-  description: projects.description,
-  kind: projects.kind,
-  repoPath: projects.repoPath,
-  repoUrl: projects.repoUrl,
-  workspaceSetup: projects.workspaceSetup,
-  baseBranch: projects.baseBranch,
-  productionBranch: projects.productionBranch,
-  defaultDeviceId: projects.defaultDeviceId,
-  agentConfig: projects.agentConfig,
-  previewDeploy: projects.previewDeploy,
-  webhookSecret: projects.webhookSecret,
-  issuePrefix: projects.issuePrefix,
-  createdAt: projects.createdAt,
-};
 
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
@@ -321,27 +301,7 @@ projectRoutes.get(
     if (!access.role) throw forbidden('not a project member');
 
     const [project] = await db
-      .select({
-        id: projects.id,
-        slug: projects.slug,
-        name: projects.name,
-        orgId: projects.orgId,
-        createdBy: projects.createdBy,
-        description: projects.description,
-        repoPath: projects.repoPath,
-        repoUrl: projects.repoUrl,
-        workspaceSetup: projects.workspaceSetup,
-        baseBranch: projects.baseBranch,
-        productionBranch: projects.productionBranch,
-        defaultDeviceId: projects.defaultDeviceId,
-        agentConfig: projects.agentConfig,
-        previewDeploy: projects.previewDeploy,
-        webhookSecret: projects.webhookSecret,
-        apiKey: projects.apiKey,
-        issuePrefix: projects.issuePrefix,
-        archivedAt: projects.archivedAt,
-        createdAt: projects.createdAt,
-      })
+      .select(PROJECT_DETAIL)
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);
@@ -377,6 +337,10 @@ projectRoutes.get(
     // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json({
       ...project,
+      // cm:guard the column is returned through the ONE rule that reads it. `releaseModel` travels
+      // beside it so a caller can tell "this project promotes to no branch" from "this project does
+      // not promote"; before ISS-1046 both answered the stale branch and neither said which.
+      liveBranch: readableLiveBranch(project),
       apiKey: access.role === 'viewer' ? null : project.apiKey,
       role: access.role,
       orgRole: access.orgRole,
@@ -466,7 +430,11 @@ projectRoutes.patch(
     if (patch.repoUrl !== undefined) updates.repoUrl = patch.repoUrl;
     if (patch.baseBranch !== undefined) updates.baseBranch = patch.baseBranch;
     if (patch.workspaceSetup !== undefined) updates.workspaceSetup = patch.workspaceSetup;
-    if (patch.productionBranch !== undefined) updates.productionBranch = patch.productionBranch;
+    if (patch.liveBranch !== undefined) updates.liveBranch = patch.liveBranch;
+    if (patch.releaseModel !== undefined) updates.releaseModel = patch.releaseModel;
+    if (patch.releaseStrategy !== undefined) updates.releaseStrategy = patch.releaseStrategy;
+    const gap = await releaseModelGap(id, updates);
+    if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
     if (patch.agentConfig !== undefined) {
       updates.agentConfig = patch.agentConfig;
@@ -514,7 +482,9 @@ projectRoutes.patch(
     });
     if (!updated) throw notFound();
 
-    return c.json(updated);
+    // cm:guard same rule on the write door as on the read one: a PATCH that set `releaseModel: 'none'`
+    // must not echo back the live branch the row still carries, or the caller writes it straight back.
+    return c.json({ ...updated, liveBranch: readableLiveBranch(updated) });
   },
 );
 
@@ -748,15 +718,21 @@ projectRoutes.get(
     const access = await loadProjectAccess(id, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const [project] = await db
+    const [row] = await db
       .select({
         baseBranch: projects.baseBranch,
-        productionBranch: projects.productionBranch,
+        liveBranch: projects.liveBranch,
+        releaseModel: projects.releaseModel,
       })
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);
-    if (!project) throw notFound();
+    if (!row) throw notFound();
+    // cm:guard the branch resolver is handed the READABLE live branch, never the raw column. 25 of
+    // 32 fleet projects carry a live branch nothing promotes to, and this endpoint is what the web
+    // branch picker reads: handing one of those over is how a `publish` project comes to be shown,
+    // and acted on, as a branch-based promote (ISS-1046).
+    const project = { baseBranch: row.baseBranch, liveBranch: readableLiveBranch(row) };
 
     const [issueRow] = await db
       .select({

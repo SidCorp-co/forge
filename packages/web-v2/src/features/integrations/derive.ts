@@ -37,8 +37,8 @@ export const DEFAULT_CAPABILITIES: IntegrationCapabilities = {
   canDispatch: false,
   canReceiveWebhook: false,
   injectsMcp: false,
-  hasEnvironments: false,
-  prodConfirmGate: false,
+  canDeploy: false,
+  liveConfirmGate: false,
   hasDeliveryLog: false,
 };
 
@@ -56,7 +56,7 @@ export const DRILLABLE_PROVIDERS = [
 ] as const;
 export type DrillableProvider = (typeof DRILLABLE_PROVIDERS)[number];
 
-/** Card key → provider; `coolify:staging` and `coolify` both map to `coolify`. */
+/** Card key → provider; `coolify:live` and `coolify` both map to `coolify`. */
 export function cardProvider(key: string): string {
   return key.split(":")[0] ?? key;
 }
@@ -67,31 +67,44 @@ export function isProviderCard(key: string): boolean {
 }
 
 /** A provider's status cards grouped under one entry. Single-card groups
- *  render as a normal card; multi-card groups (env-split providers like
- *  Coolify, which the backend keys `coolify:prod` / `coolify:staging`) render
- *  as one consolidated card with per-environment sub-rows. */
+ *  render as a normal card; multi-card groups (stage-split providers like
+ *  Coolify, which the backend keys `coolify:live` / `coolify:preview`) render
+ *  as one consolidated card with per-stage sub-rows. */
 export interface ProviderCardGroup {
   provider: string;
   cards: StatusCard[];
 }
 
-/** Display order for environment sub-rows within a consolidated group —
- *  production before staging, deterministic regardless of backend row order. */
-const ENV_SORT_ORDER: Record<string, number> = { prod: 0, staging: 1 };
-
-function envRank(card: StatusCard): number {
-  const env =
-    (typeof card.meta?.environment === "string" ? card.meta.environment : undefined) ??
-    card.key.split(":")[1] ??
-    "";
-  return ENV_SORT_ORDER[env] ?? 99;
+/**
+ * Display order for the sub-rows within a consolidated group: what real users
+ * are on first, then what they are shown before it counts, then the facilities
+ * that serve neither.
+ *
+ * Read off `meta.role` / `meta.stages`, which is what the server now sends
+ * (`status-service.ts:buildProviderCards`), with the key suffix as the fallback
+ * for a card built before those were carried. The predecessor of this function
+ * ranked on `{ prod: 0, staging: 1 }` against `meta.environment` — a field
+ * ISS-1046 removed — so after the rename every card ranked 99 and the sort this
+ * exists for silently stopped ordering anything. A rank that ties for every
+ * input is indistinguishable from a correct one in the rendered output, which is
+ * why the case below asserts the ORDER and not merely the membership.
+ */
+function stageRank(card: StatusCard): number {
+  const role = typeof card.meta?.role === "string" ? card.meta.role : undefined;
+  const stages = Array.isArray(card.meta?.stages)
+    ? (card.meta.stages as unknown[]).filter((s): s is string => typeof s === "string")
+    : undefined;
+  const suffix = card.key.split(":")[1] ?? "";
+  if (role === "service" || suffix === "service") return 2;
+  const live = stages ? stages.includes("live") : suffix.includes("live");
+  return live ? 0 : 1;
 }
 
 /**
  * Group status cards by base provider (`cardProvider`), preserving the
- * first-seen order of providers. Within an env-split provider's group the
- * cards are sorted prod-then-staging so the rendered order is stable
- * regardless of the order the backend returned the bindings. Single-card
+ * first-seen order of providers. Within a stage-split provider's group the
+ * cards are sorted live-then-preview-then-service so the rendered order is
+ * stable regardless of the order the backend returned the bindings. Single-card
  * providers yield a group of length 1 and render exactly as before.
  */
 export function groupCardsByProvider(cards: StatusCard[]): ProviderCardGroup[] {
@@ -108,7 +121,7 @@ export function groupCardsByProvider(cards: StatusCard[]): ProviderCardGroup[] {
     group.cards.push(card);
   }
   for (const group of groups) {
-    if (group.cards.length > 1) group.cards.sort((a, b) => envRank(a) - envRank(b));
+    if (group.cards.length > 1) group.cards.sort((a, b) => stageRank(a) - stageRank(b));
   }
   return groups;
 }

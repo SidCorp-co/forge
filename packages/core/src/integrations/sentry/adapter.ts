@@ -48,8 +48,8 @@ export const sentryAdapter: IntegrationAdapter<SentryConfig, SentrySecrets> = {
     canDispatch: false,
     canReceiveWebhook: false,
     injectsMcp: true,
-    hasEnvironments: false,
-    prodConfirmGate: false,
+    canDeploy: false,
+    liveConfirmGate: false,
     hasDeliveryLog: false,
   },
 

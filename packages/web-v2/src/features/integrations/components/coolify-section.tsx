@@ -23,7 +23,7 @@ import { formatApiError } from "@/lib/api/error";
 import { useMemo, useState } from "react";
 import { ConnectionOwnerField } from "./connection-owner-field";
 import { CoolifyTargetsField } from "./coolify-targets-field";
-import { ENV_OPTIONS } from "./status-pill";
+import { STAGE_OPTIONS } from "./status-pill";
 import {
   useConfirmProdDeploy,
   useCreateProviderIntegration,
@@ -35,7 +35,7 @@ import {
 } from "../hooks";
 import type {
   CoolifyTargetInput,
-  IntegrationEnvironment,
+  DeployStage,
   IntegrationSummary,
   IntegrationTestResult,
   ProviderConfig,
@@ -58,22 +58,22 @@ function badgeFor(existing: IntegrationSummary | undefined): BadgeView {
 
 /**
  * ISS-395 — Coolify deploy integration config (ported from the v1
- * `coolify-section.tsx`). Separate staging/prod integrations toggled via a
+ * `coolify-section.tsx`). Separate preview/live bindings toggled via a
  * SegmentedControl. Prod requires a manual confirmation gate before every
  * deploy. There is no inbound webhook to configure: Coolify signs nothing, so
  * ISS-922 replaced the callback with a poll of the deployment's own status.
  */
 export function CoolifySection({ projectId }: { projectId: string }) {
-  const [env, setEnv] = useState<IntegrationEnvironment>("staging");
+  const [stage, setStage] = useState<DeployStage>("preview");
   const list = useIntegrationsList(projectId);
   const rows = useMemo(
     () => (list.data?.items ?? []).filter((i) => i.provider === "coolify"),
     [list.data],
   );
-  const existing = useMemo(
-    () => rows.find((i) => i.environment === env),
-    [rows, env],
-  );
+  // Every coolify binding serving this stage — a stage may hold more than one
+  // and core never picks among them (ISS-1046 rule 3). This panel edits the
+  // first; the connection drawer lists them all.
+  const existing = useMemo(() => rows.find((i) => i.stages.includes(stage)), [rows, stage]);
 
   return (
     <Card>
@@ -87,16 +87,16 @@ export function CoolifySection({ projectId }: { projectId: string }) {
       </CardHeader>
       <CardContent>
         <div className="flex flex-col gap-4">
-          <SegmentedControl<IntegrationEnvironment>
-            value={env}
-            onChange={setEnv}
-            options={ENV_OPTIONS}
+          <SegmentedControl<DeployStage>
+            value={stage}
+            onChange={setStage}
+            options={STAGE_OPTIONS}
           />
-          {/* Remount the panel per environment so its form state re-seeds. */}
-          <EnvironmentPanel
-            key={env}
+          {/* Remount the panel per stage so its form state re-seeds. */}
+          <StagePanel
+            key={stage}
             projectId={projectId}
-            environment={env}
+            stage={stage}
             existing={existing}
             onRefetch={() => list.refetch()}
           />
@@ -108,14 +108,14 @@ export function CoolifySection({ projectId }: { projectId: string }) {
 
 interface EnvPanelProps {
   projectId: string;
-  environment: IntegrationEnvironment;
+  stage: DeployStage;
   existing: IntegrationSummary | undefined;
   onRefetch: () => void;
 }
 
-function EnvironmentPanel({
+function StagePanel({
   projectId,
-  environment,
+  stage,
   existing,
   onRefetch,
 }: EnvPanelProps) {
@@ -154,7 +154,7 @@ function EnvironmentPanel({
   );
   const [error, setError] = useState<string | null>(null);
 
-  const isProd = environment === "prod";
+  const isLive = stage === "live";
   const saving = create.isPending || update.isPending;
   // Org-shared credential: only an org owner/admin may change the CONNECTION
   // tier (base URL + token). The deploy target (resourceUuid/branch) is
@@ -204,7 +204,8 @@ function EnvironmentPanel({
         }
         await create.mutateAsync({
           provider: "coolify",
-          environment,
+          role: "deploy",
+          stages: [stage],
           config: { baseUrl, targets: cleanTargets },
           secrets: { apiToken: apiToken.trim() },
           ...(ownerOrgId ? { orgId: ownerOrgId } : {}),
@@ -230,19 +231,19 @@ function EnvironmentPanel({
 
   function handleDelete() {
     if (!existing) return;
-    if (!window.confirm(`Delete the ${environment} Coolify integration?`))
+    if (!window.confirm(`Delete the ${stage} Coolify integration?`))
       return;
     remove.mutate(existing.id);
   }
 
   return (
     <div
-      className={`flex flex-col gap-4 rounded-lg border p-4 ${isProd ? "border-red" : "border-subtle"}`}
+      className={`flex flex-col gap-4 rounded-lg border p-4 ${isLive ? "border-red" : "border-subtle"}`}
     >
       <p className="fg-body-sm text-muted">
-        {isProd
-          ? "⚠ Production — manual confirmation gate before every deploy."
-          : "Staging — auto-dispatch on release."}
+        {isLive
+          ? "⚠ Live — manual confirmation gate before every deploy."
+          : "Preview — auto-dispatch on release."}
       </p>
 
       <fieldset className="flex flex-col gap-3 rounded-md border border-subtle bg-sunken/40 p-3">
@@ -298,7 +299,7 @@ function EnvironmentPanel({
 
       <CoolifyTargetsField
         projectId={projectId}
-        environment={environment}
+        stage={stage}
         integrationId={existing?.id}
         baseUrl={baseUrl}
         apiToken={apiToken}
@@ -348,7 +349,7 @@ function EnvironmentPanel({
 
       {existing && <DeployConfirmationHint />}
 
-      {isProd && existing && (
+      {isLive && existing && (
         <ProdGateSection
           projectId={projectId}
           integrationId={existing.id}
@@ -367,7 +368,7 @@ function EnvironmentPanel({
  * failed save auto-reverts (the mutation hook only writes the cache on success
  * and raises its own success/error toasts).
  *
- * - autoProd ON  → prod deploys dispatch automatically on release; the manual
+ * - autoProd ON  → live deploys dispatch automatically on release; the manual
  *   "Confirm production deploy" button is hidden (it would be a no-op) and an
  *   info banner reflects the auto-approve state.
  * - autoProd OFF (default) → the existing manual confirm gate is unchanged.
@@ -391,7 +392,7 @@ function ProdGateSection({
 
   const featureOff = cfgQ.isError && isFeatureOff(cfgQ.error);
   // Default OFF: only an explicit `=== true` enables auto-approve — a missing
-  // flag (or any read error) must never auto-deploy a project to prod.
+  // flag (or any read error) must never auto-deploy a project to its live stage.
   const autoProd = cfgQ.data?.pipelineConfig?.autoProdDeploy === true;
 
   function handleToggle(next: boolean) {
@@ -405,11 +406,11 @@ function ProdGateSection({
     <div className="flex flex-col gap-3">
       {featureOff ? (
         <div className="flex flex-col gap-1 rounded-lg border border-subtle bg-sunken p-3">
-          <span className="fg-label text-subtle">Production approval gate</span>
+          <span className="fg-label text-subtle">Live approval gate</span>
           <span className="fg-body-sm text-muted">
             Pipeline control is disabled for this project, so auto-approve
-            can&apos;t be configured here. Production deploys stay behind the
-            manual gate below.
+            can&apos;t be configured here. Live deploys stay behind the manual
+            gate below.
           </span>
         </div>
       ) : (
@@ -436,10 +437,10 @@ function ProdGateSection({
       {autoProd ? (
         <Banner tone="success">
           <div className="flex flex-col gap-1">
-            <span className="fg-label">Production approval gate · off</span>
+            <span className="fg-label">Live approval gate · off</span>
             <span className="fg-body-sm">
-              Auto-approve is enabled — production deploys dispatch automatically
-              on release, like staging. No manual confirmation required.
+              Auto-approve is enabled — live deploys dispatch automatically on
+              release, like preview. No manual confirmation required.
             </span>
             <span className="font-mono text-[10px] text-subtle">
               integration: {integrationId}
@@ -485,14 +486,14 @@ function ProdConfirmBanner({
   return (
     <Banner tone="attention">
       <div className="flex flex-col gap-2">
-        <span className="fg-label">Production approval gate</span>
+        <span className="fg-label">Live approval gate</span>
         <span className="fg-body-sm">
-          Production deploys never auto-dispatch. Click confirm when ready to
-          release the gate for an in-flight pipeline run.
+          Live deploys never auto-dispatch. Click confirm when ready to release
+          the gate for an in-flight pipeline run.
         </span>
         <div>
           <Button size="sm" loading={pending} onClick={onConfirm}>
-            Confirm production deploy
+            Confirm live deploy
           </Button>
         </div>
         <span className="font-mono text-[10px] text-subtle">

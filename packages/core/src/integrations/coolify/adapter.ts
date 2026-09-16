@@ -1,3 +1,4 @@
+import type { DeployStage } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { isSentryEnabled, Sentry } from '../../observability/sentry.js';
 import {
@@ -26,7 +27,7 @@ interface DeployPayload extends Record<string, unknown> {
   /** `null` for a run-less resource redeploy (no pipeline run to advance). */
   runId: string | null;
   issueId: string | null;
-  environment: 'staging' | 'prod';
+  stages: DeployStage[];
   /** The specific target deployed by this delivery (one delivery per target). */
   targetId: string;
   targetLabel: string;
@@ -78,8 +79,8 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
     canDispatch: true,
     canReceiveWebhook: false,
     injectsMcp: false,
-    hasEnvironments: true,
-    prodConfirmGate: true,
+    canDeploy: true,
+    liveConfirmGate: true,
     hasDeliveryLog: true,
   },
 
@@ -197,7 +198,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         payload: {
           ...payload,
           runId,
-          environment: ctx.environment,
+          stages: ctx.stages,
           targetId: target.id,
           targetLabel: target.label,
           resourceUuid: target.resourceUuid,
@@ -215,7 +216,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
           data: {
             connectionId: ctx.connectionId,
             bindingId: ctx.bindingId,
-            environment: ctx.environment,
+            stages: ctx.stages,
             deliveryId,
             runId,
             targetId: target.id,
@@ -324,7 +325,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
           {
             connectionId: ctx.connectionId,
             bindingId: ctx.bindingId,
-            environment: ctx.environment,
+            stages: ctx.stages,
           },
           'coolify: circuit breaker tripped — ops follow-up required',
         );

@@ -7,7 +7,7 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
-import type { IntegrationEnvironment } from '../db/schema.js';
+import type { BindingRole, DeployStage } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -17,7 +17,7 @@ import {
   type BindingWithConnection,
   buildContextFromBinding,
   effectiveConfig,
-  findActiveBinding,
+  findActiveServiceBindingAtLabel,
   findBindingWithConnectionById,
   type IntegrationBindingRow,
   type IntegrationConnectionRow,
@@ -46,23 +46,40 @@ export const forbidden = () =>
 export const notFound = (entity = 'integration') =>
   new HTTPException(404, { message: `${entity} not found`, cause: { code: 'NOT_FOUND' } });
 
-/** 409 for the one-active-binding-per-slot invariant (create + bind-existing). */
+/** 409 for the one-active-service-binding invariant (create + bind-existing). */
 export const alreadyExists = (
-  message = 'integration already exists for this provider+environment',
+  message = 'an active service binding for this provider already exists on this project',
 ) => new HTTPException(409, { message, cause: { code: 'ALREADY_EXISTS' } });
 
 /**
- * Shared pre-check of the two binding-creating endpoints: one active binding
- * per (project, provider, environment) — 409 ALREADY_EXISTS on a clash.
- * (Epodsystem creates check by label instead — see the create route.)
+ * Shared pre-check of the two binding-creating endpoints: one active SERVICE binding per
+ * (project, provider) — 409 ALREADY_EXISTS on a clash. (Epodsystem creates check by label
+ * instead — see the create route.)
  */
+// cm:edge contract -> packages/core/src/db/schema.ts — this is `integration_bindings_service_uq` read
+// in application code so the caller gets a 409 rather than a 500 from Postgres, and the two must admit
+// the same rows. A DEPLOY binding is deliberately unchecked: a stage may hold more than one and core
+// never picks among them (ISS-1046 rule 3), so refusing a second here would re-impose the uniqueness
+// the index dropped and eight fleet projects already violate with two coolify bindings apiece.
 export async function assertNoActiveBindingClash(
   projectId: string,
   provider: IntegrationProvider,
-  environment: IntegrationEnvironment,
+  role: BindingRole,
+  label = '',
 ): Promise<void> {
-  const clash = await findActiveBinding(projectId, provider, environment);
-  if (clash) throw alreadyExists();
+  if (role !== 'service') return;
+  // cm:guard the lookup is SERVICE-scoped AND LABEL-scoped, matching the partial index
+  // `(project_id, provider, label) WHERE role = 'service'` exactly. Dropping the role filter
+  // refused an operator adding a service binding to a project that already had a deploy one — a
+  // pair the index admits and rule 3 requires, since the two are different declarations about the
+  // same credential. Dropping the label filter refused a second NAMED storefront, which the index
+  // also admits. `label` is NOT NULL DEFAULT '', so one rule covers every provider and epodsystem
+  // needs no branch of its own.
+  const clash = await findActiveServiceBindingAtLabel(projectId, provider, label);
+  if (clash)
+    throw alreadyExists(
+      label ? `integration already exists for this provider (label "${label}")` : undefined,
+    );
 }
 
 /** ISS-609 — apply rocketchat connection/binding CRUD to the live bot socket
@@ -105,7 +122,8 @@ export function summarizeBinding(pair: BindingWithConnection) {
     connectionId: connection.id,
     projectId: binding.projectId,
     provider: binding.provider as IntegrationProvider,
-    environment: binding.environment as IntegrationEnvironment,
+    role: binding.role as BindingRole,
+    stages: (binding.stages ?? []) as DeployStage[],
     config: effectiveConfig(pair),
     bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
     label: binding.label ?? '',
@@ -159,7 +177,8 @@ export function summarizeConnectionWithUsage(
       bindings: bindings.map((b) => ({
         id: b.id,
         projectId: b.projectId,
-        environment: b.environment,
+        role: b.role as BindingRole,
+        stages: (b.stages ?? []) as DeployStage[],
         label: b.label,
         active: b.active,
       })),

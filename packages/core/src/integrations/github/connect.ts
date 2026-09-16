@@ -15,7 +15,6 @@ const STATE_TTL_MS = 10 * 60_000;
 export interface ConnectState {
   projectId: string;
   userId: string;
-  environment: string;
   /** Org that will own the credential, when the operator chose an org-owned
    *  App. Absent = personal. The choice is made at connect time but spent in
    *  the callback, which sees nothing but this state. */
@@ -54,7 +53,6 @@ export function verifyConnectState(
   return {
     projectId: parsed.projectId,
     userId: parsed.userId,
-    environment: parsed.environment,
     ...(parsed.orgId ? { orgId: parsed.orgId } : {}),
   };
 }

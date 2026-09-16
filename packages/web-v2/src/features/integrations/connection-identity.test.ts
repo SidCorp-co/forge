@@ -69,7 +69,7 @@ describe("matchesQuery", () => {
     config: { baseUrl: "https://deploy.example.com" },
     usage: {
       bindings: [
-        { id: "b1", projectId: "proj-a", environment: "prod", label: "", active: true },
+        { id: "b1", projectId: "proj-a", role: "deploy", stages: ["live"], label: "", active: true },
       ],
     },
   });

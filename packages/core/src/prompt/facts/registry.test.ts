@@ -354,7 +354,7 @@ describe('pipeline-rules — branch discipline defers to worktree isolation', ()
  * 2026-08-07, finance-automation ISS-37: the test step found `main` missing the
  * branch its own skill told it forge-code had merged, merged it itself, deployed
  * — then read a 3-hour-old API outage as its own breakage and `git revert`ed the
- * reviewed merge off `main` (== productionBranch there) to "restore production".
+ * reviewed merge off `main` (== liveBranch there) to "restore production".
  * Both halves were improvised: no skill mentions revert. The skill-layer topology
  * guard removes the motive; this rule removes the action, on every step.
  */

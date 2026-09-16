@@ -7,7 +7,20 @@
 // entry standing.
 //
 // The digests below were taken at `34d43e83`, before the removal, by running
-// this file against that tree.
+// this file against that tree, and RE-TAKEN by ISS-1046 in the commit that moved
+// the text — which is what the guard below asks for, not an exemption from it.
+// What ISS-1046 changed, and why each digest moved:
+//   · `pipelineRules` / `toolReference` for the four non-drive steps — three
+//     sentences in `facts/registry.ts` named `productionBranch`, a column that no
+//     longer exists. They now name `liveBranch` and say it is read only under
+//     `releaseModel: 'promote'`. `drive`'s two blocks are UNCHANGED, and that is
+//     the evidence the edit was to the shared text rather than to the driver's.
+//   · every `facts` digest — `formatProjectConfig` renders the live-branch line
+//     only under `promote`, and the fixture below declares `none`. At 34d43e83
+//     every project was told a `productionBranch` whatever its release was, which
+//     is the defect ISS-1046 exists to remove. The fixture's integrations string
+//     also reads `[Live]` rather than `[production]`, a scope the renderer can no
+//     longer produce.
 // cm:guard the digests are EVIDENCE, not a target — re-recording one to make this
 // green is the whole of what this test exists to stop. A deliberate change to what
 // a drive or release_batch job is told re-takes them in the same commit that
@@ -45,11 +58,11 @@ function fixedInputs(): Inputs {
       'awaiting_release',
       'closed',
     ],
-    branches: { baseBranch: 'main', productionBranch: 'main' },
+    branches: { baseBranch: 'main', liveBranch: 'main', releaseModel: 'none' as const },
     noProgressRounds: 5,
     project: (key: string) =>
       key === 'integrations'
-        ? '## Project integrations\nConnected integrations and how to use them:\n- **coolify** [production] - Deploy via forge_coolify_deploy.'
+        ? '## Project integrations\nConnected integrations and how to use them:\n- **coolify** [Live] - Deploy via forge_coolify_deploy.'
         : undefined,
     projectFactKeys: ['build-commands'],
     alwaysInjectFacts: [],
@@ -61,56 +74,56 @@ function fixedInputs(): Inputs {
 // `RUNNER_CAPABILITIES` below rather than trusted: pinning only `drive` and `release_batch` would
 // leave a fact scoped to `smoke`, `reconcile` or `verify_skill` changing a working job's prompt
 // with every digest here still green, which is the hole this table had when it was first written.
-const AT_34D43E83: Record<string, { pipelineRules: string; toolReference: string; facts: string }> =
+const AT_ISS_1046: Record<string, { pipelineRules: string; toolReference: string; facts: string }> =
   {
     drive: {
       pipelineRules: 'fbe5bb53fb025294b46388b8cad8cb86',
       toolReference: 'db1d4c01c8e941a9bd62c6c8f853ee85',
-      facts: 'b013bb553f87f18690759b99d5e1fbcf',
+      facts: '8085844cb9be59f5c3efbb0af095b632',
     },
     release_batch: {
-      pipelineRules: '7773c03e395152f7a6b1bad83edb76be',
-      toolReference: '9ca9c2695fa4ca38b656106199a8491c',
-      facts: 'a995f32f7ab94a52aaaa04ddee8bed7c',
+      pipelineRules: '19eab60ca9881ff42c9a5f5a56cf9955',
+      toolReference: '59d2871434d24008337ead630cbfa380',
+      facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
     smoke: {
-      pipelineRules: '7773c03e395152f7a6b1bad83edb76be',
-      toolReference: '9ca9c2695fa4ca38b656106199a8491c',
-      facts: 'a995f32f7ab94a52aaaa04ddee8bed7c',
+      pipelineRules: '19eab60ca9881ff42c9a5f5a56cf9955',
+      toolReference: '59d2871434d24008337ead630cbfa380',
+      facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
     reconcile: {
-      pipelineRules: '7773c03e395152f7a6b1bad83edb76be',
-      toolReference: '9ca9c2695fa4ca38b656106199a8491c',
-      facts: 'a995f32f7ab94a52aaaa04ddee8bed7c',
+      pipelineRules: '19eab60ca9881ff42c9a5f5a56cf9955',
+      toolReference: '59d2871434d24008337ead630cbfa380',
+      facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
     verify_skill: {
-      pipelineRules: '7773c03e395152f7a6b1bad83edb76be',
-      toolReference: '9ca9c2695fa4ca38b656106199a8491c',
-      facts: 'a995f32f7ab94a52aaaa04ddee8bed7c',
+      pipelineRules: '19eab60ca9881ff42c9a5f5a56cf9955',
+      toolReference: '59d2871434d24008337ead630cbfa380',
+      facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
   };
 
 const RELEASE_BATCH_STATE_PROMPT_AT_34D43E83 = '8ea75419bba908b9a137c43c012ec3f9';
 
-describe('the prompt a claimable job receives is unchanged by ISS-1047', () => {
+describe('the prompt a claimable job receives is pinned to bytes', () => {
   const claimable = [...new Set(Object.values(RUNNER_CAPABILITIES).flat())].sort();
 
   // cm:guard without this, a job type ADDED to RUNNER_CAPABILITIES gets no digest and the suite
   // stays green while saying it covers every claimable job — the table would silently stop being
   // the thing its own name claims.
   it('pins exactly the job types a runner can claim', () => {
-    expect(Object.keys(AT_34D43E83).sort()).toEqual(claimable);
+    expect(Object.keys(AT_ISS_1046).sort()).toEqual(claimable);
   });
 
   for (const step of ['drive', 'release_batch', 'smoke', 'reconcile', 'verify_skill'] as const) {
-    it(`${step} gets the same two mandatory blocks it got at 34d43e83`, () => {
+    it(`${step} gets exactly the two mandatory blocks pinned for it`, () => {
       const { pipelineRules, toolReference } = mandatoryPreambleBlocks(step);
-      expect(sha(pipelineRules)).toBe(AT_34D43E83[step]?.pipelineRules);
-      expect(sha(toolReference)).toBe(AT_34D43E83[step]?.toolReference);
+      expect(sha(pipelineRules)).toBe(AT_ISS_1046[step]?.pipelineRules);
+      expect(sha(toolReference)).toBe(AT_ISS_1046[step]?.toolReference);
     });
 
     it(`the ${step} facts block is byte-identical`, () => {
-      expect(sha(renderStageFactsText(fixedInputs(), 'p-1', step))).toBe(AT_34D43E83[step]?.facts);
+      expect(sha(renderStageFactsText(fixedInputs(), 'p-1', step))).toBe(AT_ISS_1046[step]?.facts);
     });
   }
 

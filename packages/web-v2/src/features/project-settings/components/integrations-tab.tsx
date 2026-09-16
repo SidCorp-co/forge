@@ -18,11 +18,24 @@ import {
 import { ProjectIntegrationsPanel } from "@/features/integrations/components/project-integrations-panel";
 import { PROVIDER_LABEL } from "@/features/integrations/components/status-pill";
 import { useBindExistingConnection, useConnections } from "@/features/integrations/hooks";
-import type { ConnectionSummary, IntegrationEnvironment } from "@/features/integrations/types";
+import { formatApiError } from "@/lib/api/error";
+import { providerCanDeploy } from "@forge/contracts/deploy-capability";
+import type { BindingRole, ConnectionSummary, DeployStage } from "@/features/integrations/types";
 
-const ENVIRONMENT_OPTIONS: SelectOption[] = [
-  { value: "staging", label: "Staging" },
-  { value: "prod", label: "Production" },
+// What the binding is FOR — DECLARED by the person, never derived from the
+// provider: the same epodsystem connection is a deploy target on a storefront
+// project and a plain service on one that only borrows its MCP.
+const ROLE_SELECT_OPTIONS: SelectOption[] = [
+  { value: "service", label: "Service — a project-wide facility" },
+  { value: "deploy", label: "Deploy target — somewhere Forge deploys to" },
+];
+
+// A deploy binding serves one or both. A service binding serves neither, which is
+// why the control below is not merely disabled under `service` — it is unmounted
+// and its value dropped.
+const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
+  { value: "preview", label: "Preview", hint: "deployed so people can see it before it counts" },
+  { value: "live", label: "Live", hint: "real users are on it" },
 ];
 
 function connectionLabel(c: ConnectionSummary): string {
@@ -34,7 +47,9 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
   const connectionsQ = useConnections();
   const bind = useBindExistingConnection();
   const [connectionId, setConnectionId] = useState<string>("");
-  const [environment, setEnvironment] = useState<IntegrationEnvironment>("staging");
+  const [role, setRole] = useState<BindingRole>("service");
+  const [stages, setStages] = useState<DeployStage[]>([]);
+  const [formError, setFormError] = useState<string | null>(null);
 
   // Only active connections with a stored credential are eligible to share —
   // a soft-deleted or secret-less row would fail server-side (loadOwnedConnection
@@ -51,14 +66,59 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
 
   const isEmpty = !connectionsQ.isLoading && eligible.length === 0;
 
+  const selected = eligible.find((c) => c.id === connectionId);
+  const provider = selected?.provider;
+  const canDeploy = provider === undefined ? true : providerCanDeploy(provider);
+  const providerName = provider ? (PROVIDER_LABEL[provider] ?? provider) : "this provider";
+
+  // cm:guard the role picker CLEARS the stages it hides rather than leaving them in
+  // state: a hidden control whose value still submits is how a service binding
+  // reaches the server carrying a stage, which the database refuses by constraint
+  // (`integration_bindings_role_stages_chk`) — a 500 where the form could have
+  // simply not sent it.
+  function chooseRole(next: BindingRole) {
+    setRole(next);
+    setFormError(null);
+    if (next === "service") setStages([]);
+  }
+
+  function toggleStage(stage: DeployStage) {
+    setFormError(null);
+    setStages((cur) => (cur.includes(stage) ? cur.filter((s) => s !== stage) : [...cur, stage]));
+  }
+
   function submit() {
     if (!connectionId) return;
+    // cm:guard both refusals are the FORM's, and neither is the check. The server
+    // refuses a deploy role on a provider with no deploy adapter
+    // (`integrations/connection-routes.ts`) and the database refuses a deploy
+    // binding with no stage; these two say so before the round trip, and say which
+    // provider, because "400 Bad Request" names neither.
+    if (role === "deploy" && !canDeploy) {
+      setFormError(
+        `Forge cannot deploy to ${providerName} — it has no deploy adapter. Share it as a service, or pick a connection Forge can deploy to.`,
+      );
+      return;
+    }
+    if (role === "deploy" && stages.length === 0) {
+      setFormError("Choose at least one stage — a deploy target has to serve Preview, Live or both.");
+      return;
+    }
+    setFormError(null);
     bind.mutate(
-      { id: connectionId, body: { projectId, environment } },
+      {
+        id: connectionId,
+        body: {
+          projectId,
+          role,
+          ...(role === "deploy" ? { stages } : {}),
+        },
+      },
       {
         onSuccess: () => {
           setConnectionId("");
-          setEnvironment("staging");
+          setRole("service");
+          setStages([]);
         },
       },
     );
@@ -87,19 +147,51 @@ function ShareExistingCard({ projectId, canEdit }: { projectId: string; canEdit:
               <Select
                 options={connectionOptions}
                 value={connectionId}
-                onChange={setConnectionId}
+                onChange={(v) => {
+                  setConnectionId(v);
+                  setFormError(null);
+                }}
                 placeholder={connectionsQ.isLoading ? "Loading…" : "Select a connection…"}
                 disabled={connectionsQ.isLoading || bind.isPending}
               />
             </Field>
-            <Field label="Environment" required>
+            <Field label="What is it for" required>
               <Select
-                options={ENVIRONMENT_OPTIONS}
-                value={environment}
-                onChange={(v) => setEnvironment(v as IntegrationEnvironment)}
+                options={ROLE_SELECT_OPTIONS}
+                value={role}
+                onChange={(v) => chooseRole(v as BindingRole)}
                 disabled={!connectionId || bind.isPending}
               />
             </Field>
+            {role === "deploy" && !canDeploy && (
+              <Banner tone="attention">
+                Forge cannot deploy to {providerName} — it has no deploy adapter. Share it as a
+                service instead.
+              </Banner>
+            )}
+            {role === "deploy" && canDeploy && (
+              <Field label="Which stages" required>
+                <div className="flex flex-col gap-2">
+                  {STAGE_CHOICES.map((choice) => (
+                    <label key={choice.value} className="flex items-start gap-2">
+                      <input
+                        type="checkbox"
+                        className="mt-1"
+                        checked={stages.includes(choice.value)}
+                        onChange={() => toggleStage(choice.value)}
+                        disabled={bind.isPending}
+                      />
+                      <span className="fg-body-sm">
+                        {choice.label}
+                        <span className="text-muted"> — {choice.hint}</span>
+                      </span>
+                    </label>
+                  ))}
+                </div>
+              </Field>
+            )}
+            {formError && <Banner tone="attention">{formError}</Banner>}
+            {bind.isError && <Banner tone="danger">{formatApiError(bind.error)}</Banner>}
             <div>
               <Button
                 variant="primary"

@@ -71,7 +71,8 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           name: 'My Project',
           repoPath: '/repo',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: { categories: ['bug', 'feature'] },
         },
       ]);
@@ -85,7 +86,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     expect(result.config).not.toHaveProperty('branchConfig');
     expect(result.config.repoPath).toBe('/repo');
     expect(result.config.baseBranch).toBe('develop');
-    expect(result.config.productionBranch).toBe('release');
+    expect(result.config.liveBranch).toBe('release');
     expect(result.config.categories).toEqual(['bug', 'feature']);
   });
 
@@ -102,7 +103,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
         name: 'My Project',
         repoPath: null,
         baseBranch: null,
-        productionBranch: null,
+        liveBranch: null,
         agentConfig: null,
       },
     ]);
@@ -110,14 +111,14 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
       config: {
         baseBranch: string | null;
-        productionBranch: string | null;
+        liveBranch: string | null;
         repoPath: string | null;
       };
     };
 
     expect(result.config.repoPath).toBeNull();
     expect(result.config.baseBranch).toBeNull();
-    expect(result.config.productionBranch).toBeNull();
+    expect(result.config.liveBranch).toBeNull();
   });
 
   it('includes resolved branchConfig (project defaults) when issueId is supplied and the issue has no override', async () => {
@@ -134,7 +135,8 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           slug: 'my-proj',
           name: 'My Project',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: null,
         },
       ])
@@ -145,13 +147,13 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
     })) as {
-      config: { branchConfig: { baseBranch: string; targetBranch: string; prodBranch: string } };
+      config: { branchConfig: { baseBranch: string; targetBranch: string; liveBranch: string } };
     };
 
     expect(result.config.branchConfig).toEqual({
       baseBranch: 'develop',
       targetBranch: 'develop',
-      prodBranch: 'release',
+      liveBranch: 'release',
     });
   });
 
@@ -169,7 +171,8 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           slug: 'my-proj',
           name: 'My Project',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: null,
         },
       ])
@@ -185,13 +188,13 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
     })) as {
-      config: { branchConfig: { baseBranch: string; targetBranch: string; prodBranch: string } };
+      config: { branchConfig: { baseBranch: string; targetBranch: string; liveBranch: string } };
     };
 
     expect(result.config.branchConfig).toEqual({
       baseBranch: 'feat/x',
       targetBranch: 'feat/x',
-      prodBranch: 'release',
+      liveBranch: 'release',
     });
   });
 
@@ -208,7 +211,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
         slug: 'my-proj',
         name: 'My Project',
         baseBranch: 'develop',
-        productionBranch: 'release',
+        liveBranch: 'release',
         agentConfig: { stateContext: { code: { modelOverride: 'opus' } } },
       },
     ]);
@@ -249,7 +252,8 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           slug: 'my-proj',
           name: 'My Project',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: { projectFacts: { 'build-commands': 'keep', 'done-means': 'new' } },
         },
       ]);
@@ -295,7 +299,8 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           slug: 'my-proj',
           name: 'My Project',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
+          releaseModel: 'promote',
           agentConfig: null,
         },
       ])
@@ -308,5 +313,45 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
         issueId: ISSUE_ID,
       }),
     ).rejects.toThrow(/NOT_FOUND/);
+  });
+});
+
+/**
+ * ISS-1046 — the live branch is readable only under `promote`, and this tool's own description
+ * promises exactly that. Its own describe because it is a different rule from the ISS-135 branch
+ * layering above, and because the enclosing callback there is already at its frozen length.
+ */
+describe('forge_config tool — the live branch under the release model', () => {
+  // cm:guard the column is deliberately NOT nulled for non-`promote` projects — 25 of 32 in the
+  // fleet carry a branch nothing promotes to — so the ONLY thing stopping an agent acting on one is
+  // that every reader asks the model first. This tool's own description promises "non-null only
+  // under `promote`"; without this case that promise is prose and the code returned the value.
+  it('returns no live branch for a `publish` project that still carries one', async () => {
+    const tool = forgeConfigTool({
+      principal: fakePrincipal,
+      projectSlug: null,
+    });
+
+    selectLimit.mockResolvedValueOnce([memberAccessRow]).mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'my-proj',
+        name: 'My Project',
+        repoPath: '/repo',
+        baseBranch: 'develop',
+        liveBranch: 'legacy-production',
+        releaseModel: 'publish',
+        agentConfig: null,
+      },
+    ]);
+
+    const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
+      config: { liveBranch: string | null; releaseModel: string; baseBranch: string | null };
+    };
+
+    expect(result.config.liveBranch).toBeNull();
+    // the model itself is still reported — a caller has to be able to tell `publish` from `none`
+    expect(result.config.releaseModel).toBe('publish');
+    expect(result.config.baseBranch).toBe('develop');
   });
 });

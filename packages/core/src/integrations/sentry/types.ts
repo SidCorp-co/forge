@@ -1,5 +1,3 @@
-import type { IntegrationEnvironment } from '../../db/schema.js';
-
 /**
  * One labelled Sentry target (ISS-526). A Forge project that spans several
  * Sentry projects (backend / frontend / mobile) records one target per stack.
@@ -31,8 +29,6 @@ export interface SentryConfig extends Record<string, unknown> {
   organizationSlug?: string;
   /** @deprecated ISS-526 — superseded by `targets[]`; read-only back-compat. */
   projectSlug?: string;
-  /** Mirror of the binding environment; convenience for adapter logic. */
-  environment: IntegrationEnvironment;
 }
 
 /** Secret material — encrypted into `integration_connections.secretsEnc`. */

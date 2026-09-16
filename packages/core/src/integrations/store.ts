@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  type IntegrationEnvironment,
+  type BindingRole,
+  type DeployStage,
   type IntegrationOwnerType,
   integrationBindings,
   integrationConnections,
@@ -42,14 +43,62 @@ export async function findBindingById(id: string): Promise<IntegrationBindingRow
 }
 
 /**
- * ISS-558 — Active epodsystem binding for a specific label slot.
- * label='' targets the default/unlabeled binding; a non-empty label targets
- * a named extra binding. Used by the create-guard for epodsystem only.
+ * The active SERVICE binding (+ its connection) for a project + provider, or none.
+ *
+ * Service-only ON PURPOSE, and this is the pre-flight side of
+ * `integration_bindings_service_uq`, which is a PARTIAL index `WHERE role = 'service'`. Asking
+ * without the role filter refuses an operator adding a service binding to a project that already
+ * has a deploy binding on the same provider — a pair the index admits and ISS-1046 rule 3 requires,
+ * since a coolify deploy target and a coolify service facility are different declarations about
+ * the same credential. The two must admit exactly the same rows.
  */
-export async function findActiveBindingByLabel(
+// cm:edge contract -> packages/core/src/db/schema.ts — `integration_bindings_service_uq` is this
+// query in Postgres; a role filter added to one and not the other is a 409 with no constraint
+// behind it, or a constraint violation with no 409 in front of it.
+export async function findActiveServiceBinding(
   projectId: string,
   provider: IntegrationProvider,
-  environment: IntegrationEnvironment,
+): Promise<BindingWithConnection | null> {
+  const rows = await db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        eq(integrationBindings.role, 'service'),
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .limit(1);
+  return rows[0] ?? null;
+}
+
+/**
+ * The active SERVICE binding at one label, which is `integration_bindings_service_uq` exactly.
+ *
+ * The index is `(project_id, provider, label) WHERE role = 'service'`, and this is its pre-flight
+ * side. Both halves of that key matter and both were being dropped somewhere:
+ *
+ *   - Without the ROLE filter, adding an epodsystem service binding to a project that already has
+ *     an epodsystem DEPLOY binding at the same label is refused although the index admits the pair
+ *     — and after ISS-1046 that is the common shape, since all three fleet epodsystem bindings are
+ *     `deploy`.
+ *   - Without the LABEL filter, a second NAMED storefront is refused although the index admits it.
+ *     `label` is the multi-store slug; `''` is the unlabelled binding every other provider carries,
+ *     so one rule covers them all.
+ */
+// cm:edge contract -> packages/core/src/db/schema.ts `integration_bindings_service_uq` — this query
+// and that partial index must admit exactly the same rows. A preflight looser than the index 500s
+// on a constraint violation; one tighter refuses a pair the model permits, which is what it did.
+export async function findActiveServiceBindingAtLabel(
+  projectId: string,
+  provider: IntegrationProvider,
   label: string,
 ): Promise<BindingWithConnection | null> {
   const rows = await db
@@ -63,8 +112,8 @@ export async function findActiveBindingByLabel(
       and(
         eq(integrationBindings.projectId, projectId),
         eq(integrationBindings.provider, provider),
-        eq(integrationBindings.environment, environment),
         eq(integrationBindings.label, label),
+        eq(integrationBindings.role, 'service'),
         eq(integrationBindings.active, true),
         eq(integrationConnections.active, true),
       ),
@@ -73,11 +122,41 @@ export async function findActiveBindingByLabel(
   return rows[0] ?? null;
 }
 
-/** Active binding (+ its connection) for a project + provider + environment. */
+/**
+ * Every active DEPLOY binding for a project + provider, oldest first.
+ *
+ * The deploy and control paths ask "which of this provider's bindings can Forge push to", which is
+ * a different question from "which of them exist". A `service` binding is a facility the project
+ * uses — an error tracker, a chat room, a storefront borrowed for its MCP — and enqueueing a
+ * deploy against one is the retired model reappearing under a new column name.
+ */
+export async function listActiveDeployBindingsForProvider(
+  projectId: string,
+  provider: IntegrationProvider,
+): Promise<BindingWithConnection[]> {
+  return db
+    .select({ binding: integrationBindings, connection: integrationConnections })
+    .from(integrationBindings)
+    .innerJoin(
+      integrationConnections,
+      eq(integrationBindings.connectionId, integrationConnections.id),
+    )
+    .where(
+      and(
+        eq(integrationBindings.projectId, projectId),
+        eq(integrationBindings.provider, provider),
+        eq(integrationBindings.role, 'deploy'),
+        eq(integrationBindings.active, true),
+        eq(integrationConnections.active, true),
+      ),
+    )
+    .orderBy(asc(integrationBindings.createdAt));
+}
+
+/** Active binding (+ its connection) for a project + provider, whatever its role. */
 export async function findActiveBinding(
   projectId: string,
   provider: IntegrationProvider,
-  environment: IntegrationEnvironment,
 ): Promise<BindingWithConnection | null> {
   const rows = await db
     .select({ binding: integrationBindings, connection: integrationConnections })
@@ -90,7 +169,6 @@ export async function findActiveBinding(
       and(
         eq(integrationBindings.projectId, projectId),
         eq(integrationBindings.provider, provider),
-        eq(integrationBindings.environment, environment),
         eq(integrationBindings.active, true),
         eq(integrationConnections.active, true),
       ),
@@ -101,8 +179,8 @@ export async function findActiveBinding(
 
 /**
  * All active bindings (+ connections) for a project + provider, across
- * environments. Used by the inbound webhook router to find the right binding
- * when the payload carries the environment hint.
+ * stages and roles. Used by the inbound webhook router to find the right binding
+ * when the payload carries a provider hint.
  */
 export async function listActiveBindingsForProjectProvider(
   projectId: string,
@@ -130,13 +208,19 @@ export async function listActiveBindingsForProjectProvider(
 }
 
 /**
- * Every active binding for a project in one environment, across ALL providers.
- * The release path asks "what ships this project", which is a question about
- * the environment rather than about any one provider.
+ * Every active DEPLOY binding a project has at one stage, across all providers.
+ *
+ * The release path asks "what ships this project", which is a question about the stage rather than
+ * about any one provider — and the answer is the whole SET, never its first row. Core hands the set
+ * to the release agent with each binding's own `instructions`; it does not choose among them.
  */
-export async function listActiveBindingsForEnvironment(
+// cm:guard `role = 'deploy'` is not decoration on top of the stage test: a `service` binding carries
+// no stage at all, so a stage predicate alone would already exclude it — the role is asserted anyway
+// because this is the query the release gate rests on, and a reader has to see that a chat room and
+// an error tracker are not candidates here whatever their stages column happens to hold.
+export async function listActiveDeployBindingsForStage(
   projectId: string,
-  environment: IntegrationEnvironment,
+  stage: DeployStage,
 ): Promise<BindingWithConnection[]> {
   return (
     db
@@ -149,12 +233,13 @@ export async function listActiveBindingsForEnvironment(
       .where(
         and(
           eq(integrationBindings.projectId, projectId),
-          eq(integrationBindings.environment, environment),
+          eq(integrationBindings.role, 'deploy'),
+          sql`${stage} = ANY(${integrationBindings.stages})`,
           eq(integrationBindings.active, true),
           eq(integrationConnections.active, true),
         ),
       )
-      // cm:edge protocol -> packages/core/src/integrations/store.ts — same oldest-first rule as listActiveBindingsForProjectProvider, and for the same reason: a caller that injects row [0] must not have its pick flipped by adding a second binding
+      // cm:edge protocol -> packages/core/src/integrations/store.ts — same oldest-first rule as listActiveBindingsForProjectProvider. It is no longer a TIE-BREAK here, since the release path takes the whole set; it stays so the set's order is stable across calls and a prompt listing three channels lists them the same way twice.
       .orderBy(asc(integrationBindings.createdAt))
   );
 }
@@ -195,7 +280,8 @@ export function buildContextFromBinding<
     bindingId: pair.binding.id,
     projectId: pair.binding.projectId,
     provider: pair.binding.provider as IntegrationProvider,
-    environment: pair.binding.environment as IntegrationEnvironment,
+    role: pair.binding.role as BindingRole,
+    stages: (pair.binding.stages ?? []) as DeployStage[],
     config: effectiveConfig<TConfig>(pair),
     secrets: decryptConnectionSecrets<TSecrets>(pair.connection),
     integrationSecret: pair.binding.integrationSecret,
@@ -266,7 +352,9 @@ export interface CreateBindingInput {
   connectionId: string;
   projectId: string;
   provider: IntegrationProvider;
-  environment: IntegrationEnvironment;
+  role: BindingRole;
+  /** Empty for `service`; one or both stages for `deploy`. */
+  stages?: DeployStage[];
   config?: Record<string, unknown>;
   integrationSecret?: string | null;
   /** ISS-558 — empty string (default) = unlabeled/default binding;
@@ -281,7 +369,8 @@ export async function createBinding(input: CreateBindingInput): Promise<Integrat
       connectionId: input.connectionId,
       projectId: input.projectId,
       provider: input.provider,
-      environment: input.environment,
+      role: input.role,
+      stages: input.role === 'deploy' ? (input.stages ?? []) : [],
       config: input.config ?? {},
       integrationSecret: input.integrationSecret ?? null,
       label: input.label ?? '',

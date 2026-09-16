@@ -6,71 +6,71 @@ describe('resolveIssueBranches', () => {
     name: string;
     issue: IssueLike;
     project: ProjectLike;
-    expected: { baseBranch: string | null; targetBranch: string | null; prodBranch: string | null };
+    expected: { baseBranch: string | null; targetBranch: string | null; liveBranch: string | null };
   }> = [
     {
       name: 'no override, no project defaults → null (no hard fallback to main)',
       issue: {},
-      project: { baseBranch: null, productionBranch: null },
-      expected: { baseBranch: null, targetBranch: null, prodBranch: null },
+      project: { baseBranch: null, liveBranch: null },
+      expected: { baseBranch: null, targetBranch: null, liveBranch: null },
     },
     {
       name: 'no override, project defaults present → project wins, target follows base',
       issue: {},
-      project: { baseBranch: 'develop', productionBranch: 'release' },
-      expected: { baseBranch: 'develop', targetBranch: 'develop', prodBranch: 'release' },
+      project: { baseBranch: 'develop', liveBranch: 'release' },
+      expected: { baseBranch: 'develop', targetBranch: 'develop', liveBranch: 'release' },
     },
     {
       name: 'full override wins on all three',
       issue: {
         metadata: {
-          branchConfig: { baseBranch: 'feat/x', targetBranch: 'feat/x', prodBranch: 'prod' },
+          branchConfig: { baseBranch: 'feat/x', targetBranch: 'feat/x', liveBranch: 'prod' },
         },
       },
-      project: { baseBranch: 'develop', productionBranch: 'release' },
-      expected: { baseBranch: 'feat/x', targetBranch: 'feat/x', prodBranch: 'prod' },
+      project: { baseBranch: 'develop', liveBranch: 'release' },
+      expected: { baseBranch: 'feat/x', targetBranch: 'feat/x', liveBranch: 'prod' },
     },
     {
       name: 'partial override (baseBranch) — target follows new base, prod falls through',
       issue: { metadata: { branchConfig: { baseBranch: 'feat/x' } } },
-      project: { baseBranch: 'develop', productionBranch: 'release' },
-      expected: { baseBranch: 'feat/x', targetBranch: 'feat/x', prodBranch: 'release' },
+      project: { baseBranch: 'develop', liveBranch: 'release' },
+      expected: { baseBranch: 'feat/x', targetBranch: 'feat/x', liveBranch: 'release' },
     },
     {
-      name: 'partial override (prodBranch) — base/target unchanged',
-      issue: { metadata: { branchConfig: { prodBranch: 'hotfix' } } },
-      project: { baseBranch: 'develop', productionBranch: 'release' },
-      expected: { baseBranch: 'develop', targetBranch: 'develop', prodBranch: 'hotfix' },
+      name: 'partial override (liveBranch) — base/target unchanged',
+      issue: { metadata: { branchConfig: { liveBranch: 'hotfix' } } },
+      project: { baseBranch: 'develop', liveBranch: 'release' },
+      expected: { baseBranch: 'develop', targetBranch: 'develop', liveBranch: 'hotfix' },
     },
     {
       name: 'partial override (targetBranch) — prod returns null when project column missing',
       issue: { metadata: { branchConfig: { targetBranch: 'integration' } } },
-      project: { baseBranch: 'develop', productionBranch: null },
-      expected: { baseBranch: 'develop', targetBranch: 'integration', prodBranch: null },
+      project: { baseBranch: 'develop', liveBranch: null },
+      expected: { baseBranch: 'develop', targetBranch: 'integration', liveBranch: null },
     },
     {
       name: 'empty-string override is treated as absent',
       issue: { metadata: { branchConfig: { baseBranch: '' } } },
-      project: { baseBranch: 'develop', productionBranch: 'release' },
-      expected: { baseBranch: 'develop', targetBranch: 'develop', prodBranch: 'release' },
+      project: { baseBranch: 'develop', liveBranch: 'release' },
+      expected: { baseBranch: 'develop', targetBranch: 'develop', liveBranch: 'release' },
     },
     {
       name: 'whitespace-only override is treated as absent',
-      issue: { metadata: { branchConfig: { prodBranch: '   ' } } },
-      project: { baseBranch: 'develop', productionBranch: 'release' },
-      expected: { baseBranch: 'develop', targetBranch: 'develop', prodBranch: 'release' },
+      issue: { metadata: { branchConfig: { liveBranch: '   ' } } },
+      project: { baseBranch: 'develop', liveBranch: 'release' },
+      expected: { baseBranch: 'develop', targetBranch: 'develop', liveBranch: 'release' },
     },
     {
       name: 'metadata.branchConfig = null behaves like no override',
       issue: { metadata: { branchConfig: null } },
-      project: { baseBranch: 'develop', productionBranch: 'release' },
-      expected: { baseBranch: 'develop', targetBranch: 'develop', prodBranch: 'release' },
+      project: { baseBranch: 'develop', liveBranch: 'release' },
+      expected: { baseBranch: 'develop', targetBranch: 'develop', liveBranch: 'release' },
     },
     {
       name: 'metadata = null behaves like no override',
       issue: { metadata: null },
-      project: { baseBranch: 'develop', productionBranch: 'release' },
-      expected: { baseBranch: 'develop', targetBranch: 'develop', prodBranch: 'release' },
+      project: { baseBranch: 'develop', liveBranch: 'release' },
+      expected: { baseBranch: 'develop', targetBranch: 'develop', liveBranch: 'release' },
     },
   ];
 
@@ -84,7 +84,7 @@ describe('resolveIssueBranches', () => {
     const issue: IssueLike = {
       metadata: { branchConfig: { baseBranch: 'feat/x' } },
     };
-    const project: ProjectLike = { baseBranch: 'develop', productionBranch: 'release' };
+    const project: ProjectLike = { baseBranch: 'develop', liveBranch: 'release' };
     const issueSnapshot = structuredClone(issue);
     const projectSnapshot = structuredClone(project);
 
@@ -96,7 +96,7 @@ describe('resolveIssueBranches', () => {
 
   it('returns a fresh object each call', () => {
     const issue: IssueLike = {};
-    const project: ProjectLike = { baseBranch: 'develop', productionBranch: 'release' };
+    const project: ProjectLike = { baseBranch: 'develop', liveBranch: 'release' };
     const a = resolveIssueBranches(issue, project);
     const b = resolveIssueBranches(issue, project);
     expect(a).not.toBe(b);

@@ -24,7 +24,7 @@ vi.mock('../db/client.js', () => ({
 const createConnection = vi.fn();
 const createBinding = vi.fn();
 const findActiveBinding = vi.fn();
-const findActiveBindingByLabel = vi.fn();
+const findActiveServiceBindingAtLabel = vi.fn();
 const findBindingWithConnectionById = vi.fn();
 const findConnectionById = vi.fn();
 const updateConnection = vi.fn();
@@ -50,7 +50,8 @@ vi.mock('./store.js', () => ({
   createConnection: (a: unknown) => createConnection(a),
   createBinding: (a: unknown) => createBinding(a),
   findActiveBinding: (...a: unknown[]) => findActiveBinding(...(a as [])),
-  findActiveBindingByLabel: (...a: unknown[]) => findActiveBindingByLabel(...(a as [])),
+  findActiveServiceBindingAtLabel: (...a: unknown[]) =>
+    findActiveServiceBindingAtLabel(...(a as [])),
   findBindingWithConnectionById: (id: string) => findBindingWithConnectionById(id),
   findConnectionById: (id: string) => findConnectionById(id),
   updateConnection: (id: string, patch: unknown) => updateConnection(id, patch),
@@ -143,7 +144,8 @@ function patch(token: string, id: string, body: unknown) {
 
 const VALID_BODY = {
   provider: 'coolify',
-  environment: 'staging',
+  role: 'deploy' as const,
+  stages: ['preview'] as const,
   config: {
     baseUrl: 'https://coolify.example.com',
     targets: [{ label: 'Backend', resourceUuid: 'res-abc-123' }],
@@ -166,7 +168,12 @@ beforeEach(() => {
   selectLimit.mockReset();
   effectiveRole.mockReset();
   orgRoleMock.mockReset();
-  findActiveBindingByLabel.mockReset();
+  // `clearAllMocks` clears calls, not queued `…Once` implementations. A deploy
+  // binding never consults `findActiveBinding` (ISS-1046 rule 3), so a `…Once`
+  // queued by a deploy test would otherwise be answered to the NEXT service
+  // test — which is how the service-clash case read 500 instead of 409.
+  findActiveBinding.mockReset();
+  findActiveServiceBindingAtLabel.mockReset();
 });
 
 describe('POST /api/projects/:projectId/integrations — vault guard', () => {
@@ -191,7 +198,7 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
     createConnection.mockResolvedValueOnce({
       id: 'conn-1',
       provider: 'coolify',
-      config: { ...VALID_BODY.config, environment: 'staging' },
+      config: { ...VALID_BODY.config },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -204,7 +211,8 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
       id: 'int-1',
       projectId: PROJECT_ID,
       provider: 'coolify',
-      environment: 'staging',
+      role: 'deploy',
+      stages: ['preview'],
       config: {},
       integrationSecret: 'whsec_xxx',
       active: true,
@@ -232,7 +240,7 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
     createConnection.mockResolvedValueOnce({
       id: 'conn-rollback',
       provider: 'coolify',
-      config: { ...VALID_BODY.config, environment: 'staging' },
+      config: { ...VALID_BODY.config },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -262,7 +270,7 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
 describe('POST /api/projects/:projectId/integrations — postman provider schema', () => {
   const POSTMAN_BODY = {
     provider: 'postman',
-    environment: 'prod',
+    role: 'service',
     config: {
       workspaceName: 'Forge Integration',
       collectionId: 'col-123',
@@ -280,7 +288,7 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
     createConnection.mockResolvedValueOnce({
       id: 'conn-pm',
       provider: 'postman',
-      config: { ...POSTMAN_BODY.config, workspaceName: 'Forge Integration', environment: 'prod' },
+      config: { ...POSTMAN_BODY.config, workspaceName: 'Forge Integration' },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -293,7 +301,7 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
       id: 'int-pm',
       projectId: PROJECT_ID,
       provider: 'postman',
-      environment: 'prod',
+      role: 'service',
       config: {},
       integrationSecret: 'whsec_pm',
       active: true,
@@ -348,7 +356,7 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
         id: 'int-pm',
         projectId: PROJECT_ID,
         provider: 'postman',
-        environment: 'prod',
+        role: 'service',
         config: {},
         integrationSecret: null,
         active: true,
@@ -362,7 +370,7 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
           workspaceName: 'Forge Integration',
           region: 'eu',
           mode: 'full',
-          environment: 'prod',
+          role: 'service',
         },
         secretsEnc: Buffer.from('enc'),
         active: true,
@@ -399,7 +407,7 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
         id: 'int-pm',
         projectId: PROJECT_ID,
         provider: 'postman',
-        environment: 'prod',
+        role: 'service',
         config: {},
         integrationSecret: null,
         active: true,
@@ -409,7 +417,7 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
       connection: {
         id: 'conn-pm',
         provider: 'postman',
-        config: { workspaceName: 'W', region: 'us', mode: 'minimal', environment: 'prod' },
+        config: { workspaceName: 'W', region: 'us', mode: 'minimal' },
         secretsEnc,
         active: true,
         lastHealthStatus: null,
@@ -428,7 +436,7 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
       ownerType: 'user',
       ownerId: USER_ID,
       displayName: 'Store',
-      config: { environment: 'prod' },
+      config: {},
       secretsEnc,
       active: true,
       lastHealthStatus: null,
@@ -492,7 +500,7 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
       id: 'conn-ep',
       provider: 'epodsystem',
       displayName: 'Store',
-      config: { environment: 'prod' },
+      config: {},
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -533,7 +541,8 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
         id: 'int-cl',
         projectId: PROJECT_ID,
         provider: 'coolify',
-        environment: 'staging',
+        role: 'deploy',
+        stages: ['preview'],
         config: {},
         integrationSecret: null,
         active: true,
@@ -547,7 +556,8 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
           baseUrl: 'https://coolify.example',
           resourceUuid: 'res-1',
           branch: 'main',
-          environment: 'staging',
+          role: 'deploy',
+          stages: ['preview'],
         },
         secretsEnc: encryptJson({ apiToken: 'tok-old' }),
         active: true,
@@ -584,7 +594,8 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
         id: 'int-cl',
         projectId: PROJECT_ID,
         provider: 'coolify',
-        environment: 'staging',
+        role: 'deploy',
+        stages: ['preview'],
         config: {},
         integrationSecret: null,
         active: true,
@@ -598,7 +609,8 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
         provider: 'coolify',
         config: {
           baseUrl: 'https://coolify.example',
-          environment: 'staging',
+          role: 'deploy',
+          stages: ['preview'],
         },
         secretsEnc: Buffer.from('enc'),
         active: true,
@@ -709,7 +721,7 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
     createConnection.mockResolvedValueOnce({
       id: 'conn-1',
       provider: 'coolify',
-      config: { baseUrl: VALID_BODY.config.baseUrl, environment: 'staging' },
+      config: { baseUrl: VALID_BODY.config.baseUrl },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -722,7 +734,8 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
       id: 'int-1',
       projectId: PROJECT_ID,
       provider: 'coolify',
-      environment: 'staging',
+      role: 'deploy',
+      stages: ['preview'],
       config: { targets: [{ id: 't-1', label: 'Backend', resourceUuid: 'res-abc-123' }] },
       integrationSecret: 'whsec_xxx',
       active: true,
@@ -734,10 +747,7 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
     expect(res.status).toBe(201);
 
     const connArg = createConnection.mock.calls[0]?.[0] as { config: Record<string, unknown> };
-    expect(connArg.config).toEqual({
-      baseUrl: VALID_BODY.config.baseUrl,
-      environment: 'staging',
-    });
+    expect(connArg.config).toEqual({ baseUrl: VALID_BODY.config.baseUrl });
     const bindArg = createBinding.mock.calls[0]?.[0] as {
       config: { targets: Array<{ id: string; label: string; resourceUuid: string }> };
     };
@@ -750,7 +760,6 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
 // === ISS-406 F2 — bind-existing + bindings-list + delivery-retry ===
 
 const CONN_ID = '33333333-3333-4333-8333-333333333333';
-const OTHER_USER = '99999999-9999-4999-8999-999999999999';
 
 function ownedConnection(overrides: Record<string, unknown> = {}) {
   return {
@@ -771,215 +780,6 @@ function ownedConnection(overrides: Record<string, unknown> = {}) {
   };
 }
 
-function bindReq(token: string, id: string, body: unknown) {
-  return buildApp().request(`/api/integration-connections/${id}/bindings`, {
-    method: 'POST',
-    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-    body: JSON.stringify(body),
-  });
-}
-
-function listBindingsReq(token: string, id: string) {
-  return buildApp().request(`/api/integration-connections/${id}/bindings`, {
-    method: 'GET',
-    headers: { authorization: `Bearer ${token}` },
-  });
-}
-
-describe('POST /api/integration-connections/:id/bindings — bind existing connection', () => {
-  it('201 — binds an existing connection to a project+env with no secret body', async () => {
-    const token = await signUserToken(USER_ID);
-    mockOwnerMembership(); // emailVerified + target-project owner
-    findConnectionById.mockResolvedValueOnce(ownedConnection());
-    findActiveBinding.mockResolvedValueOnce(null);
-    createBinding.mockResolvedValueOnce({
-      id: 'bind-1',
-      connectionId: CONN_ID,
-      projectId: PROJECT_ID,
-      provider: 'coolify',
-      environment: 'staging',
-      config: {},
-      integrationSecret: 'whsec_x',
-      active: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    // The route re-reads the pair after the post-bind healthcheck (ISS-429);
-    // undefined → it falls back to the just-created pair. (A persistent
-    // mockResolvedValue from earlier tests would otherwise leak in here —
-    // clearAllMocks resets calls, not implementations.)
-    findBindingWithConnectionById.mockResolvedValueOnce(undefined);
-
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
-    expect(res.status).toBe(201);
-    const body = (await res.json()) as {
-      integration: { id: string; connectionId: string };
-      integrationSecret: string;
-    };
-    expect(body.integration.id).toBe('bind-1');
-    expect(body.integration.connectionId).toBe(CONN_ID);
-    expect(body.integrationSecret).toMatch(/^whsec_/);
-    // No secret is created here — createConnection must NOT be involved.
-    expect(createConnection).not.toHaveBeenCalled();
-    const arg = createBinding.mock.calls[0]?.[0] as { connectionId: string; provider: string };
-    expect(arg.connectionId).toBe(CONN_ID);
-    expect(arg.provider).toBe('coolify');
-  });
-
-  it('201 — optional config keeps binding-tier overrides and drops connection-tier keys', async () => {
-    const token = await signUserToken(USER_ID);
-    mockOwnerMembership();
-    findConnectionById.mockResolvedValueOnce(ownedConnection());
-    findActiveBinding.mockResolvedValueOnce(null);
-    createBinding.mockResolvedValueOnce({
-      id: 'bind-2',
-      connectionId: CONN_ID,
-      projectId: PROJECT_ID,
-      provider: 'coolify',
-      environment: 'staging',
-      config: { targets: [{ id: 't-b', label: 'App', resourceUuid: 'res-b' }] },
-      integrationSecret: 'whsec_x',
-      active: true,
-      createdAt: new Date(),
-      updatedAt: new Date(),
-    });
-    findBindingWithConnectionById.mockResolvedValueOnce(undefined);
-
-    const res = await bindReq(token, CONN_ID, {
-      projectId: PROJECT_ID,
-      environment: 'staging',
-      config: {
-        baseUrl: 'https://other.example.com',
-        targets: [{ label: 'App', resourceUuid: 'res-b' }],
-      },
-    });
-    expect(res.status).toBe(201);
-    const arg = createBinding.mock.calls[0]?.[0] as {
-      config: { targets: Array<{ label: string; resourceUuid: string }>; baseUrl?: string };
-    };
-    // baseUrl must NOT shadow the shared connection endpoint per-binding.
-    expect(arg.config.baseUrl).toBeUndefined();
-    expect(arg.config.targets).toEqual([
-      expect.objectContaining({ label: 'App', resourceUuid: 'res-b' }),
-    ]);
-  });
-
-  it('409 — provider+env clash on an existing active binding', async () => {
-    const token = await signUserToken(USER_ID);
-    mockOwnerMembership();
-    findConnectionById.mockResolvedValueOnce(ownedConnection());
-    findActiveBinding.mockResolvedValueOnce({ binding: { id: 'existing' }, connection: {} });
-
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('ALREADY_EXISTS');
-    expect(createBinding).not.toHaveBeenCalled();
-  });
-
-  it('409 — Drizzle-wrapped 23505 on createBinding returns ALREADY_EXISTS (inactive duplicate)', async () => {
-    const token = await signUserToken(USER_ID);
-    mockOwnerMembership();
-    findConnectionById.mockResolvedValueOnce(ownedConnection());
-    findActiveBinding.mockResolvedValueOnce(null); // no active duplicate — inactive row not caught by pre-flight
-    const drizzleWrapped = Object.assign(
-      new Error('Failed query: insert into integration_bindings'),
-      {
-        cause: { code: '23505' },
-      },
-    );
-    createBinding.mockRejectedValueOnce(drizzleWrapped);
-
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
-    expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string };
-    expect(body.code).toBe('ALREADY_EXISTS');
-    expect(createConnection).not.toHaveBeenCalled();
-  });
-
-  it('404 — non-owner of the connection (no existence leak)', async () => {
-    const token = await signUserToken(USER_ID);
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    findConnectionById.mockResolvedValueOnce(ownedConnection({ ownerId: OTHER_USER }));
-
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
-    expect(res.status).toBe(404);
-    expect(createBinding).not.toHaveBeenCalled();
-  });
-
-  it('403 — caller is only a member (not admin) of the target project', async () => {
-    const token = await signUserToken(USER_ID);
-    // emailVerified, then an effective role below admin on the target project.
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    effectiveRole.mockResolvedValueOnce({
-      projectId: PROJECT_ID,
-      orgId: 'org-1',
-      role: 'member',
-      orgRole: null,
-    });
-    findConnectionById.mockResolvedValueOnce(ownedConnection());
-
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
-    expect(res.status).toBe(403);
-    expect(createBinding).not.toHaveBeenCalled();
-  });
-});
-
-describe('GET /api/integration-connections/:id/bindings — bindings for a connection', () => {
-  it('200 — returns all bindings for the connection', async () => {
-    const token = await signUserToken(USER_ID);
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    findConnectionById.mockResolvedValueOnce(ownedConnection());
-    listBindingsForConnection.mockResolvedValueOnce([
-      {
-        binding: {
-          id: 'bind-a',
-          projectId: PROJECT_ID,
-          provider: 'coolify',
-          environment: 'staging',
-          config: {},
-          integrationSecret: 'whsec_a',
-          active: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        connection: ownedConnection(),
-      },
-      {
-        binding: {
-          id: 'bind-b',
-          projectId: '44444444-4444-4444-8444-444444444444',
-          provider: 'coolify',
-          environment: 'prod',
-          config: {},
-          integrationSecret: 'whsec_b',
-          active: true,
-          createdAt: new Date(),
-          updatedAt: new Date(),
-        },
-        connection: ownedConnection(),
-      },
-    ]);
-
-    const res = await listBindingsReq(token, CONN_ID);
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { items: { id: string; connectionId: string }[] };
-    expect(body.items).toHaveLength(2);
-    expect(body.items.map((i) => i.id)).toEqual(['bind-a', 'bind-b']);
-    expect(body.items.every((i) => i.connectionId === CONN_ID)).toBe(true);
-  });
-
-  it('404 — non-owner of the connection', async () => {
-    const token = await signUserToken(USER_ID);
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    findConnectionById.mockResolvedValueOnce(ownedConnection({ ownerId: OTHER_USER }));
-
-    const res = await listBindingsReq(token, CONN_ID);
-    expect(res.status).toBe(404);
-    expect(listBindingsForConnection).not.toHaveBeenCalled();
-  });
-});
-
 describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/retry', () => {
   function retryReq(token: string, id: string, deliveryId: string) {
     return buildApp().request(
@@ -989,7 +789,7 @@ describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/
   }
 
   const binding = {
-    binding: { id: 'bind-1', projectId: PROJECT_ID, provider: 'coolify', environment: 'staging' },
+    binding: { id: 'bind-1', projectId: PROJECT_ID, provider: 'coolify' },
     connection: ownedConnection(),
   };
 
@@ -1100,7 +900,7 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
         connectionId: CONN_ID,
         projectId: PROJECT_ID,
         provider: 'postman',
-        environment: 'prod',
+        role: 'service',
         config: {},
         integrationSecret: null,
         active: over.bindingActive ?? true,
@@ -1240,7 +1040,7 @@ function makeEpodsystemConn(overrides?: { secretsEnc?: Buffer | null }) {
     ownerId: USER_ID,
     provider: 'epodsystem',
     displayName: null,
-    config: { environment: 'prod' },
+    config: {},
     active: true,
     lastHealthStatus: null,
     lastHealthAt: null,
@@ -1257,7 +1057,8 @@ function makeEpodsystemBinding(label: string, active = true) {
     connectionId: 'conn-epod',
     projectId: PROJECT_ID,
     provider: 'epodsystem',
-    environment: 'prod',
+    role: 'service',
+    stages: [],
     config: {},
     integrationSecret: null,
     label,
@@ -1270,6 +1071,7 @@ function makeEpodsystemBinding(label: string, active = true) {
 describe('POST /api/projects/:projectId/integrations — epodsystem multi-binding (ISS-558)', () => {
   const EPOD_BODY = {
     provider: 'epodsystem',
+    role: 'service',
     config: {},
     secrets: { apiKey: 'crmk_abc123456789' },
   };
@@ -1278,7 +1080,6 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    findActiveBindingByLabel.mockResolvedValueOnce(null);
     createConnection.mockResolvedValueOnce(makeEpodsystemConn());
     createBinding.mockResolvedValueOnce(makeEpodsystemBinding(''));
 
@@ -1291,7 +1092,6 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    findActiveBindingByLabel.mockResolvedValueOnce(null);
     createConnection.mockResolvedValueOnce(makeEpodsystemConn());
     createBinding.mockResolvedValueOnce(makeEpodsystemBinding('partner-a'));
 
@@ -1304,16 +1104,40 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    findActiveBindingByLabel.mockResolvedValueOnce({
+    findActiveServiceBindingAtLabel.mockResolvedValueOnce({
       binding: makeEpodsystemBinding('partner-a'),
       connection: makeEpodsystemConn(),
     });
 
     const res = await post(token, { ...EPOD_BODY, label: 'partner-a' });
     expect(res.status).toBe(409);
-    const body = (await res.json()) as { code: string };
+    const body = (await res.json()) as { code: string; message: string };
     expect(body.code).toBe('ALREADY_EXISTS');
+    expect(body.message).toContain('partner-a');
     expect(createConnection).not.toHaveBeenCalled();
+    // cm:guard the preflight asks the index's WHOLE key. Dropping the label refused a second
+    // NAMED storefront; dropping the role refused a service binding beside a DEPLOY one at the
+    // same label, which after ISS-1046 is the shape every fleet epodsystem binding is in.
+    expect(findActiveServiceBindingAtLabel).toHaveBeenCalledWith(
+      PROJECT_ID,
+      'epodsystem',
+      'partner-a',
+    );
+  });
+
+  // cm:guard the pair the partial index admits and the old preflight refused.
+  it('201 — a service binding is allowed beside a DEPLOY one at the same label', async () => {
+    process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    // The index is `WHERE role = 'service'`, so a deploy row at this label is not a clash and the
+    // service-scoped lookup does not see it.
+    findActiveServiceBindingAtLabel.mockResolvedValueOnce(null);
+    createConnection.mockResolvedValueOnce(makeEpodsystemConn());
+    createBinding.mockResolvedValueOnce(makeEpodsystemBinding('partner-a'));
+
+    const res = await post(token, { ...EPOD_BODY, label: 'partner-a' });
+    expect(res.status).toBe(201);
   });
 
   it('400 — rejects invalid label (not kebab-case)', async () => {
@@ -1325,14 +1149,18 @@ describe('POST /api/projects/:projectId/integrations — epodsystem multi-bindin
     expect(res.status).toBe(400);
   });
 
-  it('409 — non-epodsystem (postman) still rejects a 2nd binding in same env', async () => {
+  it('409 — non-epodsystem (postman) still rejects a 2nd service binding', async () => {
     process.env.INTEGRATION_MASTER_KEY = TEST_KEY_B64;
     const token = await signUserToken(USER_ID);
     mockOwnerMembership();
-    findActiveBinding.mockResolvedValueOnce({ binding: { id: 'existing' }, connection: {} });
+    findActiveServiceBindingAtLabel.mockResolvedValueOnce({
+      binding: { id: 'existing' },
+      connection: {},
+    });
 
     const res = await post(token, {
       provider: 'postman',
+      role: 'service',
       config: { workspaceName: 'W', region: 'us', mode: 'minimal' },
       secrets: { apiKey: 'PMAK-abcdef123456' },
     });
