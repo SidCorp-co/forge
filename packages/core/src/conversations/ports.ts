@@ -61,6 +61,11 @@ export interface ConversationTransport {
   deliver(venue: ConversationVenue, message: ScreenedMessage): Promise<DeliveryReceipt>;
   fetchHistory(venue: ConversationVenue, limit: number): Promise<ConversationHistoryMessage[]>;
   /**
+   * Whether this venue is still reachable, asked BEFORE expensive work rather than instead of `deliver`.
+   */
+  // cm:guard it is a cheap read and never the authority: `deliver` makes the same check again at the moment it posts, and it has to, because everything between the two takes time a rebind fits inside. What this buys is that a completion bridge does not spend a failover redispatch and a screening turn producing an answer for a room that moved. Absent: the transport has nothing to lose by trying, which is the browser's case (ISS-1039, plan consult F1).
+  canDeliver?(venue: ConversationVenue): Promise<boolean>;
+  /**
    * Whether a room's shape follows who is in it — both ways — or is settled
    * when its venue is first seen. Absent: settled (ISS-1034).
    */

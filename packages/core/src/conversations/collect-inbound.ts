@@ -13,6 +13,7 @@
  */
 
 import { db } from '../db/client.js';
+import type { Executor } from './db-executor.js';
 import type { ConversationAdapterPorts } from './ports.js';
 import { appendMessagesIn, type ConversationImage, openConversation } from './store.js';
 import { openOrExtendWindow } from './windows.js';
@@ -33,6 +34,11 @@ export interface InboundCollection<Frame> {
   images?: readonly ConversationImage[];
   /** Whose authority a turn runs under in a venue that has many speakers. */
   manySpeakersPrincipalUserId: string;
+  /**
+   * One more write the caller wants committed with this message, or not at all.
+   */
+  // cm:guard it is handed the transaction and told NOTHING about what it writes, which is the whole of why it is here rather than a branch in this function: the adapter that needs a second write knows what it is, and a collector that knew would be a collector with an adapter's decision in it. A throw from it takes the message and its window with it, which is the point — a caller whose own write lost has not collected anything (ISS-1039, plan consult F2).
+  withinCollection?: (tx: Executor, collected: { conversationId: string; seq: number }) => Promise<void>;
 }
 
 /**
@@ -86,6 +92,11 @@ export async function collectInboundMessage<Frame>(
       },
       tx,
     );
+    // cm:guard AFTER the message and the window and inside the same transaction: the caller's write is about a message that exists, and it is still free to throw and take both back out with it.
+    await inbound.withinCollection?.(tx as unknown as Executor, {
+      conversationId: conversation.id,
+      seq: row.seq,
+    });
     return {
       kind: 'collected' as const,
       conversationId: conversation.id,

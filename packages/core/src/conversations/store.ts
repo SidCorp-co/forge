@@ -34,10 +34,12 @@ export {
   type ConversationListFilter,
   countConversationsInProject,
   deleteConversation,
+  effectiveConversationMode,
   getConversation,
   listConversationsInProject,
   renameConversation,
   setConversationArchived,
+  settleConversationMode,
 } from './rooms.js';
 
 import { type ConversationRow, findConversation, selection } from './rooms.js';
