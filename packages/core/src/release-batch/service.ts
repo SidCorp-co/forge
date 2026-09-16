@@ -64,6 +64,18 @@ export class ReleaseRunnerUndeclaredError extends Error {
   }
 }
 
+/**
+ * The project declares a release gate and no verification probes, so nothing
+ * but the agent's own word could say the release happened.
+ */
+// cm:guard the gate and the probes are ONE declaration, refused together. `finish` is the only thing in Forge that writes `closed`, and with no probes its whole verification block was skipped — sid-desk ISS-191 is 42 issues closed on a release that was not running. Refusing at creation is what makes the operator declare probes instead of discovering at close time that nothing checked. `finish` refuses too, and must: a run created before this rule existed reaches it with no probes and would close its roster on the agent's word.
+export class ReleaseProbesUndeclaredError extends Error {
+  constructor() {
+    super('RELEASE_PROBES_UNDECLARED');
+    this.name = 'ReleaseProbesUndeclaredError';
+  }
+}
+
 export class NoRunnerOnlineError extends Error {
   constructor() {
     super('NO_RUNNER_ONLINE');
@@ -154,6 +166,8 @@ export async function createReleaseBatch(
   const plan = await resolveReleasePlan(projectId);
   // cm:guard a gated project MUST name its release runner, and an undeclared label refuses here rather than widening to the fleet. The pool exists because one box holds the production credential; `allowDeviceIds: null` means "anyone", and a release that lands on a box without that credential fails halfway through with the merge already pushed. Measured 2026-09-03: 0 of 20 active prod bindings carried `releaseRunnerLabel`, so this refusal is what makes the operator declare one instead of discovering the gap mid-deploy.
   if (!plan.releaseRunnerLabel) throw new ReleaseRunnerUndeclaredError();
+  // cm:edge lockstep -> packages/core/src/release-batch/service.ts finishReleaseBatch — the same refusal stands at the close, and deleting either half puts back the path where a project with no probes closes its roster on a sentence an agent wrote.
+  if (!plan.verify) throw new ReleaseProbesUndeclaredError();
   const allowDeviceIds = await resolveReleaseDeviceIds(projectId, plan.releaseRunnerLabel);
   if (allowDeviceIds.length === 0) {
     throw new ReleasePoolEmptyError(plan.releaseRunnerLabel);
@@ -411,16 +425,16 @@ export async function finishReleaseBatch(
 
   if (run) {
     const channel = await resolveReleaseChannel(run.projectId);
-    if (channel.verify) {
-      const meta = (run.metadata ?? {}) as Record<string, unknown>;
-      const outcome = await verifyDeployed({
-        cfg: channel.verify,
-        commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
-        expected: options.commit ?? null,
-      });
-      // cm:guard refuse BEFORE closing anything. A partial close would leave some issues claiming a release the probes just said did not happen, and nothing walks that back.
-      if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
-    }
+    // cm:guard `if (channel.verify)` used to wrap the whole block, so a project declaring no probes fell straight through to the closes — the shape this issue is named for. It is a REFUSAL now and not a skip: an unverifiable release is not a verified one, and the operator's way out is to declare probes or abort.
+    if (!channel.verify) throw new ReleaseProbesUndeclaredError();
+    const meta = (run.metadata ?? {}) as Record<string, unknown>;
+    const outcome = await verifyDeployed({
+      cfg: channel.verify,
+      commitBefore: typeof meta.commitBefore === 'string' ? meta.commitBefore : null,
+      expected: options.commit ?? null,
+    });
+    // cm:guard refuse BEFORE closing anything. A partial close would leave some issues claiming a release the probes just said did not happen, and nothing walks that back.
+    if (!outcome.ok) throw new ReleaseNotVerifiedError(outcome.reason, outcome.live);
   }
 
   const closed: string[] = [];

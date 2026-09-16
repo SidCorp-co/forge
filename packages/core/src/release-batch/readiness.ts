@@ -44,6 +44,9 @@ function isDeclared(v: unknown): boolean {
 /**
  * The contract this project owes, and which parts of it are missing.
  *
+ * `verify-probes` is the hard one: `createReleaseBatch` refuses without it, because
+ * a gate with no probes closes its roster on the agent's word (ISS-1042).
+ *
  * `rollback` is reported as a gap on a project WITH production because rule 2
  * of ISS-897 makes an undeclared rollback mean "abort and comment, never roll
  * back blind" — a defensible default that an operator should still be told
@@ -70,6 +73,8 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
   if (decl.hasProduction) {
     if (!isDeclared(facts[RELEASE_PROCEDURE_FACT])) gaps.push('release-procedure');
     if (!channel.releaseRunnerLabel) gaps.push('release-runner');
+    // cm:edge lockstep -> packages/core/src/release-batch/service.ts — `createReleaseBatch` REFUSES on this, and reporting it here is what gives the operator the gap before a release discovers it. Drop this line and the refusal arrives with nothing in settings having said it was coming.
+    if (!channel.verify) gaps.push('verify-probes');
     if (!channel.rollback) gaps.push('rollback');
     else if (channel.rollback.kind === 'unrepresentable') gaps.push('rollback-prose');
   }

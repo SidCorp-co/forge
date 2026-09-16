@@ -29,6 +29,7 @@ import {
   ReleaseBranchesUndeclaredError,
   ReleaseNotVerifiedError,
   ReleasePoolEmptyError,
+  ReleaseProbesUndeclaredError,
   ReleaseRecordMissingError,
   ReleaseRunnerUndeclaredError,
 } from './service.js';
@@ -86,6 +87,7 @@ releaseBatchRoutes.post(
           'This project has production but its production binding names no release runner — set `releaseRunnerLabel` on it, and label the box that holds the deploy credential',
         );
       }
+      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
       if (err instanceof ReleaseBranchesUndeclaredError) throw undeclaredBranches();
       if (err instanceof ReleasePoolEmptyError) {
         throw serviceUnavailable(
@@ -188,6 +190,16 @@ async function loadRunForProject(runId: string, projectId: string, userId: strin
   assertProjectRole(access, 'member');
 }
 
+// cm:guard the message must name the CONFIG KEY and the shape, because this refusal is the first
+// thing a project with a fresh gate meets and an operator cannot guess `verify.probes` from
+// "no probes declared".
+function undeclaredProbes(): HTTPException {
+  return conflict(
+    'RELEASE_PROBES_UNDECLARED',
+    "This project's production binding declares no verification probes, so nothing but the agent's own word could say the release happened. Set `verify` on the binding config: `{\"probes\":[{\"url\":\"https://<host>/api/health\",\"commitPath\":\"commit\"}]}`",
+  );
+}
+
 function undeclaredBranches(): HTTPException {
   return conflict(
     'RELEASE_BRANCHES_UNDECLARED',
@@ -237,6 +249,7 @@ releaseBatchRoutes.post(
           cause: { code: 'RELEASE_NOT_VERIFIED', reason: err.reason, live: err.live },
         });
       }
+      if (err instanceof ReleaseProbesUndeclaredError) throw undeclaredProbes();
       throw err;
     }
   },
