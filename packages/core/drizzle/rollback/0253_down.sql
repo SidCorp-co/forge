@@ -89,9 +89,13 @@ BEGIN
     LEFT JOIN iss1046_bindings d ON d.binding_id = b.id
    WHERE d.binding_id IS NULL;
   IF missing IS NOT NULL THEN
-    RAISE EXCEPTION 'ISS-1046 rollback: % binding(s) created after 0253 have no declared environment to restore: %. '
-      'role+stages do not determine it — the forward map is not injective. Decide each one by hand, '
-      'append it to the VALUES list in this file, and re-run.',
+    RAISE EXCEPTION 'ISS-1046 rollback: % binding(s) have no declared environment to restore: %. '
+      'role+stages do not determine it — the forward map is not injective. Two kinds land here: a '
+      'binding created after 0253 ran, and one 0253 gave role=service by force because its provider '
+      'has no deploy adapter (its `environment` was filler no reader read, and `prod` is what every '
+      'such schema defaulted to — but this file will not choose that for you). Decide each one by '
+      'hand, append it to the VALUES list in this file, and re-run. Running forward is attended by '
+      'nobody; running backward is attended by you, which is why this one asks.',
       (SELECT count(*) FROM integration_bindings b LEFT JOIN iss1046_bindings d ON d.binding_id = b.id WHERE d.binding_id IS NULL),
       missing;
   END IF;
