@@ -116,15 +116,19 @@ export async function writePmDecision(input: PmDecisionInput) {
       body,
       decisionId,
     });
-    if (!escalationNotification) {
-      throw new Error('writePmDecision: escalation notification insert returned no row');
-    }
-
+    // cm:why ISS-1063 — `null` here is the emission switch suppressing `pm_escalation`
+    // while the old notification surface is off, and it is reported rather than thrown.
+    // Throwing was right while the only way to get a null was a bug; now the decision
+    // has been written, the escalation has been recorded, and the one thing that did
+    // not happen is that anybody was told. Taking the whole PM turn down for that
+    // would make a silence about notifications into an outage about deciding, which is
+    // the opposite of the trade the owner priced. The caller sees the null and knows
+    // the difference between "escalated and delivered" and "escalated into a quiet room".
     return {
       decisionId,
       indexed: 'queued' as const,
       escalation: {
-        notificationId: escalationNotification.id,
+        notificationId: escalationNotification?.id ?? null,
         expiresAt: escalate.expiresAt,
       },
     };

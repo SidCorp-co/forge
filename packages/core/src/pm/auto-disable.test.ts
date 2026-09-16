@@ -96,7 +96,13 @@ describe('handlePmJobFailedAutoDisable', () => {
     expect(transactionMock).not.toHaveBeenCalled();
   });
 
-  it('disables config and inserts a notification on the 3rd failure', async () => {
+  // cm:why ISS-1063 — the insert this used to assert is suppressed by the emission
+  // switch while the old notification surface is off, so the case now asserts the
+  // half that still has to happen (the cadence disable, inside its transaction) and
+  // that no row is written. The pairing is the point: the disable must land whether
+  // or not anyone is told about it, and a switch that also skipped the disable would
+  // be a silence that stopped the product working.
+  it('disables config and writes no notification on the 3rd failure while the surface is off', async () => {
     queueCount([{ count: 3 }]);
     const { setSpy, whereSpy } = setupTxUpdateChain();
     queueTxOwner([{ createdBy: 'owner-1' }]);
@@ -116,13 +122,7 @@ describe('handlePmJobFailedAutoDisable', () => {
       expect.objectContaining({ enabled: false, cadenceCron: null }),
     );
     expect(whereSpy).toHaveBeenCalled();
-    expect(valuesSpy).toHaveBeenCalledWith(
-      expect.objectContaining({
-        userId: 'owner-1',
-        projectId: 'p-1',
-        type: 'pm_escalation',
-      }),
-    );
+    expect(valuesSpy).not.toHaveBeenCalled();
   });
 
   it('skips notification insert when project row is missing (race with delete)', async () => {

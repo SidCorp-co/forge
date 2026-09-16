@@ -102,12 +102,15 @@ describe('forge_pm.write_decision', () => {
     );
   });
 
-  it('with escalate: inserts notification + emits hook + returns escalation', async () => {
+  // cm:why ISS-1063 — while the emission switch has `pm_escalation` off, the notification
+  // is not written and the hook does not fire. The decision and the escalation still are,
+  // and `notificationId` comes back null rather than the call throwing: a silence about
+  // notifications must not become an outage about deciding.
+  it('with escalate while the surface is off: writes the decision, tells nobody, returns a null notificationId', async () => {
     const tool = forgePmWriteDecisionTool();
     const decisionInsert = [{ id: DECISION_ID }];
     const escalationProjectLookup = [{ createdBy: OWNER_ID }];
-    const notificationInsert = [{ id: NOTIFICATION_ID }];
-    queue.push(decisionInsert, escalationProjectLookup, notificationInsert);
+    queue.push(decisionInsert, escalationProjectLookup);
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,
@@ -127,20 +130,15 @@ describe('forge_pm.write_decision', () => {
     })) as {
       decisionId: string;
       indexed: 'queued';
-      escalation: { notificationId: string; expiresAt: string };
+      escalation: { notificationId: string | null; expiresAt: string };
     };
 
     expect(result.decisionId).toBe(DECISION_ID);
-    expect(result.escalation.notificationId).toBe(NOTIFICATION_ID);
+    expect(result.escalation.notificationId).toBeNull();
     expect(result.escalation.expiresAt).toBe('2026-06-01T00:00:00.000Z');
-    expect(hooksEmitSpy).toHaveBeenCalledWith(
+    expect(hooksEmitSpy).not.toHaveBeenCalledWith(
       'notificationCreated',
-      expect.objectContaining({
-        notificationId: NOTIFICATION_ID,
-        type: 'pm_escalation',
-        userId: OWNER_ID,
-        decisionId: DECISION_ID,
-      }),
+      expect.objectContaining({ type: 'pm_escalation' }),
     );
   });
 
