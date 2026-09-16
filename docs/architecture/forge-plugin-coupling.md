@@ -156,7 +156,8 @@ could not answer are marked *unverified from this repo* rather than asserted. Tr
   no `agent_questions` row on its issue), never a counter.
 - **The other side:** the driver that writes parks, which ships from the plugin repo on its own
   clock. *Unverified from this repo.*
-- **What breaks if they drift:** making `needs` required refuses **every** park the moment it
+- **What breaks if they drift:** making `needs` required refuses every park whose writer omits it,
+  the moment it
   deploys, because the writer of those parks would not carry the field until its own release.
 - **How you would notice:** immediately and catastrophically — every autonomous park on the fleet
   starts failing its status write. That is the outcome the optionality exists to prevent, not a
@@ -287,10 +288,12 @@ could not answer are marked *unverified from this repo* rather than asserted. Tr
   `audit-code-quality`, `dispatch`, `forge`, `gate-review`, `harness-eval`, `issue-flow`,
   `setup-code-quality` and `vi-natural`, and the string `release-flow` appears nowhere under
   `plugin/`. The fleet's own copies are still unverified from here.
-- **What breaks if they drift:** refusing an unloaded method today halts every release on the
-  fleet, because today that is the branch every run takes. The cost of the amnesty is that a run
-  with no method is visible rather than blocked — it is recorded and readable as one that ran
-  without a method, and the refusal is one predicate away.
+- **What breaks if they drift:** refusing an unloaded method blocks every run that announces
+  `loaded: false`. At the pin that is every run, because `release-flow` is not in the artifact at
+  all; how many boxes on the fleet carry a newer plugin that does load it has not been measured
+  from here, so read this as a claim about the pin rather than about the fleet. The cost of the
+  amnesty is that a run with no method is visible rather than blocked — it is recorded and
+  readable as one that ran without a method, and the refusal is one predicate away.
 - **How you would notice:** the ledger holds it: the announcement row carries `loaded: false` with
   its detail. Removing the amnesty reds a test that states what the trade was, which is the
   intended tripwire when the skill ships.

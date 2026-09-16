@@ -18,7 +18,7 @@ Where a claim is worth keeping, it goes somewhere that can be searched, dated an
 
 | The claim is about | It lives in |
 |---|---|
-| a measured lesson, a cost, a falsifying experiment | a `knowledge_entries` row — `forge knowledge search` |
+| a measured lesson, a cost, a falsifying experiment | a `knowledge_entries` row — `POST /api/projects/:id/knowledge/search` |
 | a coupling with `github.com/SidCorp-co/forge-plugin` | [`forge-plugin-coupling.md`](forge-plugin-coupling.md) |
 | what a gate is, and what it was born from | [`../../scripts/README.md`](../../scripts/README.md) |
 | what shipped | `CHANGELOG.md` |
@@ -91,11 +91,12 @@ and the couplings that crossed a repository or a language boundary were the ones
 same-repo, same-language edge: the one `cm`'s own rule says a tool should have derived.
 
 **A document written before 2026-09-16 may still cite a `cm:guard` or a `cm:edge` by name.** Those
-citations now point into git history at `33eabd7e` rather than into the tree; `git show 33eabd7e --
-<path>` is what resolves one. Every such citation in a live reference document was rewritten in the
+citations now point into git history at `33eabd7e` rather than into the tree; `git show
+33eabd7e:<path>` is what resolves one. Not the `--` form, which prints that commit's own patch for
+the path and answers with nothing at all for a file the commit did not touch. Every such citation in a live reference document was rewritten in the
 same change; the ones left standing are in `docs/proposals/`, which is a record of arguments made
 at a date rather than a description of the code as it is.
 
 If that loss is ever felt, the way back is not a new convention. Every removed annotation is in
-git at `33eabd7e` (`git show 33eabd7e -- <path>`), and `cm propose --source lockstep|contract`
+git at `33eabd7e` (`git show 33eabd7e:<path>`), and `cm propose --source lockstep|contract`
 re-derives candidates from evidence already in the tree.
