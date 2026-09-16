@@ -128,7 +128,6 @@ export async function returnIssuesForRun(
     .filter((n) => Number.isInteger(n));
   if (seqs.length === 0) return [];
 
-  const heldElsewhere = await keysHeldByAnotherLiveRun(runId, run.projectId);
   const rows = await db
     .select({
       id: issues.id,
@@ -140,6 +139,18 @@ export async function returnIssuesForRun(
     })
     .from(issues)
     .where(and(eq(issues.projectId, run.projectId), inArray(issues.issSeq, seqs)));
+
+  // cm:guard read AFTER the issue rows and never before them, which is what makes this fence sound
+  // rather than merely likely. The status this function objects to can only have been written by a
+  // holder that already existed when it was written — a master moves an issue to `in_progress`
+  // through a run session it has already opened — so a holder read taken LATER than the row read
+  // sees every claim that could explain what the rows say. Taken first, it leaves a window: the
+  // claim lands between the two reads and the fence looks at a world that no longer exists. The
+  // other side of the window is the kernel's own: `apply-transition.ts` puts `status = fromStatus`
+  // in the UPDATE's WHERE, so a claim landing AFTER this read is refused as `STALE_TRANSITION`
+  // rather than overwritten. Between the two there is no order in which this returns an issue out
+  // from under a live run (ISS-1050, the second review of the F7 fix).
+  const heldElsewhere = await keysHeldByAnotherLiveRun(runId, run.projectId);
 
   // cm:guard a synthesized DEVICE actor, never the project owner: this hop is a machine noticing a dead run, and recording it as the owner puts a transition nobody made into the interventions-per-issue metric. Same fallback shape as `releasing-recovery.ts` and for the same reason.
   const fallbackId = run.projectCreatedBy ?? run.projectId;
@@ -212,6 +223,17 @@ export async function returnIssuesForRun(
       returned.push({ issueKey: key, from: issue.status as IssueStatus, to: target });
     } catch (err) {
       if (err instanceof TransitionError && err.code === 'NO_OP') continue;
+      // cm:guard `STALE_TRANSITION` is the other half of the fence above and is NOT a failure to
+      // report as one: it means the status moved between this function's read and its write, which
+      // is precisely the claim the fence exists to leave alone. It is logged at info so the rate
+      // stays readable, and no retry is attempted — retrying would be the replay this closes.
+      if (err instanceof TransitionError && err.code === 'STALE_TRANSITION') {
+        logger.info(
+          { runId, issueKey: key, from: issue.status, to: target },
+          'run-issue-return: the issue moved while this return was in flight, so it belongs to whoever moved it',
+        );
+        continue;
+      }
       logger.warn(
         { err, runId, issueKey: key, from: issue.status, to: target },
         'run-issue-return: could not return an issue its run had stopped working',
