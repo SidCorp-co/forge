@@ -2719,6 +2719,18 @@
 
 ### Fixed
 
+- **A link in an assistant's reply now opens the page it names, instead of the API's 404.** When the
+  assistant pointed you at an issue or at a project's Agents screen, the link it wrote was correct —
+  but the page put it together with the address of the backend the app talks to, so clicking it
+  opened a new tab of machine-readable refusal and the issue you were being sent to stayed out of
+  reach. Those links now stay on the site you are already on and open in the tab you are already in.
+  A link to a file — an attachment on a comment, an image in an issue body — still goes to the
+  backend that holds it, and still opens in a new tab, because that is where the file is. The same
+  rule now covers every link and image in an issue description, a comment or a plan, not just the
+  ones in a reply. A link the page cannot place — one written relative to nothing it can resolve,
+  or one carrying a scheme a page should never follow — is shown as text saying so rather than
+  quietly sent somewhere it was never going to work.
+
 - **A conversation you archive from the all-projects Conversations page can now be found and
   brought back there.** Every room in that page's sidebar offered to archive it, and archiving
   worked — the room left the list. Nothing on the page then showed the archived ones, so the only
