@@ -9,8 +9,9 @@ import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
 import { assertPrincipalIsMember, type ContextScopedMcpToolFactory } from '../../mcp/tools/lib.js';
 import { runMemoryWrite } from '../../memory/write-service.js';
+import { NOTE_TEXT_MAX } from './memory-note-gate.js';
 
-export const NOTE_TEXT_MAX = 8192;
+export { NOTE_TEXT_MAX };
 
 // cm:guard `text` and an optional `title`, and NOTHING else — no `source`, no `sourceRef`, no `metadata`: `forge_memory.write` takes all three and is not on the chat allowlist because a room that could pick its source could file under `knowledge` or `policy` and wear the trust those rows carry. The schema is `.strict()` so a call carrying one is refused whole (ISS-1034 criteria 24, 27).
 const input = z

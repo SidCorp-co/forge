@@ -132,7 +132,7 @@ const MANIFEST: Record<LayerId, Record<string, string>> = {
     'project-pipeline-states':
       'the project’s own pipeline read from the tracker, in its declared order',
     'project-waiting-issue':
-      'the `--status needs_info` filter and the link shape on the one it names',
+      'the `forge issue --status needs_info` form, the sentence that a draft is unfiled and not waiting, and the link shape on the one it names',
     'memory-store-recall':
       'forge_memory_note to keep a fact, forge_memory_search to read it back in a new room',
     'memory-correction':

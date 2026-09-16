@@ -138,6 +138,7 @@ describe('a transcript refusal ends the turn without losing it', () => {
     await runChatTurn({
       c: { header: () => {} } as never,
       turn,
+      projectId: 'p1',
       resolved: { provider, model: 'm' },
       providerMessages: [{ role: 'user', content: 'how many?' }],
       tools,

@@ -57,7 +57,10 @@ holds every member of a filled list to its place; `onlyFrom` fails a reply namin
 (`pipeline-registry.ts:REGISTRY_ISSUE_STATUSES`, whole words, `in_progress` one token) outside that
 list, so a reply reciting the product's whole lifecycle no longer passes the pipeline-states task
 because the three configured states happen to stand in order among ten; `labeled` reads the number
-beside a label in its clause; `linkTo` needs a link whose segment is the filled issue id.
+beside a label in its clause; `linkTo` needs a link whose segment is the filled issue id;
+`maxNotesKept` reads the notes the trial kept, as the cleanup counted them (`cleanup.memories.found`),
+and fails the turn under `repeated_call` when more were kept than the task allows, or when the
+listing was refused and the count is unknown (ISS-1064).
 
 ## The tasks
 
@@ -438,6 +441,16 @@ memory tasks: the notes the assistant kept for "remember my deploy window" outli
 run until this. `remaining > 0` fails the trial, and a listing or deletion the deployment refuses is
 counted as remaining rather than read as clean; `null` means no room was opened. `memory-correction`
 requires the fresh room to return the second token and refuses the first by `mustNotMatch`.
+
+The assistant is held to what it keeps before the benchmark counts it. `forge_memory_note` meets a
+gate in the turn loop (`assistant/tools/memory-note-gate.ts:judgeNote`, bound through
+`run-turn-core.ts:TurnCoreArgs.preCall` by both chat doors): a note that is the person's message
+copied back, a second note in a turn that stated one thing, one under 12 characters or over the
+tool's cap, one the project already holds at the store's near-duplicate threshold, or one about the
+conversation itself is refused as a tool error naming the rule and one note that would pass, and the
+row it leaves in `chat_logs.tool_calls` carries `isError: true`, so a trail and a history reading
+count the refusal. `long-context-thread` carries `maxNotesKept 2`: the release code name and the
+deploy window are the two facts the person asks to keep, and the ISS-1061 runs kept 8 to 9.
 
 **Long context** plants one fact in about 1,800 words of generated release notes
 (`tasks/long-context-needle.ts`) and asks for it, capped at two tool calls and three iterations

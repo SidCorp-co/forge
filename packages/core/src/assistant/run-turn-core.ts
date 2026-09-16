@@ -62,7 +62,24 @@ export interface TurnCoreArgs {
   // cm:guard taken as an ARGUMENT and never read from env here: `config/env.js` validates at import time and throws without DATABASE_URL, so importing it into the turn loop makes three provider-mocked suites fail to load — the doors already hold env, and this file stays testable without one (ISS-1009).
   reasoningEffort?: string | undefined;
   signal?: AbortSignal | undefined;
+  /**
+   * Read before a tool call is executed; a result returned stands in for the call (recorded with
+   * its own `isError`) and the tool never runs. Null lets the call through (ISS-1064).
+   */
+  preCall?: PreCall | undefined;
 }
+
+export interface PreCallContext {
+  /** The provider messages so far: system, history, the person's newest turn, this turn's rounds. */
+  messages: readonly ChatMessage[];
+  /** The tool calls this turn has made so far, refused ones included. */
+  toolCalls: readonly ToolCallRecord[];
+}
+
+export type PreCall = (
+  call: { name: string; arguments: string },
+  ctx: PreCallContext,
+) => Promise<CallToolResult | null>;
 
 /** One tool call as audited in `chat_logs.tool_calls`; `name`/`arguments` are what the model emitted, the rest is what happened to it. */
 export interface ToolCallRecord {
@@ -133,8 +150,14 @@ async function executeToolRound(
   toolset: ChatToolset,
   calls: CollectedToolCall[],
   round: number,
+  gate?: (
+    call: CollectedToolCall,
+    completed: readonly ToolCallRecord[],
+  ) => Promise<CallToolResult | null>,
 ): Promise<ExecutedCall[]> {
   const out: ExecutedCall[] = [];
+  // cm:guard the gate reads the calls this ROUND has finished, not only earlier rounds': same-name calls run one after another and `toolCalls` is appended only once the round is over, so a second note in the same round would otherwise be counted against zero (codex F1 on the ISS-1064 diff)
+  const completed = (): ToolCallRecord[] => out.flatMap((e) => (e ? [e.record] : []));
   const byName = new Map<string, number[]>();
   for (const [i, tc] of calls.entries()) byName.set(tc.name, [...(byName.get(tc.name) ?? []), i]);
   await Promise.all(
@@ -142,7 +165,15 @@ async function executeToolRound(
       for (const i of indices) {
         const call = calls[i] as CollectedToolCall;
         const startedAt = Date.now();
-        const result = await safeExecute(toolset, call);
+        // cm:guard a gate that throws refuses the call rather than letting it run ungated or ending the turn: the model reads why, the row carries isError, and the write the gate stood before never happens (ISS-1064)
+        const held = gate
+          ? await gate(call, completed()).catch((err: unknown) =>
+              toolError(
+                `pre-call gate failed: ${err instanceof Error ? err.message : String(err)}`,
+              ),
+            )
+          : null;
+        const result = held ?? (await safeExecute(toolset, call));
         const text = toolResultText(result);
         out[i] = {
           id: call.id,
@@ -266,10 +297,18 @@ export async function* runTurnEvents(
       });
 
       // cm:why results are yielded and fed back in MODEL order once the whole round has completed — every tool_call_id gets exactly one reply and the SSE pairing stays deterministic whatever finished first
+      const gate = args.preCall
+        ? (tc: CollectedToolCall, completed: readonly ToolCallRecord[]) =>
+            (args.preCall as PreCall)(
+              { name: tc.name, arguments: tc.arguments },
+              { messages, toolCalls: [...toolCalls, ...completed] },
+            )
+        : undefined;
       for (const { id, record, text } of await executeToolRound(
         offered,
         turnToolCalls,
         iterations,
+        gate,
       )) {
         toolCalls.push(record);
         // cm:guard the error flag and the measured duration ride the event the transcript reads,

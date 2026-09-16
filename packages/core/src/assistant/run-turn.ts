@@ -31,6 +31,7 @@ import {
 import type { ChatMessage, ChatProvider } from './providers/types.js';
 import { runTurnEvents, type TurnCoreResult, usageForLog } from './run-turn-core.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
+import { memoryNoteGateFor } from './tools/memory-note-gate-deps.js';
 import { createTranscriptAccumulator } from './transcript-entry.js';
 
 /**
@@ -45,6 +46,8 @@ const ENTRY_FLUSH_MS = 120;
 export interface RunTurnArgs {
   c: Context;
   turn: ConversationTurn;
+  /** The project the room is scoped to; the memory-note gate reads the project's notes by it (ISS-1064). */
+  projectId: string;
   /** Resolved provider + model (already chosen by `resolveForProject`). */
   resolved: { provider: ChatProvider; model: string };
   /** The full message array (system + history + new user turn). */
@@ -67,6 +70,7 @@ export interface RunTurnArgs {
 export function runChatTurn({
   c,
   turn,
+  projectId,
   resolved,
   providerMessages,
   tools,
@@ -98,6 +102,7 @@ export function runChatTurn({
       model: resolved.model,
       messages: providerMessages,
       tools,
+      preCall: memoryNoteGateFor(projectId),
       contextBudgetTokens,
       reasoningEffort,
       signal: ac.signal,

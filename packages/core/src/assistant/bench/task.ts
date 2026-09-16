@@ -30,6 +30,7 @@ export const CHECK_KINDS = [
   'labeled',
   'linkTo',
   'onlyFrom',
+  'maxNotesKept',
 ] as const;
 export type CheckKind = (typeof CHECK_KINDS)[number];
 
@@ -73,7 +74,9 @@ export type Check =
   /** Some issue link in the reply targets the filled issue id (codex F3). */
   | { kind: 'linkTo'; issueId: string }
   /** The reply names no pipeline state outside the `, `-joined fixture list (ISS-1065). */
-  | { kind: 'onlyFrom'; list: string };
+  | { kind: 'onlyFrom'; list: string }
+  /** The trial kept at most `max` memory notes, read from the cleanup's count (ISS-1064). */
+  | { kind: 'maxNotesKept'; max: number };
 
 /** What a fixture reads from the deployment before the first turn, and the placeholders it fills. */
 export type FixtureName =

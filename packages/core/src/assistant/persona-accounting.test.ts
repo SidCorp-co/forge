@@ -87,7 +87,8 @@ describe('the persona claim ledger', () => {
     expect(LEDGER.filter((c) => c.origin === 'kept' && c.owner === 'rocketchatOnly')).toHaveLength(
       5,
     );
-    expect(LEDGER).toHaveLength(33);
+    // 33 through ISS-1057; ISS-1064 added the tracker's word for a waiting issue (`waiting-issue-is-needs-info`)
+    expect(LEDGER).toHaveLength(34);
   });
 
   it('gives each claim exactly one owner', () => {

@@ -190,6 +190,7 @@ describe('runChatTurn tool loop', () => {
     await runChatTurn({
       c: fakeCtx(),
       turn: turn(),
+      projectId: 'p1',
       resolved: { provider, model: 'm' },
       providerMessages: [{ role: 'user', content: 'how many open issues?' }],
       tools,
@@ -239,6 +240,7 @@ describe('runChatTurn tool loop', () => {
     await runChatTurn({
       c: fakeCtx(),
       turn: turn(),
+      projectId: 'p1',
       resolved: { provider, model: 'm' },
       providerMessages: [{ role: 'user', content: 'hi' }],
       tools: { tools: [], execute: async () => ({ content: [] }) },
@@ -298,6 +300,7 @@ describe('runChatTurn writes the canonical transcript entry', () => {
     await runChatTurn({
       c: fakeCtx(),
       turn: turn(),
+      projectId: 'p1',
       resolved: { provider, model: 'm' },
       providerMessages: [{ role: 'user', content: 'how many open issues?' }],
       tools,

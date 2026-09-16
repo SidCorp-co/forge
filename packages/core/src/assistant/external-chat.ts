@@ -37,6 +37,7 @@ import type { ChatResponseFormat } from './providers/types.js';
 import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
+import { memoryNoteGateFor } from './tools/memory-note-gate-deps.js';
 import { applyTurnContext } from './turn-context.js';
 import { loadTurnSelf } from './turn-self.js';
 import { type ImageResolver, resolveVisionImages, type TurnImage } from './vision.js';
@@ -224,6 +225,7 @@ export async function runExternalChatTurn(
     model: resolved.model,
     messages: providerMessages,
     tools: args.tools,
+    preCall: memoryNoteGateFor(args.projectId),
     // cm:why an adapter turn is an agentic worker, not creative chat: a low temperature keeps small models on the call-the-tool path instead of narrating what they are "about to" do.
     temperature: 0.2,
     requireInitialToolUse: args.tools !== undefined,

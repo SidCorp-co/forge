@@ -40,6 +40,9 @@ export const TOOLS_LAYER: PromptLayer = {
   a verb — a wrong one is refused with the right one named, so read the refusal and send that.
 - \`-h\` is for a verb whose form the tool's description does not carry, and it costs a round-trip
   you do not otherwise pay.
+- **AN ISSUE WAITING ON MORE INFORMATION IS AT \`needs_info\`** — read them with
+  \`forge issue --status needs_info\`. A \`draft\` is unfiled, not waiting: nobody is owed anything on
+  it, so never name a draft as the issue that is waiting.
 - **NEVER SAY A WRITE LANDED THAT YOU DID NOT READ BACK.** A non-zero exit with what it printed is the
   answer to relay; do not describe the state you intended. "Set to open" over a row still at
   \`draft\` is the failure this rule exists to prevent.

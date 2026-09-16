@@ -84,6 +84,18 @@ export const LEDGER: readonly Claim[] = [
     ],
     origin: 'new',
   },
+  // cm:guard ISS-1064: the tracker's word for a waiting issue. On the ISS-1061 runs the assistant
+  // named a draft (ISS-23) as the issue waiting on information, one of three, because nothing in
+  // the layer said which status means waiting or that a draft is unfiled.
+  {
+    id: 'waiting-issue-is-needs-info',
+    owner: 'guide',
+    clauses: [
+      'AN ISSUE WAITING ON MORE INFORMATION IS AT `needs_info`',
+      'A `draft` is unfiled, not waiting',
+    ],
+    origin: 'new',
+  },
 
   // cm:guard the method's own preamble had NO ledger row until ISS-1057's sentence-by-sentence
   // assertion asked for one: the old checks walked the doors' rendered lines with the guide body
