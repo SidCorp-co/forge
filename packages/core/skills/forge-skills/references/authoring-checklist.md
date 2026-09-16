@@ -10,7 +10,7 @@ Run this over a skill before shipping it.
 
 ## Policy (the part that MUST be in the body)
 - [ ] Non-inferable project policy is stated: gitflow/merge model, deploy gate, domain heuristics.
-- [ ] Per-project values that vary live in `projectFacts`, not the body.
+- [ ] Per-project values that vary live in knowledge entries, not the body.
 
 ## Token economy
 - [ ] Decision logic / gates are INLINE.

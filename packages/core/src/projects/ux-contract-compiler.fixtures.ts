@@ -17,7 +17,7 @@ export const UX_CONTRACT_SEED_RULES: UxContractRuleInput[] = compilePresetToRule
   PRESET_DEFAULT_TOGGLES['app-strict'],
 );
 
-// Golden output: the exact current hand-authored projectFacts['ux-contract'] value.
+// Golden output: the exact current hand-authored `ux-contract` knowledge entry.
 // compileUxContract(UX_CONTRACT_SEED_RULES, WEB_V2_SCAFFOLD) must produce this string byte-for-byte.
 export const GOLDEN_UX_CONTRACT = [
   '# UX Completeness Contract — web-v2 (forge-dev)',

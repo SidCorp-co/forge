@@ -60,7 +60,8 @@ instead: guide `what-is-an-issue`.\n\
 | To record a note, learning, or decision | `forge_memory_write` (durable business logic → repo `docs/`) | Filing it as an issue — `draft` or not, nobody browses the issue list for notes |\n\
 | To queue work that must actually happen LATER | create an issue at `draft` | Creating it at `open` — that auto-triages and spawns a pipeline run |\n\
 | To report an issue | fill `title`, `description`, `priority`, `category` | Pre-filling `plan`/`acceptanceCriteria` — on a staged project those are written by the clarify/plan steps, on an autonomous one by the driver's own phases |\n\
-| To change project config (`pipelineConfig.states`, `projectFacts`, …) | GET the current config first, then send a complete entry | Blind-patching a nested map you never read — you can clobber sibling keys |\n\
+| To change project config (`pipelineConfig.states`, …) | GET the current config first, then send a complete entry | Blind-patching a nested map you never read — you can clobber sibling keys |\n\
+| To write or change the project's own prose (build commands, a rule, a guide) | `forge_knowledge` write, one entry per slug, `injection` deciding whether it reaches every prompt or is fetched on demand | Sending it to `forge_config` as `projectFacts` — retired in ISS-1048, and the call is refused by name |\n\
 | Before you design / fix | `forge_memory_search` for prior conventions, gotchas, decisions | Skipping recall and rediscovering (or contradicting) settled work |\n\
 | To park work that never started | leave it at `draft` | `on_hold` from `draft` — `on_hold` is a deliberate pause for ACTIVE work only |\n\
 | To finish a fix made by hand, outside the pipeline | drive it through `status` and/or capture a `forge_memory` learning | Fixing it and forgetting — no status move, no learning recorded |\n\

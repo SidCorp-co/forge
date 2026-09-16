@@ -301,9 +301,13 @@ paid for themselves.
 - `pipelineConfig.lockedSkills` makes a skill non-overridable. Being locked no longer depends on
   which channel delivered it, and `meta-skills.ts` is back to name reservation only.
   `skills/lock.ts` owns the rules; `SKILL_LOCKED` maps to 400 at all three write boundaries.
-- Per-project specificity has a declared home: `projects/autonomous-contract.ts` names the six
-  `projectFacts` keys the bundled skills read, and `updatePipelineConfig` refuses the switch to
-  autonomous while `build-commands` or `test-commands` is unanswered.
+- Per-project specificity has a declared home: `projects/autonomous-contract.ts`. It named six
+  `projectFacts` keys when this was written; since ISS-1048 it COMPUTES the obligation from what the
+  project declares — a repository owes `build-commands` and `test-commands`, a `releaseModel` other
+  than `none` owes `release-procedure` — and the entries themselves are `knowledge_entries` rows.
+  Nothing refuses the switch to autonomous on a missing one: an earlier version of this line said
+  `updatePipelineConfig` did, and no such call site has ever existed. The unanswered obligations are
+  reported, in the release-readiness gaps and in the agent's own prompt, and that is all.
 - Acceptance met: a project expresses what the forked skills expressed, without forking one.
 
 > **A hole this closed.** `pipelineConfigSchema` STRIPS unknown keys, so `lockedSkills` could never

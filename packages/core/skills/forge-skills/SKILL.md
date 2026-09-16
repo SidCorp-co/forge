@@ -23,7 +23,7 @@ Since ISS-895 there is **no status → skill ladder**. One job type is dispatche
 ```
 Need different pipeline behaviour for THIS project?
 ├─ A value that changes per project (branch, test URL, creds, a domain fact)?
-│     → DON'T edit the skill. Put it in forge_config projectFacts / previewDeploy / branchConfig.
+│     → DON'T edit the skill. Put it in forge_knowledge / previewDeploy / branchConfig.
 ├─ The global skill is basically right, tweak the policy/heuristics?
 │     → SHADOW it: create a same-name project skill (forge_skills_create) and edit it.
 ├─ A whole new capability this project needs?
@@ -36,14 +36,14 @@ Need different pipeline behaviour for THIS project?
 
 1. **Write WHAT, not HOW.** Intent altitude: *"build & test the affected packages, push only if green."* The agent infers the actual commands from the repo (package.json / Makefile / Cargo / lockfile). **Bad:** hardcode `npm run build`. **Good:** "build the affected package (infer the command from the repo)."
 2. **Don't restate the preamble.** Status ladder, enums, "status LAST", handoff schema, worktree rules are already injected every job. Restating them = drift when they change.
-3. **Don't hardcode project config.** `repoPath`, base/production branch literals, test URLs, 🔒 credentials → come from the check-in bundle / `forge_config` / `previewDeploy` / `projectFacts`. **Never inline a secret** (it syncs to disk).
+3. **Don't hardcode project config.** `repoPath`, base/live branch literals, test URLs, 🔒 credentials → come from the check-in bundle / `forge_config` / `previewDeploy` / `forge_knowledge`. **Never inline a secret** (it syncs to disk).
 4. **Only write non-inferable POLICY** the agent can't derive from the repo: gitflow/merge model, deploy gate, domain heuristics, conventions.
 5. **Token economy — put the right thing in the right place:**
    - **Inline (always-paid):** decision logic the agent must always see — gates, exit rules, "when to X vs Y".
    - **`references/*.md` (lazy):** long checklists, templates, playbooks, examples.
-   - **`projectFacts` (preamble):** per-project values referenced by many skills.
+   - **an always-injected knowledge entry (preamble):** per-project prose every stage should see.
 6. **Emit structured signals — don't bury machine-consumed data in the comment.** When a skill produces data an aggregator reads (friction, UX gaps, metrics, learnings), write it to its dedicated tool/table (`forge_feedback`, `forge_ux_findings`, …) as a **non-blocking side-channel** — *in addition to* the human-facing comment and the status transition, never instead of them. The comment is for the reader; the structured row is for the machine. A failed emit must never change the skill's verdict.
-7. **Consume a project-wide standard as a gated fact, not hardcoded prose.** A standard the pipeline must honor across issues (e.g. a UX contract) lives as an always-inject `projectFacts` key and is referenced with an *"if the project has \<fact\>"* guard, so projects without it are unaffected. Read the standard from the fact; don't bake it into the skill body (that can't be tuned per project and drifts).
+7. **Consume a project-wide standard as a gated entry, not hardcoded prose.** A standard the pipeline must honor across issues (e.g. a UX contract) lives as a knowledge entry with `injection: "always"` and is referenced with an *"if the project has \<entry\>"* guard, so projects without it are unaffected. Read the standard from the entry; don't bake it into the skill body (that can't be tuned per project and drifts).
 
 ## 4. Failure modes to avoid
 
@@ -51,7 +51,7 @@ Need different pipeline behaviour for THIS project?
 2. Restating preamble content → silent drift.
 3. **Double-merge:** the skill `git merge`s AND server `mergeStates` merges the same branch → empty-commit loop. Pick ONE merge mechanism.
 4. **Files without `encoding`:** when adding `references` via MCP, set `encoding:"utf8"` (or base64) — a missing encoding can break the runner's skill sync.
-5. Secrets inline; or putting a per-project value in the body instead of `projectFacts`.
+5. Secrets inline; or putting a per-project value in the body instead of a knowledge entry.
 6. Over-splitting: moving decision logic into a reference the agent may skip. Keep gates inline.
 
 ## 5. Authoring workflow (read → draft → ship → verify)

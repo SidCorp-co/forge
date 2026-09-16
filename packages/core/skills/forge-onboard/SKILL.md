@@ -1,6 +1,6 @@
 ---
 name: forge-onboard
-description: "Interactive onboarding conversation that surveys a freshly-bootstrapped project's real repo and builds its initial Project Brain — projectFacts, knowledge entries (overview / workflow / rules), a handful of seed memories, and a proposed pipeline config — through a chat that asks one question at a time and never writes without an explicit human confirm. Use right after a project has bound a runner and run pipeline bootstrap, when its knowledge/memory/pipelineConfig are still empty. Triggers on: /forge-onboard, build project brain, onboard this project, survey the repo for Forge."
+description: "Interactive onboarding conversation that surveys a freshly-bootstrapped project's real repo and builds its initial Project Brain — knowledge entries (overview / workflow / rules / guides), a handful of seed memories, and a proposed pipeline config — through a chat that asks one question at a time and never writes without an explicit human confirm. Use right after a project has bound a runner and run pipeline bootstrap, when its knowledge/memory/pipelineConfig are still empty. Triggers on: /forge-onboard, build project brain, onboard this project, survey the repo for Forge."
 user_invocable: true
 arguments: ""
 ---
@@ -8,7 +8,7 @@ arguments: ""
 # Forge Onboard — build the Project Brain
 
 A brand-new Forge project has skills wired and a pipeline preset applied, but its "brain" is
-empty: nothing has read the actual repo and turned it into `projectFacts` / knowledge entries /
+empty: nothing has read the actual repo and turned it into knowledge entries /
 seed memory / a tuned pipeline config. This skill is that first conversation. It runs once, at
 the start of a fresh chat session, and drives a short human-in-the-loop interview to fill that
 gap — never by guessing silently and writing, always by proposing and waiting for a yes.
@@ -20,7 +20,7 @@ gap — never by guessing silently and writing, always by proposing and waiting 
    I wait, let me also ask...". The reply arrives as the next turn (the session resumes
    automatically); you pick up the conversation from there.
 2. **Never write without an explicit confirm.** Before any `forge_knowledge` upsert, `forge_memory`
-   write, `forge_config` projectFacts/pipelineConfig patch, or pipeline-config change, present a
+   write, `forge_knowledge` write, `forge_config` pipelineConfig patch, or pipeline-config change, present a
    short plain-English summary of exactly what you intend to write and ask "Write this?" (a single
    question, per rule 1). Only write after an unambiguous yes. A "no", a follow-up question, or the
    user closing the tab must never leave a partial write behind — nothing you propose exists until
@@ -64,11 +64,13 @@ exhaustive audit; a later `forge-product-map` / re-run of this skill can refine 
 
 Summarize what you plan to write, grouped by target, then ask "Write this?" (rule 2):
 
-- **`projectFacts`** (`forge_config` action=update, `projectFacts` patch) — durable, kebab-case
-  key → short text facts referenced by skill bodies as `{{project:<key>}}`. Reserve this for facts
-  every stage should see (a hard rule, a non-obvious convention) — mark genuinely load-bearing ones
-  `alwaysInject:true` via `projectFactsConfig` sparingly; most facts stay fetch-on-demand.
-- **Knowledge entries** (`forge_knowledge` action=upsert) — at minimum an `overview` entry (what
+- **Always-injected entries** (`forge_knowledge` action=write, `injection: "always"`) — durable,
+  kebab-case slugs holding what every stage should see: a hard rule, a non-obvious convention, the
+  build and test commands. Their bodies are rendered verbatim into every prompt for this project, so
+  use `always` sparingly; most entries stay `on_demand` and are fetched by slug when a task needs
+  them. `{{project:<key>}}` in a skill body no longer reaches these — it answers reserved names
+  derived from project columns only, and anything else with a refusal naming this tool (ISS-1048).
+- **Knowledge entries** (`forge_knowledge` action=write) — at minimum an `overview` entry (what
   the product is, its major feature areas); add `workflow` (a key entity's lifecycle) or `rule`
   entries only when the survey surfaced something concrete enough to diagram or state as a
   constraint. Don't invent detail you don't have evidence for — a thin, honest overview beats a

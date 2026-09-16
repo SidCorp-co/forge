@@ -273,7 +273,7 @@ export const improvementMessages: ImprovementMessage[] = [
       'approves every proposal.',
     appliesWhen:
       'The project has a UX Completeness Contract — ux_contract_rules rows and/or a ' +
-      'projectFacts["ux-contract"] fact — AND a frontend surface whose review/verify-live ' +
+      '`ux-contract` knowledge entry — AND a frontend surface whose review/verify-live ' +
       'stages write ux_findings. A project with no findings yet is a no-op run, not an error.',
     appliesToSkills: ['forge-review', 'forge-verify-live'],
     category: 'quality',

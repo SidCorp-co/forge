@@ -51,7 +51,7 @@ A rule you propose and a human approves is injected into EVERY future agent prom
 
 1. **Is it really one gap?** Read \`occurrences\` against \`distinctIssueCount\`. Ten findings on three issues can be one agent's habit rather than a pattern in the product.
 2. **Do the evidence issues agree?** Call \`forge_ux_findings action="list"\` with \`filters.issueId\` for the evidence issues and read the raw \`detail\` text. If the findings describe different problems that merely share vocabulary, the cluster is an artifact — refute it.
-3. **Is it already covered in spirit?** Compare against the project's active rules (\`forge_config action="get"\` → \`projectFacts["ux-contract"]\`). A rule that restates an existing one makes the contract longer without making it stronger.
+3. **Is it already covered in spirit?** Compare against the project's active rules (\`forge_knowledge action="get" slug="ux-contract"\`). A rule that restates an existing one makes the contract longer without making it stronger.
 4. **Is the text actionable as written?** The proposals inbox has approve and reject only — no edit box, by decision. So the text must read as a rule someone could follow, not as an incident report. If it does not, refute it: the gap will recur and you can propose better wording next run.
 5. **For \`strengthen\`:** is "should" genuinely wrong here, or did these issues just have weak reviews? Bumping severity is cheap to approve and hard to notice.
 6. **For \`retire\`:** confirm the target really is a stale unapproved proposal whose gap stopped recurring, not one a human is still deciding on.

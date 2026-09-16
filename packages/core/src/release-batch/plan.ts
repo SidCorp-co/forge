@@ -5,7 +5,7 @@
 // resolver for that dragged the db client — and therefore the whole env
 // contract — into a pure string test.
 
-/** The `projectFacts` key holding this project's repo-side release ritual. */
+/** The knowledge-entry slug holding this project's repo-side release ritual. */
 export const RELEASE_PROCEDURE_FACT = 'release-procedure';
 
 /**
@@ -217,7 +217,7 @@ export interface ReleasePlan {
   channels: ReleaseChannel[];
   /** The one label across the set, or `null`. Two disagreeing labels throw instead. */
   releaseRunnerLabel: string | null;
-  /** `projectFacts.release-procedure`, verbatim. */
+  /** The `release-procedure` knowledge entry's body, verbatim. */
   procedure: string | null;
 }
 
