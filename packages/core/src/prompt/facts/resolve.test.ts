@@ -6,10 +6,11 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../db/client.js', () => ({ db: {} }));
-vi.mock('../../config/env.js', () => ({ env: { KNOWLEDGE_INJECTION_ENABLED: false } }));
+vi.mock('../../config/env.js', () => ({ env: {} }));
 vi.mock('../../knowledge/service.js', () => ({
   selectAlwaysInjectFromKnowledge: vi.fn(),
   selectOnDemandSlugsFromKnowledge: vi.fn(),
+  selectAllSlugsFromKnowledge: vi.fn(),
 }));
 
 const warnSpy = vi.fn();
@@ -38,6 +39,8 @@ function makeInputs(overrides?: Partial<Inputs>): Inputs {
     project: (key: string) => values[key],
     projectFactKeys: ['build-commands'],
     alwaysInjectFacts: [],
+    factsUnavailable: false,
+    missingObligations: [],
     modules: [],
     ...overrides,
   };
@@ -404,14 +407,6 @@ describe('renderStageFactsText — module attribution is gated on the taxonomy (
   });
 });
 
-/**
- * `{{project:<key>}}` — what a skill body gets when it asks for a branch.
- *
- * ISS-1046 retired `{{project:production-branch}}` and introduced `{{project:live-branch}}`,
- * which resolves only where the project declares it promotes. Both halves matter and neither
- * was asserted anywhere: the resolver was built privately inside the DB-backed loader, so the
- * only way to reach it was through a database.
- */
 describe('makeProjectResolver — the branch a skill body is handed', () => {
   function resolver(over: Partial<Parameters<typeof makeProjectResolver>[0]> = {}) {
     return makeProjectResolver({
@@ -422,7 +417,6 @@ describe('makeProjectResolver — the branch a skill body is handed', () => {
       testingUrls: [],
       testNotes: null,
       integrations: [],
-      projectFacts: {},
       ...over,
     });
   }
@@ -463,10 +457,19 @@ describe('makeProjectResolver — the branch a skill body is handed', () => {
     }
   });
 
-  it('leaves an author-defined fact alone', () => {
-    expect(resolver({ projectFacts: { 'deploy-notes': 'ssh first' } })('deploy-notes')).toBe(
-      'ssh first',
-    );
+  // cm:guard until ISS-1048 the resolver carried an `agentConfig.projectFacts` map and answered any
+  // key in it, so `{{project:deploy-notes}}` spliced project prose inline. The prose is in
+  // `knowledge_entries` now and the resolver holds no map at all — every unreserved key gets the
+  // refusal, which is what tells the skill author their reference has stopped resolving.
+  it('refuses an unreserved key by name rather than resolving it from a map', () => {
+    const out = resolver()('deploy-notes');
+    expect(out).toContain('{{project:deploy-notes}}');
+    expect(out).toContain('forge_knowledge');
+    expect(out).toContain('ISS-1048');
+  });
+
+  it('still resolves the reserved keys, which are derived from project columns', () => {
     expect(resolver()('base-branch')).toBe('main');
+    expect(resolver()('repo-path')).toBe('/repo');
   });
 });

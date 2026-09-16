@@ -33,6 +33,7 @@ import {
   updatePackets,
 } from '../db/schema.js';
 import { enqueueReconcileJob } from '../jobs/enqueue.js';
+import { selectKnowledgeBodies } from '../knowledge/service.js';
 import { isUniqueViolation } from '../lib/db-errors.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
@@ -155,7 +156,9 @@ export function validateC1C5(bundle: Partial<ReconcileBundleSnapshot>): string |
       return `C1: missing required bundle input: ${key}`;
     }
   }
-  const readAt = new Date(bundle.readAt!).getTime();
+  // `readAt` is in REQUIRED_BUNDLE_KEYS, so the loop above already refused a missing one by name;
+  // the `?? ''` is what lets the compiler see that rather than a non-null assertion asserting it.
+  const readAt = new Date(bundle.readAt ?? '').getTime();
   if (Number.isNaN(readAt)) return 'C2: bundle.readAt is not a valid ISO timestamp';
   const ageMs = Date.now() - readAt;
   if (ageMs > 10 * 60 * 1000) {
@@ -361,11 +364,7 @@ export async function assembleBundle(
     runningBody,
     runningHash,
     charter: charter ? { entries: charter.entries } : null,
-    projectFacts:
-      ((project.agentConfig as Record<string, unknown> | null)?.projectFacts as Record<
-        string,
-        unknown
-      >) ?? {},
+    projectKnowledge: await selectKnowledgeBodies(input.projectId),
     pipelineConfig:
       ((project.agentConfig as Record<string, unknown> | null)?.pipelineConfig as Record<
         string,
@@ -394,7 +393,7 @@ export async function assembleBundle(
       runningBody: runningIsObserved ? 'observed-from-run' : 'from-code',
       runningHash: runningIsObserved ? 'observed-from-run' : 'from-code',
       charter: 'human',
-      projectFacts: 'human',
+      projectKnowledge: 'human',
       pipelineConfig: 'human',
       recentRunEvidence: 'observed-from-run',
       priorReconcileHistory: 'observed-from-run',

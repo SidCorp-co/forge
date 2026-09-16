@@ -8,7 +8,7 @@
 // atomically with the code it documents and needs no per-environment seeder that can silently
 // diverge; it has no `projectId`, so there is nothing to gate and no membership bypass to bolt
 // onto `forge_knowledge`; and runtime-editable, per-project guidance already exists one tier
-// down (`forge_knowledge` entries / `projectFacts`), which this tier deliberately does not
+// down (`forge_knowledge` entries), which this tier deliberately does not
 // duplicate.
 //
 // Altitude rule for every body (NT1 — teach how to use the capability well:
@@ -42,14 +42,14 @@ export const FORGE_GUIDES: readonly ForgeGuide[] = [
 Two tools, two different jobs — mixing them up is the single most common Forge discoverability miss.
 
 - **\`forge_projects.get\`** — deployment-shaped facts: repo path, base/production branch, \`workspaceSetup\` (how to bring this repo's workspace to a buildable state), and \`previewDeploy\` (staging/beta URLs + \`testCredentials\` for logging into a preview environment as a test user). This is the ONLY place test credentials live.
-- **\`forge_config\`** — process-shaped facts: \`pipelineConfig\` (stage gates, status ladder overrides, and the per-stage model, budget and tool policy), \`projectFacts\` (+ \`projectFactsConfig\` for the always-inject tier), categories. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
+- **\`forge_config\`** — process-shaped facts: \`pipelineConfig\` (stage gates, status ladder overrides, and the per-stage model, budget and tool policy), \`plugins\`, categories. It carries no project PROSE — \`projectFacts\` and \`projectFactsConfig\` were retired in ISS-1048 and a call naming either is refused by name; the prose is \`forge_knowledge\`. It deliberately does **not** return credentials or preview URLs — don't go looking for them there, and don't add them there either.
 
   ${ALWAYS_INJECT_GUARANTEE_NOTE} ${ALWAYS_INJECT_ENFORCEMENT_NOTE}
 
 ### Rules
 1. Never hardcode a repo path, branch name, or test credential in a skill body, prompt, or comment — always fetch it live. A hardcoded value silently drifts the moment the project's settings change.
 2. Never echo a fetched credential past the immediate authentication step (into a commit message, a PR description, or tool output) — treat it as a secret even though it's a test account.
-3. When you need to change \`forge_config\` (e.g. \`pipelineConfig.states\`, \`projectFacts\`), **GET the current config first, then send a complete entry.** These are nested maps — a blind partial write clobbers sibling keys you never read.
+3. When you need to change \`forge_config\` (e.g. \`pipelineConfig.states\`), **GET the current config first, then send a complete entry.** These are nested maps — a blind partial write clobbers sibling keys you never read. A knowledge entry is not one of them: \`forge_knowledge\` writes one slug whole, so there are no siblings to clobber.
 4. If a project has no \`previewDeploy\` configured, there is no staging environment to test against; don't invent one.
 5. \`workspaceSetup\` is the project's own setup procedure — install commands, hook setup, toolchain quirks — and it is prose, not a script anything executes. It is what a stage follows instead of guessing when it lands in a broken checkout. **If it is empty and you worked the procedure out, write it back** with \`forge_projects.update\` (\`workspaceSetup\`), recording only steps you ran and saw succeed. Set it while onboarding a project, next to the repo URL — Settings → Runners → Git access in the UI.
 
@@ -95,7 +95,7 @@ Create the issue at \`draft\`, never \`open\` — \`open\` auto-triages and spaw
     slug: 'memory-and-knowledge',
     title: 'Memory & knowledge',
     summary:
-      'The three context tiers (memory, knowledge, projectFacts), recall-first discipline, and the verify-at-recall feedback loop.',
+      'The two context tiers (memory and knowledge), recall-first discipline, and the verify-at-recall feedback loop.',
     version: 1,
     body: `## Memory & knowledge
 
@@ -103,7 +103,7 @@ Forge separates durable context into three tiers, each with a different job:
 
 - **\`forge_memory\`** — per-project semantic search over accumulated notes, decisions, fix-patterns, policies. Not auto-loaded into any prompt; you recall it deliberately. \`search({ projectId, query, topK, sourceFilter? })\` returns scored hits; \`write({ projectId, source, sourceRef, textContent, metadata? })\` upserts on the natural key \`(projectId, source, sourceRef)\` — reusing a \`sourceRef\` refines the existing entry instead of duplicating it.
 - **\`forge_knowledge\`** — curated, structured knowledge entries (overview / workflow / rule / reference kinds) with an explicit \`injection\` policy (\`always\` / \`on_demand\` / \`none\`). This is the project's authored knowledge base, distinct from the free-form memory stream.
-- **\`projectFacts\`** (via \`forge_config\`) — small always-inject or fetch-on-demand facts rendered directly into the pipeline preamble.
+- **\`forge_knowledge\` with \`injection: always\`** — entries rendered verbatim into every pipeline preamble for this project, as against \`on_demand\`, which reaches the prompt as a slug the agent fetches when it needs the text.
 
 ### Recall-first discipline
 Before you design, reproduce, or fix something non-trivial: recall what prior work already established for the area you're about to touch, so you neither contradict a settled decision nor rediscover it from scratch. Run one or two focused queries on the concrete nouns of the task — a generic query on the whole project wastes a call and returns noise.
@@ -516,7 +516,8 @@ against live code or git before you rely on it.
 | Issues, status, tasks | \`forge_issues\`, \`forge_comments\` |
 | Ordering between issues | \`forge_issues.create\`/\`.update\` with \`data.relations\`, or \`forge_project_pm action=set_dependency\` (\`from\` = the blocker; needs a paired device) |
 | Repo path, branches, preview URLs, test credentials | \`forge_projects.get\` |
-| Pipeline gates, \`projectFacts\` | \`forge_config\` |
+| Pipeline gates | \`forge_config\` |
+| The project's own prose | \`forge_knowledge\` |
 | A decision, learning or convention worth keeping | \`forge_memory_write\` |
 | Deeper per-package detail | \`forge_knowledge\` (list/get/search) |
 | How a Forge feature actually works | \`forge_guide\` — or fetch these same bytes at \`/api/guides/<slug>.md\` |
@@ -536,7 +537,7 @@ dispatches. So:
 - **plan-by-hand** — pre-filling \`plan\` or \`acceptanceCriteria\` on create. On a staged project
   those are written by the clarify and plan steps, on an autonomous one by the driver's own
   clarifying and planning phases; filling them deletes that work's reason to exist.
-- **wholesale-config-clobber** — patching a nested map (\`pipelineConfig.states\`, \`projectFacts\`)
+- **wholesale-config-clobber** — patching a nested map (\`pipelineConfig.states\`)
   without reading it first. These are replace-not-merge; send a complete entry.
 - **skip-recall** — see above.
 - **fix-by-hand-and-forget** — fixing something outside the pipeline and leaving no status move and
@@ -584,7 +585,7 @@ meaning of a field, not to decide a verdict.
 | \`runningBody\` | the body **observed on the project's device** — not the copy Forge stores | observed |
 | \`runningHash\` | hash of that observed body | observed |
 | \`charter\` | the project's Divergence Charter: differences the owner declared intentional. \`null\` when none exists | human |
-| \`projectFacts\` | facts injected into every agent on this project | project config |
+| \`knowledge_entries\` | the project's own prose; an \`always\` entry is injected into every agent on this project | knowledge store |
 | \`pipelineConfig\` | the project's pipeline configuration | project config |
 | \`recentRunEvidence\` | recent runs of the stage this skill serves | observed |
 | \`priorReconcileHistory\` | earlier reconcile runs for this same skill | observed |
@@ -634,7 +635,7 @@ silently changed, and the run records why it stopped.`,
     version: 1,
     body: `## Migrating a project onto the module taxonomy
 
-For a project that already names its modules somewhere ELSE — a \`projectFacts\` entry, a wiki page,
+For a project that already names its modules somewhere ELSE — a knowledge entry, a wiki page,
 a \`**Module:** billing\` line agents were told to write on every issue — and now wants them as first
 class \`kind:"module"\` labels with a primary per issue.
 
@@ -658,7 +659,7 @@ only one of them can ever be a primary.
 ### Pass 0 — dry run, reads only
 Produce the whole plan before writing anything. Nothing in this pass writes.
 
-1. Read the source of truth for the module list (the \`projectFacts\` entry, the doc, whatever it is)
+1. Read the source of truth for the module list (the knowledge entry, the doc, whatever it is)
    and the project's existing labels (\`forge_issues\` filters, or \`GET /api/projects/:id/labels\`).
 2. For each intended module, classify it: **absent** (will create), **exists as a plain label**
    (will promote), **exists as a module** (skip).

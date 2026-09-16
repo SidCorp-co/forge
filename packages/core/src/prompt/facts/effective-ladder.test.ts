@@ -38,19 +38,20 @@ describe('effectivePipelineStates (ISS-1066)', () => {
   });
 });
 
-// cm:why this reads resolve.ts's TEXT rather than importing it: `buildLadder` is private, and
-// resolve.ts pulls in the db client and env at module load, so a test that imported it would need a
-// database to assert a pure filter. ISS-1048 (PR #457) holds that file, so the copy could not be
-// collapsed in the change that noticed it; this is what stops the two drifting in the meantime.
-describe('the product’s own copy of the rule (ISS-1066)', () => {
+// cm:why this reads resolve.ts's TEXT rather than importing it: that module pulls in the db client
+// and env at module load, so a test importing it would need a database to assert which function
+// builds a pure array. ISS-1066 kept a second copy of the rule in that file behind a parity test,
+// because a file another run holds is not its to edit; ISS-1048 collapsed the copy on landing, and
+// what is worth guarding now is the wiring that collapse created rather than the drift it prevented.
+describe('the resolver builds its ladder from this function (ISS-1048)', () => {
   const resolveSource = readFileSync(new URL('./resolve.ts', import.meta.url), 'utf8');
 
-  it('still filters the canonical ladder on the same condition this function does', () => {
-    expect(resolveSource).toContain('CANONICAL_LADDER.filter((s) => states[s]?.enabled !== false)');
+  it('calls this function for the ladder it resolves', () => {
+    expect(resolveSource).toContain('ladder: effectivePipelineStates(states)');
   });
 
-  it('holds exactly one such filter, so a second copy in that file is caught too', () => {
+  it('holds no ladder filter of its own, so the duplicate cannot quietly come back', () => {
     const copies = resolveSource.match(/CANONICAL_LADDER\.filter\(/g) ?? [];
-    expect(copies).toHaveLength(1);
+    expect(copies).toHaveLength(0);
   });
 });

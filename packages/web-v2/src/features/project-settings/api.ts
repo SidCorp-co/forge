@@ -7,8 +7,6 @@ import { apiClient } from "@/lib/api/client";
 import type {
 	ApplyUxPresetInput,
 	PipelineConfig,
-	ProjectFactsPatch,
-	ProjectFactsResponse,
 	ProjectInvitationRow,
 	LabelCreateInput,
 	LabelPatchInput,
@@ -83,18 +81,12 @@ export const projectSettingsApi = {
 	getReleaseReadiness: (id: string) =>
 		apiClient<ReleaseReadiness>(`/projects/${id}/release-readiness`),
 
-	/** `GET /api/projects/:id/project-facts` → `{ projectFacts, projectFactsConfig,
-	 *  maxAlwaysInjectChars, alwaysInjectGuarantee }`. Member-gated. */
-	getProjectFacts: (id: string) =>
-		apiClient<ProjectFactsResponse>(`/projects/${id}/project-facts`),
-
-	/** `PATCH /api/projects/:id/project-facts` — per-key merge (admin only).
-	 *  Returns the merged `ProjectFactsResponse`. */
-	updateProjectFacts: (id: string, patch: ProjectFactsPatch) =>
-		apiClient<ProjectFactsResponse>(`/projects/${id}/project-facts`, {
-			method: "PATCH",
-			body: JSON.stringify(patch),
-		}),
+	/** `GET /api/projects/:id/knowledge/:slug` → one entry, or a 404 this caller
+	 *  reads as "not compiled yet". The project-facts route pair this replaced was
+	 *  retired with `agentConfig.projectFacts` in ISS-1048; the editor for these
+	 *  rows is the Knowledge screen's Rules tab. */
+	getKnowledgeEntry: (id: string, slug: string) =>
+		apiClient<{ slug: string; body: string }>(`/projects/${id}/knowledge/${slug}`),
 
 	/** `GET /api/projects/:id/members` — members with emails. */
 	listMembers: (id: string) =>

@@ -159,7 +159,7 @@ describe('validateC1C5', () => {
     runningBody: 'some body',
     runningHash: 'abc123',
     charter: null,
-    projectFacts: {},
+    projectKnowledge: {},
     pipelineConfig: {},
     recentRunEvidence: [],
     priorReconcileHistory: [],

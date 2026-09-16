@@ -1,6 +1,9 @@
 /**
- * ISS-936 — the settings tab's own GET has to serve the sentence that says what
- * flagging a fact `alwaysInject` does and does not promise.
+ * ISS-936 — the editor's own GET has to serve the sentence that says what
+ * flagging an entry always-inject does and does not promise. ISS-1048 moved
+ * both the flag and the editor: the flag is `knowledge_entries.injection` and
+ * the editor is the Knowledge screen's Rules tab, so the route that owes the
+ * sentence is the knowledge list.
  *
  * It runs here rather than in the unit lane because the assertion is about the
  * RESPONSE an owner's browser receives, and that response only exists past
@@ -20,7 +23,7 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-describe('GET /api/projects/:id/project-facts — the always-inject guarantee (ISS-936)', () => {
+describe('GET /api/projects/:id/knowledge — the always-inject guarantee (ISS-936)', () => {
   let harness: TestDatabase;
   let guaranteeNote: string;
   let signUserToken: typeof import('../../src/auth/jwt.js')['signUserToken'];
@@ -41,8 +44,9 @@ describe('GET /api/projects/:id/project-facts — the always-inject guarantee (I
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    const [routesMod, jwtMod, errMod, factsMod] = await Promise.all([
+    const [routesMod, knowledgeMod, jwtMod, errMod, factsMod] = await Promise.all([
       import('../../src/projects/routes.js'),
+      import('../../src/knowledge/routes.js'),
       import('../../src/auth/jwt.js'),
       import('../../src/middleware/error.js'),
       import('../../src/projects/project-facts.js'),
@@ -52,6 +56,7 @@ describe('GET /api/projects/:id/project-facts — the always-inject guarantee (I
 
     app = new Hono();
     app.route('/api/projects', routesMod.projectRoutes);
+    app.route('/api/projects', knowledgeMod.knowledgeRoutes);
     app.onError(errMod.errorHandler);
   }, 60_000);
 
@@ -73,7 +78,7 @@ describe('GET /api/projects/:id/project-facts — the always-inject guarantee (I
       role: 'admin',
     });
 
-    const res = await app.request(`/api/projects/${project.id}/project-facts`, {
+    const res = await app.request(`/api/projects/${project.id}/knowledge`, {
       headers: { authorization: `Bearer ${await signUserToken(user.id)}` },
     });
 
@@ -86,8 +91,10 @@ describe('GET /api/projects/:id/project-facts — the always-inject guarantee (I
     expect(body.maxAlwaysInjectChars).toBe(6000);
   });
 
-  // cm:guard the PATCH answer lands in the same query cache key as the GET's, so a field on only one of them leaves the screen on the owner's first save. Assert BOTH routes or the tab silently loses the sentence.
-  it('serves it from the PATCH answer too, which replaces the GET in the browser cache', async () => {
+  // The route that used to serve this is now a refusal, and it has to stay a
+  // refusal that SAYS where the store went: deleting it would answer the same
+  // caller with a routing 404, which reads as "no such project".
+  it('the retired project-facts route answers 410 naming the knowledge route', async () => {
     const user = await createTestUser(harness.db);
     await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
     const project = await createTestProject(harness.db, user.id);
@@ -96,21 +103,20 @@ describe('GET /api/projects/:id/project-facts — the always-inject guarantee (I
       projectId: project.id,
       role: 'admin',
     });
-    await harness.db.execute(
-      sql`UPDATE organization_members SET role = 'admin' WHERE user_id = ${user.id}`,
-    );
 
-    const res = await app.request(`/api/projects/${project.id}/project-facts`, {
-      method: 'PATCH',
-      headers: {
-        authorization: `Bearer ${await signUserToken(user.id)}`,
-        'content-type': 'application/json',
-      },
-      body: JSON.stringify({ projectFacts: { 'build-commands': 'pnpm build' } }),
-    });
-
-    expect(res.status).toBe(200);
-    const body = (await res.json()) as { alwaysInjectGuarantee?: string };
-    expect(body.alwaysInjectGuarantee).toBe(guaranteeNote);
+    for (const method of ['GET', 'PATCH']) {
+      const res = await app.request(`/api/projects/${project.id}/project-facts`, {
+        method,
+        headers: {
+          authorization: `Bearer ${await signUserToken(user.id)}`,
+          'content-type': 'application/json',
+        },
+        ...(method === 'PATCH' ? { body: JSON.stringify({ projectFacts: { a: 'b' } }) } : {}),
+      });
+      expect(res.status).toBe(410);
+      const body = (await res.json()) as { message?: string };
+      expect(body.message).toContain('knowledge');
+      expect(body.message).toContain('/api/projects/:id/knowledge/:slug');
+    }
   });
 });

@@ -29,7 +29,7 @@ pub struct MeRunner {
     /// which is the expensive path this field exists to retire.
     #[serde(default)]
     pub workspace_setup: Option<String>,
-    /// `projectFacts['master-policy']`: the owner's standing instruction for this
+    /// The `master-policy` knowledge entry: the owner's standing instruction for this
     /// project's resident master, spliced into its brief by `daemon::master`.
     /// `None` on an older core or a project that has set none — the skill's own
     /// defaults then apply, which is what every project had before ISS-929.

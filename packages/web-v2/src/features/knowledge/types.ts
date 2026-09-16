@@ -32,6 +32,14 @@ export interface KnowledgeListRow {
 
 export interface ListKnowledgeResponse {
   rows: KnowledgeListRow[];
+  /** Char budget for the SUM of always-inject bodies (warn-on-overflow). Served
+   *  rather than mirrored: core owns the number. */
+  maxAlwaysInjectChars: number;
+  /** What always-inject does and does not promise, for the owner setting it.
+   *  Served rather than copied — core may not value-import `@forge/contracts`
+   *  and web-v2 cannot import core, so a string both sides must agree on
+   *  otherwise lives twice behind a parity test. */
+  alwaysInjectGuarantee: string;
   truncated: boolean;
   returned: number;
   total: number;

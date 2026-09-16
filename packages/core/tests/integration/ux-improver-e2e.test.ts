@@ -12,7 +12,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -32,6 +32,7 @@ const EMPTY_SEARCH = [
 
 let harness: TestDatabase;
 let improver: Improver;
+let embeddingsMod: typeof import('../../src/embeddings/index.js');
 let signUserToken: SignUserToken;
 // biome-ignore lint/suspicious/noExplicitAny: test-only mount
 let app: any;
@@ -52,6 +53,7 @@ beforeAll(async () => {
   process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
   process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
 
+  embeddingsMod = await import('../../src/embeddings/index.js');
   improver = (await import('../../src/projects/ux-improver.js')) as Improver;
   const [routesMod, jwtMod, errMod] = await Promise.all([
     import('../../src/projects/ux-contract-routes.js'),
@@ -70,6 +72,22 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll(harness.db);
+  // cm:guard this file did not embed anything until ISS-1048. `recompileAndPersistUxContract` wrote
+  // `agentConfig` and mirrored to `knowledge_entries` only behind a default-OFF flag; the knowledge
+  // row is the only write now, and writing one embeds. `EMBEDDINGS_BASE_URL` here is the deliberate
+  // dead host `stub.invalid`, so without a stand-in every save sits through the whole retry
+  // schedule before degrading. The stand-in is what every other integration file that embeds
+  // already installs; it keeps this file about the improver rather than about an outage.
+  const fake = {
+    embed: vi.fn(async () => new Array(1536).fill(0)),
+    embedBatch: vi.fn(async (texts: string[]) => texts.map(() => new Array(1536).fill(0))),
+    resetBreaker: () => undefined,
+  };
+  embeddingsMod.resetEmbeddingsClient(
+    fake as unknown as InstanceType<
+      typeof import('../../src/embeddings/index.js').EmbeddingsClient
+    >,
+  );
 });
 
 async function seedProject() {
@@ -319,8 +337,8 @@ describe('UX improver — supersede: propose, then approve (ISS-579)', () => {
     expect(byId.get(ruleId)).toBe('retired');
 
     const proseRows = await harness.db.execute(sql`
-      SELECT agent_config -> 'projectFacts' ->> 'ux-contract' AS prose
-      FROM projects WHERE id = ${project.id}
+      SELECT body AS prose FROM knowledge_entries
+       WHERE project_id = ${project.id} AND slug = 'ux-contract'
     `);
     const prose = (proseRows as unknown as Array<{ prose: string | null }>)[0]?.prose ?? '';
     expect(prose.split(RULE_TEXT)).toHaveLength(2);
@@ -337,8 +355,8 @@ describe('UX improver — supersede: propose, then approve (ISS-579)', () => {
     await improver.applyUxImproverProposals(project.id, [report.candidates[0]?.key as string]);
 
     const rows = await harness.db.execute(sql`
-      SELECT agent_config -> 'projectFacts' ->> 'ux-contract' AS prose
-      FROM projects WHERE id = ${project.id}
+      SELECT body AS prose FROM knowledge_entries
+       WHERE project_id = ${project.id} AND slug = 'ux-contract'
     `);
     const prose = (rows as unknown as Array<{ prose: string | null }>)[0]?.prose ?? '';
     expect(prose).not.toContain('empty-search state');

@@ -31,7 +31,11 @@ vi.mock('./unified-search.js', () => ({
 }));
 
 const getKnowledgeEntryMock = vi.fn(async (..._args: unknown[]) => null);
-vi.mock('./service.js', async () => ({
+// cm:why the REAL `slugSchema` is spread in rather than stubbed. The routes validate the `:slug`
+// param with it, and one of the tests below asserts the 400 a slash-bearing slug earns; a stub
+// permissive enough to be convenient would make that assertion pass without the rule existing.
+vi.mock('./service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('./service.js')>()),
   deleteKnowledgeEntry: vi.fn(),
   getKnowledgeEntry: (...args: unknown[]) => getKnowledgeEntryMock(...args),
   listKnowledgeEntries: vi.fn(async () => []),

@@ -13,7 +13,7 @@
 // Out of reach, each for its own reason, none of them "unwritten yet":
 // whether the prose around a qualified claim is TRUE needs a reader who knows
 // the domain; a status ladder with no backtick or arrow was probed 2026-08-31
-// and occurs zero times, so the rule could not fail; and `projectFacts` live
+// and occurs zero times, so the rule could not fail; and knowledge entries live
 // in the DATABASE while this runs in a CI job with node and nothing else —
 // covering them means the same rule in TypeScript at the write boundary, a
 // second copy of these regexes that no parity test can compare.

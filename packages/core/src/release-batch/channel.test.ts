@@ -4,6 +4,14 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// Since ISS-1048 the release procedure is a knowledge entry rather than an `agentConfig` key, so
+// the fixture is a row from that store and the mock sits at the service seam.
+type Entry = { body: string; archivedAt: Date | null } | null;
+const knowledgeEntry = vi.fn(async (_id: string, _slug: string): Promise<Entry> => null);
+vi.mock('../knowledge/service.js', () => ({
+  getKnowledgeEntry: (id: string, slug: string) => knowledgeEntry(id, slug),
+}));
+
 const listBindings = vi.fn(async () => [] as unknown[]);
 const dbExecute = vi.fn(async (..._a: unknown[]) => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
@@ -166,17 +174,34 @@ describe('releaseRunnerLabelOf', () => {
 
 describe('resolveReleasePlan', () => {
   it('reads the project-authored procedure', async () => {
-    selectLimit.mockResolvedValue([
-      { agentConfig: { projectFacts: { 'release-procedure': 'run ./release.sh, no squash' } } },
-    ]);
+    knowledgeEntry.mockResolvedValue({ body: 'run ./release.sh, no squash', archivedAt: null });
 
     expect((await resolveReleasePlan(PROJECT_ID)).procedure).toBe('run ./release.sh, no squash');
   });
 
-  it('treats a blank fact as absent, so the caller falls back instead of printing nothing', async () => {
-    selectLimit.mockResolvedValue([
-      { agentConfig: { projectFacts: { 'release-procedure': '  ' } } },
-    ]);
+  it('asks for the release-procedure slug and no other', async () => {
+    knowledgeEntry.mockResolvedValue({ body: 'x', archivedAt: null });
+    await resolveReleasePlan(PROJECT_ID);
+    expect(knowledgeEntry).toHaveBeenCalledWith(PROJECT_ID, 'release-procedure');
+  });
+
+  it('treats a blank body as absent, so the caller falls back instead of printing nothing', async () => {
+    knowledgeEntry.mockResolvedValue({ body: '  ', archivedAt: null });
+
+    expect((await resolveReleasePlan(PROJECT_ID)).procedure).toBeNull();
+  });
+
+  it('falls back when the project has written no procedure at all', async () => {
+    knowledgeEntry.mockResolvedValue(null);
+
+    expect((await resolveReleasePlan(PROJECT_ID)).procedure).toBeNull();
+  });
+
+  // cm:guard an archived entry is one its owner took down. Reading its body back would hand the
+  // release agent a procedure the settings screen says is gone — the same fence `master-policy`
+  // needs, and the reason both reads check `archivedAt` rather than trusting the row's existence.
+  it('ignores an archived procedure rather than following text its owner retired', async () => {
+    knowledgeEntry.mockResolvedValue({ body: 'the old way', archivedAt: new Date() });
 
     expect((await resolveReleasePlan(PROJECT_ID)).procedure).toBeNull();
   });

@@ -1,66 +1,91 @@
 import { describe, expect, it } from 'vitest';
 import {
-  AUTONOMOUS_FACT_CONTRACT,
-  declaredAutonomousFacts,
-  missingAutonomousFacts,
+  declaresRepository,
+  missingProjectKnowledge,
+  requiredProjectKnowledge,
 } from './autonomous-contract.js';
 import { RESERVED_PROJECT_FACT_KEYS } from './project-facts.js';
 
-const ANSWERED = { 'build-commands': 'pnpm build', 'test-commands': 'pnpm test' };
+const REPO = { repoPath: '/srv/app', repoUrl: null, releaseModel: 'none' } as const;
+const NOTHING = { repoPath: null, repoUrl: null, releaseModel: 'none' } as const;
 
-describe('missingAutonomousFacts', () => {
-  it('reports every required key on a project that has answered nothing', () => {
-    expect(missingAutonomousFacts({}).map((f) => f.key)).toEqual([
+describe('declaresRepository', () => {
+  it('accepts either column on its own', () => {
+    expect(declaresRepository(REPO)).toBe(true);
+    expect(declaresRepository({ ...NOTHING, repoUrl: 'git@github.com:x/y.git' })).toBe(true);
+  });
+
+  it('is false when both are null', () => {
+    expect(declaresRepository(NOTHING)).toBe(false);
+  });
+
+  // cm:guard whitespace is the settings form's empty. Reading it as a declared repository owes the
+  // project build and test commands for a checkout that does not exist, and the gap it then reports
+  // is one nobody can close.
+  it('counts a whitespace-only column as no repository', () => {
+    expect(declaresRepository({ ...NOTHING, repoPath: '   ' })).toBe(false);
+    expect(declaresRepository({ ...NOTHING, repoUrl: '\n\t' })).toBe(false);
+  });
+});
+
+describe('requiredProjectKnowledge', () => {
+  it('owes nothing when the project declares neither a repository nor a release', () => {
+    expect(requiredProjectKnowledge(NOTHING)).toEqual([]);
+  });
+
+  it('owes build and test commands once a repository is declared', () => {
+    expect(requiredProjectKnowledge(REPO).map((o) => o.slug)).toEqual([
       'build-commands',
       'test-commands',
     ]);
-    expect(missingAutonomousFacts(null).map((f) => f.key)).toHaveLength(2);
   });
 
-  it('passes a project that has answered the required keys', () => {
-    expect(missingAutonomousFacts(ANSWERED)).toEqual([]);
-  });
-
-  // cm:guard blank must count as missing, or a half-filled settings form flips the project to autonomous with a build command the agent cannot run
-  it('counts a blank or whitespace answer as unanswered', () => {
+  it('owes a release procedure for every release model except none', () => {
+    expect(requiredProjectKnowledge({ ...NOTHING, releaseModel: 'promote' }).map((o) => o.slug)) //
+      .toEqual(['release-procedure']);
     expect(
-      missingAutonomousFacts({ ...ANSWERED, 'test-commands': '   ' }).map((f) => f.key),
-    ).toEqual(['test-commands']);
-    expect(missingAutonomousFacts({ ...ANSWERED, 'build-commands': '' }).map((f) => f.key)).toEqual(
-      ['build-commands'],
-    );
+      requiredProjectKnowledge({ ...NOTHING, releaseModel: 'publish' }).map((o) => o.slug),
+    ).toEqual(['release-procedure']);
+    expect(requiredProjectKnowledge({ ...REPO, releaseModel: 'promote' }).map((o) => o.slug)) //
+      .toEqual(['build-commands', 'test-commands', 'release-procedure']);
   });
 
-  it('ignores an optional key left unanswered', () => {
-    expect(missingAutonomousFacts({ ...ANSWERED, 'deploy-policy': '' })).toEqual([]);
+  it('names the declaration that made each entry owed, since a gap has to say why', () => {
+    const owed = requiredProjectKnowledge({ ...REPO, releaseModel: 'promote' });
+    expect(owed.every((o) => o.role.trim().length > 0)).toBe(true);
+    expect(owed[0]?.because).toContain('repository');
+    expect(owed[2]?.because).toContain('promote');
   });
-});
 
-describe('AUTONOMOUS_FACT_CONTRACT', () => {
-  // cm:guard a contract key that collides with a reserved key is unsettable: mergeProjectFacts drops reserved keys silently, so the gate would demand an answer the author has no way to give
-  it('claims no key that projectFacts reserves as derived', () => {
+  // cm:guard a slug the reserved set already resolves is unwritable: `{{project:<key>}}` answers it
+  // from a project column, so the obligation would demand an entry the author has no way to create.
+  it('owes no slug that the reserved project keys already resolve', () => {
     const reserved = new Set<string>(RESERVED_PROJECT_FACT_KEYS);
-    expect(AUTONOMOUS_FACT_CONTRACT.filter((f) => reserved.has(f.key))).toEqual([]);
-  });
-
-  it('gives every key a role, since the role is what the operator is shown', () => {
-    expect(AUTONOMOUS_FACT_CONTRACT.every((f) => f.role.trim().length > 0)).toBe(true);
+    const everyOwed = requiredProjectKnowledge({ ...REPO, releaseModel: 'promote' });
+    expect(everyOwed.filter((o) => reserved.has(o.slug))).toEqual([]);
   });
 });
 
-describe('declaredAutonomousFacts', () => {
-  it('returns answered keys in contract order, trimmed', () => {
-    expect(
-      declaredAutonomousFacts({ 'test-commands': ' pnpm test\n', 'build-commands': 'pnpm build' }),
-    ).toEqual([
-      { fact: AUTONOMOUS_FACT_CONTRACT[0], text: 'pnpm build' },
-      { fact: AUTONOMOUS_FACT_CONTRACT[1], text: 'pnpm test' },
-    ]);
+describe('missingProjectKnowledge', () => {
+  it('is empty when the store holds every owed slug', () => {
+    expect(missingProjectKnowledge(REPO, ['build-commands', 'test-commands'])).toEqual([]);
   });
 
-  it('skips keys the project never set and anything outside the contract', () => {
-    expect(declaredAutonomousFacts({ 'build-commands': 'x', 'unrelated-note': 'y' })).toEqual([
-      { fact: AUTONOMOUS_FACT_CONTRACT[0], text: 'x' },
-    ]);
+  it('reports only the owed slugs the store is missing', () => {
+    expect(missingProjectKnowledge(REPO, ['build-commands']).map((o) => o.slug)) //
+      .toEqual(['test-commands']);
+  });
+
+  it('ignores slugs the project holds that nothing owes', () => {
+    expect(
+      missingProjectKnowledge(REPO, ['build-commands', 'test-commands', 'house-style']),
+    ).toEqual([]);
+  });
+
+  // cm:guard the contract is about the text existing, not about how it is delivered. An entry set to
+  // `on_demand` or `none` still answers it; treating only always-injected entries as present would
+  // report a gap on a project that has written exactly what was asked for.
+  it('accepts an owed slug whatever its injection setting, because presence is the question', () => {
+    expect(missingProjectKnowledge(REPO, new Set(['build-commands', 'test-commands']))).toEqual([]);
   });
 });

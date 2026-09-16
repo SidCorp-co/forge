@@ -9,13 +9,15 @@
 // So the split is: the PROTOCOL (get → … → finish/abort) stays hard in the
 // state prompt, because it is what stops a claim being made for work that did
 // not happen. The PROCEDURE is per project and lives where per-project text
-// already lives — `projectFacts.release-procedure` for the repo-side ritual,
-// and the live deploy binding's `instructions` for the channel-side one.
+// already lives — the `release-procedure` knowledge entry for the repo-side
+// ritual (it was `projectFacts.release-procedure` until ISS-1048 moved project
+// prose into `knowledge_entries`), and the live deploy binding's `instructions`
+// for the channel-side one.
 
-import { eq, sql } from 'drizzle-orm';
+import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { projects } from '../db/schema.js';
 import { effectiveConfig, listActiveDeployBindingsForStage } from '../integrations/store.js';
+import { getKnowledgeEntry } from '../knowledge/service.js';
 import {
   RELEASE_PROCEDURE_FACT,
   type ReleaseChannel,
@@ -112,17 +114,12 @@ export function releaseRunnerLabelOf(projectId: string, channels: ReleaseChannel
 
 export async function resolveReleasePlan(projectId: string): Promise<ReleasePlan> {
   const channels = await resolveReleaseChannels(projectId);
-  const [row] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  const ac = (row?.agentConfig ?? {}) as { projectFacts?: Record<string, unknown> };
-  const raw = ac.projectFacts?.[RELEASE_PROCEDURE_FACT];
+  const entry = await getKnowledgeEntry(projectId, RELEASE_PROCEDURE_FACT);
+  const raw = entry && entry.archivedAt === null ? entry.body : null;
   return {
     channels,
     releaseRunnerLabel: releaseRunnerLabelOf(projectId, channels),
-    procedure: typeof raw === 'string' && raw.trim().length > 0 ? raw : null,
+    procedure: raw !== null && raw.trim().length > 0 ? raw : null,
   };
 }
 

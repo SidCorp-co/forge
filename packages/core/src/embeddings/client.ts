@@ -168,6 +168,20 @@ export class EmbeddingsClient {
         await sleep(delay);
       }
     }
+    // cm:guard exhausted retries are UNAVAILABILITY and must classify as it. `callOnce` wraps a
+    // network failure as `RetriableError`; rethrowing that raw meant the plainest outage there is —
+    // a host that does not resolve — never reached the degraded paths, which key on
+    // `EmbeddingUnavailableError`. `upsertKnowledgeEntries` would then fail the caller's write
+    // instead of storing the row with a null vector for the backfill to find, and memory would lose
+    // the keyword-searchable row it stores for the same reason. Degradation only began once the
+    // breaker opened after five consecutive failures, so whether a save survived an outage depended
+    // on how many saves had already failed ahead of it. ISS-1048 reached this from
+    // `recompileAndPersistUxContract`, which an operator drives from a button.
+    if (isRetriable(lastErr)) {
+      throw new EmbeddingUnavailableError(
+        `embeddings service unavailable after ${RETRY_DELAYS_MS.length + 1} attempts: ${(lastErr as Error).message}`,
+      );
+    }
     throw lastErr ?? new Error('embeddings: exhausted retries');
   }
 

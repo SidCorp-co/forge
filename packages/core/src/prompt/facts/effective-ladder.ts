@@ -20,11 +20,11 @@ export interface LadderStageConfig {
 // shown, never one the pipeline routes around. Nothing skips at runtime, and reading this filter as
 // a routing decision is how `enabled` came to be described as an auto-transition it never performed
 // (ISS-994).
-// cm:edge lockstep -> packages/core/src/prompt/facts/resolve.ts — `buildLadder` is the same filter
-// over the same array, and it is a second copy only because ISS-1048 (PR #457) holds that file: a
-// file another run holds is not ISS-1066's to edit. `effective-ladder.test.ts` reads that file's
-// text and goes red the moment the two stop matching, and the collapse into this function is ISS-1048's
-// to make. Do not add a third copy.
+// This is the ONLY copy of the rule. `resolve.ts` held a private `buildLadder` saying the same
+// thing in the same words, kept deliberately as a duplicate while ISS-1048 held that file, gated by
+// a source-parity test so it would go red rather than drift; ISS-1048 collapsed it on landing and
+// both the duplicate and the test that watched it are gone. `resolve.ts` calls this function now.
+// Do not add a second copy: the thing that made one survivable was a test nobody would want back.
 /**
  * The project's effective pipeline states, in order: the canonical ladder minus every stage the
  * project switched off. An absent or empty `states` map is every rung, never none.

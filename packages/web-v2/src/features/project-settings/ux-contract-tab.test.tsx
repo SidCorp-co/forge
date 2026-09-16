@@ -16,7 +16,7 @@ afterEach(cleanup);
 
 const useUxContractRules = vi.fn();
 const useUxFindings = vi.fn();
-const useProjectFacts = vi.fn();
+const useKnowledgeEntry = vi.fn();
 const useApplyUxPreset = vi.fn();
 const usePatchUxRule = vi.fn();
 const useDeleteUxRule = vi.fn();
@@ -24,7 +24,7 @@ const useDeleteUxRule = vi.fn();
 vi.mock("./hooks", () => ({
   useUxContractRules: (...args: unknown[]) => useUxContractRules(...args),
   useUxFindings: (...args: unknown[]) => useUxFindings(...args),
-  useProjectFacts: (...args: unknown[]) => useProjectFacts(...args),
+  useKnowledgeEntry: (...args: unknown[]) => useKnowledgeEntry(...args),
   useApplyUxPreset: (...args: unknown[]) => useApplyUxPreset(...args),
   usePatchUxRule: (...args: unknown[]) => usePatchUxRule(...args),
   useDeleteUxRule: (...args: unknown[]) => useDeleteUxRule(...args),
@@ -39,17 +39,19 @@ function project(agentConfig: unknown = {}): ProjectDetail {
 }
 
 const NO_FINDINGS = { isLoading: false, isError: false, data: [], refetch: vi.fn() };
-const NO_FACTS = {
+// Since ISS-1048 the compiled contract is a `knowledge_entries` row read by slug, not a key in the
+// `projectFacts` map, so the fixture is an entry (or its absence) rather than a map with nothing in it.
+const NO_ENTRY = {
   isLoading: false,
   isError: false,
-  data: { projectFacts: {}, projectFactsConfig: {}, maxAlwaysInjectChars: 6000 },
+  data: undefined,
   refetch: vi.fn(),
 };
 const IDLE_MUTATION = { mutate: vi.fn(), isPending: false };
 
 function mockDefaults() {
   useUxFindings.mockReturnValue(NO_FINDINGS);
-  useProjectFacts.mockReturnValue(NO_FACTS);
+  useKnowledgeEntry.mockReturnValue(NO_ENTRY);
   useApplyUxPreset.mockReturnValue(IDLE_MUTATION);
   usePatchUxRule.mockReturnValue(IDLE_MUTATION);
   useDeleteUxRule.mockReturnValue(IDLE_MUTATION);
@@ -59,7 +61,7 @@ describe("UxContractTab", () => {
   it("renders a Skeleton while rules/facts are loading", () => {
     mockDefaults();
     useUxContractRules.mockReturnValue({ isLoading: true, isError: false, data: undefined, refetch: vi.fn() });
-    useProjectFacts.mockReturnValue({ ...NO_FACTS, isLoading: true, data: undefined });
+    useKnowledgeEntry.mockReturnValue({ ...NO_ENTRY, isLoading: true, data: undefined });
     render(<UxContractTab project={project()} canEdit />);
     expect(document.querySelectorAll(".skeleton").length).toBeGreaterThan(0);
   });
@@ -248,14 +250,21 @@ describe("UxContractTab", () => {
     expect(screen.queryByRole("button", { name: /re-scan/i })).not.toBeInTheDocument();
   });
 
-  it("renders the compiled prose preview read-only from projectFacts['ux-contract']", () => {
+  it("renders the compiled prose preview read-only from the ux-contract knowledge entry", () => {
     mockDefaults();
     useUxContractRules.mockReturnValue({ isLoading: false, isError: false, data: [], refetch: vi.fn() });
-    useProjectFacts.mockReturnValue({
-      ...NO_FACTS,
-      data: { ...NO_FACTS.data, projectFacts: { "ux-contract": "# UX Contract\n\nMust use Skeleton." } },
+    useKnowledgeEntry.mockReturnValue({
+      ...NO_ENTRY,
+      data: { slug: "ux-contract", body: "# UX Contract\n\nMust use Skeleton." },
     });
     render(<UxContractTab project={project()} canEdit />);
     expect(screen.getByText(/Must use Skeleton\./)).toBeInTheDocument();
+  });
+
+  it("asks for the ux-contract slug and no other", () => {
+    mockDefaults();
+    useUxContractRules.mockReturnValue({ isLoading: false, isError: false, data: [], refetch: vi.fn() });
+    render(<UxContractTab project={project()} canEdit />);
+    expect(useKnowledgeEntry).toHaveBeenCalledWith("proj-1", "ux-contract");
   });
 });

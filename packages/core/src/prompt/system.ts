@@ -404,7 +404,7 @@ export async function buildPipelinePreambleStructured(
     id: 'project-context',
     body: formatProjectContext(projectId, step),
   });
-  // cm:why the facts are injected HERE rather than copied into skill bodies — that keeps a skill pure business logic and current without re-syncing every skill file, and it is why projectFacts arrive as a fetch-on-demand index rather than inlined values
+  // cm:why the facts are injected HERE rather than copied into skill bodies — that keeps a skill pure business logic and current without re-syncing every skill file, and it is why a project's knowledge entries arrive as a fetch-on-demand slug index rather than inlined bodies
   if (step && factInputs) {
     const factsBlock = renderStageFactsText(factInputs, projectId, step);
     if (factsBlock) sections.push({ id: 'forge-facts', body: factsBlock });

@@ -22,12 +22,13 @@ import {
 } from "@/design";
 import { IssueRefBadge } from "@/features/issues/components/issue-ref-badge";
 import type { ProjectDetail } from "@/features/projects/types";
+import { ApiError } from "@/lib/api/client";
 import { formatApiError } from "@/lib/api/error";
 import {
 	useApplyUxPreset,
 	useDeleteUxRule,
 	usePatchUxRule,
-	useProjectFacts,
+	useKnowledgeEntry,
 	useUxContractRules,
 	useUxFindings,
 } from "../hooks";
@@ -50,6 +51,12 @@ const PRESET_OPTIONS = UX_PRESETS.map((p) => ({ value: p, label: UX_PRESET_LABEL
 // cm:guard do NOT restore a Re-scan button here, or rename this back to "Detected stack", unless auto-detect is revived first — nothing detects this: the values come from `uxContractProfile.designSystem`, which apply-preset writes. Auto-detect WAS ISS-576, dropped 2026-08-30 with its four children (docs/proposals/ux-contract-direction.md) — measured on live, the `detected` rule source never held a row and the project yielding the most findings has no rows in `ux_contract_rules` at all. The button that sat here was disabled with a tooltip naming that issue, which is a control promising work nobody is doing; `ux-contract-tab.test.tsx` asserts its absence.
 const STACK_PANEL_HEADING = "Stack profile";
 
+/** A 404 from the knowledge route is this project having written no `ux-contract` entry yet, which
+ *  is an ordinary empty state. Anything else is a failed read and must say so. */
+function isMissingEntry(err: unknown): boolean {
+	return err instanceof ApiError && err.status === 404;
+}
+
 export function UxContractTab({
 	project,
 	canEdit,
@@ -60,7 +67,10 @@ export function UxContractTab({
 	const projectId = project.id;
 	const rulesQ = useUxContractRules(projectId);
 	const findingsQ = useUxFindings(projectId);
-	const factsQ = useProjectFacts(projectId);
+	// A 404 here means "not compiled yet" rather than an error, so the query does not
+	// retry and the empty state below reads it. Every OTHER failure is a read that did
+	// not happen and takes the error branch — see `isMissingEntry`.
+	const factsQ = useKnowledgeEntry(projectId, "ux-contract");
 	const applyPreset = useApplyUxPreset(projectId);
 	const patchRule = usePatchUxRule(projectId);
 	const deleteRule = useDeleteUxRule(projectId);
@@ -115,6 +125,21 @@ export function UxContractTab({
 			<Card>
 				<CardContent>
 					<ErrorState message={formatApiError(rulesQ.error)} onRetry={() => rulesQ.refetch()} />
+				</CardContent>
+			</Card>
+		);
+	}
+
+	// cm:guard only a 404 means "no contract yet". Every other failure — 403, 500, the network —
+	// is a read that did not happen, and rendering the empty state for it tells an operator their
+	// contract is gone and offers them no retry. ISS-1048 moved this read from an agentConfig map
+	// (absent key, no error) to a store with its own row, so absence and unreadable stopped being
+	// the same answer here and this branch is what keeps them apart.
+	if (factsQ.isError && !isMissingEntry(factsQ.error)) {
+		return (
+			<Card>
+				<CardContent>
+					<ErrorState message={formatApiError(factsQ.error)} onRetry={() => factsQ.refetch()} />
 				</CardContent>
 			</Card>
 		);
@@ -264,11 +289,9 @@ export function UxContractTab({
 					<p className="fg-body-sm mb-3 text-muted">
 						This is exactly what the pipeline sees.
 					</p>
-					{factsQ.isError ? (
-						<ErrorState message={formatApiError(factsQ.error)} onRetry={() => factsQ.refetch()} />
-					) : factsQ.data?.projectFacts["ux-contract"] ? (
+					{factsQ.data?.body ? (
 						<pre className="max-h-[50vh] overflow-auto rounded-md border border-line bg-sunken p-3 font-mono text-xs leading-relaxed whitespace-pre-wrap">
-							{factsQ.data.projectFacts["ux-contract"]}
+							{factsQ.data.body}
 						</pre>
 					) : (
 						<EmptyState

@@ -51,7 +51,7 @@ projectOnboardRoutes.post(
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
 
-    // cm:why admin, not member: this opens a conversation that can end up proposing projectFacts / pipelineConfig changes, so starting it is a project-setup action rather than a read.
+    // cm:why admin, not member: this opens a conversation that can end up proposing knowledge entries / pipelineConfig changes, so starting it is a project-setup action rather than a read.
     const access = await loadProjectAccess(id, userId);
     assertProjectRole(access, 'admin', 'project admin required');
 

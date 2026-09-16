@@ -93,14 +93,14 @@ describe('ISS-873 phase 6 — stripping sessionMode from stored configs', () => 
     });
     await createTestProject(harness.db, userId, {
       slug: 'no-pipeline-config',
-      agentConfig: { projectFacts: { a: 'b' } },
+      agentConfig: { categories: ['a'] },
     });
 
     await runMigration();
 
     expect(await configOf('key-absent')).toEqual({ pipelineConfig: { enabled: true } });
     // cm:guard a project with no `pipelineConfig` must not GAIN one — `jsonb_set` over an absent path is what conjures it, which is why the strip is guarded by a `?` existence test rather than run over every row.
-    expect(await configOf('no-pipeline-config')).toEqual({ projectFacts: { a: 'b' } });
+    expect(await configOf('no-pipeline-config')).toEqual({ categories: ['a'] });
   });
 
   it('refuses outright when a project is explicitly opted out, naming every one', async () => {

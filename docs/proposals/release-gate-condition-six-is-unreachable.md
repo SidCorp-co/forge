@@ -1,7 +1,8 @@
 # One release-gate verdict cannot be earned on the fleet that runs the gate
 
 - Status: **measured, undecided**
-- Related: the project's `release-gate` fact (`forge_config` → `projectFacts`) ·
+- Related: the project's `release-gate` knowledge entry (`forge_knowledge`, slug `release-gate`;
+  it was an `agentConfig.projectFacts` key until ISS-1048 moved project prose out of that map) ·
   `docs/proposals/agent-driven-pipeline.md`
 
 ## What is true

@@ -1,6 +1,11 @@
 "use client";
 
-// cm:why inner tab state is local `useState` and not a URL param — the outer Library tab already deep-links via `?tab=`, and a second one would need the two to agree on precedence for a link nobody sends.
+// cm:why the inner tab seeds from `?sub=` and is otherwise local state. It was local-only, on the
+// reasoning that a second URL param "would need the two to agree on precedence for a link nobody
+// sends" — ISS-1048 made that premise false by pointing release readiness's remediation link at
+// the Rules editor. There is no precedence to settle: `?tab=` picks the outer Library tab and
+// `?sub=` picks the inner one, and an absent or unknown `sub` falls back to the default.
+import { useSearchParams } from "next/navigation";
 import { useState } from "react";
 import {
   EmptyState,
@@ -17,6 +22,10 @@ import { EntryCard } from "./entry-card";
 import { DiagramsTab } from "./diagrams-tab";
 import { GraphTab } from "./graph-tab";
 import { RulesTab } from "./rules-tab";
+
+/** Stable keys for the fixed-length loading skeleton — an array index as a React key is a
+ *  lint diagnostic even where the list never reorders. */
+const SKELETON_ROWS = ["s1", "s2", "s3"];
 
 type KTab = "overview" | "diagrams" | "scenarios" | "workflow" | "rules" | "references" | "graph" | "memory";
 
@@ -37,7 +46,10 @@ interface KnowledgeScreenProps {
 
 export function KnowledgeScreen({ scope }: KnowledgeScreenProps) {
   const { projectId, canManage } = scope;
-  const [ktab, setKtab] = useState<KTab>("overview");
+  const sub = useSearchParams()?.get("sub");
+  const [ktab, setKtab] = useState<KTab>(
+    KTABS.some((t) => t.value === sub) ? (sub as KTab) : "overview",
+  );
 
   return (
     <PageContainer className="min-h-dvh">
@@ -103,8 +115,8 @@ function EntriesTab({
   if (q.isLoading) {
     return (
       <div className="space-y-2.5">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-14 w-full rounded-lg" />
+        {SKELETON_ROWS.map((k) => (
+          <Skeleton key={k} className="h-14 w-full rounded-lg" />
         ))}
       </div>
     );
@@ -184,8 +196,8 @@ function ReferencesTab({ projectId, canManage }: { projectId: string; canManage:
   if (isLoading) {
     return (
       <div className="space-y-2.5">
-        {Array.from({ length: 3 }).map((_, i) => (
-          <Skeleton key={i} className="h-14 w-full rounded-lg" />
+        {SKELETON_ROWS.map((k) => (
+          <Skeleton key={k} className="h-14 w-full rounded-lg" />
         ))}
       </div>
     );

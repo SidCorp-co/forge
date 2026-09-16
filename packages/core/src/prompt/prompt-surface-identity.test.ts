@@ -7,8 +7,24 @@
 // entry standing.
 //
 // The digests below were taken at `34d43e83`, before the removal, by running
-// this file against that tree, and RE-TAKEN by ISS-1046 in the commit that moved
-// the text — which is what the guard below asks for, not an exemption from it.
+// this file against that tree, and RE-TAKEN by ISS-1046 and then by ISS-1048, each
+// in the commit that moved the text — which is what the guard below asks for, not
+// an exemption from it.
+//
+// What ISS-1048 changed, and why each digest moved:
+//   · every `toolReference`, and the non-drive `pipelineRules` — the operating-
+//     affordances table named `projectFacts` as a thing `forge_config` changes. It
+//     names `forge_knowledge` now, and carries the retired key as the red flag
+//     beside it, because an agent that reaches for the old door needs to be told
+//     which one replaced it rather than finding the row gone.
+//   · `drive`'s `pipelineRules` is UNCHANGED, and that is the evidence the edit
+//     was to the shared affordance text rather than to the driver's own rules.
+//   · NO `facts` digest moved. The two blocks ISS-1048 adds to that surface — the
+//     unreadable-store line and `### Undeclared project knowledge` — are both
+//     conditional, and the fixture below declares a readable store and owes
+//     nothing, so neither renders. They are pinned by `facts/resolve.test.ts`
+//     instead, where the conditions can be set.
+//
 // What ISS-1046 changed, and why each digest moved:
 //   · `pipelineRules` / `toolReference` for the four non-drive steps — three
 //     sentences in `facts/registry.ts` named `productionBranch`, a column that no
@@ -29,7 +45,7 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../db/client.js', () => ({ db: {} }));
-vi.mock('../config/env.js', () => ({ env: { KNOWLEDGE_INJECTION_ENABLED: false } }));
+vi.mock('../config/env.js', () => ({ env: {} }));
 vi.mock('../knowledge/service.js', () => ({
   selectAlwaysInjectFromKnowledge: vi.fn(),
   selectOnDemandSlugsFromKnowledge: vi.fn(),
@@ -66,6 +82,8 @@ function fixedInputs(): Inputs {
         : undefined,
     projectFactKeys: ['build-commands'],
     alwaysInjectFacts: [],
+    factsUnavailable: false,
+    missingObligations: [],
     modules: [{ name: 'prompt', parentName: null }],
   };
 }
@@ -74,31 +92,31 @@ function fixedInputs(): Inputs {
 // `RUNNER_CAPABILITIES` below rather than trusted: pinning only `drive` and `release_batch` would
 // leave a fact scoped to `smoke`, `reconcile` or `verify_skill` changing a working job's prompt
 // with every digest here still green, which is the hole this table had when it was first written.
-const AT_ISS_1046: Record<string, { pipelineRules: string; toolReference: string; facts: string }> =
+const AT_ISS_1048: Record<string, { pipelineRules: string; toolReference: string; facts: string }> =
   {
     drive: {
       pipelineRules: 'fbe5bb53fb025294b46388b8cad8cb86',
-      toolReference: 'db1d4c01c8e941a9bd62c6c8f853ee85',
+      toolReference: 'efbbc2e0fdd496ca0ed2befd268054c8',
       facts: '8085844cb9be59f5c3efbb0af095b632',
     },
     release_batch: {
-      pipelineRules: '19eab60ca9881ff42c9a5f5a56cf9955',
-      toolReference: '59d2871434d24008337ead630cbfa380',
+      pipelineRules: 'd3ceac3e9a563f5615cb4ce453e13014',
+      toolReference: '5027a7b2dfbde84010bd5429c010d63a',
       facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
     smoke: {
-      pipelineRules: '19eab60ca9881ff42c9a5f5a56cf9955',
-      toolReference: '59d2871434d24008337ead630cbfa380',
+      pipelineRules: 'd3ceac3e9a563f5615cb4ce453e13014',
+      toolReference: '5027a7b2dfbde84010bd5429c010d63a',
       facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
     reconcile: {
-      pipelineRules: '19eab60ca9881ff42c9a5f5a56cf9955',
-      toolReference: '59d2871434d24008337ead630cbfa380',
+      pipelineRules: 'd3ceac3e9a563f5615cb4ce453e13014',
+      toolReference: '5027a7b2dfbde84010bd5429c010d63a',
       facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
     verify_skill: {
-      pipelineRules: '19eab60ca9881ff42c9a5f5a56cf9955',
-      toolReference: '59d2871434d24008337ead630cbfa380',
+      pipelineRules: 'd3ceac3e9a563f5615cb4ce453e13014',
+      toolReference: '5027a7b2dfbde84010bd5429c010d63a',
       facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
   };
@@ -112,18 +130,18 @@ describe('the prompt a claimable job receives is pinned to bytes', () => {
   // stays green while saying it covers every claimable job — the table would silently stop being
   // the thing its own name claims.
   it('pins exactly the job types a runner can claim', () => {
-    expect(Object.keys(AT_ISS_1046).sort()).toEqual(claimable);
+    expect(Object.keys(AT_ISS_1048).sort()).toEqual(claimable);
   });
 
   for (const step of ['drive', 'release_batch', 'smoke', 'reconcile', 'verify_skill'] as const) {
     it(`${step} gets exactly the two mandatory blocks pinned for it`, () => {
       const { pipelineRules, toolReference } = mandatoryPreambleBlocks(step);
-      expect(sha(pipelineRules)).toBe(AT_ISS_1046[step]?.pipelineRules);
-      expect(sha(toolReference)).toBe(AT_ISS_1046[step]?.toolReference);
+      expect(sha(pipelineRules)).toBe(AT_ISS_1048[step]?.pipelineRules);
+      expect(sha(toolReference)).toBe(AT_ISS_1048[step]?.toolReference);
     });
 
     it(`the ${step} facts block is byte-identical`, () => {
-      expect(sha(renderStageFactsText(fixedInputs(), 'p-1', step))).toBe(AT_ISS_1046[step]?.facts);
+      expect(sha(renderStageFactsText(fixedInputs(), 'p-1', step))).toBe(AT_ISS_1048[step]?.facts);
     });
   }
 

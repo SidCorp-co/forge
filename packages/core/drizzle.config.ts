@@ -18,6 +18,7 @@ export default defineConfig({
     './src/db/schema-release-ledger.ts',
     './src/db/schema-conversations.ts',
     './src/db/schema-agent-selves.ts',
+    './src/db/schema-project-facts-backup.ts',
   ],
   out: './drizzle/migrations',
   dbCredentials: {

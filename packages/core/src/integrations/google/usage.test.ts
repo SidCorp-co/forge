@@ -12,7 +12,7 @@ import { getIntegrationGuide, getIntegrationUsage } from '../usage-registry.js';
 // what criterion 27 is about; the same three stubs `prompt/facts/resolve.test.ts`
 // uses are enough to reach the pure renderer.
 vi.mock('../../db/client.js', () => ({ db: {} }));
-vi.mock('../../config/env.js', () => ({ env: { KNOWLEDGE_INJECTION_ENABLED: false } }));
+vi.mock('../../config/env.js', () => ({ env: {} }));
 vi.mock('../../knowledge/service.js', () => ({
   selectAlwaysInjectFromKnowledge: vi.fn(),
   selectOnDemandSlugsFromKnowledge: vi.fn(),

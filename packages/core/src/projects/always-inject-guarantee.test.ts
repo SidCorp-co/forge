@@ -4,9 +4,13 @@
  * sentence that says so on every surface that offers the flag, and hold the one
  * surface that must NOT carry it.
  *
- * The tests that matter are the two source reads: `project-facts-tab.tsx` is in
- * another package and cannot import the constant, and `resolve.ts` is asserted
- * for an ABSENCE, which no interpolation can guarantee.
+ * The tests that matter are the two source reads: `rules-tab.tsx` is in another
+ * package and cannot import the constant, and `resolve.ts` is asserted for an
+ * ABSENCE, which no interpolation can guarantee.
+ *
+ * ISS-1048 moved both surfaces without moving the obligation: the flag is now
+ * `knowledge_entries.injection`, the route that serves the sentence is the
+ * knowledge list, and the editor is the Knowledge screen's Rules tab.
  */
 
 import { readFileSync } from 'node:fs';
@@ -113,15 +117,15 @@ describe('the surfaces that interpolate it', () => {
     expect(guide?.body).toContain(ALWAYS_INJECT_ENFORCEMENT_NOTE);
   });
 
-  it('the settings tab, which reads it off its own GET rather than restating it', () => {
-    const source = read('packages/core/src/projects/project-facts-routes.ts');
+  it('the knowledge list route, which the rules editor reads it off rather than restating it', () => {
+    const source = read('packages/core/src/knowledge/routes.ts');
     expect(source).toContain('alwaysInjectGuarantee: ALWAYS_INJECT_GUARANTEE_NOTE');
   });
 });
 
 // cm:guard these read SOURCE because neither claim can be made any other way: the tab is in another package and cannot import this constant, and the prompt's claim is an ABSENCE.
 describe('the two surfaces the constant cannot reach', () => {
-  const TAB = 'packages/web-v2/src/features/project-settings/components/project-facts-tab.tsx';
+  const TAB = 'packages/web-v2/src/features/knowledge/components/rules-tab.tsx';
 
   it(`${TAB} renders the served sentence`, () => {
     expect(read(TAB)).toContain('alwaysInjectGuarantee');

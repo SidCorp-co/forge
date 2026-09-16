@@ -5324,6 +5324,19 @@
 ### Changed
 - **Forge has gone quiet.** Every notification type except ops alerts stops arriving, on purpose,
   until the new model lands: two thirds of what the bell said could not be acted on.
+
+- **A project's guides now live where the prompt says they live.** Every agent prompt indexed your
+  guide names under "fetch these with the knowledge tool", which held none of them. They have moved
+  there, keeping name, text and always-inject setting.
+
+- **Project Settings loses its Project Facts tab.** The Knowledge screen's Rules tab was already the
+  same editor over the same text, and now also shows the character budget and what always-inject
+  does and does not promise.
+
+- **A project is only asked for what it actually has.** One with no repository was reported as
+  missing build and test commands; one with no release step, as missing a release procedure.
+  Undeclared and inapplicable no longer look alike.
+
 - **A project now says what releasing it means, and each connection says what it is for, so Forge
   stops guessing both.** One setting on a connection was being asked three different questions at
   once: which environment a deploy target serves, whether this connection is the thing that ships

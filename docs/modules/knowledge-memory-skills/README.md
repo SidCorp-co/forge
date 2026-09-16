@@ -55,7 +55,7 @@ flowchart TB
 - **A global skill is never registered or dispatched.** `global` is a read-only template; adopting
   it materialises a project-owned clone and registers *that*. The `cm:guard` is on
   `core/src/skills/service.ts` and `core/src/domain-templates/apply.ts`.
-- **Project facts land on disk.** `projectFacts` values are spliced verbatim into the
+- **Always-injected knowledge lands on disk.** An entry's body is spliced verbatim into the
   device-installed `SKILL.md`, so they are never a place for secrets — test credentials live in the
   project's credential store.
 - **Memory retrieval is hybrid, and the keyword arm has two halves.** `memories` carries a pgvector
