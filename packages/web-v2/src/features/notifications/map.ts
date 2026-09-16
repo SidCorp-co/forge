@@ -14,10 +14,6 @@ function typeLabel(type: string): string {
       return "WEDGE";
     case "mention":
       return "MENTION";
-    case "comment_added":
-      return "COMMENT";
-    case "agent_completed":
-      return "AGENT";
     case "invitation_received":
       return "INVITE";
     case "reconcile_gate_pending":

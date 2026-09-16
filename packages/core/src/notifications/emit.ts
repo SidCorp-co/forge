@@ -8,8 +8,6 @@ import { createNotification } from './routes.js';
 // with packages/contracts/src/notifications.ts → NOTIFICATION_CONTRACT.
 const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   issue_status_changed: 'info',
-  comment_added: 'info',
-  agent_completed: 'success',
   mention: 'info',
   pm_escalation: 'warning',
   pipeline_wedge: 'error',

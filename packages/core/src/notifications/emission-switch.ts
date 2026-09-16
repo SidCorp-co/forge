@@ -43,8 +43,6 @@ import { logger } from '../logger.js';
 // cm:hack ISS-1063 until:the record/kind model ships and the open count is over conditions and tasks rather than over unread rows — every type but `ops_alert` is suppressed at the single emission seam, which is the priced trade the header states
 export const SUPPRESSED_TYPES: ReadonlySet<NotificationType> = new Set<NotificationType>([
   'issue_status_changed',
-  'comment_added',
-  'agent_completed',
   'mention',
   'pm_escalation',
   'pipeline_wedge',

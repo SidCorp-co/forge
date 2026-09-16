@@ -1997,10 +1997,14 @@ export const chatLogs = pgTable(
 );
 
 // cm:edge lockstep -> packages/contracts/src/notifications.ts — NOTIFICATION_TYPES + NOTIFICATION_CONTRACT carry the same taxonomy; core validates the column against THIS list while every emitter is typed against the contracts one, so a value added here alone is insertable but untyped, and one added there alone typechecks then fails at the column
+// cm:why ISS-1063 removed `comment_added` and `agent_completed` from here and from the
+// contract in the same change: neither string appeared anywhere in `packages/core/src`
+// outside these two declarations, so neither had an emitter to run, and neither had ever
+// produced a row in the 11037 on the production replica. `mention` and
+// `retry_rescue_threshold` show the same zero and stay, because both have live wired
+// emitters whose trigger has not occurred.
 export const notificationTypes = [
   'issue_status_changed',
-  'comment_added',
-  'agent_completed',
   'mention',
   'pm_escalation',
   // ISS-452 (ISS-442 C6 / I7) — a loop-monitor hop miss / non-progressing
