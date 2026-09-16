@@ -325,7 +325,9 @@ async function insertCommentOnce(args: {
     const existing = await tx
       .select({ id: comments.id })
       .from(comments)
-      .where(and(eq(comments.issueId, args.issueId), sql`${comments.body} LIKE ${`%${args.marker}%`}`))
+      .where(
+        and(eq(comments.issueId, args.issueId), sql`${comments.body} LIKE ${`%${args.marker}%`}`),
+      )
       .limit(1);
     if (existing.length > 0) return false;
     await tx.insert(comments).values({
@@ -375,7 +377,9 @@ export async function writeRunEvidence(args: {
       checkpoint: args.checkpoint,
       next: row.next,
     });
-    if (await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId }))
+    if (
+      await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId })
+    )
       written += 1;
   }
 
@@ -412,7 +416,9 @@ export async function writeHeldWorktreeReport(args: {
   const authorId = await ownerOfDevice(args.deviceId);
   let written = 0;
   for (const row of rows) {
-    if (await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId }))
+    if (
+      await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId })
+    )
       written += 1;
   }
   logger.warn(
@@ -450,7 +456,9 @@ export async function writeResumeChoice(args: {
   const authorId = await ownerOfDevice(args.deviceId);
   let written = 0;
   for (const row of rows) {
-    if (await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId }))
+    if (
+      await insertCommentOnce({ issueId: row.id, marker, body, authorId, deviceId: args.deviceId })
+    )
       written += 1;
   }
   logger.info(
