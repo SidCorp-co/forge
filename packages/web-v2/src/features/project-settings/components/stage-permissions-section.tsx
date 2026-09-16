@@ -18,7 +18,7 @@ import { useUpdatePipelineConfig } from "../hooks";
 import {
   denylistBaseline,
   groupByServer,
-  INTEGRATION_SERVER_LABELS,
+  integrationServerLabel,
   isIntegrationServerName,
   humanizeToolName,
   knownToolIds,
@@ -157,7 +157,7 @@ function StageEditor({
                       defect pointed the other way. */}
                   {isIntegrationServerName(n) && (
                     <span className="fg-caption rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-                      {INTEGRATION_SERVER_LABELS[n] ?? "integration"} · this stage only
+                      {integrationServerLabel(n)} · this stage only
                     </span>
                   )}
                 </span>

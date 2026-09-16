@@ -407,11 +407,25 @@ export const INTEGRATION_SERVER_LABELS: Record<string, string> = {
 	sentry: "Sentry",
 };
 
+/** The provider a sentinel name belongs to, or null when it is not one. */
+export function integrationProviderOf(name: string): string | null {
+	if ((INTEGRATION_SERVER_NAMES as readonly string[]).includes(name)) return name;
+	if (name.startsWith("epodsystem_")) return "epodsystem";
+	return null;
+}
+
+/** How to name a stored sentinel on a screen — `epodsystem_store_a` reads as
+ *  Epodsystem, because the resolver treats every `epodsystem*` key as the one
+ *  provider. */
+export function integrationServerLabel(name: string): string {
+	const provider = integrationProviderOf(name);
+	return provider ? (INTEGRATION_SERVER_LABELS[provider] ?? provider) : name;
+}
+
 /** True when `name` is an integration sentinel — the bare provider name, or an
  *  `epodsystem_<label>` variant. Mirrors `isIntegrationSentinelName` in core. */
 export function isIntegrationServerName(name: string): boolean {
-	if ((INTEGRATION_SERVER_NAMES as readonly string[]).includes(name)) return true;
-	return name.startsWith("epodsystem_");
+	return integrationProviderOf(name) !== null;
 }
 
 // cm:edge naming -> packages/core/src/pipeline/pipeline-config-schema.ts — the same four STAGE_NAMES keys, same order; a stage added there needs a row here or the screen renders its raw status

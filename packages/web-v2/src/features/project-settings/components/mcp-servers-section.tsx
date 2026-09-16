@@ -34,7 +34,7 @@ import { Banner, Button, Icon, Input, Textarea, Toggle } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { useUpdatePipelineConfig } from "../hooks";
 import {
-  INTEGRATION_SERVER_LABELS,
+  integrationServerLabel,
   isIntegrationServerName,
   MCP_CATALOG,
   MCP_CATALOG_NAMES,
@@ -206,7 +206,7 @@ export function McpServersSection({
                   <Icon name="command" size={12} />
                   <span className="font-mono">{name}</span>
                   <span className="text-subtle">
-                    {INTEGRATION_SERVER_LABELS[name] ?? "integration"}
+                    {integrationServerLabel(name)}
                   </span>
                 </span>
               ))}

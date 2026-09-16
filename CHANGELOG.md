@@ -2715,6 +2715,22 @@
 
 ### Fixed
 
+- **A connected integration can now be switched on for your agents from the screen that shows it,
+  and a stage that turns one off is finally honoured.** Connecting Epodsystem, Postman or Sentry to
+  a project told you it was connected, tested green, and reached no agent at all. Whether an
+  integration actually reaches your agents was a second switch on another tab, in a list that
+  offered two browser tools and nothing else, behind a form that refused the only value that would
+  have worked — so there was no way to turn it on from inside the product, and nothing anywhere
+  said why the healthy-looking connection was doing nothing. That switch now sits on the Agent MCP
+  servers panel beside the connection itself, one per integration, and it says which pipeline
+  stages declare it on their own and which turn it back off. Everyone on the project can read that;
+  changing it needs owner or admin. The Pipeline tab no longer claims connected integrations arrive
+  on their own, shows a stored one as what it is instead of as a hand-written server, and sends you
+  to the right screen if you try to add one there. Separately: a stage set to exclude an
+  integration used to be ignored, and the integration was handed to the agent anyway. It is now
+  honoured. Your credential never moves — it stays where you entered it and is attached only at the
+  moment a job starts.
+
 - **A conversation you archive from the all-projects Conversations page can now be found and
   brought back there.** Every room in that page's sidebar offered to archive it, and archiving
   worked — the room left the list. Nothing on the page then showed the archived ones, so the only

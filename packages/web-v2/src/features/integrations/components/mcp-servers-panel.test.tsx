@@ -79,7 +79,12 @@ function renderPanel() {
   );
 }
 
-const toggleFor = (label: string) => screen.getByLabelText(label) as HTMLInputElement;
+// The design-system Toggle is a <button role="switch" aria-checked>, not a
+// checkbox — so "is it on" is the aria state and "can I press it" is the
+// disabled attribute.
+const toggleFor = (label: string) => screen.getByLabelText(label) as HTMLButtonElement;
+const isOn = (label: string) => toggleFor(label).getAttribute("aria-checked") === "true";
+const isLocked = (label: string) => toggleFor(label).disabled === true;
 const EPOD_TOGGLE = "Inject Epodsystem into this project's agents";
 
 describe("McpServersPanel — the switch (ISS-1038)", () => {
@@ -135,29 +140,29 @@ describe("McpServersPanel — the switch (ISS-1038)", () => {
     // leave the panel settled on whichever response came back last.
     fireEvent.click(toggleFor(EPOD_TOGGLE));
     expect(setMcpInjection).toHaveBeenCalledTimes(1);
-    expect(toggleFor(EPOD_TOGGLE).disabled).toBe(true);
+    expect(isLocked(EPOD_TOGGLE)).toBe(true);
 
     release?.({ providers: [providerState({ declaredDefault: true })], canEdit: true });
-    await waitFor(() => expect(toggleFor(EPOD_TOGGLE).checked).toBe(true));
+    await waitFor(() => expect(isOn(EPOD_TOGGLE)).toBe(true));
   });
 
   it("a failed write leaves the confirmed state, shows the failure, and retries", async () => {
     setMcpInjection.mockRejectedValueOnce(new Error("boom"));
     renderPanel();
     await waitFor(() => expect(toggleFor(EPOD_TOGGLE)).toBeTruthy());
-    expect(toggleFor(EPOD_TOGGLE).checked).toBe(false);
+    expect(isOn(EPOD_TOGGLE)).toBe(false);
 
     fireEvent.click(toggleFor(EPOD_TOGGLE));
     await waitFor(() => expect(screen.getByText(/Could not change it/)).toBeTruthy());
     // The control did NOT move: the server never confirmed it.
-    expect(toggleFor(EPOD_TOGGLE).checked).toBe(false);
+    expect(isOn(EPOD_TOGGLE)).toBe(false);
 
     setMcpInjection.mockResolvedValueOnce({
       providers: [providerState({ declaredDefault: true })],
       canEdit: true,
     });
     fireEvent.click(screen.getByText("Try again"));
-    await waitFor(() => expect(toggleFor(EPOD_TOGGLE).checked).toBe(true));
+    await waitFor(() => expect(isOn(EPOD_TOGGLE)).toBe(true));
     expect(screen.queryByText(/Could not change it/)).toBeNull();
   });
 
@@ -169,8 +174,8 @@ describe("McpServersPanel — the switch (ISS-1038)", () => {
     renderPanel();
     await waitFor(() => expect(toggleFor(EPOD_TOGGLE)).toBeTruthy());
     // Present and truthful, not hidden: a member has to be able to see why.
-    expect(toggleFor(EPOD_TOGGLE).disabled).toBe(true);
-    expect(toggleFor(EPOD_TOGGLE).checked).toBe(true);
+    expect(isLocked(EPOD_TOGGLE)).toBe(true);
+    expect(isOn(EPOD_TOGGLE)).toBe(true);
     expect(screen.getByText(/needs org owner or admin/)).toBeTruthy();
     expect(screen.getByText(/testing/)).toBeTruthy();
   });

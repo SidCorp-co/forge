@@ -242,7 +242,12 @@ export async function setMcpServerSentinel(input: {
 
   // One statement, one key. `jsonb_set` needs the parent to exist, so seed
   // `mcpServers` with `||` in the same expression when it does not.
-  const path = JSON.stringify(['pipelineConfig', 'mcpServers', name]);
+  //
+  // The path is a Postgres `text[]` built with ARRAY[...] and the provider name
+  // bound as a parameter. A JSON-shaped literal reads as a malformed array
+  // literal at the server (22P02) — which a mocked `db.execute` cannot show,
+  // and which tests/integration/mcp-injection-concurrency.test.ts caught.
+  const path = sql`ARRAY['pipelineConfig', 'mcpServers', ${name}]`;
   await db.execute(
     enabled
       ? sql`UPDATE projects
@@ -256,13 +261,13 @@ export async function setMcpServerSentinel(input: {
                             COALESCE(agent_config -> 'pipelineConfig' -> 'mcpServers', '{}'::jsonb)
                           )
                    ),
-              ${path}::text[],
+              ${path},
               'true'::jsonb,
               true
             )
             WHERE id = ${projectId}`
       : sql`UPDATE projects
-            SET agent_config = COALESCE(agent_config, '{}'::jsonb) #- ${path}::text[]
+            SET agent_config = COALESCE(agent_config, '{}'::jsonb) #- ${path}
             WHERE id = ${projectId}`,
   );
 
