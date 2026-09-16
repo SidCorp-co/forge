@@ -2881,7 +2881,6 @@
 - **A pipeline stage that turns a tool off no longer has it turned back on.** The stage's answer was
   merged in a way that could only add servers, never remove one the project had on by default.
 
-
 - **The assistant benchmark no longer passes a reply that recites the product's whole issue
   lifecycle when asked for this project's pipeline states, and no longer counts a dropped
   connection as the assistant's failure.** The pipeline-states task held every configured state to
