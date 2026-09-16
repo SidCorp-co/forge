@@ -125,7 +125,7 @@ async function seedIntegration(opts: {
       ${project.id},
       'coolify',
       'deploy',
-      ${opts.stages}::text[],
+      ${`{${opts.stages.join(',')}}`}::text[],
       ${JSON.stringify({
         // ISS-558 multi-target shape: the adapter fans out one deploy per
         // targets[] entry; a binding without targets refuses to dispatch.

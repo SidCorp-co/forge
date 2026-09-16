@@ -78,17 +78,21 @@ export function releaseBatchFixture(
     // case here is about the poll loop's patience.
     const verify = { probes: [{ url: await probeUrl() }], timeoutSeconds: 20, stableReads: 1 };
     await harness().db.execute(sql`
-      UPDATE projects SET base_branch = 'main', live_branch = 'production'
-      WHERE id = ${projectId}
+      UPDATE projects
+         SET base_branch = 'main',
+             live_branch = 'production',
+             release_model = 'promote',
+             release_strategy = 'merge-branch'
+       WHERE id = ${projectId}
     `);
     await harness().db.execute(sql`
       INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
       VALUES (${connectionId}, 'user', ${ownerId}, 'coolify', true)
     `);
     await harness().db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, environment, active, config)
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
       VALUES (
-        ${connectionId}, ${projectId}, 'coolify', 'prod', true,
+        ${connectionId}, ${projectId}, 'coolify', 'deploy', ARRAY['live']::text[], true,
         ${JSON.stringify({ releaseRunnerLabel: RELEASE_LABEL, verify, ...config })}::jsonb
       )
     `);

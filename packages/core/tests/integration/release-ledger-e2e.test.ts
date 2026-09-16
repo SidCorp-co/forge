@@ -93,8 +93,8 @@ async function seed(opts: { probes?: boolean } = {}): Promise<World> {
     VALUES (${connection}, 'user', ${user.id}, 'coolify', true)
   `);
   await harness.db.execute(sql`
-    INSERT INTO integration_bindings (connection_id, project_id, provider, environment, active, config)
-    VALUES (${connection}, ${project.id}, 'coolify', 'prod', true, ${JSON.stringify(
+    INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+    VALUES (${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true, ${JSON.stringify(
       opts.probes === false
         ? { releaseRunnerLabel: 'box' }
         : {

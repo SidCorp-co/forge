@@ -62,7 +62,7 @@ describe('a release refuses a project that declares no probes', () => {
   async function dropProbes(): Promise<void> {
     await harness.db.execute(sql`
       UPDATE integration_bindings SET config = config - 'verify'
-      WHERE project_id = ${projectId} AND provider = 'coolify' AND environment = 'prod'
+      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
     `);
   }
 

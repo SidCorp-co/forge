@@ -105,9 +105,9 @@ async function seed(opts: {
       )
     `);
     await harness.db.execute(sql`
-      INSERT INTO integration_bindings (connection_id, project_id, provider, environment, active, config)
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
       VALUES (
-        ${connection}, ${project.id}, 'coolify', 'prod', true,
+        ${connection}, ${project.id}, 'coolify', 'deploy', ARRAY['live'], true,
         ${JSON.stringify(opts.bindingConfig ?? {})}::jsonb
       )
     `);

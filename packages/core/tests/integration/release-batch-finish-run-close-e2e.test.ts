@@ -209,7 +209,7 @@ describe('a finish already run answers from the record', () => {
     await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
     const { port } = probe.address() as AddressInfo;
     // cm:guard merged into the binding `beforeEach` already wrote, never a second
-    // `declareProduction()`: the binding is unique per (project, provider, environment, label), and
+    // `declareProduction()`: a SERVICE binding is unique per (project, provider, label), and
     // a `||` keeps `releaseRunnerLabel` rather than clobbering the sibling key this project needs
     // to resolve its release pool at all.
     // cm:why `stableReads: 1` so one read confirms: the default is two, five seconds apart, and the
@@ -223,7 +223,7 @@ describe('a finish already run answers from the record', () => {
           stableReads: 1,
         },
       })}::jsonb
-      WHERE project_id = ${projectId} AND provider = 'coolify' AND environment = 'prod'
+      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
     `);
     const a = await insertIssue();
     const { runId, jobId } = await claim([a]);
@@ -350,7 +350,7 @@ describe('a finish racing an abort', () => {
           stableReads: 1,
         },
       })}::jsonb
-      WHERE project_id = ${projectId} AND provider = 'coolify' AND environment = 'prod'
+      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
     `);
     const a = await insertIssue();
     const { runId } = await claim([a]);
@@ -410,7 +410,7 @@ describe('a finish after an abort of a reaped run', () => {
           stableReads: 1,
         },
       })}::jsonb
-      WHERE project_id = ${projectId} AND provider = 'coolify' AND environment = 'prod'
+      WHERE project_id = ${projectId} AND provider = 'coolify' AND 'live' = ANY(stages)
     `);
     const a = await insertIssue();
     const { runId } = await claim([a]);
