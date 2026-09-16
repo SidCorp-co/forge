@@ -6,7 +6,7 @@
  */
 
 import { createOpenAIProvider } from '../providers/openai.js';
-import type { ChatMessage } from '../providers/types.js';
+import type { ChatMessage, ChatProvider } from '../providers/types.js';
 import type { FetchLike } from './client.js';
 import type { FailureMode } from './grade.js';
 import type { ToolCall } from './trail.js';
@@ -177,25 +177,22 @@ export interface JudgeOptions {
   retryDelaysMs?: number[];
 }
 
-/** One OpenAI-wire request per call, at temperature 0; every failure is `{ error }`, never a throw. */
-export function createJudge(o: JudgeOptions): Judge {
-  const provider = createOpenAIProvider({
-    baseUrl: o.baseUrl,
-    apiKey: o.apiKey,
-    defaultModel: o.model,
-    fetchImpl: o.fetch as unknown as typeof fetch,
-    ...(o.retryDelaysMs ? { retryDelaysMs: o.retryDelaysMs } : {}),
-  });
+/** One request per call through the provider given, at temperature 0; every failure is `{ error }`, never a throw. */
+export function createJudgeFromProvider(
+  provider: Pick<ChatProvider, 'stream'>,
+  model: string,
+  opts: { timeoutMs?: number } = {},
+): Judge {
   return {
-    model: o.model,
+    model,
     async judge(input) {
       const chunks: string[] = [];
       try {
         const stream = provider.stream({
-          model: o.model,
+          model,
           messages: judgeMessages(input),
           temperature: 0,
-          signal: AbortSignal.timeout(o.timeoutMs ?? 120_000),
+          signal: AbortSignal.timeout(opts.timeoutMs ?? 120_000),
         });
         for await (const event of stream) {
           if (event.type === 'chunk') chunks.push(event.text);
@@ -211,6 +208,18 @@ export function createJudge(o: JudgeOptions): Judge {
       }
     },
   };
+}
+
+/** The judge over an OpenAI-wire endpoint named by URL and key, as the CLI is given one. */
+export function createJudge(o: JudgeOptions): Judge {
+  const provider = createOpenAIProvider({
+    baseUrl: o.baseUrl,
+    apiKey: o.apiKey,
+    defaultModel: o.model,
+    fetchImpl: o.fetch as unknown as typeof fetch,
+    ...(o.retryDelaysMs ? { retryDelaysMs: o.retryDelaysMs } : {}),
+  });
+  return createJudgeFromProvider(provider, o.model, { timeoutMs: o.timeoutMs ?? 120_000 });
 }
 
 /** The judge from the environment, refused by name when a variable is absent. */

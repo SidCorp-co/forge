@@ -22,6 +22,7 @@ import { isFeatureOff, usePipelineConfig, useUpdatePipelineConfig } from "../hoo
 import { McpServersSection } from "./mcp-servers-section";
 import { IntakeGateSection } from "./intake-gate-section";
 import { PoolBacklogSection } from "./pool-backlog-section";
+import { AssistantWeeklySection } from "./assistant-weekly-section";
 import { KnowledgePromotionSection } from "./knowledge-promotion-section";
 import { StagePermissionsSection } from "./stage-permissions-section";
 import { RunnerPoolsSection } from "./runner-pools-section";
@@ -231,6 +232,8 @@ export function PipelineTab({
         <PoolBacklogSection projectId={projectId} config={server} canEdit={canEdit} />
 
         <KnowledgePromotionSection projectId={projectId} config={server} canEdit={canEdit} />
+
+        <AssistantWeeklySection projectId={projectId} config={server} canEdit={canEdit} />
 
         <div className="mt-6 border-t border-line pt-5">
           <Collapsible title={`Configured elsewhere — ${API_ONLY_KEYS.length} keys this screen doesn't edit`}>

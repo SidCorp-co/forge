@@ -113,6 +113,15 @@
 
 
 ### Added
+- **A weekly reading of the assistant, posted on an issue.** A project that opts in
+  (`pipelineConfig.assistantWeekly` on the Pipeline tab: a pinned issue key, a registered judge
+  provider and model, one door if wanted) gets one comment a week on that issue, from Monday 04:00 UTC:
+  the previous ISO week's `chat_logs` graded by the history graders with the benchmark's own
+  rooms excluded, the newest forty rows read by the judge, what changed since the week before,
+  and the judged `no`/`partial` rows harvested into candidate task modules — with the history
+  file, the compare and every candidate attached. A week that fails posts the failure by name and
+  is tried again each day until its report is there; a judge that is a model under test is refused before any row is
+  judged. Absent config means nothing runs. (ISS-1056)
 - `bench:assistant harvest <history.json> --out <dir>` writes one candidate task module per
   judged row the judge called `no` or `partial` whose intent no shipped task covers, with the
   scrubbed real query, the judge's intent, the provenance and `checks: []` for a person to fill;

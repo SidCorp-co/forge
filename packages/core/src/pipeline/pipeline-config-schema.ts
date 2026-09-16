@@ -268,6 +268,18 @@ export const pipelineConfigSchema = z
       })
       .strict()
       .optional(),
+    // cm:guard absent means OFF: this reader is a pg-boss cron (assistant/weekly/register.ts, daily 04:00 UTC, one report per ISO week) that judges a week of a project's chat_logs with a model and posts on an issue, and a project that never flipped this must never be read by it
+    // cm:edge contract -> packages/core/src/assistant/weekly/config.ts — `readAssistantWeekly` is the only reader; a field renamed here arrives there as undefined
+    assistantWeekly: z
+      .object({
+        enabled: z.boolean(),
+        pinnedIssue: z.string().regex(/^[A-Z]{2,6}-\d+$/, 'an issue key such as ISS-1060'),
+        judgeProviderId: z.string().min(1),
+        judgeModel: z.string().min(1),
+        source: z.string().min(1).optional(),
+      })
+      .strict()
+      .optional(),
     // cm:why ISS-917 — statuses whose issues a master may SEE but not claim; the shape is `poolBacklogSchema` above and the refusal pairing it with `intakeGate` lives in the `superRefine` at the bottom of this object
     poolBacklog: poolBacklogSchema.optional(),
     // cm:guard `enabled === false` does NOT route around a stage — the walk that did was deleted with the staged lane (ISS-897), and nothing has replaced it. Its one effect is that `buildLadder` (prompt/facts/resolve.ts) leaves the status out of the ladder rendered into the agent's prompt; at the entry status it also closes the gate `isEntryGateClosed` reads. No validator runs at PATCH time (ISS-994).

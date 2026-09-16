@@ -195,7 +195,8 @@ function toErrorEntry(index: number, name: string, err: unknown): CommentAttachm
 }
 
 // cm:edge protocol -> packages/core/src/issues/attachment-service.ts — the issue twin of this function; the two must refuse a batch on the same terms, because one client sends the same evidence to an issue or to a comment and cannot be told the rules differ by parent
-async function discardCommentAttachments(ids: readonly string[]): Promise<void> {
+/** Remove attachments this process wrote and no longer stands behind (storage and rows). */
+export async function discardCommentAttachments(ids: readonly string[]): Promise<void> {
   if (ids.length === 0) return;
   const rows = await db
     .select({ id: commentAttachments.id, path: commentAttachments.path })

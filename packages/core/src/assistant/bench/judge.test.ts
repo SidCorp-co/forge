@@ -11,6 +11,7 @@ import {
   agreementLine,
   callLines,
   createJudge,
+  createJudgeFromProvider,
   isVerdict,
   type JudgeResult,
   judgeFromEnv,
@@ -184,5 +185,61 @@ describe('judgeFromEnv', () => {
         fetch,
       ).model,
     ).toBe('m');
+  });
+});
+
+describe('createJudgeFromProvider (ISS-1056)', () => {
+  const providerOf = (
+    events: Array<{ type: 'chunk'; text: string } | { type: 'error'; message: string }>,
+  ) => {
+    const requests: Array<{ model: string; temperature?: number; messages: unknown[] }> = [];
+    return {
+      requests,
+      provider: {
+        stream(req: { model: string; temperature?: number; messages: unknown[] }) {
+          requests.push(req);
+          return (async function* () {
+            for (const e of events) yield e;
+            yield { type: 'done' as const };
+          })();
+        },
+      },
+    };
+  };
+
+  it('asks the provider once, naming the model at temperature 0, and reads the streamed verdict', async () => {
+    const { provider, requests } = providerOf([
+      { type: 'chunk', text: yes.slice(0, 20) },
+      { type: 'chunk', text: yes.slice(20) },
+    ]);
+    const judge = createJudgeFromProvider(provider as never, 'judge-model');
+    expect(judge.model).toBe('judge-model');
+    const result = await judge.judge(input);
+    expect(isVerdict(result) && result.served).toBe('yes');
+    expect(requests).toHaveLength(1);
+    expect(requests[0]).toMatchObject({ model: 'judge-model', temperature: 0 });
+    expect(requests[0]?.messages).toEqual(judgeMessages(input));
+  });
+
+  it('a stream error, a thrown stream and an unreadable answer are each an error result, never a throw', async () => {
+    const errored = createJudgeFromProvider(
+      providerOf([{ type: 'error', message: 'upstream 502' }]).provider as never,
+      'j',
+    );
+    expect(await errored.judge(input)).toEqual({ error: 'judge stream: upstream 502' });
+    const thrown = createJudgeFromProvider(
+      {
+        stream() {
+          throw new Error('no route');
+        },
+      } as never,
+      'j',
+    );
+    expect(await thrown.judge(input)).toEqual({ error: 'judge request: no route' });
+    const prose = createJudgeFromProvider(
+      providerOf([{ type: 'chunk', text: 'It was fine.' }]).provider as never,
+      'j',
+    );
+    expect(await prose.judge(input)).toEqual({ error: 'judge answer is not JSON: It was fine.' });
   });
 });
