@@ -2892,7 +2892,7 @@
         },
         "integration_bindings_role_stages_chk": {
           "name": "integration_bindings_role_stages_chk",
-          "value": "(role = 'service' AND cardinality(stages) = 0) OR (role = 'deploy' AND cardinality(stages) >= 1 AND stages <@ ARRAY['preview', 'live'])"
+          "value": "(role = 'service' AND cardinality(stages) = 0) OR (role = 'deploy' AND array_ndims(stages) = 1 AND cardinality(stages) BETWEEN 1 AND 2 AND stages <@ ARRAY['preview', 'live'] AND (cardinality(stages) = 1 OR stages[1] <> stages[2]))"
         }
       },
       "isRLSEnabled": false

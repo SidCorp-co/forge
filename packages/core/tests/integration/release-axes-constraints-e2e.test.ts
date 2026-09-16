@@ -251,6 +251,60 @@ describe('0253 forward — the rules live in Postgres, and say no', () => {
     }
   });
 
+  // `stages <@ ARRAY['preview','live']` is a CONTAINMENT test: it asks only that every element
+  // belong to the vocabulary, so it passes a set that names one twice and a set with three
+  // members. These three cases are the only thing standing between that spelling and this one.
+  it('refuses a stage named twice, because `stages` is a set', async () => {
+    const { db, g, projects } = await migrated();
+    try {
+      await expect(
+        insertBinding(db.sql, g, anyProject(projects).id, 'deploy', ['live', 'live']),
+      ).rejects.toThrow(/integration_bindings_role_stages_chk/);
+      await expect(
+        insertBinding(db.sql, g, anyProject(projects).id, 'deploy', ['preview', 'preview']),
+      ).rejects.toThrow(/integration_bindings_role_stages_chk/);
+    } finally {
+      await db.drop();
+    }
+  });
+
+  it('refuses a third member, although every member is in the vocabulary', async () => {
+    const { db, g, projects } = await migrated();
+    try {
+      await expect(
+        insertBinding(db.sql, g, anyProject(projects).id, 'deploy', ['preview', 'live', 'preview']),
+      ).rejects.toThrow(/integration_bindings_role_stages_chk/);
+    } finally {
+      await db.drop();
+    }
+  });
+
+  it('refuses a nested array, which containment alone admits', async () => {
+    const { db, g, projects } = await migrated();
+    try {
+      const connectionId = randomUUID();
+      await db.sql.unsafe(
+        `INSERT INTO integration_connections (id, owner_type, owner_id, provider)
+         VALUES ($1, 'user', $2, 'coolify')`,
+        [connectionId, g.ownerId],
+      );
+      await expect(
+        db.sql.unsafe(
+          `INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, label)
+           VALUES ($1, $2, $3, 'coolify', 'deploy', ARRAY[ARRAY['live']]::text[], $4)`,
+          [
+            randomUUID(),
+            connectionId,
+            anyProject(projects).id,
+            `probe-${randomUUID().slice(0, 8)}`,
+          ],
+        ),
+      ).rejects.toThrow(/integration_bindings_role_stages_chk/);
+    } finally {
+      await db.drop();
+    }
+  });
+
   it('refuses a release model that is none of none, promote and publish', async () => {
     const { db, projects } = await migrated();
     try {

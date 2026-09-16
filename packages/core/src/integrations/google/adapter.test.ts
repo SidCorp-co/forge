@@ -84,7 +84,11 @@ function buildCtx(
     connectionId: CONN_ID,
     bindingId: BINDING_ID,
     provider: 'google',
-    environment: 'prod',
+    // `providerCanDeploy('google')` is false, so every google binding is `service` and carries
+    // no stage. The fixture said `environment: 'prod'` — a field the adapter context no longer
+    // has — and the `as any` below is what hid that from the type checker.
+    role: 'service',
+    stages: [],
     config,
     secrets,
     integrationSecret: null,

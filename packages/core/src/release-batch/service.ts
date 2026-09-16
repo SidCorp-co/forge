@@ -61,13 +61,39 @@ export class ReleasePoolEmptyError extends Error {
 }
 
 /**
- * The project has production but its prod binding names no release runner. Rule
+ * The project declares a release model but no live deploy binding names a release runner. Rule
  * 3 of ISS-897: a gate without a designated box is a refusal, never a fallback.
  */
 export class ReleaseRunnerUndeclaredError extends Error {
   constructor() {
     super('RELEASE_RUNNER_UNDECLARED');
     this.name = 'ReleaseRunnerUndeclaredError';
+  }
+}
+
+/**
+ * The project has more than one live deploy channel, and a run can prove only one.
+ *
+ * ISS-1046 widened what core RETURNS from one live binding to the whole live SET, which is the
+ * right answer to "where does this project release to". It did NOT widen the attempt ledger:
+ * `commitBefore` is one string on the run, `readLiveState` reads one channel's probes, and
+ * `finishReleaseBatch` closes the whole roster on that single reading. So a two-endpoint release
+ * would be verified at one endpoint and closed for both — the quietest possible way to claim a
+ * ship nobody checked.
+ *
+ * It refuses instead. Measured over the fleet at the 0253 cutover: of the 12 projects carrying a
+ * live deploy binding, zero carry two, so this refuses nothing anyone does today and stands
+ * between the first operator who adds a second one and a silently half-verified release. The way
+ * out is per-binding verification, which is its own piece of work:
+ * `docs/proposals/release-verifies-one-endpoint.md`.
+ */
+export class ReleaseMultiChannelUnsupportedError extends Error {
+  readonly code = 'RELEASE_MULTI_CHANNEL_UNSUPPORTED';
+  constructor(readonly count: number) {
+    super(
+      `RELEASE_MULTI_CHANNEL_UNSUPPORTED: this project declares ${count} live deploy bindings, and a release run records ONE reading — one \`commitBefore\`, one set of probes, one verdict — which would be taken at one of them and used to close the whole roster. Core will not claim a release it verified at one endpoint of two. Leave exactly one binding carrying the \`live\` stage active, or release them as separate projects.`,
+    );
+    this.name = 'ReleaseMultiChannelUnsupportedError';
   }
 }
 
@@ -207,7 +233,10 @@ export async function createReleaseBatch(
   const deployPlanned = plan.channels.length > 0;
 
   // cm:guard read the live commit BEFORE anything moves. Without this baseline a release that deployed nothing verifies perfectly: the probes answer, the commit matches what the agent reports, and what it reports is what was already serving.
-  // cm:why the FIRST channel's probes are the baseline: the commit-before is one string on the run, and a set whose members verify separately is its own issue. Every member is known to declare probes by the refusal above, so this reads a declaration rather than a default.
+  // cm:guard the set is refused above 1 rather than collapsed to its first member. The commit-before
+  // is one string on the run and `finish` closes the whole roster on one reading, so `channels[0]`
+  // would verify one endpoint and claim two. A loud break beats a silent substitution.
+  if (plan.channels.length > 1) throw new ReleaseMultiChannelUnsupportedError(plan.channels.length);
   const firstVerify = plan.channels[0]?.verify ?? null;
   const commitBefore = firstVerify ? await readLiveCommit(firstVerify) : null;
 
@@ -272,6 +301,7 @@ export async function createReleaseBatch(
     baseBranch,
     liveBranch,
     releaseModel: project.releaseModel,
+    releaseStrategy: project.releaseStrategy,
     plan,
     issues: issueRows.map((r) => ({
       id: r.id,

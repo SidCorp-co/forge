@@ -278,6 +278,37 @@ describe('the pool reads the label the release path reads', () => {
     expect(await poolIds(w)).toEqual([w.jobId]);
   });
 
+  // cm:guard the pool and the claim run at EVERY poll, long after `createReleaseBatch` refused
+  // two disagreeing labels — a second live deploy binding can be activated or relabelled in
+  // between. `LIMIT 1` picked arbitrarily among the survivors here, so the pool offered, and the
+  // claim granted, a release to a box the plan resolver refuses outright. Both readers must
+  // answer the same "there is no one box" and stop.
+  it('offers a release job to nobody when two live bindings name different labels', async () => {
+    const w = await seed({
+      type: 'release_batch',
+      labels: [LABEL],
+      bindingConfig: { releaseRunnerLabel: LABEL },
+    });
+    const otherConnection = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active, config)
+      SELECT ${otherConnection}, 'user', p.created_by, 'coolify', true, '{}'::jsonb
+      FROM projects p WHERE p.id = ${w.projectId}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO integration_bindings (connection_id, project_id, provider, role, stages, active, config)
+      VALUES (
+        ${otherConnection}, ${w.projectId}, 'coolify', 'deploy', ARRAY['live'], true,
+        ${JSON.stringify({ releaseRunnerLabel: 'some-other-box' })}::jsonb
+      )
+    `);
+
+    // The plan resolver refuses outright…
+    await expect(mods.resolveReleasePlan(w.projectId)).rejects.toThrow(/RELEASE_RUNNER_AMBIGUOUS/);
+    // …and the pool answers with nobody rather than picking one of the two.
+    expect(await poolIds(w)).toEqual([]);
+  });
+
   it('lets a binding null out the connection-level label, for the pool as for the release', async () => {
     const w = await seed({
       type: 'release_batch',

@@ -11,8 +11,11 @@ import {
   CardTitle,
   Field,
   Input,
+  Select,
+  type SelectOption,
 } from "@/design";
 import { formatApiError } from "@/lib/api/error";
+import { providerCanDeploy } from "@forge/contracts/deploy-capability";
 import { useMemo, useState } from "react";
 import {
   useCreateProviderIntegration,
@@ -23,6 +26,8 @@ import {
   useUpdateProviderIntegration,
 } from "../hooks";
 import type {
+  BindingRole,
+  DeployStage,
   IntegrationSummary,
   IntegrationTestResult,
   ProviderConfig,
@@ -35,6 +40,17 @@ const REQUIRED_SCOPES = ["products:write", "webstore:write", "settings:write"];
 
 // Kebab-case label: starts with alphanumeric, followed by alphanumeric or dashes.
 const LABEL_REGEX = /^[a-z0-9][a-z0-9-]*$/;
+
+// cm:edge contract -> packages/web-v2/src/features/project-settings/components/integrations-tab.tsx — the same two declarations, worded the same way, because the two create forms reach the same columns
+const ROLE_SELECT_OPTIONS: SelectOption[] = [
+  { value: "service", label: "Service — a project-wide facility" },
+  { value: "deploy", label: "Deploy target — somewhere Forge deploys to" },
+];
+
+const STAGE_CHOICES: { value: DeployStage; label: string; hint: string }[] = [
+  { value: "preview", label: "Preview", hint: "the draft theme, seen before it counts" },
+  { value: "live", label: "Live", hint: "the published theme real customers are on" },
+];
 
 interface BadgeView {
   label: string;
@@ -329,7 +345,11 @@ function AddEpodsystemForm({
   const [ownerOrgId, setOwnerOrgId] = useState<string | undefined>(undefined);
   const [label, setLabel] = useState("");
   const [apiKey, setApiKey] = useState("");
+  const [role, setRole] = useState<BindingRole>("service");
+  const [stages, setStages] = useState<DeployStage[]>([]);
   const [error, setError] = useState<string | null>(null);
+
+  const canDeploy = providerCanDeploy("epodsystem");
 
   const labelError =
     label && !LABEL_REGEX.test(label)
@@ -341,12 +361,39 @@ function AddEpodsystemForm({
     (!hasDefault || (label.trim().length > 0 && !labelError)) &&
     !create.isPending;
 
+  // cm:guard the role picker CLEARS the stages it hides. A hidden control whose value
+  // still submits is how a service binding reaches the server carrying a stage, which
+  // the database refuses by constraint (`integration_bindings_role_stages_chk`) — a 500
+  // where the form could simply not have sent it.
+  function chooseRole(next: BindingRole) {
+    setRole(next);
+    setError(null);
+    if (next === "service") setStages([]);
+  }
+
+  function toggleStage(stage: DeployStage) {
+    setError(null);
+    setStages((cur) =>
+      cur.includes(stage) ? cur.filter((s) => s !== stage) : [...cur, stage],
+    );
+  }
+
   async function handleCreate() {
     setError(null);
+    // cm:guard this refusal is the FORM's, said before the round trip and naming the
+    // remedy: the database refuses a deploy binding with no stage, and "400 Bad Request"
+    // names neither the field nor what a valid value looks like.
+    if (role === "deploy" && stages.length === 0) {
+      setError(
+        "Choose at least one stage — a deploy target has to serve Preview, Live or both.",
+      );
+      return;
+    }
     try {
       await create.mutateAsync({
         provider: "epodsystem",
-        role: "service",
+        role,
+        ...(role === "deploy" ? { stages } : {}),
         config: {},
         secrets: { apiKey: apiKey.trim() },
         ...(label.trim() ? { label: label.trim() } : {}),
@@ -398,6 +445,48 @@ function AddEpodsystemForm({
           onChange={(e) => setApiKey(e.target.value)}
         />
       </Field>
+
+      <Field
+        label="What is it for"
+        hint="A storefront this project publishes to is a deploy target. One it only borrows (an MCP, a product feed) is a service."
+        required
+      >
+        <Select
+          options={ROLE_SELECT_OPTIONS}
+          value={role}
+          onChange={(v) => chooseRole(v as BindingRole)}
+          disabled={create.isPending}
+        />
+      </Field>
+
+      {role === "deploy" && canDeploy && (
+        <Field label="Which stages" required>
+          <div className="flex flex-col gap-2">
+            {STAGE_CHOICES.map((choice) => (
+              <label key={choice.value} className="flex items-start gap-2">
+                <input
+                  type="checkbox"
+                  className="mt-1"
+                  checked={stages.includes(choice.value)}
+                  onChange={() => toggleStage(choice.value)}
+                  disabled={create.isPending}
+                />
+                <span className="fg-body-sm">
+                  {choice.label}
+                  <span className="text-muted"> — {choice.hint}</span>
+                </span>
+              </label>
+            ))}
+          </div>
+        </Field>
+      )}
+
+      {role === "deploy" && !canDeploy && (
+        <Banner tone="attention">
+          Forge cannot deploy to Epodsystem — it has no deploy adapter. Add it as a service
+          instead.
+        </Banner>
+      )}
 
       {error && <Banner tone="danger">{error}</Banner>}
 

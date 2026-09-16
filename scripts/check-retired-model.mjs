@@ -115,11 +115,81 @@ function walk(dir, out) {
   return out;
 }
 
+/**
+ * Blank out comments, and ONLY comments, leaving every other byte and every newline in place.
+ *
+ * cm:why comments are stripped before the scan, for the same reason `check-memory-anchors.mjs`
+ * does it: this repo writes obituaries, and every guard explaining WHY a name was retired names
+ * that name. Scanning raw source would report the explanation as the defect.
+ *
+ * cm:guard this is a lexer and not a pair of regexes, because a regex cannot tell a comment from
+ * the same characters inside a string. `const sep = '//'; const b = row.productionBranch;` made
+ * the old spelling delete the rest of that line and pass a reader its own `production-branch`
+ * rule exists to catch — a gate that goes green on the one input it was written for. String and
+ * template CONTENTS are kept rather than blanked, because `binding-environment-sql` reads SQL
+ * that only ever appears inside a template literal. Newlines are kept because the caller reports
+ * `i + 1` as the line number, and a multi-line block comment replaced by one space renumbers
+ * every finding below it — wrong, and wrong in silence.
+ */
 function stripComments(src) {
-  // cm:why comments are stripped before the scan, for the same reason `check-memory-anchors.mjs`
-  // does it: this repo writes obituaries, and every guard explaining WHY a name was retired names
-  // that name. Scanning raw source would report the explanation as the defect.
-  return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
+  let out = '';
+  let i = 0;
+  // 'code' | 'line' | 'block' | "'" | '"' | '`'
+  let state = 'code';
+  while (i < src.length) {
+    const c = src[i];
+    const next = src[i + 1];
+    if (state === 'code') {
+      if (c === '/' && next === '/') {
+        state = 'line';
+        out += '  ';
+        i += 2;
+        continue;
+      }
+      if (c === '/' && next === '*') {
+        state = 'block';
+        out += '  ';
+        i += 2;
+        continue;
+      }
+      if (c === "'" || c === '"' || c === '`') state = c;
+      out += c;
+      i += 1;
+      continue;
+    }
+    if (state === 'line') {
+      if (c === '\n') {
+        state = 'code';
+        out += c;
+      } else {
+        out += ' ';
+      }
+      i += 1;
+      continue;
+    }
+    if (state === 'block') {
+      if (c === '*' && next === '/') {
+        state = 'code';
+        out += '  ';
+        i += 2;
+        continue;
+      }
+      // newlines survive so the line numbering below a block comment stays true
+      out += c === '\n' ? c : ' ';
+      i += 1;
+      continue;
+    }
+    // inside a string or template: copy verbatim, honouring the escape
+    if (c === '\\') {
+      out += c + (next ?? '');
+      i += 2;
+      continue;
+    }
+    if (c === state) state = 'code';
+    out += c;
+    i += 1;
+  }
+  return out;
 }
 
 function main() {

@@ -44,6 +44,35 @@ const RELEASE_MODEL_TEXT: Record<ReleaseReadiness["releaseModel"], string> = {
   publish: "publish — an act on a live target",
 };
 
+// cm:guard the branch pair is shown ONLY under `promote`. Under `publish` and `none` a project may still carry a live branch it was created with, and printing it is how the retired gate came to read "this project promotes" for one that promotes nothing.
+function branchPair(r: ReleaseReadiness): string {
+  return r.releaseModel === "promote" && r.liveBranch
+    ? `${r.baseBranch} → ${r.liveBranch}`
+    : `${r.baseBranch} (no branch moves)`;
+}
+
+// cm:guard THREE states, never two. "Otherwise the session closes it directly" was true of one
+// project in two and wrong about the third: a project that declares a model and has no live target
+// neither gates nor closes — core throws `ReleaseTargetUndeclaredError` and the API answers
+// `409 RELEASE_TARGET_UNDECLARED` (packages/core/src/release-batch/routes.ts). The panel said the
+// issue would close while its own banner below said the release was refused.
+function stateLine(r: ReleaseReadiness) {
+  if (r.hasReleaseGate)
+    return (
+      <>
+        This one declares both, so its issues wait at <b>Awaiting release</b>.
+      </>
+    );
+  if (r.targetUndeclared)
+    return (
+      <>
+        This one declares what releasing means and has <i>no</i> live target, so nothing can be
+        released and a release is refused by name until a live deploy binding is declared.
+      </>
+    );
+  return <>This one declares no release, so a session closes its issues directly.</>;
+}
+
 export function ReleaseSection({
   projectId,
   slug,
@@ -53,15 +82,16 @@ export function ReleaseSection({
 }) {
   const q = useReleaseReadiness(projectId);
 
-  const heading = (
+  const headingFor = (r?: ReleaseReadiness) => (
     <div>
       <h3 className="fg-label text-fg">Release</h3>
       <p className="fg-caption mt-0.5 text-muted">
         An issue reaches <b>Awaiting release</b> only when this project declares what releasing it
-        means <i>and</i> has a live target to send it to. Otherwise the session closes it directly.
+        means <i>and</i> has a live target to send it to. {r ? stateLine(r) : null}
       </p>
     </div>
   );
+  const heading = headingFor();
 
   if (q.isLoading) {
     return (
@@ -93,7 +123,7 @@ export function ReleaseSection({
 
   return (
     <div className="mt-6 border-t border-line pt-5">
-      {heading}
+      {headingFor(r)}
 
       <dl className="mt-3 grid gap-x-6 gap-y-2 sm:grid-cols-2">
         <div>
@@ -106,14 +136,7 @@ export function ReleaseSection({
         </div>
         <div>
           <dt className="fg-caption text-subtle">Branches</dt>
-          {/* cm:guard the branch pair is shown ONLY under `promote`. Under `publish` and `none`
-              a project may still carry a live branch it was created with, and printing it is how
-              the retired gate came to read "this project promotes" for one that promotes nothing. */}
-          <dd className="fg-body-sm font-mono text-fg">
-            {r.releaseModel === "promote" && r.liveBranch
-              ? `${r.baseBranch} → ${r.liveBranch}`
-              : `${r.baseBranch} (no branch moves)`}
-          </dd>
+          <dd className="fg-body-sm font-mono text-fg">{branchPair(r)}</dd>
         </div>
         <div>
           <dt className="fg-caption text-subtle">Live targets</dt>

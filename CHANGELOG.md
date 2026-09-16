@@ -5299,9 +5299,13 @@
   to is now told so by name, instead of being handed whichever connection happened to be created
   first. Where more than one live destination is declared, the release step is given all of them
   rather than one picked for it, and two that disagree about which machine should run the release
-  stop the release rather than sending it somewhere arbitrary. Two projects that should have had a
-  release step and did not now have one. No connection was deleted in the change, and no branch
-  anyone had recorded was discarded. (ISS-1046)
+  stop the release rather than sending it somewhere arbitrary — on the screen that offers the job to
+  a machine as well as in the release itself, because those are asked at different moments. A
+  project that declares two live destinations is refused by name rather than half-released: a run
+  records one check of one address, and closing the whole list on it would claim a delivery nobody
+  looked at. No project has two today. Two projects that should have had a release step and did not
+  now have one. No connection was deleted in the change, and no branch anyone had recorded was
+  discarded. (ISS-1046)
 
 - **The watchdog that spots a stalled job stops reading every event the deployment has ever
   recorded.** Twice a minute, and again every five minutes, Forge asks a small question: which of

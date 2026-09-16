@@ -51,6 +51,18 @@ export function checkRoleStagesPairing(
     return;
   }
   if (value.role !== 'deploy') return;
+  // cm:guard a duplicate is REFUSED, never de-duplicated. `stages` is a set, and a caller who sent
+  // `["live","live"]` either believes a stage can be declared twice or built the list from something
+  // that repeated — silently collapsing it to `["live"]` answers 201 to both and tells neither which
+  // one happened. `integration_bindings_role_stages_chk` holds the same rule in Postgres.
+  if (value.stages && new Set(value.stages).size !== value.stages.length) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['stages'],
+      message: `\`stages\` is a set, so each stage appears at most once — \`${JSON.stringify(value.stages)}\` names one twice. Send \`["preview"]\`, \`["live"]\`, or \`["preview","live"]\`.`,
+    });
+    return;
+  }
   if (!value.stages || value.stages.length === 0) {
     ctx.addIssue({
       code: 'custom',

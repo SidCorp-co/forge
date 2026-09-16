@@ -333,6 +333,51 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     expect(res.status).toBe(403);
     expect(createBinding).not.toHaveBeenCalled();
   });
+
+  // cm:guard the capability check is the SERVER's, not only the screen's. The web form hides
+  // "Deploy target" for a provider with no deploy adapter, but a hidden control is not a rule:
+  // this door takes a JSON body from anything holding a token, and a `deploy` binding on a
+  // provider Forge cannot deploy to is a release target that fails at deploy time with the merge
+  // already pushed.
+  it('400 — refuses `role: deploy` on a provider with no deploy adapter, by name', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findConnectionById.mockResolvedValueOnce(ownedConnection({ provider: 'sentry' }));
+
+    const res = await bindReq(token, CONN_ID, {
+      projectId: PROJECT_ID,
+      role: 'deploy',
+      stages: ['live'],
+    });
+    expect(res.status).toBe(400);
+    const body = JSON.stringify(await res.json());
+    expect(body).toContain('Forge cannot deploy to');
+    expect(body).toContain('sentry');
+    // The refusal lists what CAN, so the caller is not left guessing.
+    expect(body).toContain('coolify');
+    expect(createBinding).not.toHaveBeenCalled();
+  });
+
+  it('201 — accepts that same provider as a `service` binding', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findConnectionById.mockResolvedValueOnce(ownedConnection({ provider: 'sentry' }));
+    findActiveServiceBinding.mockResolvedValueOnce(null);
+    createBinding.mockResolvedValueOnce({
+      id: 'bind-new',
+      projectId: PROJECT_ID,
+      provider: 'sentry',
+      role: 'service',
+      stages: [],
+      config: {},
+      active: true,
+      createdAt: new Date(),
+      updatedAt: new Date(),
+    });
+
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'service' });
+    expect(res.status).toBe(201);
+  });
 });
 
 describe('GET /api/integration-connections/:id/bindings — bindings for a connection', () => {

@@ -10,7 +10,7 @@
 // state prompt, because it is what stops a claim being made for work that did
 // not happen. The PROCEDURE is per project and lives where per-project text
 // already lives — `projectFacts.release-procedure` for the repo-side ritual,
-// and the production binding's `instructions` for the channel-side one.
+// and the live deploy binding's `instructions` for the channel-side one.
 
 import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';

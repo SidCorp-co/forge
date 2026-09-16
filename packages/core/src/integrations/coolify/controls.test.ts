@@ -59,10 +59,15 @@ const { CoolifyCommandError } = await import('./commands.js');
 
 const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 
-function integration(over: { environment?: string; targets?: unknown[] } = {}) {
+// cm:guard the fixture declares `role`/`stages`, which is what `controls.ts` actually reads.
+// It carried `environment` until ISS-1046 renamed the field out from under it, and because the
+// confirmation gate is mocked unconditionally, both protected-action tests went on passing while
+// handing that gate `undefined` — a green that was evidence for nothing.
+function integration(over: { stages?: string[]; targets?: unknown[] } = {}) {
   return {
     id: 'binding-1',
-    environment: over.environment ?? 'staging',
+    role: 'deploy',
+    stages: over.stages ?? ['preview'],
     config: {
       baseUrl: 'https://coolify.example',
       targets: over.targets ?? [{ id: 't1', label: 'Backend', resourceUuid: 'app-1' }],
@@ -122,14 +127,16 @@ describe('runCoolifyCancel', () => {
     );
   });
 
-  it('parks a prod cancel for a human instead of dispatching it', async () => {
-    activeCoolifyIntegrations.mockResolvedValue([integration({ environment: 'prod' })]);
+  it('parks a live cancel for a human instead of dispatching it', async () => {
+    activeCoolifyIntegrations.mockResolvedValue([integration({ stages: ['live'] })]);
     liveActionNeedsHumanConfirm.mockResolvedValue(true);
 
     const out = await runCoolifyCancel({ projectId: PROJECT_ID, deploymentUuid: 'dep-7' });
 
     expect(out).toMatchObject({ performed: false, pendingHumanConfirm: true });
     expect(client.cancelDeployment).not.toHaveBeenCalled();
+    // The gate is asked about THIS binding's stages, not about nothing.
+    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live']);
   });
 });
 
@@ -200,8 +207,8 @@ describe('runCoolifyRollback', () => {
     expect(enqueueCoolifyConfirm).not.toHaveBeenCalled();
   });
 
-  it('parks a prod rollback for a human before it reads anything', async () => {
-    activeCoolifyIntegrations.mockResolvedValue([integration({ environment: 'prod' })]);
+  it('parks a live rollback for a human before it reads anything', async () => {
+    activeCoolifyIntegrations.mockResolvedValue([integration({ stages: ['live'] })]);
     liveActionNeedsHumanConfirm.mockResolvedValue(true);
 
     const out = await runCoolifyRollback({ projectId: PROJECT_ID, commit: 'sha-a' });
@@ -209,6 +216,7 @@ describe('runCoolifyRollback', () => {
     expect(out).toMatchObject({ performed: false, pendingHumanConfirm: true });
     expect(client.listRollbackImages).not.toHaveBeenCalled();
     expect(client.rollbackApplication).not.toHaveBeenCalled();
+    expect(liveActionNeedsHumanConfirm).toHaveBeenCalledWith(PROJECT_ID, ['live']);
   });
 
   it('refuses to pick a target for the caller when the binding has several', async () => {

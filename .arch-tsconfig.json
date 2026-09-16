@@ -1,5 +1,5 @@
 {
-  "$comment": "Resolution map for `arch check` ONLY — nothing compiles against this. It exists so dependency-cruiser can follow web-v2's `@/*` alias; without it 841 of the repo's import edges are unresolvable, and an unresolvable edge is DROPPED, so every contract over that package passes on an empty graph. Declared by `.arch.json` -> tsConfig. It sits at the repo root because tsc resolves `include` against the tsconfig's own directory, so a copy under .forge/ finds no inputs. Keep `paths` in sync with packages/web-v2/tsconfig.json and with packages/contracts/package.json#exports \u2014 `@forge/contracts` is a first-party package whose subpath exports dependency-cruiser does not follow, and its 35 edges were being dropped in the same silence.",
+  "$comment": "Resolution map for `arch check` ONLY \u2014 nothing compiles against this. It exists so dependency-cruiser can follow web-v2's `@/*` alias; without it 841 of the repo's import edges are unresolvable, and an unresolvable edge is DROPPED, so every contract over that package passes on an empty graph. Declared by `.arch.json` -> tsConfig. It sits at the repo root because tsc resolves `include` against the tsconfig's own directory, so a copy under .forge/ finds no inputs. `hono/*` is here for the same reason and NOT for compilation: dependency-cruiser does not follow a node_modules package's own subpath exports either, and `hono/http-exception` alone accounted for 167 dropped edges. The target is the published `dist`, which is excluded from the graph, so these resolve to nothing mapped \u2014 which is the correct answer, and different from not resolving at all. Keep `paths` in sync with packages/web-v2/tsconfig.json and with packages/contracts/package.json#exports \u2014 `@forge/contracts` is a first-party package whose subpath exports dependency-cruiser does not follow, and its 35 edges were being dropped in the same silence.",
   "compilerOptions": {
     "module": "esnext",
     "moduleResolution": "bundler",
@@ -7,10 +7,21 @@
     "noEmit": true,
     "baseUrl": ".",
     "paths": {
-      "@/*": ["packages/web-v2/src/*"],
-      "@forge/contracts": ["packages/contracts/src/index.ts"],
-      "@forge/observability": ["packages/observability/src/index.ts"],
-      "@forge/contracts/*": ["packages/contracts/src/*"]
+      "@/*": [
+        "packages/web-v2/src/*"
+      ],
+      "@forge/contracts": [
+        "packages/contracts/src/index.ts"
+      ],
+      "@forge/observability": [
+        "packages/observability/src/index.ts"
+      ],
+      "@forge/contracts/*": [
+        "packages/contracts/src/*"
+      ],
+      "hono/*": [
+        "node_modules/hono/dist/*"
+      ]
     }
   },
   "include": [

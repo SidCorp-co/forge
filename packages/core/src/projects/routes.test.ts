@@ -945,7 +945,9 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: 'develop', liveBranch: 'release' }])
+      .mockResolvedValueOnce([
+        { baseBranch: 'develop', liveBranch: 'release', releaseModel: 'promote' },
+      ])
       .mockResolvedValueOnce([]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -959,7 +961,9 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: 'develop', liveBranch: 'release' }])
+      .mockResolvedValueOnce([
+        { baseBranch: 'develop', liveBranch: 'release', releaseModel: 'promote' },
+      ])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -981,7 +985,9 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: 'develop', liveBranch: 'release' }])
+      .mockResolvedValueOnce([
+        { baseBranch: 'develop', liveBranch: 'release', releaseModel: 'promote' },
+      ])
       .mockResolvedValueOnce([
         {
           id: IID,
@@ -1166,5 +1172,123 @@ describe('previewDeployPatchSchema · notes (ISS-767)', () => {
     const r = previewDeployPatchSchema.parse({ notes: 'x' });
     expect(r.testingUrls).toBeUndefined();
     expect(r.testCredentials).toBeUndefined();
+  });
+});
+
+/**
+ * ISS-1046 — `projects.live_branch` is readable only under `releaseModel: 'promote'`.
+ *
+ * 25 of the 32 fleet projects carry a live branch nothing promotes to: the migration KEEPS
+ * those values rather than discarding a real declaration, so every reader has to ask the
+ * model. `readableLiveBranch` is that one rule, and these three doors are the REST surface
+ * it was missed on — each one projected the raw column, and none of them returned the model
+ * a caller would need to interpret it.
+ */
+describe('the REST doors read `liveBranch` through the release model', () => {
+  const PID = '11111111-1111-4111-8111-111111111111';
+  const IID = '22222222-2222-4222-8222-222222222222';
+
+  async function detail(row: Record<string, unknown>) {
+    const token = await signUserToken('uuid-user');
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]).mockResolvedValueOnce([
+      {
+        id: 'p1',
+        slug: 'p-one',
+        name: 'P One',
+        orgId: ORG_ID,
+        createdBy: 'uuid-user',
+        baseBranch: 'main',
+        ...row,
+      },
+    ]);
+    selectWhere
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockReturnValueOnce({ limit: selectLimit })
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+    const res = await req(`/${PID}`, { token });
+    expect(res.status).toBe(200);
+    return (await res.json()) as {
+      liveBranch: string | null;
+      releaseModel: string | null;
+      releaseStrategy: string | null;
+    };
+  }
+
+  it('GET returns the live branch under `promote`, with both declared axes beside it', async () => {
+    const body = await detail({
+      liveBranch: 'production',
+      releaseModel: 'promote',
+      releaseStrategy: 'merge-branch',
+    });
+    expect(body.liveBranch).toBe('production');
+    expect(body.releaseModel).toBe('promote');
+    expect(body.releaseStrategy).toBe('merge-branch');
+  });
+
+  it('GET withholds a stale live branch under `publish`, and names the model instead', async () => {
+    const body = await detail({
+      liveBranch: 'production',
+      releaseModel: 'publish',
+      releaseStrategy: null,
+    });
+    expect(body.liveBranch).toBeNull();
+    // The model travels with it: "promotes to no branch" and "does not promote" are
+    // different answers, and before ISS-1046 both came back as the stale branch.
+    expect(body.releaseModel).toBe('publish');
+  });
+
+  it('GET withholds a stale live branch under `none`', async () => {
+    const body = await detail({ liveBranch: 'production', releaseModel: 'none' });
+    expect(body.liveBranch).toBeNull();
+    expect(body.releaseModel).toBe('none');
+  });
+
+  it('PATCH does not echo back a live branch the model it just set cannot read', async () => {
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    updateReturning.mockResolvedValueOnce([
+      patchedRow({
+        baseBranch: 'main',
+        liveBranch: 'production',
+        releaseModel: 'none',
+        releaseStrategy: null,
+      }),
+    ]);
+    selectLimit.mockResolvedValueOnce([
+      { releaseModel: 'promote', liveBranch: 'production', releaseStrategy: 'merge-branch' },
+    ]);
+
+    const res = await req(`/${PID}`, {
+      method: 'PATCH',
+      body: JSON.stringify({ releaseModel: 'none' }),
+      token,
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { liveBranch: string | null; releaseModel: string };
+    // The ROW keeps the value — the migration does not discard a real declaration — but the
+    // response does not carry it, or the next PATCH writes it straight back.
+    expect(body.liveBranch).toBeNull();
+    expect(body.releaseModel).toBe('none');
+  });
+
+  it('branch-config resolves a stale live branch to null under `publish`', async () => {
+    const token = await signUserToken('uuid-user');
+    projectAccess.mockResolvedValueOnce(access('member'));
+    selectLimit
+      .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+      .mockResolvedValueOnce([
+        { baseBranch: 'develop', liveBranch: 'release', releaseModel: 'publish' },
+      ])
+      .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
+
+    const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { baseBranch: string; liveBranch: string | null };
+    expect(body.baseBranch).toBe('develop');
+    expect(body.liveBranch).toBeNull();
   });
 });

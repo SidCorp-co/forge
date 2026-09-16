@@ -2,7 +2,7 @@
 // Pattern: buildSmokeCanaryPrompt (skills/smoke-verify.ts:429).
 // Untrusted issue text is wrapped via markUntrusted (same as every state prompt).
 
-import type { ReleaseModel } from '../db/schema.js';
+import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
 import { markUntrusted } from '../prompt/sanitize.js';
 import { defaultReleaseProcedure, RELEASE_BATCH_SKILL, type ReleasePlan } from './plan.js';
 
@@ -18,6 +18,8 @@ interface BuildReleaseBatchPromptArgs {
   baseBranch: string;
   liveBranch: string;
   releaseModel: ReleaseModel;
+  /** Non-null exactly under `promote`. The default procedure refuses what it has no default for. */
+  releaseStrategy: ReleaseStrategy | null;
   issues: IssueSummary[];
   plan: ReleasePlan;
 }
@@ -27,7 +29,8 @@ interface BuildReleaseBatchPromptArgs {
 // publishes a theme), so naming one states a promotion nobody makes. The deploy channels are a LIST
 // rather than one line — core returns the whole live set and never picks (ISS-1046).
 export function buildReleaseBatchPrompt(args: BuildReleaseBatchPromptArgs): string {
-  const { runId, projectId, baseBranch, liveBranch, releaseModel, issues, plan } = args;
+  const { runId, projectId, baseBranch, liveBranch, releaseModel, releaseStrategy, issues, plan } =
+    args;
   const roster = issues
     .map((i) => `- ${i.displayId} — ${markUntrusted(i.title, { source: 'issue.title' })}`)
     .join('\n');
@@ -49,7 +52,7 @@ ${channelLines}
 
 ### Issues in this batch (${issues.length})
 ${roster}
-${renderMethod()}${renderProcedure(plan, releaseModel)}
+${renderMethod()}${renderProcedure(plan, releaseModel, releaseStrategy)}
 Start by reading the batch context: \`forge-runner api projects/${projectId}/release-batches/${runId}\`.
 `;
 }
@@ -81,11 +84,17 @@ If the skill does not load, announce THAT — do not improvise a release out of 
  * stranger.
  */
 // cm:guard the heading must say WHICH procedure the agent got. "Forge default" vs "this project's" is the difference between a step it may adapt and a step an operator wrote on purpose, and the agent has no other way to tell.
-function renderProcedure(plan: ReleasePlan, releaseModel: ReleaseModel): string {
+function renderProcedure(
+  plan: ReleasePlan,
+  releaseModel: ReleaseModel,
+  releaseStrategy: ReleaseStrategy | null,
+): string {
   const blocks: string[] = [
     plan.procedure
       ? `### This project's release procedure\n${plan.procedure}`
-      : `### Release procedure (Forge default — this project declared none)\n${defaultReleaseProcedure(releaseModel)}`,
+      : `### Release procedure (Forge default — this project declared none)\n${defaultReleaseProcedure(
+          { releaseModel, releaseStrategy, channels: plan.channels },
+        )}`,
   ];
   // cm:guard ONE block per channel, each naming its own binding. Folding the set into one block is
   // how an agent handed two endpoints reads one set of instructions and deploys half the project.

@@ -18,6 +18,7 @@ const BASE = {
   baseBranch: 'dev',
   liveBranch: 'master',
   releaseModel: 'promote' as const,
+  releaseStrategy: 'merge-branch' as const,
   issues: [{ id: 'i1', displayId: 'ISS-9', title: 'checkout 500s' }],
 };
 
@@ -103,7 +104,13 @@ describe('buildReleaseBatchPrompt', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
     expect(out).toContain('Forge default');
-    expect(out).toContain(defaultReleaseProcedure('promote'));
+    expect(out).toContain(
+      defaultReleaseProcedure({
+        releaseModel: 'promote',
+        releaseStrategy: 'merge-branch',
+        channels: [],
+      }),
+    );
   });
 
   it("prefers the project's own procedure and labels it as theirs", () => {
@@ -114,7 +121,13 @@ describe('buildReleaseBatchPrompt', () => {
 
     expect(out).toContain("This project's release procedure");
     expect(out).toContain('run ./release.sh — no squash, then tag');
-    expect(out).not.toContain(defaultReleaseProcedure('promote'));
+    expect(out).not.toContain(
+      defaultReleaseProcedure({
+        releaseModel: 'promote',
+        releaseStrategy: 'merge-branch',
+        channels: [],
+      }),
+    );
   });
 
   it('adds the channel notes under the name of the channel they belong to', () => {

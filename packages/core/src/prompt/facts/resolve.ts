@@ -200,7 +200,7 @@ function buildLadder(states: Record<string, { enabled?: boolean } | undefined>):
  * security-safe pointer for `test-creds`; everything else reads the author's
  * `agentConfig.projectFacts` map. Pure.
  */
-function makeProjectResolver(src: {
+export function makeProjectResolver(src: {
   baseBranch: string | null;
   liveBranch: string | null;
   releaseModel: ReleaseModel;

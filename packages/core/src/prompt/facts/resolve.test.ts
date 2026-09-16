@@ -17,7 +17,9 @@ vi.mock('../../logger.js', () => ({
   logger: { warn: (...a: unknown[]) => warnSpy(...a) },
 }));
 
-const { renderStageFactsText, renderIntegrations } = await import('./resolve.js');
+const { renderStageFactsText, renderIntegrations, makeProjectResolver } = await import(
+  './resolve.js'
+);
 type Inputs = Parameters<typeof renderStageFactsText>[0];
 
 const GUIDE_TEXT = 'pnpm build && pnpm test -- THE FULL GUIDE BODY';
@@ -399,5 +401,72 @@ describe('renderStageFactsText — module attribution is gated on the taxonomy (
   it('stays out of pm jobs, which have no issue to attribute', () => {
     const text = renderStageFactsText(makeInputs({ modules: MODULES }), 'p-1', 'pm');
     expect(text).not.toContain("### The issue's primary module");
+  });
+});
+
+/**
+ * `{{project:<key>}}` — what a skill body gets when it asks for a branch.
+ *
+ * ISS-1046 retired `{{project:production-branch}}` and introduced `{{project:live-branch}}`,
+ * which resolves only where the project declares it promotes. Both halves matter and neither
+ * was asserted anywhere: the resolver was built privately inside the DB-backed loader, so the
+ * only way to reach it was through a database.
+ */
+describe('makeProjectResolver — the branch a skill body is handed', () => {
+  function resolver(over: Partial<Parameters<typeof makeProjectResolver>[0]> = {}) {
+    return makeProjectResolver({
+      baseBranch: 'main',
+      liveBranch: 'production',
+      releaseModel: 'promote',
+      repoPath: '/repo',
+      testingUrls: [],
+      testNotes: null,
+      integrations: [],
+      projectFacts: {},
+      ...over,
+    });
+  }
+
+  it('resolves `live-branch` under `promote`', () => {
+    expect(resolver()('live-branch')).toBe('production');
+  });
+
+  // cm:guard the row KEEPS its branch under the other two models — the migration does not discard
+  // a real declaration — so the resolver is what stops a skill body stating a release target for a
+  // project that declares it has no branch-based release.
+  it.each(['publish', 'none'] as const)('resolves `live-branch` to nothing under `%s`', (m) => {
+    expect(resolver({ releaseModel: m })('live-branch')).toBeUndefined();
+  });
+
+  it('resolves `live-branch` to nothing under `promote` when there is no branch', () => {
+    expect(resolver({ liveBranch: null })('live-branch')).toBeUndefined();
+  });
+
+  // cm:guard a REFUSAL rather than `undefined`. An unresolved `{{project:…}}` renders as empty,
+  // so answering `undefined` here would silently delete a sentence from the prompt of every
+  // project whose skill body still uses the retired key — and no gate in THIS repo can see a
+  // skill body in another one.
+  it('refuses the retired `production-branch` by name instead of resolving to nothing', () => {
+    const out = resolver()('production-branch');
+    expect(out).toBeDefined();
+    expect(out).toContain('production-branch');
+    expect(out).toContain('was retired');
+    expect(out).toContain('{{project:live-branch}}');
+    // It names the condition the replacement resolves under, so the reader can tell whether
+    // their project will get a value at all.
+    expect(out).toContain('promote');
+  });
+
+  it('refuses it under every model, including a project that does promote', () => {
+    for (const m of ['promote', 'publish', 'none'] as const) {
+      expect(resolver({ releaseModel: m })('production-branch'), m).toContain('was retired');
+    }
+  });
+
+  it('leaves an author-defined fact alone', () => {
+    expect(resolver({ projectFacts: { 'deploy-notes': 'ssh first' } })('deploy-notes')).toBe(
+      'ssh first',
+    );
+    expect(resolver()('base-branch')).toBe('main');
   });
 });

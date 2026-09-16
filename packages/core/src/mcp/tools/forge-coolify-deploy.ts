@@ -95,8 +95,11 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs | ' +
     'runtime-logs | cancel | rollback-images | rollback | applications | targets. ' +
-    'MODEL: one integration = one project+STAGE binding (preview vs live are SEPARATE ' +
-    'integrations). Each integration deploys ONE OR MORE targets[] — each target is its own Coolify ' +
+    'MODEL: one integration = one project+ROLE binding. A `deploy` binding declares the stages it ' +
+    'serves — `["preview"]`, `["live"]`, or `["preview","live"]` for one endpoint that serves both ' +
+    '(an epodsystem store, whose preview is the draft theme and whose live is the published one). ' +
+    'Two Coolify applications is a configuration, not a rule: do not assume preview and live are ' +
+    'separate bindings, read the binding `stages`. Each integration deploys ONE OR MORE targets[] — each target is its own Coolify ' +
     'application (e.g. a split backend + frontend, or a worker), deployed TOGETHER. A single deploy ' +
     'FANS OUT to every target of the integration (one Coolify build per target); the pipeline run is ' +
     'marked done only when EVERY target webhook reports success, and FAILS on the first target ' +

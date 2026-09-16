@@ -79,7 +79,12 @@ const BINDING_ROLE_CHK = sql`role IN ('deploy', 'service')`;
 
 // cm:guard `cardinality`, NEVER `array_length` — `array_length('{}', 1)` is NULL, so that form
 // evaluates NULL on the empty array and PASSES the deploy row it exists to refuse.
-const ROLE_STAGES_CHK = sql`(role = 'service' AND cardinality(stages) = 0) OR (role = 'deploy' AND cardinality(stages) >= 1 AND stages <@ ARRAY['preview', 'live'])`;
+// cm:guard `stages` is a SET. `<@` alone admits `{live,live}`, `{preview,live,preview}` and a
+// nested array, because containment asks only that every element belong to the vocabulary — so the
+// cardinality bound, `array_ndims` and the pairwise inequality are each refusing a shape the
+// containment test passes. `stages[1] <> stages[2]` is exact BECAUSE cardinality is capped at 2;
+// widen the vocabulary and this line has to become a real distinctness test.
+const ROLE_STAGES_CHK = sql`(role = 'service' AND cardinality(stages) = 0) OR (role = 'deploy' AND array_ndims(stages) = 1 AND cardinality(stages) BETWEEN 1 AND 2 AND stages <@ ARRAY['preview', 'live'] AND (cardinality(stages) = 1 OR stages[1] <> stages[2]))`;
 
 /** The `service` half of `role`, as the partial-index predicate `integration_bindings_service_uq` is
  *  built on — the same words as `BINDING_ROLE_CHK`'s second member, and they must stay the same. */

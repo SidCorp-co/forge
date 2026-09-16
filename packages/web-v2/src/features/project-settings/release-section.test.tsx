@@ -66,6 +66,42 @@ describe("ReleaseSection", () => {
     expect(screen.getByRole("button", { name: /retry/i })).toBeInTheDocument();
   });
 
+  // cm:guard the heading must distinguish all THREE states. It used to end "Otherwise the session
+  // closes it directly", which is right for `none` and wrong for a declared model with no live
+  // target: that one neither gates nor closes — core answers `409 RELEASE_TARGET_UNDECLARED`. The
+  // panel was promising a close on the same screen its own banner reported a refusal.
+  it("says the session closes issues directly only when the project declares no release", () => {
+    renderWith({ hasReleaseGate: false, releaseModel: "none" });
+
+    expect(screen.getByText(/declares no release, so a session closes its issues directly/i)).toBeInTheDocument();
+  });
+
+  it("says a declared model with no live target is refused, never closed directly", () => {
+    const { container } = renderWith({
+      hasReleaseGate: false,
+      releaseModel: "publish",
+      targetUndeclared: true,
+      gaps: ["release-target"],
+    });
+
+    expect(screen.getByText(/refused by name until a live deploy binding is declared/i)).toBeInTheDocument();
+    const onScreen = (container.textContent ?? "").replace(/\s+/g, " ");
+    expect(onScreen).not.toMatch(/closes its issues directly/i);
+  });
+
+  it("says issues wait at the gate when both halves are declared", () => {
+    const { container } = renderWith({
+      hasReleaseGate: true,
+      releaseModel: "promote",
+      liveBranch: "production",
+      providers: ["coolify"],
+    });
+
+    expect(screen.getByText(/declares both, so its issues wait at/i)).toBeInTheDocument();
+    const onScreen = (container.textContent ?? "").replace(/\s+/g, " ");
+    expect(onScreen).not.toMatch(/closes its issues directly/i);
+  });
+
   // cm:guard the AND is the product rule and the copy has to carry it: an operator on a trunk repo with a sentry binding has "an integration" and no release, and a panel that says only "no production" sends them to add a second binding that changes nothing.
   it("says which half is missing on a trunk project that has a binding", () => {
     renderWith({ hasReleaseGate: false, releaseModel: "none", providers: ["sentry"] });

@@ -39,13 +39,18 @@ export interface ProjectFactsPatch {
 
 /** Reserved (derived) keys the server ignores — surfaced for inline validation
  *  so the UI rejects them before a round-trip. Mirrors
- *  `RESERVED_PROJECT_FACT_KEYS` in core `projects/project-facts.ts`. */
+ *  `project-facts.ts:RESERVED_PROJECT_FACT_KEYS` in core, member for member and
+ *  in the same order; core's `mergeProjectFacts` drops a reserved key SILENTLY,
+ *  so a key missing here is a fact the operator types, saves, and never sees
+ *  again. Held by a parity test against core's list. */
 export const RESERVED_PROJECT_FACT_KEYS = [
 	"base-branch",
+	"live-branch",
 	"production-branch",
 	"repo-path",
 	"test-urls",
 	"test-creds",
+	"test-notes",
 	"integrations",
 ] as const;
 

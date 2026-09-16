@@ -44,7 +44,7 @@ import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
-import { releaseModelGap, releaseModelPatchFields } from './release-model.js';
+import { readableLiveBranch, releaseModelGap, releaseModelPatchFields } from './release-model.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
 
@@ -170,6 +170,8 @@ const PATCHED_PROJECT = {
   workspaceSetup: projects.workspaceSetup,
   baseBranch: projects.baseBranch,
   liveBranch: projects.liveBranch,
+  releaseModel: projects.releaseModel,
+  releaseStrategy: projects.releaseStrategy,
   defaultDeviceId: projects.defaultDeviceId,
   agentConfig: projects.agentConfig,
   previewDeploy: projects.previewDeploy,
@@ -333,6 +335,8 @@ projectRoutes.get(
         workspaceSetup: projects.workspaceSetup,
         baseBranch: projects.baseBranch,
         liveBranch: projects.liveBranch,
+        releaseModel: projects.releaseModel,
+        releaseStrategy: projects.releaseStrategy,
         defaultDeviceId: projects.defaultDeviceId,
         agentConfig: projects.agentConfig,
         previewDeploy: projects.previewDeploy,
@@ -377,6 +381,10 @@ projectRoutes.get(
     // and the key is execution-grade (MCP pairing / widget), so it's withheld.
     return c.json({
       ...project,
+      // cm:guard the column is returned through the ONE rule that reads it. `releaseModel` travels
+      // beside it so a caller can tell "this project promotes to no branch" from "this project does
+      // not promote"; before ISS-1046 both answered the stale branch and neither said which.
+      liveBranch: readableLiveBranch(project),
       apiKey: access.role === 'viewer' ? null : project.apiKey,
       role: access.role,
       orgRole: access.orgRole,
@@ -518,7 +526,9 @@ projectRoutes.patch(
     });
     if (!updated) throw notFound();
 
-    return c.json(updated);
+    // cm:guard same rule on the write door as on the read one: a PATCH that set `releaseModel: 'none'`
+    // must not echo back the live branch the row still carries, or the caller writes it straight back.
+    return c.json({ ...updated, liveBranch: readableLiveBranch(updated) });
   },
 );
 
@@ -752,15 +762,21 @@ projectRoutes.get(
     const access = await loadProjectAccess(id, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const [project] = await db
+    const [row] = await db
       .select({
         baseBranch: projects.baseBranch,
         liveBranch: projects.liveBranch,
+        releaseModel: projects.releaseModel,
       })
       .from(projects)
       .where(eq(projects.id, id))
       .limit(1);
-    if (!project) throw notFound();
+    if (!row) throw notFound();
+    // cm:guard the branch resolver is handed the READABLE live branch, never the raw column. 25 of
+    // 32 fleet projects carry a live branch nothing promotes to, and this endpoint is what the web
+    // branch picker reads: handing one of those over is how a `publish` project comes to be shown,
+    // and acted on, as a branch-based promote (ISS-1046).
+    const project = { baseBranch: row.baseBranch, liveBranch: readableLiveBranch(row) };
 
     const [issueRow] = await db
       .select({

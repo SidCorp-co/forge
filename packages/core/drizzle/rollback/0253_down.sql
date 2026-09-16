@@ -9,7 +9,12 @@
 --
 --   docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' <core-container>
 --   docker run --rm --network <that-network> -i postgres:16 \
---     psql "$DATABASE_URL" -v ON_ERROR_STOP=1 -f 0253_down.sql
+--     psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
+--     < packages/core/drizzle/rollback/0253_down.sql
+--
+-- The file is REDIRECTED INTO the container's stdin. `-f 0253_down.sql` would make psql
+-- look for the file INSIDE the disposable container, which has no checkout mounted, so
+-- recovery would stop before executing a single statement.
 --   DELETE FROM drizzle.__drizzle_migrations WHERE hash = '<0253 hash>';
 --
 -- Then start the previous image.

@@ -164,6 +164,50 @@ describe('0253 forward — a row it cannot map stops the deploy', () => {
       await db.drop();
     }
   });
+
+  // cm:guard the coverage checks ask "is every row declared". They cannot ask "is each row
+  // declared as ITSELF": the VALUES lists were transcribed by hand, and a line pasted against
+  // the wrong binding id would backfill another row's role and then have the rollback restore
+  // another row's environment, with nothing downstream able to tell. `provider`, `environment`
+  // and the project slug are the database's OWN reading of the same rows, which is what makes
+  // this an independent check rather than a second copy of the same claim.
+  it('aborts when a declared binding does not match the row its id points at', async () => {
+    const { db } = await fleet();
+    try {
+      const declared = declaredBindings()[0];
+      if (!declared) throw new Error('no declared bindings to disagree with');
+      // The row is real and covered; only its environment differs from what was transcribed.
+      const other = declared.oldEnvironment === 'prod' ? 'staging' : 'prod';
+      await db.sql.unsafe(`UPDATE integration_bindings SET environment = $1 WHERE id = $2`, [
+        other,
+        declared.id,
+      ]);
+
+      await expect(runForward(db.sql)).rejects.toThrow(
+        new RegExp(`${declared.id}.*transcribed against the wrong row`, 's'),
+      );
+    } finally {
+      await db.drop();
+    }
+  });
+
+  it('aborts when a declared project does not match the row its id points at', async () => {
+    const { db } = await fleet();
+    try {
+      const declared = declaredProjects()[0];
+      if (!declared) throw new Error('no declared projects to disagree with');
+      await db.sql.unsafe(`UPDATE projects SET slug = $1 WHERE id = $2`, [
+        'renamed-after-the-measurement',
+        declared.id,
+      ]);
+
+      await expect(runForward(db.sql)).rejects.toThrow(
+        new RegExp(`${declared.id}.*renamed-after-the-measurement`, 's'),
+      );
+    } finally {
+      await db.drop();
+    }
+  });
 });
 
 describe('0253 forward — the declaration reaches every row', () => {

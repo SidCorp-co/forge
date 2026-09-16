@@ -62,7 +62,7 @@ describe('the agent release channel', () => {
   });
 });
 
-describe('the release channel on a coolify production binding', () => {
+describe('the release channel on a coolify live deploy binding', () => {
   // cm:guard this is the PATCH that returned 200 on sidpeak's prod binding on 2026-09-03 and changed nothing: zod drops unknown keys, so a schema without the field turns "declare the release runner" into a silent no-op the roster then reports as undeclared
   it('keeps releaseRunnerLabel, verify and rollback through a partial PATCH, on the binding tier', () => {
     const patch = {
@@ -128,7 +128,7 @@ describe('the rollback declaration', () => {
   });
 });
 
-describe('the release channel on every provider that can be the production binding', () => {
+describe('the release channel on every provider that can carry a live deploy binding', () => {
   // cm:guard `resolveReleaseChannel` reads the oldest ACTIVE prod binding whatever its provider, so the three keys are generic and every schema owes them. Pixelight's epodsystem binding is the case that proved it: base===production hid the gap until 2026-09-04, and behind it the label PATCH was a 200 that stripped the field, leaving a storefront project no way to declare a release runner at all.
   const patch = {
     releaseRunnerLabel: 'release',

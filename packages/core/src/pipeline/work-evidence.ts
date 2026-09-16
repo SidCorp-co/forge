@@ -144,8 +144,10 @@ export async function hasChildIssues(
 export const NO_WORK_EVIDENCE_DETAIL =
   'no branch, commit or code handoff is recorded for this issue — record the branch in ' +
   'sessionContext.branch or sessionContext.worklog.branch, or write the implementation step ' +
-  'handoff with commitSha/filesModified, before advancing. A branch equal to the project base or ' +
-  'production branch is not evidence: it names where work lands, not that any happened';
+  'handoff with commitSha/filesModified, before advancing. A branch equal to the project base ' +
+  'branch is not evidence, and neither is the live branch on a project whose releaseModel is ' +
+  '`promote`: both name where work lands, not that any happened. On a `none` or `publish` ' +
+  'project the live branch is not read at all, so a branch of that name counts like any other';
 
 // cm:guard fails OPEN on any internal error — a broken evidence check must never freeze a legitimate advance
 export async function findMissingWorkEvidence(

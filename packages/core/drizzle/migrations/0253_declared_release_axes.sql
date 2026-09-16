@@ -185,6 +185,60 @@ BEGIN
   END IF;
 END $$;--> statement-breakpoint
 
+-- === 4b. the declaration is checked against the columns the database holds ===
+--
+-- The coverage checks above ask "is every row declared". They cannot ask "is each row
+-- declared as ITSELF" — the VALUES lists were transcribed by hand from a measurement of
+-- the live fleet, and a line pasted against the wrong binding id would backfill a role
+-- and stages belonging to another row, then have 0253_down.sql restore that other row's
+-- environment. Nothing downstream could tell.
+--
+-- `provider`, `environment` and the project `slug` are carried in the lists for exactly
+-- this: the database already holds all three, so they are an INDEPENDENT reading of the
+-- same rows rather than a second copy of the same claim. A mismatch aborts naming both
+-- sides, and is never reconciled by trusting one of them.
+DO $$
+DECLARE wrong text;
+BEGIN
+  SELECT string_agg(
+           format('%s (declared %s/%s/%s, actual %s/%s/%s)',
+                  b.id, d.slug, d.provider, d.old_environment, p.slug, b.provider, b.environment),
+           ', ' ORDER BY b.id)
+    INTO wrong
+    FROM iss1046_bindings d
+    JOIN integration_bindings b ON b.id = d.binding_id
+    JOIN projects p ON p.id = b.project_id
+   WHERE d.provider IS DISTINCT FROM b.provider
+      OR d.old_environment IS DISTINCT FROM b.environment
+      OR d.slug IS DISTINCT FROM p.slug;
+  IF wrong IS NOT NULL THEN
+    RAISE EXCEPTION 'ISS-1046: the declared binding list disagrees with the database about %. '
+      'Each entry names the binding id, its project slug, its provider and its `environment` '
+      'as measured; these do not match the row that id actually points at, so the list was '
+      'transcribed against the wrong row and would backfill another binding''s role. '
+      'Correct the VALUES list in 0253 against a fresh measurement — never adjust the row.',
+      wrong;
+  END IF;
+END $$;--> statement-breakpoint
+
+DO $$
+DECLARE wrong text;
+BEGIN
+  SELECT string_agg(format('%s (declared %s, actual %s)', d.project_id, d.slug, p.slug), ', '
+                    ORDER BY d.project_id)
+    INTO wrong
+    FROM iss1046_projects d
+    JOIN projects p ON p.id = d.project_id
+   WHERE d.slug IS DISTINCT FROM p.slug;
+  IF wrong IS NOT NULL THEN
+    RAISE EXCEPTION 'ISS-1046: the declared project list disagrees with the database about %. '
+      'The slug carried beside each project id is the measurement''s own reading of that row; '
+      'a mismatch means a release model was transcribed against the wrong project. '
+      'Correct the VALUES list in 0253 against a fresh measurement.',
+      wrong;
+  END IF;
+END $$;--> statement-breakpoint
+
 -- === 5. the backfill ======================================================
 UPDATE projects p
    SET release_model = d.release_model,
@@ -242,9 +296,17 @@ ALTER TABLE "integration_bindings" ADD CONSTRAINT "integration_bindings_role_chk
 -- cardinality(), NEVER array_length(): array_length('{}',1) is NULL, so a CHECK
 -- written that way evaluates NULL on the empty array and PASSES the very row it
 -- exists to refuse.
+--
+-- `stages` is a SET, and the four ways it can fail to be one are all refused here rather
+-- than normalised: a duplicate member (`{live,live}`), a third member, a nested array
+-- (`array_ndims`), and a member outside the vocabulary. `<@` alone admits the first three,
+-- because containment asks only that every element belong to the set.
 ALTER TABLE "integration_bindings" ADD CONSTRAINT "integration_bindings_role_stages_chk"
   CHECK ((role = 'service' AND cardinality(stages) = 0)
-      OR (role = 'deploy' AND cardinality(stages) >= 1 AND stages <@ ARRAY['preview','live']));--> statement-breakpoint
+      OR (role = 'deploy' AND array_ndims(stages) = 1
+          AND cardinality(stages) BETWEEN 1 AND 2
+          AND stages <@ ARRAY['preview','live']
+          AND (cardinality(stages) = 1 OR stages[1] <> stages[2])));--> statement-breakpoint
 
 -- === 9. the declared tables have done their job ===========================
 DROP TABLE iss1046_bindings;--> statement-breakpoint

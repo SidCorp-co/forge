@@ -96,6 +96,9 @@ function stageLabel(row: { role: string; stages: string[] }): string {
 
 /** Flattened binding+connection row the status cards render from. */
 interface ProviderRow {
+  /** The binding's own id. The one thing about a card that is unique whatever else two
+   *  bindings share, and the handle a screen needs to address ONE of them. */
+  id: string;
   provider: string;
   role: string;
   stages: string[];
@@ -111,7 +114,7 @@ interface ProviderRow {
  * the three blocks were ~95% identical; they differ only in env-keying, the
  * never-checked wording, and provider-specific meta fields.
  */
-function buildProviderCards(opts: {
+export function buildProviderCards(opts: {
   rows: ProviderRow[];
   provider: IntegrationProvider;
   label: string;
@@ -137,8 +140,18 @@ function buildProviderCards(opts: {
     ];
   }
   const envKeyed = opts.alwaysEnvKeyed || opts.rows.length > 1;
+  const base = (row: ProviderRow) => (envKeyed ? `${opts.provider}:${stageKey(row)}` : opts.provider);
+  // cm:guard two bindings that serve the SAME stages produce the same base key, and a duplicate
+  // key is a card the screen cannot address: React renders one of them, and every drill-in, test
+  // and delete reaches whichever the list happened to hold first. The old model made that shape
+  // unreachable — one binding per environment — and ISS-1046 made it legal, so the id has to break
+  // the tie. It is appended ONLY where a tie exists, because the stage-keyed spelling is what
+  // existing drill-ins are bookmarked on (ISS-429) and renaming every card would break them all.
+  const collides = new Set(
+    opts.rows.map(base).filter((k, i, all) => all.indexOf(k) !== i),
+  );
   return opts.rows.map((row) => ({
-    key: envKeyed ? `${opts.provider}:${stageKey(row)}` : opts.provider,
+    key: collides.has(base(row)) ? `${base(row)}:${row.id}` : base(row),
     label: envKeyed ? `${opts.label} (${stageLabel(row)})` : opts.label,
     status: healthToStatus(row.lastHealthStatus, row.active),
     detail: !row.active
@@ -149,6 +162,7 @@ function buildProviderCards(opts: {
     lastSyncAt: toIso(row.lastHealthAt),
     configured: true,
     meta: {
+      bindingId: row.id,
       role: row.role,
       stages: row.stages,
       breakerOpen: row.breakerOpenedAt !== null,
@@ -172,6 +186,7 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
   // the connection). Flattened to the shape the cards below already consume.
   const pairs = await listBindingsForProject(projectId);
   const integrationRows = pairs.map((pair) => ({
+    id: pair.binding.id,
     provider: pair.binding.provider,
     role: pair.binding.role,
     stages: (pair.binding.stages ?? []) as string[],
