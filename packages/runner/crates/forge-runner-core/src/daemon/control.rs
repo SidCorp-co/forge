@@ -334,6 +334,18 @@ fn run_declare(
             "this pane is the master for {serves} and cannot declare a run for {project_id}"
         ));
     }
+    // cm:guard the keys are checked for SHAPE before a row exists, because criterion 7 says a refused
+    // declaration writes nothing and the ledger row is written before core is ever asked. A key core
+    // cannot resolve is refused at `POST /me/run-sessions` — by which time this box is holding a
+    // declared run over it, retried by `open_declared_runs` every sweep for the life of the boot,
+    // pinning the worktree it names (ISS-1050 finding F12). What this CANNOT answer is whether a
+    // well-formed key exists in this project: that mapping is core's alone, and a box that guessed
+    // at it would be inventing the answer it is refusing to guess.
+    if let Some(bad) = issue_keys.iter().find(|k| !is_issue_key(k)) {
+        return ClaimReply::refused(format!(
+            "`{bad}` is not an issue reference — a declaration takes one per issue the subagent is being given, each a display id such as `ISS-42` or your project's own prefix, or the bare number. Nothing was recorded"
+        ));
+    }
     let run_id = uuid::Uuid::new_v4().to_string();
     let mut held = ctl.ledger.lock().expect("ledger poisoned");
     let Some(led) = held.as_mut() else {
@@ -399,6 +411,37 @@ fn run_declare(
         // cm:guard the ledger's own refusal text is passed through WHOLE. Each of the three names what a master has to do next — which issue collided, which tree is held, which declared row to close — and a handler that replaced them with one word of its own would take that away.
         Err(e) => ClaimReply::refused(e.to_string()),
     }
+}
+
+/// Whether a string is shaped like an issue reference core will parse.
+// cm:guard SHAPE only, and deliberately no more. Whether a well-formed reference names a real issue
+// in this project is a question only core can answer — the key is a per-project sequence and the box
+// holds no index of them — and the refusal that matters there is core's own. Widening this to guess
+// would be the second live path this repository refuses everywhere else.
+// cm:edge contract -> packages/core/src/lib/issue-ref.ts — `REF_SHAPE` is the rule this mirrors:
+// an OPTIONAL prefix of two to six alphanumerics, then a sequence number. The prefix is optional
+// because a bare number is a reference core accepts, and it is not fixed to `ISS` because a project
+// answers to its own prefix as well as the legacy one — a check spelling `ISS-` into the box would
+// refuse `FD-977` here and be told it was valid one process away (ISS-1050 finding F12).
+fn is_issue_key(s: &str) -> bool {
+    let body = match s.split_once('-') {
+        Some((prefix, rest)) => {
+            let len = prefix.chars().count();
+            if !(2..=6).contains(&len) || !prefix.chars().all(|c| c.is_ascii_alphanumeric()) {
+                return false;
+            }
+            if !prefix
+                .chars()
+                .next()
+                .is_some_and(|c| c.is_ascii_alphabetic())
+            {
+                return false;
+            }
+            rest
+        }
+        None => s,
+    };
+    !body.is_empty() && body.len() <= 10 && body.chars().all(|c| c.is_ascii_digit())
 }
 
 /// Record that a declared run is over, whether it ran or never started.
@@ -1011,6 +1054,69 @@ mod tests {
             led.owe_resume_choices(session_id, &ctl.boot_id).unwrap();
             run_id
         }
+        // cm:guard a declaration that is refused must leave the ledger EXACTLY as it found it —
+        // criterion 7 — and the row here is written before core is ever asked, so a key core will
+        // reject is a row nothing can close and a worktree nothing can release. The shape is the
+        // only half a box can answer on its own (ISS-1050 finding F12).
+        #[test]
+        fn a_key_that_is_not_an_issue_key_is_refused_by_name_and_writes_no_row() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+
+            let reply = run_declare(
+                &ctl,
+                "proj-1",
+                &["ISS-7".into(), "the whole backlog".into()],
+                "/w/seven",
+                "sess-a",
+            );
+
+            assert!(
+                !reply.ok,
+                "a declaration carrying a non-key must be refused"
+            );
+            let reason = reply.reason.unwrap_or_default();
+            assert!(
+                reason.contains("the whole backlog"),
+                "the refusal must name the value it refused: {reason}"
+            );
+            assert!(
+                reason.contains("ISS-"),
+                "and the shape it wanted instead: {reason}"
+            );
+            let mut held = ctl.ledger.lock().unwrap();
+            let led = held.as_mut().unwrap();
+            assert!(
+                led.unclosed_runs().unwrap().is_empty(),
+                "a refused declaration writes nothing, or the box holds a run core will never open"
+            );
+        }
+
+        // cm:guard the shapes core's own parser ACCEPTS are not refused here, and this is the half of
+        // the check that costs something to get wrong: a box that refused `FD-977` would be refusing
+        // a reference core resolves, one process away, with no way for the master to tell which end
+        // was wrong. The prefix is a project's, not a constant (ISS-1050 finding F12).
+        #[test]
+        fn a_project_own_prefix_and_a_bare_number_are_references_the_box_does_not_refuse() {
+            for good in ["ISS-42", "FD-977", "42", "ab-1"] {
+                assert!(
+                    super::is_issue_key(good),
+                    "`{good}` is a reference core resolves, so the box may not refuse it"
+                );
+            }
+            for bad in [
+                "",
+                "-1",
+                "ISS-",
+                "ISS-x",
+                "the whole backlog",
+                "a-1",
+                "TOOLONGP-1",
+                "ISS-12345678901",
+            ] {
+                assert!(!super::is_issue_key(bad), "`{bad}` is not a reference");
+            }
+        }
+
         // cm:guard criterion 29's gate. A brief that only ASKS is one a master can read past, and the
         // issues under those runs then sit claimed by work nobody decided to continue while the pane
         // starts something new. The refusal is the only place this can be made to hold.

@@ -3,8 +3,20 @@
 // so a change to the RESPONSE — the key a runner decodes, the status code a
 // refusal arrives on — fails here and nowhere else.
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { runnerLimitReasons } from '../db/schema.js';
+
+/** The runner crate's own assets, read as files because the packages do not import each other. */
+const RUNNER_ASSETS = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../runner/crates/forge-runner-core/assets',
+);
+const WIRE_FIXTURE = resolve(RUNNER_ASSETS, 'master-limit-wire.json');
+const REASONS_FIXTURE = resolve(RUNNER_ASSETS, 'master-limit-reasons.json');
 
 vi.mock('../config/env.js', () => ({
   env: { DEVICE_TOKEN_PEPPER: 'y'.repeat(32), NODE_ENV: 'test' },
@@ -245,6 +257,42 @@ describe('POST /me/limit', () => {
     expect(res.status).toBe(200);
     expect(clearMasterLimit).toHaveBeenCalledWith('dev-1');
   });
+
+  // cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/master-limit-wire.json — the file read here is the body the Rust producer builds from a captured refusal, asserted byte for byte on that side by `daemon::master_limit::tests::a_captured_refusal_reaches_core_as_the_bytes_both_languages_read`. Reading the artifact rather than retyping it is the point: a field renamed on either side stops matching ONE file, instead of passing two suites and failing on a live box.
+  // cm:guard the file is read off disk, NOT imported. The two packages have no build dependency on each other and must not gain one over a test fixture; `relations archmap` walks imports, and an import here would declare a coupling that does not exist at runtime.
+  it('takes the body the runner actually sends, read off the file both sides read', async () => {
+    const body = readFileSync(WIRE_FIXTURE, 'utf8').trim();
+    const res = await app.request('/api/devices/me/limit', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body,
+    });
+    expect(res.status).toBe(200);
+    expect(recordMasterLimit).toHaveBeenCalledWith('dev-1', JSON.parse(body));
+  });
+
+  // cm:guard the WHOLE set, in both directions. A reason core stops storing is a report the box sends into a 400 forever; a reason core gains that the runner never sends is a cap a master can see and cannot report. Neither shows up in a test that only checks the reasons it happens to name.
+  it('stores exactly the reasons the runner declares it can send', () => {
+    const declared = JSON.parse(readFileSync(REASONS_FIXTURE, 'utf8')).reasons as string[];
+    expect([...declared].sort()).toEqual([...runnerLimitReasons].sort());
+  });
+
+  it.each(JSON.parse(readFileSync(REASONS_FIXTURE, 'utf8')).reasons as string[])(
+    'accepts a report carrying the declared reason %s',
+    async (reason) => {
+      const res = await app.request('/api/devices/me/limit', {
+        method: 'POST',
+        headers: { ...AUTH, 'content-type': 'application/json' },
+        body: JSON.stringify({ reason, detail: 'x' }),
+      });
+      expect(res.status).toBe(200);
+      expect(recordMasterLimit).toHaveBeenCalledWith('dev-1', {
+        reason,
+        resetsInSeconds: null,
+        detail: 'x',
+      });
+    },
+  );
 });
 
 // cm:guard the four run-session paths are asserted HERE, on the parent router, because they are

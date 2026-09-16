@@ -11,9 +11,10 @@
 //! The predicate is deliberately timid — this deletes work, and a wrong
 //! judgement here is unrecoverable. A worktree is reaped only when all four
 //! hold: no run in the ledger still holds it, it is older than `MIN_AGE`, it
-//! has no commit the remote lacks, and no tracked file in it is modified.
-//! Untracked files do not protect it, or every build artifact would pin a
-//! worktree forever.
+//! has no commit the remote lacks, and nothing in it is unsaved — a modified
+//! tracked file, or a file git has never been told about. Files `.gitignore`
+//! claims protect nothing, which is what keeps build output from pinning a
+//! checkout forever.
 //!
 //! The ledger is first among those because the other three are all SHAPE, and
 //! a well-behaved park has exactly the shape of an abandoned tree (ISS-964
@@ -49,7 +50,7 @@ async fn git(dir: &Path, args: &[&str]) -> Option<std::process::Output> {
 /// True when the worktree holds something losing it would destroy.
 // cm:guard the ONE definition of "this tree still holds work", read by the reaper before it deletes and by `runner/terminate.rs` before it releases — so what `Abandon` calls preserved is exactly what this reader calls safe. A second copy would let one of them delete what the other was still protecting (ISS-964 criteria 33, 37).
 pub async fn holds_work(wt: &Path) -> bool {
-    if has_uncommitted_changes(wt).await {
+    if has_unsaved_changes(wt).await {
         return true;
     }
     match git(wt, &["log", "--oneline", "@{u}..", "-1"]).await {
@@ -60,12 +61,43 @@ pub async fn holds_work(wt: &Path) -> bool {
 }
 
 /// Whether a tracked file in this worktree differs from its commit.
-// cm:guard this is what a `git worktree remove` would actually DESTROY, and the only thing it destroys: removal leaves the branch ref and every object behind, so commits — pushed or not — outlive the checkout. Untracked files are excluded on purpose and that is the same call the sweep has always made: counting them would pin every checkout with build output in it forever.
+// cm:guard this is what a `git worktree remove` would actually DESTROY of the TRACKED files, and
+// that is all it answers about: removal leaves the branch ref and every object behind, so commits —
+// pushed or not — outlive the checkout. It is no longer the whole question; `has_unsaved_changes`
+// below is, and it is what both readers call.
 // cm:guard a git that cannot answer reports dirty, the timid direction, because both readers above license a delete.
 pub async fn has_uncommitted_changes(wt: &Path) -> bool {
     match git(wt, &["status", "--porcelain", "--untracked-files=no"]).await {
         Some(out) => !out.stdout.is_empty(),
         None => true,
+    }
+}
+
+/// Whether this worktree holds anything a `git worktree remove` would destroy.
+///
+/// Tracked modifications, plus files git has never been told about.
+// cm:guard untracked files COUNT, and this re-prices a trade-off this module made deliberately and
+// stated in its own header. The old reading — "untracked files do not protect it, or every build
+// artifact would pin a worktree forever" — was priced against build output, and it was answered by
+// the wrong flag: `--exclude-standard` already drops everything `.gitignore` claims, so what is
+// left is a file the repository itself did not call disposable. Against that, ISS-1050 finding F8:
+// an agent whose only new work is a file it never staged leaves a checkout this reader called
+// EMPTY, so salvage never ran and `remove_at` took the only copy. `daemon/checkpoint.rs` had
+// already written the same sentence one door along — git diff cannot see a file git has never been
+// told about — with an uncommitted new file as its example.
+// cm:guard what the re-pricing COSTS, stated rather than hoped: a repository that leaves its build
+// output unignored now pins its stale worktrees, and the sweep reclaims that disk only once
+// somebody ignores the output or removes the tree by hand. The bound on it is the age gate above
+// and the ledger, and the direction is chosen on purpose — a tree kept too long costs disk, which
+// is recoverable, and a tree deleted too early costs a diff, which is not.
+// cm:guard a git that cannot answer reports dirty, the timid direction, because both readers license a delete.
+pub async fn has_unsaved_changes(wt: &Path) -> bool {
+    if has_uncommitted_changes(wt).await {
+        return true;
+    }
+    match git(wt, &["ls-files", "--others", "--exclude-standard"]).await {
+        Some(out) if out.status.success() => !out.stdout.is_empty(),
+        _ => true,
     }
 }
 
@@ -433,15 +465,39 @@ mod tests {
         let _ = std::fs::remove_dir_all(&repo);
     }
 
-    // cm:guard untracked output must NOT protect a worktree — node_modules would
-    // otherwise pin every one of them forever, which is the leak itself.
+    // cm:guard IGNORED output must not protect a worktree — node_modules would otherwise pin every
+    // one of them forever, which is the leak itself. This test used to leave `node_modules`
+    // unignored and assert the same removal, which is the assertion ISS-1050 finding F8 reversed:
+    // what licenses the delete is the REPOSITORY calling the file disposable, not the sweep
+    // assuming it. `--exclude-standard` is what reads that, and it is the whole of the difference
+    // between this test and the one below.
     #[tokio::test]
-    async fn untracked_build_output_does_not_pin_a_worktree() {
+    async fn ignored_build_output_does_not_pin_a_worktree() {
         let (repo, wt) = repo_with_worktree("artifacts").await;
+        // Written to `.git/info/exclude` rather than a committed `.gitignore`, because committing
+        // one would put an unpushed commit on the branch and this test would then be spared for a
+        // reason it is not about. `--exclude-standard` reads both.
+        std::fs::write(repo.join(".git/info/exclude"), "node_modules/\n").unwrap();
         std::fs::create_dir_all(wt.join("node_modules")).unwrap();
         std::fs::write(wt.join("node_modules/x.js"), "built").unwrap();
         assert_eq!(reap_repo(&repo, NOW, &led()).await.removed.len(), 1);
         assert!(!wt.exists());
+        let _ = std::fs::remove_dir_all(&repo);
+    }
+
+    // cm:guard a file git has never been told about, which no `.gitignore` claims, is an agent's
+    // work and nothing else — the case `--untracked-files=no` could not see, and the one
+    // `daemon/checkpoint.rs` names one door along: git diff cannot see a file git has never been
+    // told about. Removing the checkout takes the only copy (ISS-1050 finding F8, criterion 19).
+    #[tokio::test]
+    async fn spares_a_worktree_holding_an_untracked_file_the_repo_does_not_ignore() {
+        let (repo, wt) = repo_with_worktree("untracked").await;
+        std::fs::write(wt.join("notes.md"), "the only copy of this").unwrap();
+        assert!(
+            reap_repo(&repo, NOW, &led()).await.removed.is_empty(),
+            "a file the repository did not call disposable is work, and this sweep deletes work irreversibly"
+        );
+        assert!(wt.exists());
         let _ = std::fs::remove_dir_all(&repo);
     }
 

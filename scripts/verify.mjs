@@ -232,6 +232,8 @@ const CI_COVERAGE = {
   'Lockfile sync + fmt + clippy + test':
     'verify, via scripts/check-runner-gates.mjs when packages/runner changed — on THIS box only, while CI runs the same step on all three platforms',
   'Check Markdown links': 'docs job, gaurav-nelson/github-action-markdown-link-check',
+  'Whether a pull_request run already proved this exact tree':
+    "nothing local — it reads the event and the commit's parent count, which exist only on CI",
   'Require every CI job to have passed or been skipped': 'the ci-passed gate itself',
 };
 

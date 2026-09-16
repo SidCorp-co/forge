@@ -3,7 +3,16 @@
 // the reset arithmetic and the auth asymmetry are asserted here and nowhere
 // else.
 
+import { readFileSync } from 'node:fs';
+import { dirname, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+/** The body the runner's producer builds from a captured refusal. */
+const WIRE_FIXTURE = resolve(
+  dirname(fileURLToPath(import.meta.url)),
+  '../../../runner/crates/forge-runner-core/assets/master-limit-wire.json',
+);
 
 const limit = vi.fn(async () => [] as Array<{ id: string; projectId: string }>);
 const where = vi.fn(() => ({ limit }));
@@ -30,6 +39,20 @@ const stampedUntil = () =>
   (stampRunnerLimit.mock.calls[0] as unknown as [string, string, { until: Date | null }])[2].until;
 
 describe('recordMasterLimit', () => {
+  // cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/master-limit-wire.json — the far end of the chain the runner's own suite starts: that file is what a captured refusal produces on the wire, and this is the instant core stores for it. The reset arithmetic is asserted below against typed numbers; this asserts it against the number a real box would actually send.
+  it('stores the instant the real wire body asks for', async () => {
+    const wire = JSON.parse(readFileSync(WIRE_FIXTURE, 'utf8')) as {
+      reason: 'usage_limit';
+      resetsInSeconds: number;
+      detail: string;
+    };
+    const before = Date.now();
+    await recordMasterLimit('dev-1', wire);
+    const until = stampedUntil() as Date;
+    expect(until.getTime() - before).toBeGreaterThanOrEqual(wire.resetsInSeconds * 1000);
+    expect(until.getTime() - before).toBeLessThan(wire.resetsInSeconds * 1000 + 60_000);
+  });
+
   // cm:guard `auth` MUST stamp `until: null`. The column is NULL for it by design — there is no parseable reset to wait for — and every dispatch gate excludes that reason BY NAME precisely because the time predicate would otherwise pass an auth-dead box. A reset invented here would be a self-healing window an auth limit does not have.
   it('gives an auth limit no reset even when the report carries one', async () => {
     await recordMasterLimit('dev-1', { reason: 'auth', resetsInSeconds: 900, detail: 'x' });

@@ -162,26 +162,33 @@ pub async fn publication_of(worktree: &Path) -> Publication {
     // of a push — which is the exact claim the guard above says this function does not make. Found
     // by a planted counterexample that passed: the branch below was unreachable in every fixture
     // until one was built where the local ref and the remote disagreed.
+    // cm:guard `--all`, and it is the SAME argument one remote further out. The count below spends
+    // every remote-tracking ref, so refreshing only `origin` left a second remote's refs counting
+    // toward `Published` while no fetch had touched them — ISS-1050 finding F6. The set fetched and
+    // the set counted are one set or this function is back to trusting a memory. A repo with one
+    // remote pays nothing for it.
+    // cm:guard a remote that cannot be reached makes the whole answer `Unknown`, never a count over
+    // the remotes that did answer. Unknown holds the worktree; a partial count releases it.
         tokio::time::timeout(
             FETCH_BUDGET,
-            git(worktree, &["fetch", "--prune", "--quiet", "origin"]),
+            git(worktree, &["fetch", "--prune", "--quiet", "--all"]),
         );
     match fetched.await {
         Ok(Some(out)) if out.status.success() => {}
         Ok(Some(out)) => {
             return Publication::Unknown {
-                why: format!("`git fetch origin` failed: {}", stderr_brief(&out)),
+                why: format!("`git fetch --all` failed: {}", stderr_brief(&out)),
             };
         }
         Ok(None) => {
             return Publication::Unknown {
-                why: "`git fetch origin` could not be spawned".into(),
+                why: "`git fetch --all` could not be spawned".into(),
             };
         }
         Err(_) => {
             return Publication::Unknown {
                 why: format!(
-                    "`git fetch origin` did not answer within {}s",
+                    "`git fetch --all` did not answer within {}s",
                     FETCH_BUDGET.as_secs()
                 ),
             };
@@ -749,6 +756,40 @@ mod tests {
         std::fs::write(wt.join("new.txt"), "x\n").unwrap();
         let s = salvage_wip(input(&root, "ISS-9-f")).await;
         assert_eq!(s.outcome, Outcome::Pushed, "{s:?}");
+        cleanup(&root);
+    }
+
+    // cm:guard the count and the fetch must cover the SAME set of remotes, and until ISS-1050
+    // finding F6 they did not: `--prune origin` refreshed one remote and `rev-list --not --remotes`
+    // counted against all of them, so a remote-tracking ref for a second remote that no fetch had
+    // touched made an unpublished HEAD read `Published` and licensed the release. That is exactly
+    // the local memory of a push the guard above this function says it does not trust, reached
+    // through the one remote it was not asking.
+    #[tokio::test]
+    async fn a_stale_ref_for_a_second_remote_is_not_a_remote_that_has_the_work() {
+        let (root, wt) = repo("secondremote", "ISS-6-f6").await;
+        let mirror = root.with_extension("mirror.git");
+        let _ = std::fs::remove_dir_all(&mirror);
+        std::fs::create_dir_all(&mirror).unwrap();
+        run(&mirror, &["init", "--bare", "-b", "main"]).await;
+        run(&wt, &["remote", "add", "mirror", &mirror.to_string_lossy()]).await;
+
+        std::fs::write(wt.join("new.txt"), "the only copy\n").unwrap();
+        run(&wt, &["add", "."]).await;
+        run(&wt, &["commit", "-qm", "work"]).await;
+        run(&wt, &["push", "-q", "mirror", "HEAD:refs/heads/ISS-6-f6"]).await;
+        run(&wt, &["fetch", "-q", "mirror"]).await;
+        // The mirror loses it. This box still holds `refs/remotes/mirror/ISS-6-f6`, and no fetch of
+        // `origin` will ever prune that.
+        run(&mirror, &["update-ref", "-d", "refs/heads/ISS-6-f6"]).await;
+
+        let got = publication_of(&wt).await;
+        assert!(
+            matches!(got, Publication::Unpublished { .. }),
+            "a ref only this box still remembers is not a remote that has the work: {got:?}"
+        );
+
+        let _ = std::fs::remove_dir_all(&mirror);
         cleanup(&root);
     }
 

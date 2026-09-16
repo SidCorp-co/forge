@@ -91,13 +91,49 @@ pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
         );
     }
     match args.cmd {
-        Command::Declare(_) => println!(
-            "{}",
-            reply
-                .job_id
-                .unwrap_or_else(|| "the daemon recorded the run but named no id".into())
-        ),
+        Command::Declare(_) => println!("{}", declared_id(reply.job_id)?),
         Command::Close(c) => println!("run {} closed", c.run_id),
     }
     Ok(())
+}
+
+/// The run id a successful declaration must carry.
+// cm:guard an `ok` reply with no id is a FAILURE with a non-zero exit, not a line of prose on
+// stdout. This verb's whole output is the run id: a master reads it and passes it to `run close`,
+// and a sentence printed in its place exits 0, is captured as the id, and the close then names a
+// run that does not exist — while the declared row stays open holding the tree and the issues. It
+// printed "the daemon recorded the run but named no id" until ISS-1050 finding F13, which is the
+// silent substitution this file's own header says this verb does not make.
+fn declared_id(job_id: Option<String>) -> anyhow::Result<String> {
+    job_id.ok_or_else(|| {
+        anyhow::anyhow!(
+            "the daemon accepted the declaration and named no run id — nothing can be closed or \
+             resumed against it, so treat the run as undeclared and look in the daemon's journal \
+             for what it recorded"
+        )
+    })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::declared_id;
+
+    #[test]
+    fn an_accepted_declaration_with_no_id_is_an_error_and_not_a_line_of_prose() {
+        let err = declared_id(None).expect_err("a declaration with no id is not a success");
+        let said = format!("{err}");
+        assert!(
+            said.contains("named no run id"),
+            "the refusal must say what is missing: {said}"
+        );
+        assert!(
+            !said.starts_with("the daemon recorded the run"),
+            "and it must not read as the id itself, which is what a caller captures from stdout"
+        );
+    }
+
+    #[test]
+    fn an_id_is_answered_unchanged() {
+        assert_eq!(declared_id(Some("run-7".into())).unwrap(), "run-7");
+    }
 }

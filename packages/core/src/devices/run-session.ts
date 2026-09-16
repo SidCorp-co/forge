@@ -34,6 +34,15 @@ export const RUN_ISSUES_METADATA_KEY = 'runIssues';
 // cm:guard STORED and never read for control. The box mints this id first, into its own sqlite registry, and core mints a `pipeline_runs` id of its own; without one side recording the other's there is no key at all between a row in `~/.local/share/forge-runner/ledger.sqlite` and the run session that answers for it, and a person holding one has to guess. It is recorded because the route was already being handed it and dropping it on the floor is a 200 that does nothing with a field the caller sent (ISS-1050 criterion 6).
 export const BOX_RUN_ID_METADATA_KEY = 'boxRunId';
 
+/** Set on the run once its open event has actually reached the subscribers. */
+// cm:guard the announce is a SECOND write after the transaction commits, so a failure there fails the
+// request with the run already created — and the retry takes the idempotent fast path and returns
+// the committed session without announcing anything, losing the open event for good (ISS-1050
+// finding F3). This key is what lets the retry tell "already announced" from "announced by nobody".
+// cm:guard it is stamped AFTER the emit and never before: a marker written first turns a failed
+// announce into a permanent silence, which is the same defect wearing a record.
+export const RUN_ANNOUNCED_METADATA_KEY = 'runSessionAnnouncedAt';
+
 /** Where each issue's status AT OPEN lives, beside the group itself. */
 // cm:guard a SECOND key beside `runIssues` and never a reshape of it: `releaseIssueLease` and `isIssueLeaseHeld` both match `runIssues` with `@> to_jsonb(<key>)`, so turning its elements into objects makes every lease on every box unreadable at once — and the containment query fails OPEN, reporting no lease held rather than erroring.
 export const RUN_ISSUE_STATUSES_METADATA_KEY = 'runIssueStatuses';
@@ -41,6 +50,11 @@ export const RUN_ISSUE_STATUSES_METADATA_KEY = 'runIssueStatuses';
 export interface RunSession {
   sessionId: string;
   runId: string;
+}
+
+/** A session found for a box run, and whether its open event ever reached anyone. */
+interface FoundRunSession extends RunSession {
+  announced: boolean;
 }
 
 /**
@@ -93,9 +107,13 @@ async function openSessionForBoxRun(
     deviceId: string;
     boxRunId: string;
   },
-): Promise<RunSession | null> {
+): Promise<FoundRunSession | null> {
   const [row] = await executor
-    .select({ sessionId: agentSessions.id, runId: pipelineRuns.id })
+    .select({
+      sessionId: agentSessions.id,
+      runId: pipelineRuns.id,
+      announced: sql<string | null>`${pipelineRuns.metadata}->>${RUN_ANNOUNCED_METADATA_KEY}`,
+    })
     .from(agentSessions)
     .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
     .where(
@@ -107,7 +125,36 @@ async function openSessionForBoxRun(
       ),
     )
     .limit(1);
-  return row ? { sessionId: row.sessionId, runId: row.runId } : null;
+  return row
+    ? { sessionId: row.sessionId, runId: row.runId, announced: row.announced !== null }
+    : null;
+}
+
+/**
+ * Emit this run's open event unless it has already been emitted, and record that it was.
+ */
+// cm:guard at-least-once and NOT best-effort, which is the whole of ISS-1050 finding F3. Every path
+// that answers with a run session — the fresh open, the fast-path retry, and the loser of the
+// advisory-lock race — goes through here, so a run that exists always has an announced open event
+// behind it or a caller that failed loudly trying. A duplicate announcement costs a subscriber one
+// repeated status message; a missing one is a run nothing downstream ever hears about.
+// cm:guard it takes the PROJECT and not the spec the insert built, because the two are needed at
+// different moments: the fast path has no spec and must not build one — `readIssueStatuses` would
+// then read the statuses of issues the run is already working and record `in_progress` as the
+// status to return to, which is the failure the guard on `openRunSession` names. `announceOneShotRun`
+// reads `projectId` and `kind` and nothing else.
+async function announceOnce(
+  found: { runId: string; announced: boolean },
+  projectId: string,
+): Promise<void> {
+  if (found.announced) return;
+  await announceOneShotRun(found.runId, { projectId, kind: 'system' });
+  await db
+    .update(pipelineRuns)
+    .set({
+      metadata: sql`COALESCE(${pipelineRuns.metadata}, '{}'::jsonb) || jsonb_build_object(${RUN_ANNOUNCED_METADATA_KEY}::text, to_jsonb(now()))`,
+    })
+    .where(eq(pipelineRuns.id, found.runId));
 }
 
 /**
@@ -153,7 +200,8 @@ export async function openRunSession(args: {
         { ...existing, boxRunId: args.boxRunId, deviceId: args.deviceId },
         'run-session: this box run already has a session, answering with it rather than opening a second',
       );
-      return existing;
+      await announceOnce(existing, args.projectId);
+      return { sessionId: existing.sessionId, runId: existing.runId };
     }
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
@@ -201,12 +249,13 @@ export async function openRunSession(args: {
       { ...claimed.existing, boxRunId: args.boxRunId, deviceId: args.deviceId },
       'run-session: another request opened this box run while we were opening it, answering with theirs',
     );
-    return claimed.existing;
+    await announceOnce(claimed.existing, args.projectId);
+    return { sessionId: claimed.existing.sessionId, runId: claimed.existing.runId };
   }
   const opened = claimed.opened;
   if (!opened)
     throw new Error('openRunSession: the claim returned neither a session nor an answer');
-  await announceOneShotRun(opened.runId, spec);
+  await announceOnce({ runId: opened.runId, announced: false }, args.projectId);
   logger.info(
     {
       runSessionId: opened.sessionId,
@@ -337,6 +386,42 @@ export interface ClosedRunSession {
 }
 
 /**
+ * Finish the half of a failed close that does not depend on flipping the session.
+ */
+// cm:guard the terminal fast path RUNS this rather than answering `returned: []`, which is ISS-1050
+// finding F7. The close is two commits — the session transition, then the issue return — so a crash
+// or a dropped connection between them leaves the session terminal with its issues still reading
+// `in_progress`, and the box's retry then saw a terminal row and reported success having returned
+// nothing. Nothing else ever revisits it: the silence reaper keys on a session that is NOT terminal.
+// cm:guard safe to run twice, and that is a property of `returnIssuesForRun` rather than of this
+// call: an issue already back at its opening status is a no-op there, so the loser of the race with
+// the reaper answers with the empty list it observed instead of with one this function constructed.
+// That keeps the rule the close/reaper race was given — one release of one group, reported once —
+// while letting a retry finish a close that stopped halfway.
+async function finishFailedClose(
+  runId: string | null,
+  args: { sessionId: string; outcome: RunSessionOutcome; detail?: string },
+  failing: boolean,
+): Promise<string[]> {
+  if (!failing || !runId) return [];
+  const returned = await returnIssuesForRun(runId, {
+    reason: args.detail ?? `run ${args.outcome}`,
+  });
+  await closeRunIfOneShot(runId, 'failed');
+  if (returned.length > 0) {
+    logger.warn(
+      {
+        runSessionId: args.sessionId,
+        runId,
+        returned: returned.map((r) => r.issueKey),
+      },
+      'run-session: a close that had already flipped the session had not returned its issues — finishing it',
+    );
+  }
+  return returned.map((r) => r.issueKey);
+}
+
+/**
  * Record that a run session ended, and give its issues back if it failed.
  */
 // cm:guard `ended` and `killed_idle` return NOTHING and that asymmetry is the feature: both mean the agent had stopped working of its own accord, so the statuses it left behind are its own record. Only `died` — a process that went away mid-turn — is a reason to undo them.
@@ -358,11 +443,11 @@ export async function closeRunSession(args: {
       ),
     );
   if (!row) return null;
+  const failing = FAILING_OUTCOMES.includes(args.outcome);
   if ((terminalAgentSessionStatuses as readonly string[]).includes(row.status)) {
-    return { alreadyTerminal: true, returned: [] };
+    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, args, failing) };
   }
 
-  const failing = FAILING_OUTCOMES.includes(args.outcome);
   // cm:edge lockstep -> packages/core/src/lifecycle/transition.ts — the flip routes through the chokepoint so it leaves a `kernel_transitions` row, exactly as the reaper's does; `transition-guard.test.ts` fails a terminal status written here directly.
   const flipped = await applyKernelTransition(db, {
     entity: 'session',
@@ -379,7 +464,9 @@ export async function closeRunSession(args: {
     actor: { type: 'system' },
     source: 'run-session-close',
   });
-  if (flipped.length === 0) return { alreadyTerminal: true, returned: [] };
+  if (flipped.length === 0) {
+    return { alreadyTerminal: true, returned: await finishFailedClose(row.runId, args, failing) };
+  }
 
   const returned = failing
     ? await returnIssuesForRun(row.runId ?? '', { reason: args.detail ?? `run ${args.outcome}` })

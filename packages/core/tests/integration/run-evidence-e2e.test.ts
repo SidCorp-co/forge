@@ -24,6 +24,7 @@ let mods: {
   writeRunEvidence: typeof import('../../src/devices/run-evidence.js').writeRunEvidence;
   writeHeldWorktreeReport: typeof import('../../src/devices/run-evidence.js').writeHeldWorktreeReport;
   openRunSession: typeof import('../../src/devices/run-session.js').openRunSession;
+  runEvidenceMarker: typeof import('../../src/devices/run-evidence.js').runEvidenceMarker;
 };
 
 beforeAll(async () => {
@@ -38,6 +39,7 @@ beforeAll(async () => {
     writeRunEvidence: evidence.writeRunEvidence,
     writeHeldWorktreeReport: evidence.writeHeldWorktreeReport,
     openRunSession: runSession.openRunSession,
+    runEvidenceMarker: evidence.runEvidenceMarker,
   };
 });
 
@@ -204,6 +206,31 @@ describe('what a dead run left, written onto its issues', () => {
       fence.length,
       'the fence must be longer than the longest backtick run in the content',
     ).toBeGreaterThan(3);
+  });
+
+  // cm:guard whitespace is NOT nothing, which is ISS-1050 finding F5. Criterion 24 says the run's own
+  // text appears byte for byte and nowhere else, and `next.trim() === ''` answered for a run that
+  // wrote spaces with this module's sentence instead — a substitution on the one surface built to
+  // keep what the box read apart from what the run said. Only a lease with no text at all earns the
+  // empty block.
+  it('prints whitespace the run wrote rather than calling it nothing written', async () => {
+    const said = '   \n\t ';
+    const { device, issueIds, session } = await aRunOver([9], said);
+
+    await mods.writeRunEvidence({
+      deviceId: device.id,
+      sessionId: session.sessionId,
+      checkpoint: A_CHECKPOINT,
+    });
+
+    const [body] = await bodiesOn(issueIds[0] as string);
+    const text = body as string;
+    const testimony = text.slice(text.indexOf('### What the run said about itself'));
+    expect(
+      testimony,
+      'a run that wrote something, however little, did not write nothing',
+    ).not.toContain('wrote nothing onto its lease');
+    expect(testimony, 'and what it wrote is carried byte for byte').toContain(said);
   });
 
   it('writes once however many times the close is retried', async () => {

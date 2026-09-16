@@ -2856,6 +2856,51 @@
 
 ### Fixed
 
+- **A machine whose Claude account has run out now says so, instead of being asked for work it
+  cannot do.** Each project a machine serves keeps a Claude session running, waiting to be told
+  there is something to look at. When the account behind those sessions hit its usage limit, every
+  one of them started refusing — and nothing anywhere recorded it. The machine's own page went on
+  saying it was healthy, work went on being routed to it, and each session went on being prompted
+  on its usual schedule, spending a full turn to be told no. The machine now reports the refusal
+  the moment one of its sessions meets it, saying which kind it was — the account's quota window,
+  a short throttle, or a login that needs fixing — and how long it expects to wait. Work stops
+  being routed there until it recovers, the prompting slows to a fifth of its usual rate, and
+  anyone looking at the machine sees the reason rather than a healthy row and an idle fleet. It
+  slows rather than stops on purpose: a session still has to try occasionally, because a turn that
+  succeeds is the only proof the account is back. The moment one does, the machine says so and
+  everything returns to normal — including when someone fixes the account by hand, which used to
+  mean waiting out a guessed reset time that may already have been wrong. A machine being out of
+  quota is not treated as a fault: nothing is shut down, no session is ended, and no work in flight
+  is disturbed.
+- **A runner update no longer restarts the box through work it is doing, and four ways a checkout's
+  only copy of an agent's work could be thrown away are closed.** A run is now a helper working
+  inside its master's session rather than a process of its own, and the daemon was still counting
+  busy work by looking for process ids — which nothing writes any more. On the machine this was
+  found on, that count answered "nothing is running" while eight runs across four projects were
+  working, so an automatic update or a credential rotation would have restarted straight through
+  them and every one of those sessions would have ended as a box that vanished. It now asks the same
+  question the recovery sweep asks, which knows what a helper looks like, and a column with no
+  writer is declared as having none so the next reader meets it from the compiler rather than from
+  an outage.
+
+  The other four are all one shape: work that existed and was removed as though it had been kept.
+  A checkout whose branch could not be read was deleted without the publish step that was supposed
+  to protect it, silently, thirty lines below the same situation being refused outright. A run whose
+  only new work was a file nobody had added to git was read as an empty checkout, so nothing was
+  saved before the checkout went — the criterion for this issue has been corrected to say plainly
+  that such a file is work. The check for "is this already on a server somewhere" refreshed one
+  remote and then counted against all of them, so a stale memory of a push to a second remote read
+  as safe. And a close that had already marked the session finished but had not yet handed its
+  issues back reported success on the retry that should have finished it, leaving those issues
+  marked as being worked on by nobody. Beside them: two records a box writes onto an issue can no
+  longer be written twice by two sweeps arriving together, the words a run writes about itself are
+  carried exactly as written even when they are only whitespace, a run's open announcement is no
+  longer lost when the notification fails after the run is created, a declaration carrying something
+  that is not an issue key is refused by name instead of leaving a row nothing can close, and
+  `forge-runner run declare` fails loudly instead of printing a sentence where the caller reads an
+  id.
+
+
 - **A link in an assistant's reply now opens the page it names, instead of the API's 404.** When the
   assistant pointed you at an issue or at a project's Agents screen, the link it wrote was correct —
   but the page put it together with the address of the backend the app talks to, so clicking it

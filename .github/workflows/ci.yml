@@ -191,8 +191,37 @@ jobs:
       runner: ${{ steps.filter.outputs.runner }}
       docs: ${{ steps.filter.outputs.docs }}
       scripts: ${{ steps.filter.outputs.scripts }}
+      proved: ${{ steps.proved.outputs.proved }}
     steps:
       - uses: actions/checkout@v7
+      # A merge commit on `main` carries a tree a `pull_request` run has ALREADY
+      # built and tested: GitHub runs those on `refs/pull/N/merge`, and branch
+      # protection has `strict: true`, so a branch cannot merge while it is
+      # behind — the merge ref and the merge result are the same tree. Re-running
+      # `core`, `core-integration`, `web` and `runner` over it buys nothing, and
+      # measured over 400 runs (2026-09-09..16) it was 88 of them, 22% of all CI.
+      # The two merge-commit reds in that window were both infrastructure, not
+      # drift: a Docker Hub manifest timeout pulling pgvector, and a pg-boss
+      # enqueue failure — neither reachable by this filter.
+      # The parent count is read from the commit object, which a depth-1 checkout
+      # still carries. Anything not a 2-parent push to `main` is `proved=false`,
+      # so a DIRECT push to main — the owner lane, which sees no pull_request run
+      # at all — keeps the full gate. It went red 16 times in that same window.
+      # The cheap always-on jobs (lang-check, conformance, archmap, docs,
+      # injected-docs, install-check) are NOT gated on this: they cost seconds,
+      # they are ungated by paths-filter on purpose, and `docs` walks the whole
+      # tree so a merge CAN break a link no PR run saw.
+      - name: Whether a pull_request run already proved this exact tree
+        id: proved
+        shell: bash
+        run: |
+          proved=false
+          if [ "${{ github.event_name }}" = "push" ] && [ "${{ github.ref }}" = "refs/heads/main" ]; then
+            parents=$(git rev-list --parents -n 1 HEAD | wc -w)
+            if [ "$parents" -ge 3 ]; then proved=true; fi
+          fi
+          echo "proved=$proved" >> "$GITHUB_OUTPUT"
+          echo "pull_request run already proved this tree: $proved"
       - uses: dorny/paths-filter@v4
         id: filter
         with:
@@ -239,7 +268,7 @@ jobs:
 
   web:
     needs: changes
-    if: needs.changes.outputs.web == 'true'
+    if: needs.changes.outputs.proved != 'true' && (needs.changes.outputs.web == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -259,7 +288,7 @@ jobs:
 
   core:
     needs: changes
-    if: needs.changes.outputs.core == 'true' || needs.changes.outputs.scripts == 'true'
+    if: needs.changes.outputs.proved != 'true' && (needs.changes.outputs.core == 'true' || needs.changes.outputs.scripts == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -295,7 +324,7 @@ jobs:
   # become chronic, quarantine the flaky TEST, don't soften the gate.
   core-integration:
     needs: changes
-    if: needs.changes.outputs.core == 'true'
+    if: needs.changes.outputs.proved != 'true' && (needs.changes.outputs.core == 'true')
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v7
@@ -325,7 +354,7 @@ jobs:
   # Keep every leg in ONE job so `needs: runner` covers all three.
   runner:
     needs: changes
-    if: needs.changes.outputs.runner == 'true'
+    if: needs.changes.outputs.proved != 'true' && (needs.changes.outputs.runner == 'true')
     strategy:
       fail-fast: false
       matrix:
