@@ -20,14 +20,19 @@ Element.prototype.scrollIntoView = vi.fn();
 const open = vi.fn();
 const send = vi.fn();
 const detail = vi.fn();
-const agentMode = vi.fn(async () => ({ available: true, reason: null }));
+const agentMode = vi.fn(
+  async (_projectId: string): Promise<{ available: boolean; reason: string | null }> => ({
+    available: true,
+    reason: null,
+  }),
+);
 
 vi.mock("../api", () => ({
   conversationsApi: {
     open: (...a: unknown[]) => open(...a),
     send: (...a: unknown[]) => send(...a),
     detail: (...a: unknown[]) => detail(...a),
-    agentMode: (...a: unknown[]) => agentMode(...a),
+    agentMode: (projectId: string) => agentMode(projectId),
     list: async () => ({ items: [], total: 0 }),
     rename: async () => ({}),
     remove: async () => undefined,
@@ -433,7 +438,7 @@ describe("ConversationChat \u00b7 the pick before any room exists", () => {
   // cm:guard an unknown is not a yes: while the read is in flight the control is disabled and says
   // what it is doing, because offering it and refusing the send a second later is the same lie.
   it("holds Agent closed while it does not yet know", async () => {
-    let answer: (v: unknown) => void = () => undefined;
+    let answer: (v: { available: boolean; reason: string | null }) => void = () => undefined;
     agentMode.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
     mountDraft();
     await waitFor(() => expect(screen.getByRole("radio", { name: "Agent" })).toBeDisabled());
