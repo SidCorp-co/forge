@@ -79,7 +79,7 @@ export async function reevaluateConditions(now: Date = new Date()): Promise<Reev
     // is one burst of alarms traded for one burst of all-clears.
     const released = await db.execute<{ id: string }>(sql`
       UPDATE notifications n
-         SET state = 'pending', inhibited_by = NULL, pending_since = ${now}
+         SET state = 'pending', inhibited_by = NULL, pending_since = ${now.toISOString()}::timestamptz
         FROM notifications root
        WHERE n.inhibited_by = root.id
          AND n.state = 'inhibited'

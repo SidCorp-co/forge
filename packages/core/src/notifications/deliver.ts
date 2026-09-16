@@ -161,6 +161,8 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
           userId,
           channel: 'bell',
           groupKey: input.groupKey ?? null,
+          // A grouped delivery names the cause; an ungrouped one is its record.
+          title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,
           createdAt: now,
         })
         .returning({ id: notificationDeliveries.id });

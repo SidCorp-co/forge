@@ -2131,6 +2131,8 @@ export const notificationDeliveries = pgTable(
     channel: text('channel', { enum: notificationChannelValues }).notNull().default('bell'),
     // cm:why the group key is on the delivery as well as on the record: the record says which evaluation raised it, and this says which delivery collapsed it, so a second evaluation finds the same (user, group) delivery and joins its records to that one instead of writing another row
     groupKey: text('group_key'),
+    // cm:why ISS-1063 — the delivery's own headline. A grouped delivery names the CAUSE the fifteen records share ("15 issues are parked with merged code"); an ungrouped one carries its record's title, and a resolved notice says the condition ended. Deriving it from the members instead would pick one of fifteen titles at random and say nothing about how many there were.
+    title: text('title'),
     // cm:guard `read_at` is the ONLY read state in this schema, and `resolved_at` on the record is the only "still true" state. The two answer different questions and belong to different owners; the whole of ISS-1063 is that they stopped sharing a row. Nothing may read one to answer the other.
     readAt: timestamp('read_at', { withTimezone: true }),
     // cm:why ISS-1063 — `send_resolved`: a delivery written to say the condition CLEARED, to the same people who were told it started. A record that never earned a delivery announces nothing when it clears.

@@ -12,6 +12,7 @@ CREATE TABLE "notification_deliveries" (
   "user_id" uuid NOT NULL REFERENCES "users"("id") ON DELETE cascade,
   "channel" text DEFAULT 'bell' NOT NULL,
   "group_key" text,
+  "title" text,
   "read_at" timestamp with time zone,
   "resolved_notice" boolean DEFAULT false NOT NULL,
   "created_at" timestamp with time zone DEFAULT now() NOT NULL

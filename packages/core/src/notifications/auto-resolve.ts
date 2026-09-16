@@ -106,7 +106,12 @@ export async function sendResolvedNotice(notificationId: string): Promise<number
   for (const userId of recipients) {
     const [delivery] = await db
       .insert(notificationDeliveries)
-      .values({ userId, channel: 'bell', resolvedNotice: true })
+      .values({
+        userId,
+        channel: 'bell',
+        resolvedNotice: true,
+        title: `Resolved — ${record.title}`,
+      })
       .returning({ id: notificationDeliveries.id });
     if (!delivery) continue;
     await db

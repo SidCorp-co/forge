@@ -15710,6 +15710,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "title": {
+          "name": "title",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "read_at": {
           "name": "read_at",
           "type": "timestamp with time zone",

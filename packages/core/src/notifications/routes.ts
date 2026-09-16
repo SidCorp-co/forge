@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, countDistinct, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, countDistinct, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -148,12 +148,14 @@ notificationRoutes.get(
         groupKey: notificationDeliveries.groupKey,
         resolvedNotice: notificationDeliveries.resolvedNotice,
         createdAt: notificationDeliveries.createdAt,
-        members: count(notificationDeliveryMembers.notificationId),
-        openMembers: sql<number>`count(*) FILTER (WHERE ${notifications.resolvedAt} IS NULL AND ${stillTrue})`,
+        // cm:why the explicit `::int` on both counts: postgres returns `count()` as bigint, which reaches JSON as a STRING. The web compares it (`members > 1`) and prints it, and a string that coerces in every comparison it happens to be in is the kind of wrong that shows up as one odd row months later.
+        members: sql<number>`count(${notificationDeliveryMembers.notificationId})::int`,
+        openMembers: sql<number>`(count(*) FILTER (WHERE ${notifications.resolvedAt} IS NULL AND ${stillTrue}))::int`,
         type: sql<string>`min(${notifications.type})`,
         kind: sql<string>`min(${notifications.kind})`,
         tier: sql<string>`min(${notifications.tier})`,
-        title: sql<string>`min(${notifications.title})`,
+        // cm:why the delivery's own title wins: a grouped delivery names the cause the fifteen share, and `min()` over its members would pick one of the fifteen at random
+        title: sql<string>`coalesce(${notificationDeliveries.title}, min(${notifications.title}))`,
         body: sql<string | null>`min(${notifications.body})`,
         severity: sql<string | null>`min(${notifications.severity})`,
         projectId: sql<string | null>`min(${notifications.projectId}::text)`,
@@ -169,7 +171,7 @@ notificationRoutes.get(
       )
       .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
       .where(where)
-      .groupBy(notificationDeliveries.id)
+      .groupBy(notificationDeliveries.id, notificationDeliveries.title)
       .orderBy(desc(notificationDeliveries.createdAt))
       .limit(pageSize)
       .offset((page - 1) * pageSize);
