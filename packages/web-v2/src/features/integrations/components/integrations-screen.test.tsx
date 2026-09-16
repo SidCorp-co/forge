@@ -268,6 +268,29 @@ describe("IntegrationsScreen", () => {
     ]);
   });
 
+  it("announces each token of the row exactly once across the name and the description", () => {
+    // The name and the description PARTITION the row: the endpoint and the
+    // project chips identify the credential and belong to the name alone, so
+    // hearing them again in the description is noise on every focus.
+    connectionItems.mockReturnValue([
+      conn({ config: { baseUrl: "https://deploy.example.com" }, usage: BOUND }),
+    ]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    const manage = manageButton("Coolify deploy");
+    expect(manage).toHaveAccessibleName(
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Production",
+    );
+    const description = manage.getAttribute("aria-describedby")
+      ?.split(" ")
+      .map((id) => document.getElementById(id)?.textContent ?? "")
+      .join(" ");
+    expect(description).not.toContain("deploy.example.com");
+    expect(description).not.toContain("forge-dev");
+    expect(description).toContain("last health: ok");
+    expect(description).toContain("Personal");
+  });
+
   it("describes the drawer button with the owner the badge shows", () => {
     connectionItems.mockReturnValue([conn({ ownerType: "org", ownerId: "org-1" })]);
     activeOrg.mockReturnValue(TEAM);
@@ -407,6 +430,17 @@ describe("IntegrationsScreen, grouped by app", () => {
       conn({ id: "c2", displayName: "Prod token", active: false }),
       conn({ id: "s1", provider: "sentry", displayName: "Sentry key" }),
     ]);
+  });
+
+  it("exposes each app as a heading, so the grouping is reachable by heading navigation", () => {
+    connectionItems.mockReturnValue([conn(), conn({ id: "c2", provider: "github" })]);
+    render(<IntegrationsScreen />);
+    const headings = screen.getAllByRole("heading", { level: 2 });
+    expect(headings.map((h) => h.textContent?.split("\n")[0])).toEqual([
+      "Coolify deploy1 connection",
+      "GitHub1 connection",
+    ]);
+    expect(within(headings[0]).getByRole("button", { expanded: false })).toBeInTheDocument();
   });
 
   it("renders one section per app rather than one card per connection", () => {

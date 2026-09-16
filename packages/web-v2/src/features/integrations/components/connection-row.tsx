@@ -24,14 +24,17 @@ import { DirectoryStatusPill, ENV_LABEL, PROVIDER_ICON, PROVIDER_LABEL } from ".
 function UsageLine({
   connection,
   projectName,
+  emptyId,
 }: {
   connection: ConnectionDirectoryItem;
   projectName: (id: string) => string;
+  /** Named by the row button's description: the chips are in its NAME, this is not. */
+  emptyId: string;
 }) {
   const bindings = connection.usage.bindings;
   if (bindings.length === 0) {
     return (
-      <span className="fg-body-sm text-subtle">
+      <span id={emptyId} className="fg-body-sm text-subtle">
         Not used by any project — share it from a project&apos;s settings → Integrations.
       </span>
     );
@@ -72,8 +75,10 @@ function UsageLine({
  * Those move under the credential rather than distinguishing it, they are read
  * from the row's own text and its pill, and putting them in the name would make
  * a control rename itself when a health check landed. `aria-describedby`
- * carries them, and the owner badge with them, so the name and the description
- * between them hold every token the row renders.
+ * carries them, and the owner badge and the not-used-by-any-project sentence
+ * with them. The two partition the row rather than overlapping: every token the
+ * row renders is in exactly one of them, so nothing is announced twice and
+ * nothing is lost.
  *
  * Where the row shows nothing that tells two apart, neither does this:
  * suffixing an id would name the rows by something no one can see, and two rows
@@ -175,7 +180,8 @@ export function ConnectionRow({
   // Without this the row stops answering "who uses it" and "is it healthy" for
   // exactly the people who cannot see the answer beside the control.
   const ownerId = useId();
-  const detailId = useId();
+  const usageEmptyId = useId();
+  const healthId = useId();
   const statusId = useId();
   const checked = formatRelativeTime(connection.lastHealthAt);
   const title = connectionTitle(connection);
@@ -188,7 +194,17 @@ export function ConnectionRow({
       <button
         type="button"
         aria-label={connectionRowLabel(connection, projectName)}
-        aria-describedby={`${ownerId} ${detailId} ${statusId}`}
+        aria-describedby={[
+          ownerId,
+          // Only when it renders: an id naming no element is ignored by the
+          // spec, but the header beside this one refuses a dangling reference
+          // and two rules in one file is one rule nobody can state.
+          connection.usage.bindings.length === 0 ? usageEmptyId : null,
+          healthId,
+          statusId,
+        ]
+          .filter(Boolean)
+          .join(" ")}
         onClick={onOpen}
         className="-mx-1 flex min-w-[220px] flex-1 cursor-pointer flex-col gap-0.5 rounded-md px-1 py-0.5 text-left hover:bg-sunken focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
       >
@@ -208,14 +224,14 @@ export function ConnectionRow({
             <Badge tone={connection.ownerType === "org" ? "accent" : "neutral"}>{ownerLabel}</Badge>
           </span>
         </span>
-        <span id={detailId} className="flex flex-wrap items-center gap-x-2 gap-y-1">
+        <span className="flex flex-wrap items-center gap-x-2 gap-y-1">
           {target && (
             <span className="fg-body-sm truncate font-mono text-muted" title={target}>
               {target}
             </span>
           )}
-          <UsageLine connection={connection} projectName={projectName} />
-          <span className="fg-body-sm text-subtle">
+          <UsageLine connection={connection} projectName={projectName} emptyId={usageEmptyId} />
+          <span id={healthId} className="fg-body-sm text-subtle">
             {connection.lastHealthStatus
               ? `last health: ${connection.lastHealthStatus}${checked ? ` · ${checked}` : ""}`
               : "never health-checked"}
