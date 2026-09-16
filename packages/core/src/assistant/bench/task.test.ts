@@ -354,3 +354,36 @@ describe('fill', () => {
     expect(() => fill('{c}', {})).toThrow('placeholder {c} has no value');
   });
 });
+
+// cm:why the six by name: before ISS-1066 the judge had nothing of the project for these, so
+// "served" was a reading of tone. `memory-followup` is the seventh because it is the task the
+// 17:42Z evidence was written about — 763 open issues answered against a project holding 682, and
+// the judge said yes twice.
+describe('the rubrics that send the judge to the brief (ISS-1066)', () => {
+  const REWORDED = [
+    'project-issue-counts',
+    'project-pipeline-states',
+    'project-waiting-issue',
+    'summary-in-style',
+    'filing-guidance',
+    'memory-question',
+    'memory-followup',
+  ];
+
+  it.each(REWORDED)('%s names the brief in its rubric', (id) => {
+    const found = loadTasks().find((t) => t.id === id);
+    expect(found?.judgeRubric, id).toMatch(/brief/);
+  });
+
+  it('asks about the effective pipeline rather than the keys the config names', () => {
+    const states = loadTasks().find((t) => t.id === 'project-pipeline-states');
+    expect(states?.turns[0]?.message).not.toMatch(/config names/);
+    expect(states?.intent).toMatch(/effective/);
+  });
+
+  it('bounds the open-issues walk instead of asking for every open issue', () => {
+    const open = loadTasks().find((t) => t.id === 'open-issues-linked');
+    expect(open?.fixtures).toEqual(['newestOpenIssues']);
+    expect(open?.turns[0]?.message).toMatch(/five newest/);
+  });
+});

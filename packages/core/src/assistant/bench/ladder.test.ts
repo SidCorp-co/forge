@@ -316,3 +316,82 @@ describe('the printers', () => {
     expect(deltaLine(runs.slice(0, 1))).toBeNull();
   });
 });
+
+// cm:why a per-project group rather than one ladder: a task's pass rate is about the project it was
+// walked on, and `k` taken across every file marked a complete three-trial run thin because another
+// project's file named a larger one (codex F3 on ISS-1066).
+describe('one ladder per project (ISS-1066)', () => {
+  const on = (slug: string | null, k: number, trials: Record<string, TrialResult[]>): BenchResult =>
+    file(
+      {
+        k,
+        ...(slug
+          ? { project: { id: `id-${slug}`, slug, brief: 'b', readAt: '2026-09-17T00:00:00.000Z' } }
+          : { project: null }),
+      },
+      trials,
+    );
+
+  it('groups the rows by project slug, in the order the files first name each', () => {
+    const rows = rankRuns(
+      [
+        { name: 'plugin-1.json', result: on('forge-plugin', 3, { a: P(3) }) },
+        { name: 'qa-1.json', result: on('qa', 3, { a: P(3) }) },
+        { name: 'plugin-2.json', result: on('forge-plugin', 3, { a: F(3) }) },
+      ],
+      ['a'],
+    );
+    expect(rows.map((r) => [r.projectSlug, r.name])).toEqual([
+      ['forge-plugin', 'plugin-1.json'],
+      ['forge-plugin', 'plugin-2.json'],
+      ['qa', 'qa-1.json'],
+    ]);
+    const lines = ladderLines(rows, []);
+    expect(lines.filter((l) => l.startsWith('runs'))).toEqual([
+      'runs · project forge-plugin',
+      'runs · project qa',
+    ]);
+  });
+
+  it('leaves a project’s score, lowest task and thin mark alone when another project names a larger k', () => {
+    const alone = rankRuns(
+      [{ name: 'qa.json', result: on('qa', 3, { a: P(3), b: F(3) }) }],
+      ['a', 'b'],
+    );
+    const beside = rankRuns(
+      [
+        { name: 'qa.json', result: on('qa', 3, { a: P(3), b: F(3) }) },
+        { name: 'plugin.json', result: on('forge-plugin', 5, { a: P(5) }) },
+      ],
+      ['a', 'b'],
+    );
+    const qa = beside.find((r) => r.name === 'qa.json');
+    expect(qa?.score).toBe(alone[0]?.score);
+    expect(qa?.lowest).toEqual(alone[0]?.lowest);
+    expect(qa?.thin).toBe(false);
+    expect(qa?.k).toBe(3);
+    expect(beside.find((r) => r.name === 'plugin.json')?.k).toBe(5);
+  });
+
+  it('keeps a not-applicable task out of the score, the full count and the thin mark, and prints its reason', () => {
+    const result = on('forge-plugin', 3, { a: P(3) });
+    result.tasks.push({
+      id: 'project-waiting-issue',
+      capability: 'project-understanding',
+      trials: [],
+      notApplicable: 'the project holds no issue waiting on information',
+    });
+    const rows = rankRuns([{ name: 'r.json', result }], ['a', 'project-waiting-issue']);
+    const row = rows[0];
+    expect(row?.score).toBe(100);
+    expect(row?.tasksWalked).toBe(1);
+    expect(row?.thin).toBe(false);
+    expect(row?.partial).toBe(false);
+    expect(row?.notApplicable).toEqual([
+      { id: 'project-waiting-issue', why: 'the project holds no issue waiting on information' },
+    ]);
+    expect(ladderLines(rows, [])).toContain(
+      'r.json: project-waiting-issue not applicable — the project holds no issue waiting on information',
+    );
+  });
+});
