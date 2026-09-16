@@ -372,3 +372,53 @@ describe('a finish racing an abort', () => {
     }).toEqual({ run: 'cancelled', issue: 'reopen', claim: null });
   }, 60_000);
 });
+
+describe('a finish after an abort of a reaped run', () => {
+  // cm:guard the reviewer's F2 case, asserted rather than argued. `reapConcludedRuns` can close a
+  // run `completed` while its roster is still claimed; an operator then aborts, which reopens the
+  // roster and clears the claims but CANNOT rewrite a run already terminal — `closeRunIfOneShot`
+  // matches only `running|paused`. A later `finish` therefore meets `completed` with no claims and
+  // answers from the record. The reviewer read that as finish being accepted as a previous success
+  // and asked for provenance in `pipelineRuns.metadata`; what this case establishes is that the
+  // empty answer is the truthful one — there is nothing left to close, the abort's `reopen` stands
+  // and its cleared claim stays cleared. Probing here could only produce `RELEASE_NOT_VERIFIED`
+  // about an empty roster, which is a worse account of a batch a person called off than saying
+  // nothing closed. The roster-still-claimed half, which the guard must never swallow, is the case
+  // above; both are needed and neither covers the other.
+  it('closes nothing and leaves the abort standing', async () => {
+    const { abortReleaseBatch, finishReleaseBatch } = await import(
+      '../../src/release-batch/service.js'
+    );
+    const probe: Server = createServer((_req, res) => res.end('a-commit-that-never-shipped'));
+    await new Promise<void>((done) => probe.listen(0, '127.0.0.1', done));
+    const { port } = probe.address() as AddressInfo;
+    await harness.db.execute(sql`
+      UPDATE integration_bindings
+      SET config = config || ${JSON.stringify({
+        verify: {
+          probes: [{ url: `http://127.0.0.1:${port}/version` }],
+          timeoutSeconds: 5,
+          stableReads: 1,
+        },
+      })}::jsonb
+      WHERE project_id = ${projectId} AND provider = 'coolify' AND environment = 'prod'
+    `);
+    const a = await insertIssue();
+    const { runId } = await claim([a]);
+    await harness.db.execute(sql`
+      UPDATE pipeline_runs SET status = 'completed' WHERE id = ${runId}
+    `);
+    await abortReleaseBatch(runId, 'the deploy never landed', ownerId);
+
+    const result = await finishReleaseBatch(runId, actor(), { commit: 'the-release-commit' }).catch(
+      (e: unknown) => e,
+    );
+    await new Promise<void>((done) => probe.close(() => done()));
+
+    expect(result).toEqual({ closed: [], failed: [] });
+    expect({
+      issue: (await stored(a)).status,
+      claim: (await stored(a)).claim,
+    }).toEqual({ issue: 'reopen', claim: null });
+  }, 60_000);
+});
