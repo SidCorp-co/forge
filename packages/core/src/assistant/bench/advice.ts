@@ -141,8 +141,8 @@ export function advise(inputs: readonly AdviceInput[]): AdviceLine[] {
           'help_roundtrip',
           help,
           `above ${Math.round(THRESHOLDS.helpRoundtripShare * 100)}%`,
-          'assistant/system-prompt.ts:buildSystemPrompt',
-          "the tool layer lacks the verbs' usage; carry it so no -h call is needed",
+          'guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE',
+          "the method guide sends the model to -h for every verb; carry the verbs' usage so no -h call is needed",
         ),
       );
     const links = rowsWith(input, LINK_MODES);
@@ -153,8 +153,8 @@ export function advise(inputs: readonly AdviceInput[]): AdviceLine[] {
           'wrong_link_shape/dead_link',
           links,
           'above 0',
-          'messaging/text-rules.ts:ISSUE_NAV_RE and the link rule in assistant/system-prompt.ts',
-          'the link rule names the wrong shape; state the one URL the web opens',
+          'messaging/text-rules.ts:ISSUE_NAV_RE and the link line in assistant/door-persona.ts:assistantOpening',
+          'the link line is not landing; state the one URL shape the web opens, /projects/<slug>/issues/<documentId>',
         ),
       );
     const loop = rowsWith(input, LOOP_MODES);

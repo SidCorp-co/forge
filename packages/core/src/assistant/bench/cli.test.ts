@@ -294,7 +294,7 @@ describe('advise', () => {
     expect(await main(['advise', '/h.json'], {}, d)).toBe(0);
     expect(out[2]).toBe('advice:');
     expect(out[3]).toBe(
-      "  m / web-chat-reply: help_roundtrip 12/40 (30%) above 10% -> assistant/system-prompt.ts:buildSystemPrompt: the tool layer lacks the verbs' usage; carry it so no -h call is needed",
+      "  m / web-chat-reply: help_roundtrip 12/40 (30%) above 10% -> guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE: the method guide sends the model to -h for every verb; carry the verbs' usage so no -h call is needed",
     );
     expect(err).toEqual([]);
   });

@@ -242,7 +242,7 @@ describe('compare-history', () => {
       out.indexOf('no differences: same commit, window, budgets, judge and row count'),
     );
     expect(out.at(-1)).toContain(
-      'help_roundtrip 1/1 (100%) above 10% -> assistant/system-prompt.ts:buildSystemPrompt',
+      'help_roundtrip 1/1 (100%) above 10% -> guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE',
     );
   });
 

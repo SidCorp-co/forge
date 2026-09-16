@@ -191,10 +191,12 @@ threshold, each carrying the count it rests on, the bar it crossed and the surfa
   question.
 - `screen_repair`/`fallback_sent` rows the judge called `no` → the repair did not serve either; the
   fault is upstream of the screen, keep it.
-- `help_roundtrip` above 10% of rows (`advice.ts:THRESHOLDS`) → `assistant/system-prompt.ts:buildSystemPrompt`:
-  the tool layer lacks the verbs' usage; carry it so no `-h` call is needed.
-- `wrong_link_shape`/`dead_link` → `messaging/text-rules.ts:ISSUE_NAV_RE` and the link rule in the
-  system prompt: state the one URL shape the web opens.
+- `help_roundtrip` above 10% of rows (`advice.ts:THRESHOLDS`) → `guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE`:
+  the method guide sends the model to `-h` for every verb; carry the verbs' usage so no `-h` call
+  is needed.
+- `wrong_link_shape`/`dead_link` → `messaging/text-rules.ts:ISSUE_NAV_RE` and the link line in
+  `assistant/door-persona.ts:assistantOpening`: the link line is not landing; state the one URL shape
+  the web opens, `/projects/<slug>/issues/<documentId>`.
 - `over_budget`/`repeated_call` → `assistant/run-turn-core.ts:runTurnEvents`: the loop lacks a stop.
 - `language_mismatch` → `assistant/door-persona.ts`: the persona does not bind the reply language.
 - `unanswered` → `conversations/turn-runner.ts`: a provider error or an empty reply reached the person.
@@ -209,8 +211,8 @@ ISS-1054 judged window, 48 rows of `cx/gpt-5.6-terra` on the web door, 40 of the
 ```
 advice:
   cx/gpt-5.6-terra / web: screen_repair/fallback_sent 5/48 (10%) above 0, repaired reply judged yes/partial -> conversations/screened-reply.ts:screenReply: the repair served; the verdict is on the repaired reply, not the rejected one - read the rejected attempt in the row, and loosen the shape check only where it answered the question
-  cx/gpt-5.6-terra / web: help_roundtrip 12/48 (25%) above 10% -> assistant/system-prompt.ts:buildSystemPrompt: the tool layer lacks the verbs' usage; carry it so no -h call is needed
-  cx/gpt-5.6-terra / web: wrong_link_shape/dead_link 5/48 (10%) above 0 -> messaging/text-rules.ts:ISSUE_NAV_RE and the link rule in assistant/system-prompt.ts: the link rule names the wrong shape; state the one URL the web opens
+  cx/gpt-5.6-terra / web: help_roundtrip 12/48 (25%) above 10% -> guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE: the method guide sends the model to -h for every verb; carry the verbs' usage so no -h call is needed
+  cx/gpt-5.6-terra / web: wrong_link_shape/dead_link 5/48 (10%) above 0 -> messaging/text-rules.ts:ISSUE_NAV_RE and the link line in assistant/door-persona.ts:assistantOpening: the link line is not landing; state the one URL shape the web opens, /projects/<slug>/issues/<documentId>
 ```
 
 The same block at the end of `compare beta-run.json beta-run2.json` (the two ISS-1051 live runs,
@@ -221,7 +223,7 @@ of ten:
 advice:
   summary-in-style: screen_repair/fallback_sent 3/3 (100%) above 0, unjudged -> bench:assistant run --judge / history --judge: the screen rejected replies and nothing says whether they were right; judge these rows before touching the screen
   summary-in-style: unanswered 3/3 (100%) above 0 -> conversations/turn-runner.ts: the door lets a provider error or an empty reply reach the person; retry once or say so
-  filing-guidance: help_roundtrip 3/3 (100%) above 10% -> assistant/system-prompt.ts:buildSystemPrompt: the tool layer lacks the verbs' usage; carry it so no -h call is needed
+  filing-guidance: help_roundtrip 3/3 (100%) above 10% -> guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE: the method guide sends the model to -h for every verb; carry the verbs' usage so no -h call is needed
 ```
 
 The first block is the evidence ISS-1057 starts from: five screen rejections whose repair the judge

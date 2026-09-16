@@ -140,7 +140,7 @@ describe('the other patterns', () => {
       pattern: 'help_roundtrip',
       count: 2,
       threshold: 'above 10%',
-      surface: 'assistant/system-prompt.ts:buildSystemPrompt',
+      surface: 'guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE',
     });
   });
 
@@ -162,7 +162,7 @@ describe('the other patterns', () => {
       [
         'wrong_link_shape/dead_link',
         2,
-        'messaging/text-rules.ts:ISSUE_NAV_RE and the link rule in assistant/system-prompt.ts',
+        'messaging/text-rules.ts:ISSUE_NAV_RE and the link line in assistant/door-persona.ts:assistantOpening',
       ],
       ['over_budget/repeated_call', 3, 'assistant/run-turn-core.ts:runTurnEvents'],
       ['language_mismatch', 1, 'assistant/door-persona.ts'],
@@ -184,11 +184,12 @@ describe('the other patterns', () => {
       count: 12,
       rows: 48,
       threshold: 'above 10%',
-      surface: 'assistant/system-prompt.ts:buildSystemPrompt',
-      change: "the tool layer lacks the verbs' usage; carry it so no -h call is needed",
+      surface: 'guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE',
+      change:
+        "the method guide sends the model to -h for every verb; carry the verbs' usage so no -h call is needed",
     });
     expect(adviceLines(lines)[1]).toBe(
-      "  g: help_roundtrip 12/48 (25%) above 10% -> assistant/system-prompt.ts:buildSystemPrompt: the tool layer lacks the verbs' usage; carry it so no -h call is needed",
+      "  g: help_roundtrip 12/48 (25%) above 10% -> guides/assistant-method-guide.ts:ASSISTANT_METHOD_GUIDE: the method guide sends the model to -h for every verb; carry the verbs' usage so no -h call is needed",
     );
   });
 
