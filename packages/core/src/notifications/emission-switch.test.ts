@@ -6,62 +6,76 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 
-const insertReturning = vi.fn(() => Promise.resolve([{ id: 'n1' }]));
-const insertValues = vi.fn(() => ({ returning: insertReturning }));
-const insert = vi.fn(() => ({ values: insertValues }));
-const selectLimit = vi.fn<() => Promise<{ notifyOnMention: boolean }[]>>(() => Promise.resolve([]));
-const selectWhere = vi.fn(() => ({ limit: selectLimit }));
-const selectFrom = vi.fn(() => ({ where: selectWhere }));
-
+/**
+ * The db every test here shares: a proxy that throws on ANY access.
+ *
+ * That is the assertion, not a convenience. "Writes no row" is cheap to fake — a mock
+ * that records calls passes just as well when the gate runs AFTER the insert and the
+ * insert is simply ignored. A db that cannot be touched at all fails the moment the seam
+ * moves below the first query, which is exactly the regression this file exists to catch.
+ */
 vi.mock('../db/client.js', () => ({
-  db: { select: vi.fn(() => ({ from: selectFrom })), insert },
+  db: new Proxy(
+    {},
+    {
+      get() {
+        throw new Error('the database was reached');
+      },
+    },
+  ),
 }));
 
-const { emissionAllowed, SUPPRESSED_TYPES } = await import('./emission-switch.js');
-const { createNotification } = await import('./routes.js');
+const suppressed = new Set<string>();
+vi.mock('./emission-switch.js', async (importOriginal) => {
+  const real = await importOriginal<typeof import('./emission-switch.js')>();
+  return {
+    ...real,
+    SUPPRESSED_TYPES: suppressed,
+    emissionAllowed: (t: string) => !suppressed.has(t),
+    noteSuppressed: () => {},
+  };
+});
+
+const { recordAndDeliver } = await import('./deliver.js');
+const { emissionAllowed, SUPPRESSED_TYPES } =
+  await vi.importActual<typeof import('./emission-switch.js')>('./emission-switch.js');
 const { notificationTypes } = await import('../db/schema.js');
 
-describe('the emission switch — which types may write a row at all', () => {
-  it('allows ops_alert and no other type', () => {
-    const allowed = notificationTypes.filter((t) => emissionAllowed(t));
-    expect(allowed).toEqual(['ops_alert']);
+/**
+ * Criterion 6 — at the head that lands last, the switch suppresses no type.
+ *
+ * These read the REAL module (`importActual`); every test below reads the mocked one,
+ * because a switch whose set is empty cannot demonstrate that its seam still bites.
+ */
+describe('the emission switch, as this deployment ships it', () => {
+  it('suppresses no type', () => {
+    expect([...SUPPRESSED_TYPES]).toEqual([]);
   });
 
-  it('suppresses every declared type except ops_alert', () => {
-    const expected = notificationTypes.filter((t) => t !== 'ops_alert');
-    expect([...SUPPRESSED_TYPES].sort()).toEqual([...expected].sort());
+  it('allows every declared type', () => {
+    const refused = notificationTypes.filter((t) => !emissionAllowed(t));
+    expect(refused).toEqual([]);
   });
 });
 
-describe('createNotification obeys the switch', () => {
-  it('writes no row and returns null for a suppressed type', async () => {
-    insert.mockClear();
-    const result = await createNotification({
-      userId: 'u1',
+/** The mechanism the empty set leaves behind — proved with the set made non-empty. */
+describe('the seam still refuses a type an operator turns off', () => {
+  it('writes nothing and returns null, without reaching the database', async () => {
+    suppressed.clear();
+    suppressed.add('issue_stranded');
+    const result = await recordAndDeliver({
+      recipients: ['u1'],
       type: 'issue_stranded',
       title: 'ISS-1 is waiting on you',
     });
     expect(result).toBeNull();
-    expect(insert).not.toHaveBeenCalled();
   });
 
-  it('writes the row for ops_alert', async () => {
-    insert.mockClear();
-    const result = await createNotification({
-      userId: 'u1',
-      type: 'ops_alert',
-      title: 'Orphan jobs detected',
-    });
-    expect(result).toEqual({ id: 'n1' });
-    expect(insert).toHaveBeenCalledTimes(1);
-  });
-
-  it('writes no row for a suppressed type even when a mention preference would allow it', async () => {
-    insert.mockClear();
-    selectLimit.mockResolvedValueOnce([{ notifyOnMention: true }]);
-    const result = await createNotification({ userId: 'u1', type: 'mention', title: '@you' });
-    expect(result).toBeNull();
-    expect(insert).not.toHaveBeenCalled();
+  it('reaches the database for a type that is not suppressed', async () => {
+    suppressed.clear();
+    await expect(
+      recordAndDeliver({ recipients: ['u1'], type: 'ops_alert', title: 'Orphan jobs detected' }),
+    ).rejects.toThrow('the database was reached');
   });
 });
 
@@ -76,7 +90,7 @@ describe('createNotification obeys the switch', () => {
 describe('only the three known files write the notifications table', () => {
   const root = join(import.meta.dirname, '..');
   const WRITERS = [
-    join('notifications', 'routes.ts'),
+    join('notifications', 'deliver.ts'),
     join('admin', 'alert-sweeper.ts'),
     join('pm', 'auto-disable.ts'),
   ];
@@ -104,9 +118,10 @@ describe('only the three known files write the notifications table', () => {
   it('each of the three consults the switch', () => {
     for (const writer of WRITERS) {
       const src = readFileSync(join(root, writer), 'utf8');
-      const consults =
-        writer.endsWith(join('notifications', 'routes.ts')) || src.includes('emissionAllowed(');
-      expect({ writer, consults }).toEqual({ writer, consults: true });
+      expect({ writer, consults: src.includes('emissionAllowed(') }).toEqual({
+        writer,
+        consults: true,
+      });
     }
   });
 });

@@ -1800,13 +1800,6 @@
       "when": 1795478400000,
       "tag": "0256_notification_record_kinds",
       "breakpoints": true
-    },
-    {
-      "idx": 257,
-      "version": "7",
-      "when": 1789597351946,
-      "tag": "0257_verify_no_drift",
-      "breakpoints": true
     }
   ]
 }
