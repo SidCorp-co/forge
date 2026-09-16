@@ -131,7 +131,13 @@ one. `prompt/facts/resolve.ts:buildLadder` is still a second copy of that filter
 that file; `effective-ladder.test.ts` reads its text and goes red if the condition drifts or a second
 copy appears in it.
 
-The fixture-bound checks (`task.ts:CHECK_KINDS`) read a value the deployment supplied: `listInOrder`
+The fixture-bound checks (`task.ts:CHECK_KINDS`) read a value the deployment supplied. A literal
+pattern is matched on an alphanumeric boundary at each end that has one (`grade.ts:literal`, a
+lookaround rather than `\b`, because `_` is a word character and a reply may write `__ISS-25__`),
+because an issue key is a prefix of another issue key: `ISS-2` matched inside `ISS-25`, and `ISS-10` inside an
+`ISS-1056` that a title carried, so `open-issues-linked` could not be passed at all on the QA
+project — a reply listing all five in the deployment's own order was reported as naming them out of
+order. `listInOrder`
 holds every member of a filled list to its place; `onlyFrom` fails a reply naming a registry status
 (`pipeline-registry.ts:REGISTRY_ISSUE_STATUSES`, whole words, `in_progress` one token) outside that
 list, so a reply reciting the product's whole lifecycle no longer passes the pipeline-states task
