@@ -1,4 +1,4 @@
--- ISS-1071 — the way back from 0255_integration_agent_access.sql.
+-- ISS-1071 — the way back from 0259_integration_agent_access.sql.
 --
 -- NOT run by `db/migrate.js`. This file is applied BY HAND, against the database, BEFORE the
 -- previous image is started — never after. The previous image's boot migrator knows only its
@@ -9,12 +9,12 @@
 --   docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' <core-container>
 --   docker run --rm --network <that-network> -i postgres:16 \
 --     psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
---     < packages/core/drizzle/rollback/0255_down.sql
+--     < packages/core/drizzle/rollback/0259_down.sql
 --
--- The file is REDIRECTED INTO the container's stdin. `-f 0255_down.sql` would make psql look
+-- The file is REDIRECTED INTO the container's stdin. `-f 0259_down.sql` would make psql look
 -- for the file INSIDE the disposable container, which has no checkout mounted, so recovery
 -- would stop before executing a single statement.
---   DELETE FROM drizzle.__drizzle_migrations WHERE hash = '<0255 hash>';
+--   DELETE FROM drizzle.__drizzle_migrations WHERE hash = '<0259 hash>';
 --
 -- Then start the previous image.
 --
@@ -38,10 +38,10 @@ BEGIN
   IF to_regclass('public.iss1071_removed_mcp_sentinels') IS NULL
      OR to_regclass('public.iss1071_agent_access_set') IS NULL THEN
     RAISE EXCEPTION 'ISS-1071 rollback: the before-image tables are missing '
-      '(iss1071_removed_mcp_sentinels, iss1071_agent_access_set). 0255 creates both and '
+      '(iss1071_removed_mcp_sentinels, iss1071_agent_access_set). 0259 creates both and '
       'deliberately does not drop them, because a grant cannot be inverted back into an '
       'mcpServers map. Without them this file cannot restore anything and will not pretend '
-      'to: recover them from a backup taken after 0255 ran, or reconstruct each project''s '
+      'to: recover them from a backup taken after 0259 ran, or reconstruct each project''s '
       'map by hand from its own history before rolling back.';
   END IF;
 END $$;
@@ -53,16 +53,16 @@ END $$;
 -- would put back is not the state that grant came from, and dropping the column throws the
 -- newer decision away with no record that it existed.
 --
--- A binding created after 0255 ran has no image row; its baseline is the column's own
+-- A binding created after 0259 ran has no image row; its baseline is the column's own
 -- default, `none`. At `all` it is a grant somebody made deliberately, and it stops this file
 -- exactly like any other. At `none` it matches that baseline and passes HERE — which is not
 -- the same as being safe, because going back ADDS access to a denied row rather than removing
 -- it. Section 1b is where that case is refused; this one only ever asks about a grant that
--- moved away from what 0255 set.
+-- moved away from what 0259 set.
 DO $$
 DECLARE moved text; n int;
 BEGIN
-  SELECT string_agg(format('%s (project %s, provider %s): 0255 set %L, now %L',
+  SELECT string_agg(format('%s (project %s, provider %s): 0259 set %L, now %L',
                            b.id, coalesce(a.project_slug, p.slug), b.provider,
                            coalesce(a.agent_access, 'none'), b.agent_access),
                     ', ' ORDER BY b.id), count(*)
@@ -76,7 +76,7 @@ BEGIN
       'set: %. The sentinel map in the image is the state the ORIGINAL grant came from, so '
       'restoring it would silently discard whatever was decided afterwards — and the column is '
       'about to be dropped, so nothing would record that it ever existed. Nothing has been '
-      'changed. Decide each row by hand: either put the grant back to the value 0255 set and '
+      'changed. Decide each row by hand: either put the grant back to the value 0259 set and '
       're-run this file, or write the newer decision into the project''s own mcpServers map '
       'first (a `direct-mcp` grant is a `<provider>: true` sentinel; a `core-mediated` one had '
       'no representation at all and is simply lost on the way back) and update '
@@ -86,7 +86,7 @@ END $$;
 
 -- === 1b. refuse a DENIAL the old model cannot say ========================
 --
--- Refusal 1 asks whether a grant moved AWAY from what 0255 set. This one asks the other
+-- Refusal 1 asks whether a grant moved AWAY from what 0259 set. This one asks the other
 -- question, which that check reads as a pass: a binding created AFTER the forward run has no
 -- image row, so its baseline is the column default `none` and it matches. The comment above
 -- called that "losing nothing", and it is exactly backwards. Going back does not take access
@@ -98,9 +98,9 @@ END $$;
 -- That is the forward file's own rule run backwards: a row the old schema cannot represent
 -- stops the rollback naming the row, rather than being dropped so the DDL succeeds.
 --
--- cm:guard the kinds below are 0255's own classification, copied deliberately. The forward file
+-- cm:guard the kinds below are 0259's own classification, copied deliberately. The forward file
 -- builds `iss1071_provider_agent_path` and DROPS it at the end, so it is not here to read, and
--- this file is a photograph pinned to that migration — a provider added later is not one 0255
+-- this file is a photograph pinned to that migration — a provider added later is not one 0259
 -- ever classified, and falls to the `IS NULL` arm, which refuses rather than assumes.
 --
 -- `b.active` is part of the predicate, not an oversight: an inactive binding injects nothing and
@@ -112,7 +112,7 @@ DO $$
 DECLARE denied text; n int;
 BEGIN
   SELECT string_agg(format('%s (project %s, provider %s, agent path %s)',
-                           b.id, p.slug, b.provider, coalesce(k.kind, 'UNKNOWN to 0255')),
+                           b.id, p.slug, b.provider, coalesce(k.kind, 'UNKNOWN to 0259')),
                     ', ' ORDER BY b.id), count(*)
     INTO denied, n
     FROM integration_bindings b
@@ -128,7 +128,7 @@ BEGIN
      AND b.agent_access = 'none'
      AND k.kind IS DISTINCT FROM 'none';
   IF denied IS NOT NULL THEN
-    RAISE EXCEPTION 'ISS-1071 rollback: % binding(s) were created after 0255 ran and are denied '
+    RAISE EXCEPTION 'ISS-1071 rollback: % binding(s) were created after 0259 ran and are denied '
       'to agents: %. The model being restored cannot express that denial — it gates a direct-MCP '
       'provider per PROJECT, through an mcpServers sentinel, and does not gate a core-mediated '
       'one at all — so dropping the column would hand agents access somebody deliberately '
@@ -139,7 +139,7 @@ BEGIN
       'into iss1071_agent_access_set (binding_id, project_slug, provider, agent_access, forced) '
       'with agent_access ''all'', and set the column to ''all'' to match. Setting the column '
       'ALONE does not work and is not a way out: section 1 then refuses it as a grant that moved '
-      'away from the image. A provider reported UNKNOWN to 0255 was added after this migration '
+      'away from the image. A provider reported UNKNOWN to 0259 was added after this migration '
       'and must be decided the same way, by hand.', n, denied;
   END IF;
 END $$;
@@ -197,7 +197,7 @@ END $$;
 -- Key by key, with the value the image holds — `true` and `false` alike, a `false` being a
 -- switch somebody turned off and as much a part of the map as an opt-in. Merged with `||`
 -- rather than assigned, so a catalog name or a hand-written object spec added to that map
--- since is kept: this file puts back what 0255 took and touches nothing else.
+-- since is kept: this file puts back what 0259 took and touches nothing else.
 DO $$
 DECLARE r record; n int := 0;
 BEGIN
@@ -228,9 +228,9 @@ END $$;
 ALTER TABLE "integration_bindings" DROP CONSTRAINT IF EXISTS "integration_bindings_agent_access_chk";
 ALTER TABLE "integration_bindings" DROP COLUMN "agent_access";
 
--- The image tables are NOT dropped here either. They are the only record of what 0255 removed
+-- The image tables are NOT dropped here either. They are the only record of what 0259 removed
 -- and set, and an operator who rolls back at 02:00 and forward again at 09:00 needs to be able
--- to read them in between. 0255 begins with `DROP TABLE IF EXISTS` on both, so a re-run derives
+-- to read them in between. 0259 begins with `DROP TABLE IF EXISTS` on both, so a re-run derives
 -- them fresh and cannot be poisoned by what is left here.
 
 COMMIT;

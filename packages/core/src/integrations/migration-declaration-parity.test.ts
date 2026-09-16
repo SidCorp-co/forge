@@ -18,7 +18,7 @@
  * what a TypeScript mirror of it says.
  */
 
-import { readFileSync } from 'node:fs';
+import { readdirSync, readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { beforeAll, describe, expect, it } from 'vitest';
@@ -26,8 +26,30 @@ import { registerAllIntegrations } from './register-all.js';
 import { listIntegrations } from './registry.js';
 
 const HERE = dirname(fileURLToPath(import.meta.url));
-const FORWARD = join(HERE, '../../drizzle/migrations/0255_integration_agent_access.sql');
-const ROLLBACK = join(HERE, '../../drizzle/rollback/0255_down.sql');
+
+/**
+ * Found by what the file SAYS, never by its index.
+ *
+ * The first version of this test opened `0255_*.sql` by name, and a rebase past another wave's
+ * migration renumbered it to `0259` two hours later — so the test that exists to catch silent drift
+ * went red for the one reason that is not drift. An index is positional: it says "one slot above
+ * whatever was highest when this was written" and moves at every rebase. The table names do not,
+ * which is also how `tests/integration/mcp-sentinel-migration.fixture.ts` finds the same two files.
+ */
+function byMarker(dir: string, marker: string): string {
+  const full = join(HERE, dir);
+  const hits = readdirSync(full)
+    .filter((f) => f.endsWith('.sql'))
+    .filter((f) => readFileSync(join(full, f), 'utf8').includes(marker));
+  const only = hits[0];
+  if (hits.length !== 1 || !only) {
+    throw new Error(`expected exactly one .sql in ${dir} naming ${marker}, found ${hits.length}`);
+  }
+  return join(full, only);
+}
+
+const FORWARD = byMarker('../../drizzle/migrations', 'iss1071_provider_agent_path');
+const ROLLBACK = byMarker('../../drizzle/rollback', 'iss1071_agent_access_set');
 
 /**
  * Every `('<provider>', '<kind>')` pair in a file, comment lines removed first.
@@ -66,7 +88,7 @@ beforeAll(() => {
   );
 });
 
-describe('0255 classifies every provider the way its declaration does', () => {
+describe('the migration classifies every provider the way its declaration does', () => {
   it('the forward migration names exactly the registry, with the same kind for each', () => {
     expect(declaredPairs(FORWARD, FORWARD_BLOCK)).toEqual(declared);
   });

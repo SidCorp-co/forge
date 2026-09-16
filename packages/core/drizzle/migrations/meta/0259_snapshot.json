@@ -1,6 +1,6 @@
 {
-  "id": "6b3dc206-d4b6-4ec1-aa49-aaf120358d14",
-  "prevId": "36b93b88-b327-4aed-88f5-c5e37d073b34",
+  "id": "a0346b72-5c22-40aa-8bf8-3213ac5f3db6",
+  "prevId": "d0c34750-1cc6-4ac2-b288-733e77f67b0c",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -15296,7 +15296,7 @@
         },
         "conversation_windows_decision_known": {
           "name": "conversation_windows_decision_known",
-          "value": "\"conversation_windows\".\"decision\" IS NULL OR \"conversation_windows\".\"decision\" IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined')"
+          "value": "\"conversation_windows\".\"decision\" IS NULL OR \"conversation_windows\".\"decision\" IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined','handed-off')"
         },
         "conversation_windows_closed_has_decision": {
           "name": "conversation_windows_closed_has_decision",
@@ -15342,6 +15342,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'direct'"
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "title": {
           "name": "title",
@@ -15441,6 +15447,10 @@
         "conversations_shape_known": {
           "name": "conversations_shape_known",
           "value": "\"conversations\".\"shape\" IN ('direct','group')"
+        },
+        "conversations_mode_known": {
+          "name": "conversations_mode_known",
+          "value": "\"conversations\".\"mode\" IS NULL OR \"conversations\".\"mode\" IN ('assistant','agent')"
         }
       },
       "isRLSEnabled": false

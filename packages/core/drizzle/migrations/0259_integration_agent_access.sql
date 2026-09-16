@@ -37,7 +37,7 @@
 -- abort in section 5 and by the strip in section 6 — so those three cannot disagree about
 -- what the fleet declared.
 --
--- THE INDEX AND THE `when` ARE POSITIONAL, NOT IDENTITY. `0255` and `when: 1795392000000`
+-- THE INDEX AND THE `when` ARE POSITIONAL, NOT IDENTITY. `0259` and `when: 1795564800000`
 -- say only "one slot above whatever was highest when this was written". A rebase past another
 -- migration invalidates both, and fixing it means FOUR things, not one: the `.sql` filename,
 -- the `_journal.json` entry (idx, tag AND `when`, which is max(when) over every other entry
@@ -109,7 +109,7 @@ BEGIN
     RAISE EXCEPTION 'ISS-1071: % provider(s) hold bindings and are not classified by this migration: %. '
       'Every binding needs a reading of how an agent reaches its provider, and there is no safe '
       'default: `none` would silently close a path that is open today, and `all` would silently '
-      'hand a credential to a runner box. Add the provider to the VALUES list in 0255 with the '
+      'hand a credential to a runner box. Add the provider to the VALUES list in 0259 with the '
       '`agentPath.kind` its adapter declares (core-mediated | direct-mcp | none) and redeploy. '
       'Do NOT widen a fallback.', n, unknown_providers;
   END IF;
@@ -133,13 +133,13 @@ BEGIN
       'This migration records a removed sentinel under `scope`, where the word `default` names '
       'the PROJECT-DEFAULT mcpServers map, so a stage of that name would be indistinguishable '
       'from it and its map would be rewritten in the wrong place. Rename the stage, or widen '
-      '`scope` in 0255 to carry the two apart — never let them collide.', bad;
+      '`scope` in 0259 to carry the two apart — never let them collide.', bad;
   END IF;
 END $$;--> statement-breakpoint
 
 -- === 3. the before-image of every sentinel, taken before anything moves ====
 --
--- NOT DROPPED AT THE END, and that is deliberate. `0255_down.sql` restores the stored maps
+-- NOT DROPPED AT THE END, and that is deliberate. `0259_down.sql` restores the stored maps
 -- from this table, and a grant cannot be inverted back into one: a project default, a stage
 -- declaration, an explicit `false` and three different `epodsystem_*` names all collapse onto
 -- one binary column. The image is the only thing that knows which of those was there.
@@ -230,7 +230,7 @@ UPDATE integration_bindings b
 
 -- What this migration SET, so the way back can tell a rollback from an overwrite.
 --
--- `0255_down.sql` has to restore the maps and drop the column, and it may only do that while
+-- `0259_down.sql` has to restore the maps and drop the column, and it may only do that while
 -- the column still says what this run left. A grant somebody changed afterwards is a decision
 -- the image cannot represent — the map it would restore is not the state that grant came
 -- from — so the rollback refuses by name rather than guessing. This table is how it knows.
@@ -343,7 +343,7 @@ BEGIN
   END LOOP;
   IF n > 0 THEN
     RAISE NOTICE 'ISS-1071: cleared integration sentinels from % mcpServers map(s); the before-image '
-      'is in iss1071_removed_mcp_sentinels, which 0255_down.sql restores from and this migration '
+      'is in iss1071_removed_mcp_sentinels, which 0259_down.sql restores from and this migration '
       'deliberately does not drop.', n;
   END IF;
 END $$;--> statement-breakpoint
@@ -439,5 +439,5 @@ BEGIN
 END $$;--> statement-breakpoint
 
 -- === 8. the vocabulary has done its job ===================================
--- The two image tables STAY: `0255_down.sql` is unusable without them.
+-- The two image tables STAY: `0259_down.sql` is unusable without them.
 DROP TABLE iss1071_provider_agent_path;

@@ -27,7 +27,7 @@ import {
   type Wide,
 } from './mcp-sentinel-migration.fixture.js';
 
-describe('0255 forward — reachability is preserved row by row', () => {
+describe('0259 forward — reachability is preserved row by row', () => {
   let w: Wide;
 
   beforeAll(async () => {
@@ -105,7 +105,7 @@ describe('0255 forward — reachability is preserved row by row', () => {
   });
 });
 
-describe('0255 forward — what it refuses, and where the refusal stops', () => {
+describe('0259 forward — what it refuses, and where the refusal stops', () => {
   // cm:guard the refusal IS the deliverable. There is no safe default for a provider whose
   // agent path this file cannot read: `none` silently closes a path that is open, `all`
   // silently writes a credential onto a runner box.
@@ -212,7 +212,7 @@ describe('0255 forward — what it refuses, and where the refusal stops', () => 
   });
 });
 
-describe('0255_down.sql — the way back', () => {
+describe('0259_down.sql — the way back', () => {
   it('restores every stored map to exactly what the forward run found', async () => {
     const f = await fresh();
     try {
@@ -237,7 +237,7 @@ describe('0255_down.sql — the way back', () => {
     }
   }, 120_000);
 
-  // F2, found by review. Refusal 1 asks whether a grant moved AWAY from what 0255 set, and a
+  // F2, found by review. Refusal 1 asks whether a grant moved AWAY from what 0259 set, and a
   // binding created afterwards has no image row, so its `none` matches the default baseline and
   // reads as a pass. It is the opposite of safe: the old model gates direct-MCP per PROJECT and
   // does not gate core-mediated at all, so going back ADDS access to a row somebody deliberately

@@ -1,6 +1,6 @@
 /**
  * The harness `mcp-sentinel-migration.test.ts` runs against: a template database carrying every
- * migration BELOW 0255, cloned per case, plus the planting helpers each case builds its fleet from.
+ * migration BELOW 0259, cloned per case, plus the planting helpers each case builds its fleet from.
  *
  * Split out of the test file because that file crossed the 500-line budget and this half is the
  * part with no assertions in it. It keeps the `beforeAll`/`afterAll` that build and drop the
@@ -20,7 +20,7 @@ const ROLLBACK_DIR = fileURLToPath(new URL('../../drizzle/rollback/', import.met
 
 /**
  * The rollback file, found by what it SAYS rather than by its index — the index is positional
- * and a rebase renumbers it, so a hardcoded `0255_down.sql` would come to name another issue's
+ * and a rebase renumbers it, so a hardcoded `0259_down.sql` would come to name another issue's
  * rollback, or nothing, which is the quieter of the two.
  */
 function downFile(): string {
@@ -38,7 +38,7 @@ function downFile(): string {
   return `${ROLLBACK_DIR}${only}`;
 }
 
-/** The statement list of 0255, and everything below it. */
+/** The statement list of 0259, and everything below it. */
 function migrationParts(): { below: string[]; agentAccess: string[] } {
   const files = readMigrationFiles({ migrationsFolder: MIGRATIONS });
   const target = files.find((f) => f.sql.join('\n').includes('iss1071_provider_agent_path'));
