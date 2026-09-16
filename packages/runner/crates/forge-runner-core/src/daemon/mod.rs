@@ -9,8 +9,10 @@
 
 pub mod agent_activity;
 pub mod chat;
+pub mod checkpoint;
 pub mod control;
 pub mod dispatch;
+pub mod held_report;
 pub mod hook_install;
 pub mod inbox;
 pub mod master;
@@ -18,6 +20,7 @@ pub mod master_exit;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod run_exit;
+pub mod run_record;
 pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
@@ -598,6 +601,13 @@ pub async fn run(
 
     // cm:guard ONE map, shared by the socket that records and every reader that acts on it. A second instance would give the control socket somewhere to write that no liveness reader ever looks at, which is the shape of the bug this whole channel exists to close.
     let activity = Arc::new(agent_activity::Activities::new());
+    // cm:guard the whole control-socket arm is gated `unix`, because the socket IS a
+    // `UnixListener`: `control::serve` and every verb it dispatches are `#[cfg(unix)]`, so calling
+    // it unconditionally here fails to COMPILE on windows rather than failing at run time. A unix
+    // box can never catch that — `cfg(unix)` is true there — and ci.yml's windows leg is the only
+    // reader. On windows the daemon runs without the control socket, which is what it already did:
+    // there is no second path to add, only a call that must not be made.
+    #[cfg(unix)]
     {
         // cm:guard refuse to serve the socket with no token map rather than serving it unauthenticated. The one verb on this socket describes a session by capability, and a daemon that could not resolve the map would either refuse every frame or, worse, be tempted back to the declared id (ISS-964 criterion 29).
         let Some(tokens_path) = session_tokens::default_path() else {
@@ -605,9 +615,33 @@ pub async fn run(
                 "cannot resolve the control token map path".into(),
             ));
         };
+        // cm:guard the control socket opens its OWN ledger connection rather than sharing the
+        // sweep's, because `rusqlite::Connection` is not `Sync` and the sweep holds its own for the
+        // length of a sweep. Both carry `PRAGMA busy_timeout`, which is what keeps a declaration
+        // arriving mid-sweep from being refused `database is locked` (ISS-1050).
+        // cm:guard a ledger that will not open leaves this `None` and the socket REFUSES a
+        // declaration by name, rather than the daemon declining to start: turn boundaries are the
+        // other half of this socket and a box that reported none of them would go blind to every
+        // liveness reader on it.
+        let ctl_ledger = Arc::new(std::sync::Mutex::new(
+            match crate::runner::ledger::Ledger::default_path()
+                .and_then(|p| crate::runner::ledger::Ledger::open(&p))
+            {
+                Ok(l) => Some(l),
+                Err(e) => {
+                    tracing::error!(
+                        "[control] cannot open the run ledger: {e} — declarations will be refused"
+                    );
+                    None
+                }
+            },
+        ));
         let ctl = Arc::new(control::Control {
             tokens: session_tokens::SessionTokens::at(tokens_path),
             activity: activity.clone(),
+            masters: masters.clone(),
+            ledger: ctl_ledger,
+            boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
         });
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
@@ -817,6 +851,12 @@ mod tests {
             issue_keys: vec![format!("ISS-{run_id}")],
         })
         .unwrap();
+        // A declared run is bound to its subagent the moment `SubagentStart` arrives, and a master
+        // may hold only ONE unbound row at a time (ISS-1050), so a helper that seeds several runs
+        // under one master has to bind each before seeding the next. Binding changes nothing any
+        // assertion in this module reads — `unclosed_runs` predicates on the three marks, never on
+        // `agent_id` — it only makes the setup a shape the ledger will still accept.
+        led.bind_agent(run_id, &format!("child-{run_id}")).unwrap();
         if let Some(p) = pid {
             led.attach_pid(run_id, p).unwrap();
         }

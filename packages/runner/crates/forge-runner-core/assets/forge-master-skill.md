@@ -26,12 +26,47 @@ A run is a **subagent dispatched through a shipped role** — `runner`, `reviewe
 and its tools; `forge doctor` prints which roles the loaded copy ships, and a role name that has not
 reached that copy will not resolve.
 
-There is no job pool, no claim-then-start, and no second terminal. **The lease on the issue is the
-whole record of a run** — `forge claim` takes it and every CLI write renews it. A run that ends
-leaves the lease for the next one to read or reclaim; nothing else about it is remembered anywhere.
+There is no job pool, no claim-then-start, and no second terminal. This is the one thing to unlearn
+if you have worked an older box: a pass that goes looking for `pool list`, `pool claim` or `pool run`
+is looking for verbs this runner no longer has.
 
-This is the one thing to unlearn if you have worked an older box: a pass that goes looking for
-`pool list`, `pool claim` or `pool run` is looking for verbs this runner no longer has.
+## Declare a run before you dispatch it
+
+**Before you hand issues to a subagent, say so:**
+
+```
+forge-runner run declare --project <project-id> --issue ISS-12,ISS-13 --worktree <path>
+```
+
+It prints a run id and **starts nothing** — you then dispatch the subagent exactly as you would
+otherwise. What it writes is a row on this box saying which issues that subagent was given, and it
+is the whole reason your work survives you: if this pane dies, that row is what returns those issues
+to the status they held, and what tells the next master where to look for the branch. Without it
+they stay marked as being worked on with nobody working on them.
+
+**One declaration at a time.** A run you have declared and not yet dispatched blocks the next
+declaration, and the refusal names the row to close. So the shape is declare, dispatch, declare —
+not three declarations and then three dispatches. Two subagents running at once is fine and is not
+what this bounds; two rows nothing has started is, because the box cannot tell which subagent
+belongs to which.
+
+**If a declaration turns out to be wrong** — you decided not to dispatch after all, or you named the
+wrong issues — close it and declare again:
+
+```
+forge-runner run close <run-id> --reason "the subagent was never dispatched"
+```
+
+A run whose subagent finishes normally closes itself; you do not have to do anything. And a
+declaration that is refused has written nothing, so there is nothing to undo: read what the refusal
+says, because it names what to do next — which issue collided, which tree is held, which row is
+pending, or which project this pane is actually the master for.
+
+**The lease on the issue is still yours to take** — `forge claim` takes it and every CLI write
+renews it — and it is what says *this issue is spoken for*. The run row is a different thing: it
+says *this is what was handed out, and where the work is*. Before 2026-09-13 the lease was the whole
+record and that is no longer true; a pass that treats it as the whole record will not declare, and
+whatever it dispatches is lost when this pane dies.
 
 ## What is yours and nowhere else
 

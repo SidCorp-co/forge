@@ -45,6 +45,8 @@ enum Command {
     Hook(cmd::hook::Args),
     /// Install/uninstall the OS service (systemd/launchd).
     Service(cmd::service::Args),
+    /// Declare what a master is about to hand a subagent, and close it after.
+    Run(cmd::run::Args),
     /// List runners registered for this device.
     Runners(cmd::runners::Args),
     /// Look at, talk to, and end this box's resident masters.
@@ -85,6 +87,7 @@ async fn main() -> anyhow::Result<()> {
             Ok(())
         }
         Command::Service(a) => cmd::service::run(ctx, a).await,
+        Command::Run(a) => cmd::run::run(ctx, a).await,
         Command::Runners(a) => cmd::runners::run(ctx, a).await,
         Command::Master(a) => cmd::master::run(ctx, a).await,
         Command::Sync(a) => cmd::sync::run(ctx, a).await,

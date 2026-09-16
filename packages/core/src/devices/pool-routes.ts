@@ -18,6 +18,7 @@ import { PARK_PROTECTIONS } from '../questions/protections.js';
 import { answerOf, registerWaiter, waiterFor } from '../questions/read.js';
 import { type AskAnswer, askQuestion, QuestionRefused } from '../questions/write.js';
 import { assertDeviceBoundToProject } from './device-project.js';
+import { badRequest, notFound, sessionParamsSchema } from './route-errors.js';
 
 type AskBody = {
   id?: string;
@@ -46,22 +47,15 @@ import { readDeviceLoad, readFleetLoad, readProjectLoad } from './load.js';
 import { clearMasterLimit, recordMasterLimit } from './master-limit.js';
 import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
-import {
-  closeRunSession,
-  isIssueLeaseHeld,
-  openRunSession,
-  readRunSessionTerminal,
-  releaseIssueLease,
-} from './run-session.js';
-
-const badRequest = (details: unknown) =>
-  new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
-
-const notFound = (what: string) =>
-  new HTTPException(404, { message: `${what} not found`, cause: { code: 'NOT_FOUND' } });
+import { isIssueLeaseHeld, readRunSessionTerminal, releaseIssueLease } from './run-session.js';
+import { deviceRunSessionRoutes } from './run-session-routes.js';
 
 // cm:guard `requireDevice`, never `requireAnyAuth`. Only the latter sets `userId = device.ownerId`, which would hand a master session its owner's whole account authority; these routes must stay scoped to the device's own bindings so `loadProjectAccess` fails closed.
 export const devicePoolRoutes = new Hono<{ Variables: DeviceVars }>();
+
+// The run-session family lives in its own module; it is mounted here so the paths it
+// serves are unchanged and no caller can tell the two apart.
+devicePoolRoutes.route('/', deviceRunSessionRoutes);
 
 const poolQuerySchema = z.object({
   limit: z.coerce.number().int().min(1).max(100).default(20),
@@ -97,64 +91,6 @@ devicePoolRoutes.get(
   },
 );
 
-const runSessionBodySchema = z.object({
-  projectId: z.string().uuid(),
-  runId: z.string().uuid(),
-  // cm:guard a LIST with a minimum of one, and no scalar sibling. A group of one takes the same path as a group of three, which is the whole of ISS-933 criterion 8 — a scalar entry point is how "one run, one issue" comes back, measured as two sessions in one worktree.
-  issueKeys: z.array(z.string().min(1)).min(1).max(16),
-  name: z.string().min(1).max(60),
-});
-
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/run_sessions.rs — `open` posts this shape and reads `sessionId` back; the runner has already committed its ledger row by the time it calls, so a refusal here leaves a recorded run with no session, which its own close loop reads as "never started".
-devicePoolRoutes.post(
-  '/me/run-sessions',
-  requireDevice(),
-  zValidator('json', runSessionBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const body = c.req.valid('json');
-    const session = await openRunSession({
-      deviceId: c.get('device').id,
-      projectId: body.projectId,
-      issueKeys: body.issueKeys,
-      name: body.name,
-    });
-    return c.json(session);
-  },
-);
-
-const sessionParamsSchema = z.object({ sessionId: z.string().uuid() });
-
-// cm:guard the outcome is a CLOSED set and an unknown one is refused, never coerced to a default. A box one version ahead sending a name this build does not know must be told so: coercing it to `died` would return issues an agent had deliberately advanced, and coercing it to `ended` would leave a dead run's issues held.
-const closeBodySchema = z.object({
-  outcome: z.enum(['ended', 'killed_idle', 'died']),
-  detail: z.string().max(500).optional(),
-});
-
-// cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/run_sessions.rs — `close` is this route's only caller. It is what lets a run session reach terminal by being REPORTED rather than by going silent for ten minutes, which is the difference between a box that died, a pane that crashed and a pane that finished — three facts the reaper's one `runner_unreachable` could not tell apart.
-devicePoolRoutes.post(
-  '/me/run-sessions/:sessionId/close',
-  requireDevice(),
-  zValidator('param', sessionParamsSchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  zValidator('json', closeBodySchema, (r) => {
-    if (!r.success) throw badRequest(z.flattenError(r.error));
-  }),
-  async (c) => {
-    const { sessionId } = c.req.valid('param');
-    const body = c.req.valid('json');
-    const closed = await closeRunSession({
-      deviceId: c.get('device').id,
-      sessionId,
-      outcome: body.outcome,
-      ...(body.detail === undefined ? {} : { detail: body.detail }),
-    });
-    if (closed === null) throw notFound('run session');
-    return c.json(closed);
-  },
-);
 const leaseParamsSchema = z.object({ issueKey: z.string().min(1).max(64) });
 
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/recovery_ports.rs — `CoreRunState` reads these back; the close loop sets a mark ONLY from what they answer, never from the ack of the write it just made (ISS-933 criterion 13).

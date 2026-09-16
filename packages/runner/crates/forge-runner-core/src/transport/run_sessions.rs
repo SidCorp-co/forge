@@ -93,16 +93,24 @@ impl Outcome {
 // cm:guard the reason this verb exists: without it the only way a run session reaches terminal is core's ten-minute silence sweep, which writes `runner_unreachable` over a box that was never unreachable — 203 sessions across two projects in 7 days, ~95% of them in that bucket, of which the genuine transport failures can no longer be told apart.
 // cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST /me/run-sessions/:sessionId/close` is the other half, and it is device-scoped: closing another box's session answers 404 rather than freeing its issues.
 // cm:guard a 404 is SUCCESS, for `is_terminal`'s reason: core not having the session means its reaper already closed it, and raising would make the caller retry a close that can never land.
+// cm:guard `checkpoint` is OPTIONAL on the wire and core's schema makes it optional too, so a box
+// that cannot reconstruct still closes — the close is how a run session reaches terminal by being
+// reported rather than by going silent for ten minutes, and losing that to a `git` that would not
+// answer trades the whole close for half the evidence (ISS-1050).
 pub async fn close(
     client: &CoreClient,
     session_id: &str,
     outcome: Outcome,
     detail: Option<&str>,
+    checkpoint: Option<serde_json::Value>,
 ) -> Result<()> {
     let url = client.url(&format!("/api/devices/me/run-sessions/{session_id}/close"));
     let mut body = serde_json::json!({ "outcome": outcome.wire() });
     if let Some(d) = detail {
         body["detail"] = serde_json::Value::String(d.to_string());
+    }
+    if let Some(cp) = checkpoint {
+        body["checkpoint"] = cp;
     }
     let resp = client
         .http()
@@ -122,6 +130,78 @@ pub async fn close(
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
         return Err(Error::Other(format!("run-session close: {status}: {text}")));
+    }
+    Ok(())
+}
+
+/// Tell core what a resumed master decided about a run it inherited.
+// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST
+// /me/run-sessions/:sessionId/resume-choice` is the other half and is device-scoped.
+// cm:guard a 404 is NOT swallowed, for the same reason as the held-worktree report beside it: a
+// report that cannot find its session has failed to say the thing it exists to say, and answering
+// success would leave a decision recorded on one box and nowhere a human looks.
+pub async fn report_resume_choice(
+    client: &CoreClient,
+    session_id: &str,
+    choice: serde_json::Value,
+) -> Result<()> {
+    let url = client.url(&format!(
+        "/api/devices/me/run-sessions/{session_id}/resume-choice"
+    ));
+    let resp = client
+        .http()
+        .post(&url)
+        .bearer_auth(client.device_token())
+        .json(&choice)
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("resume-choice report: {e}")))?;
+    if resp.status().as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(format!(
+            "resume-choice report: {status}: {text}"
+        )));
+    }
+    Ok(())
+}
+
+/// Tell core this box is keeping a checkout because its work is on no remote.
+// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST
+// /me/run-sessions/:sessionId/held-worktree` is the other half, and it is device-scoped: a box
+// reporting about another box's session gets a 404.
+// cm:guard a 404 is NOT swallowed here, unlike the close above. The close treats a missing session
+// as "core got there first", which is a fact that lets the local marks land; a report that cannot
+// find its session has failed to say the thing it exists to say, and reporting success for that
+// would leave a held tree whose only record is this box's journal again.
+pub async fn report_held_worktree(
+    client: &CoreClient,
+    session_id: &str,
+    held: serde_json::Value,
+) -> Result<()> {
+    let url = client.url(&format!(
+        "/api/devices/me/run-sessions/{session_id}/held-worktree"
+    ));
+    let resp = client
+        .http()
+        .post(&url)
+        .bearer_auth(client.device_token())
+        .json(&held)
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("held-worktree report: {e}")))?;
+    if resp.status().as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(format!(
+            "held-worktree report: {status}: {text}"
+        )));
     }
     Ok(())
 }

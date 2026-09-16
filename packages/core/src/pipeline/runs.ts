@@ -8,7 +8,7 @@
  */
 
 import { and, desc, eq, inArray, type SQL, sql } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { jobs, type PipelineRunKind, type PipelineRunStatus, pipelineRuns } from '../db/schema.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
@@ -85,6 +85,49 @@ async function selectOpenIssueRun(issueId: string): Promise<OpenIssueRun | null>
   return row ?? null;
 }
 
+/** What a one-shot run is opened as, shared by the two halves below. */
+export interface OneShotRunSpec {
+  projectId: string;
+  kind: Extract<PipelineRunKind, 'pm' | 'interactive' | 'system'>;
+  metadata?: Record<string, unknown>;
+}
+
+/**
+ * The row half of opening a one-shot run, on whatever executor is handed in.
+ */
+// cm:guard the INSERT only, and it emits nothing. A caller that needs the row created under a lock it is already holding — `openRunSession`, claiming a box run id — must be able to put the insert inside its transaction, and a hook fired from inside an open transaction announces a run id no subscriber can yet read (ISS-678; `outbox-worker.test.ts` asserts no transaction is ever open while a hook is in flight). Such a caller pairs this with `announceOneShotRun` after its commit.
+// cm:edge lockstep -> packages/core/src/devices/run-session.ts — the only caller that splits the pair; every other one goes through `openOneShotRun` below, which composes them.
+export async function insertOneShotRun(
+  executor: Tx,
+  args: OneShotRunSpec,
+): Promise<{ id: string }> {
+  const [row] = await executor
+    .insert(pipelineRuns)
+    .values({
+      projectId: args.projectId,
+      issueId: null,
+      kind: args.kind,
+      status: 'running',
+      metadata: args.metadata ?? {},
+    })
+    .returning({ id: pipelineRuns.id });
+  if (!row) throw new Error('insertOneShotRun: insert returned no row');
+  return row;
+}
+
+/** The announcement half: the run exists, tell the subscribers. */
+export async function announceOneShotRun(runId: string, args: OneShotRunSpec): Promise<void> {
+  await hooks.emit('pipelineRunStatusChanged', {
+    runId,
+    projectId: args.projectId,
+    issueId: null,
+    kind: args.kind,
+    fromStatus: null,
+    toStatus: 'running',
+    currentStep: null,
+  });
+}
+
 /**
  * One-shot run for paths that aren't tied to an issue:
  *   - `pm`           — the PM coordinator job (project-scoped).
@@ -95,31 +138,9 @@ async function selectOpenIssueRun(issueId: string): Promise<OpenIssueRun | null>
  * Each call creates a fresh row; no upsert is needed because there's no
  * per-issue uniqueness to enforce.
  */
-export async function openOneShotRun(args: {
-  projectId: string;
-  kind: Extract<PipelineRunKind, 'pm' | 'interactive' | 'system'>;
-  metadata?: Record<string, unknown>;
-}): Promise<{ id: string }> {
-  const [row] = await db
-    .insert(pipelineRuns)
-    .values({
-      projectId: args.projectId,
-      issueId: null,
-      kind: args.kind,
-      status: 'running',
-      metadata: args.metadata ?? {},
-    })
-    .returning({ id: pipelineRuns.id });
-  if (!row) throw new Error('openOneShotRun: insert returned no row');
-  await hooks.emit('pipelineRunStatusChanged', {
-    runId: row.id,
-    projectId: args.projectId,
-    issueId: null,
-    kind: args.kind,
-    fromStatus: null,
-    toStatus: 'running',
-    currentStep: null,
-  });
+export async function openOneShotRun(args: OneShotRunSpec): Promise<{ id: string }> {
+  const row = await insertOneShotRun(db, args);
+  await announceOneShotRun(row.id, args);
   return row;
 }
 

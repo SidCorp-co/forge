@@ -155,6 +155,26 @@ pub struct Run {
     pub revival_deadline_at: Option<i64>,
     pub ended_by: Option<String>,
     pub ended_reason: Option<String>,
+    /// The subagent this run was bound to, once its `SubagentStart` arrived.
+    // cm:guard `None` is UNBOUND and not unknown: the master declares a run before it dispatches, so a row with no agent id is one whose subagent has not started yet, and `unbound_run_for_master` is the whole of the correlation rule that lets a later `SubagentStart` — which carries a child id and a conversation and no run id — name exactly one row (ISS-1050).
+    pub agent_id: Option<String>,
+    /// What a resumed master chose to do about this run: `continue`, `restart` or `leave`.
+    pub resume_choice: Option<String>,
+    pub resume_choice_why: Option<String>,
+    /// Set when this pane was RESUMED over the run, which is what makes a choice owed.
+    pub resume_owed_at: Option<i64>,
+}
+
+/// What this box knows about one project's resident master pane.
+// cm:guard the conversation id lives HERE and never in core. It only means anything on the box holding the transcript, so a copy in core is a local handle in a global place and becomes a lie the moment the project moves box (ISS-1050).
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct MasterRow {
+    pub project_id: String,
+    pub pane_name: String,
+    pub conversation_id: Option<String>,
+    pub boot_id: String,
+    pub cold_started_at: i64,
+    pub last_seen_at: i64,
 }
 
 /// One issue's membership in a run, and whether its lease came back.
@@ -201,6 +221,20 @@ const RUN_COLUMNS: &[&str] = &[
     "ended_by",
     "ended_reason",
     "created_at",
+    "agent_id",
+    "resume_choice",
+    "resume_choice_why",
+    "resume_owed_at",
+];
+
+#[cfg(test)]
+const MASTER_COLUMNS: &[&str] = &[
+    "project_id",
+    "pane_name",
+    "conversation_id",
+    "boot_id",
+    "cold_started_at",
+    "last_seen_at",
 ];
 
 #[cfg(test)]
@@ -236,7 +270,11 @@ CREATE TABLE IF NOT EXISTS runs (
   revival_deadline_at INTEGER,
   ended_by            TEXT,
   ended_reason        TEXT,
-  created_at          INTEGER NOT NULL
+  created_at          INTEGER NOT NULL,
+  agent_id            TEXT,
+  resume_choice       TEXT,
+  resume_choice_why   TEXT,
+  resume_owed_at      INTEGER
 );
 CREATE TABLE IF NOT EXISTS run_issues (
   run_id            TEXT NOT NULL REFERENCES runs(run_id) ON DELETE CASCADE,
@@ -256,6 +294,14 @@ CREATE TABLE IF NOT EXISTS decisions (
   verb        TEXT NOT NULL,
   decided_at  INTEGER NOT NULL
 );
+CREATE TABLE IF NOT EXISTS masters (
+  project_id      TEXT PRIMARY KEY,
+  pane_name       TEXT NOT NULL,
+  conversation_id TEXT,
+  boot_id         TEXT NOT NULL,
+  cold_started_at INTEGER NOT NULL,
+  last_seen_at    INTEGER NOT NULL
+);
 ";
 
 // cm:guard `CREATE TABLE IF NOT EXISTS` adds NO column to a table that already exists, so a ledger written by an earlier build keeps its old shape and every statement naming a new column fails at RUNTIME on a live box. This runs on every open, is idempotent, and is the only reason a box that parked yesterday can be read today. A column added to `SCHEMA` must be added here in the same edit.
@@ -269,6 +315,10 @@ const ADDED_COLUMNS: &[(&str, &str)] = &[
     ("revival_deadline_at", "INTEGER"),
     ("ended_by", "TEXT"),
     ("ended_reason", "TEXT"),
+    ("agent_id", "TEXT"),
+    ("resume_choice", "TEXT"),
+    ("resume_choice_why", "TEXT"),
+    ("resume_owed_at", "INTEGER"),
 ];
 
 /// The ledger, open on one box.
@@ -291,7 +341,7 @@ fn sql_err(e: rusqlite::Error) -> Error {
 const SELECT_RUN: &str = "SELECT run_id, project_id, master_session_id, session_id, worktree_path, pid, boot_id,
         incarnation, work, blocker_kind, waiting_on, resume_id, session_terminal_at, worktree_gone_at,
         claim_owner, claim_generation, claim_expires_at, revival_token, revival_deadline_at,
-        ended_by, ended_reason
+        ended_by, ended_reason, agent_id, resume_choice, resume_choice_why, resume_owed_at
  FROM runs";
 
 fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
@@ -333,6 +383,10 @@ fn map_run(row: &rusqlite::Row<'_>) -> rusqlite::Result<Run> {
         revival_deadline_at: row.get(18)?,
         ended_by: row.get(19)?,
         ended_reason: row.get(20)?,
+        agent_id: row.get(21)?,
+        resume_choice: row.get(22)?,
+        resume_choice_why: row.get(23)?,
+        resume_owed_at: row.get(24)?,
     })
 }
 
@@ -359,7 +413,13 @@ impl Ledger {
     }
 
     fn from_conn(conn: Connection) -> Result<Self> {
-        conn.execute_batch("PRAGMA foreign_keys = ON;")
+        // cm:guard a busy timeout, because this process now opens the ledger TWICE: the sweep holds
+        // one connection for thirty seconds at a time and the control socket holds another for a
+        // declaration. rusqlite's default is to fail instantly on a locked database, so without
+        // this a master declaring a run while a sweep was mid-transaction would be refused
+        // `database is locked` — a refusal naming the sqlite rather than anything the master did,
+        // arriving at random (ISS-1050).
+        conn.execute_batch("PRAGMA foreign_keys = ON; PRAGMA busy_timeout = 5000;")
             .map_err(sql_err)?;
         conn.execute_batch(SCHEMA).map_err(sql_err)?;
         Self::add_missing_columns(&conn)?;
@@ -387,6 +447,20 @@ impl Ledger {
         if let Some(holder) = Self::live_run_at_path(&tx, &path, &new.boot_id)? {
             return Err(Error::Other(format!(
                 "ledger: worktree {path} is already held by live run {holder}"
+            )));
+        }
+        // cm:guard LAST of the three refusals, after the two that name a concrete conflict: a caller
+        // that trips both hears which issue or tree it collided with rather than a correlation rule.
+        // And it is refused HERE rather than in the daemon because this is the only creator, so a
+        // check outside it is one a second caller can skip. `SubagentStart` carries a child id and a
+        // conversation and no run id, so two unbound rows under one master are indistinguishable to
+        // it and the bind would name the wrong issues (ISS-1050 criterion 2).
+        // cm:guard boot-scoped, for the same reason `live_run_holding` is: a row from a previous boot
+        // belongs to a master session this box no longer has, and blocking on it would refuse every
+        // declaration for the rest of the boot with no way back short of editing the sqlite.
+        if let Some(pending) = Self::unbound_run_of(&tx, &new.master_session_id, &new.boot_id)? {
+            return Err(Error::Other(format!(
+                "ledger: run {pending} is declared under this master and no subagent has bound it yet — close it before declaring another"
             )));
         }
         tx.execute(
@@ -427,6 +501,24 @@ impl Ledger {
              WHERE i.issue_key = ?1 AND r.incarnation = 'live' AND r.boot_id = ?2
              LIMIT 1",
             params![issue_key, boot_id],
+            |row| row.get::<_, String>(0),
+        )
+        .optional()
+        .map_err(sql_err)
+    }
+
+    /// The one run this master has declared and no subagent has bound.
+    // cm:guard `ended_by IS NULL` and not an incarnation, so a master's own close of a run whose subagent never started clears the way for the next declaration (ISS-1050 criteria 3, 4).
+    fn unbound_run_of(
+        tx: &rusqlite::Transaction<'_>,
+        master_session_id: &str,
+        boot_id: &str,
+    ) -> Result<Option<String>> {
+        tx.query_row(
+            "SELECT run_id FROM runs
+              WHERE master_session_id = ?1 AND boot_id = ?2 AND agent_id IS NULL AND ended_by IS NULL
+              ORDER BY created_at LIMIT 1",
+            params![master_session_id, boot_id],
             |row| row.get::<_, String>(0),
         )
         .optional()
@@ -557,6 +649,238 @@ impl Ledger {
 
     /// Record the process a started run is running as, once it exists.
     // cm:guard the pid arrives AFTER the row, never with it. A row written with a pid the spawn had not yet produced would name a process that may never exist, and the recovery path cannot tell that from a process that died — the ledger's whole value is that a recorded run with no pid is a KNOWN unstarted run rather than an unknown one.
+    /// Bind a declared run to the subagent whose `SubagentStart` just arrived.
+    ///
+    /// Answers whether this call is the one that bound it, so a repeated hook
+    /// event — which the harness makes no promise against — writes once.
+    // cm:guard `agent_id IS NULL` in the WHERE is what makes this idempotent AND what stops a second child stealing a bound row. A bind keyed on the run id alone would let a later `SubagentStart` repoint a row whose subagent is still running, and the close would then return the wrong issues (ISS-1050 criterion 1).
+    // cm:guard the `NOT EXISTS` is the other half and it looks at EVERY run, ended ones included. The harness makes no promise that a `SubagentStart` is delivered once, and a child whose start is replayed after its master has declared the next run would otherwise bind that next row to itself: its later `SubagentStop` would then end a run belonging to a subagent still working, and the real child of that row would find nothing pending to bind. Both halves are in the one statement so the check and the write cannot be interleaved by the other connection this process holds.
+    pub fn bind_agent(&self, run_id: &str, agent_id: &str) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET agent_id = ?2
+                  WHERE run_id = ?1 AND agent_id IS NULL
+                    AND NOT EXISTS (SELECT 1 FROM runs o WHERE o.agent_id = ?2)",
+                params![run_id, agent_id],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    /// The run this master declared that no subagent has bound yet, if any.
+    pub fn unbound_run_for_master(
+        &self,
+        master_session_id: &str,
+        boot_id: &str,
+    ) -> Result<Option<Run>> {
+        self.conn
+            .query_row(
+                &format!("{SELECT_RUN} WHERE master_session_id = ?1 AND boot_id = ?2 AND agent_id IS NULL AND ended_by IS NULL ORDER BY created_at LIMIT 1"),
+                params![master_session_id, boot_id],
+                map_run,
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
+    /// Every run this boot ended that core has not been told is over.
+    // cm:guard `session_terminal_at IS NULL` is the not-yet-told mark and the same one `close_loop` sets, so a row reported once is never reported twice. Boot-scoped for the same reason as its sibling: another boot's row names a master this box no longer has.
+    pub fn ended_with_open_session(&self, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE boot_id = ?1 AND ended_by IS NOT NULL AND session_id IS NOT NULL
+                   AND session_terminal_at IS NULL ORDER BY created_at"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt.query_map(params![boot_id], map_run).map_err(sql_err)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(sql_err)?);
+        }
+        Ok(out)
+    }
+
+    /// Every run this boot declared that core has not been told about yet.
+    // cm:guard `session_id IS NULL AND ended_by IS NULL`, boot-scoped. A row from a previous boot names a master this box no longer has and opening a core session for it would publish a run nothing will ever beat; a row already ended is one the master cancelled before its subagent started, and telling core about it would create a session whose only future is to be reaped (ISS-1050 criteria 5, 13).
+    pub fn declared_without_session(&self, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE boot_id = ?1 AND session_id IS NULL AND ended_by IS NULL ORDER BY created_at"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt.query_map(params![boot_id], map_run).map_err(sql_err)?;
+        let mut out = Vec::new();
+        for r in rows {
+            out.push(r.map_err(sql_err)?);
+        }
+        Ok(out)
+    }
+
+    /// The run bound to this subagent, if one is.
+    pub fn run_for_agent(&self, agent_id: &str) -> Result<Option<Run>> {
+        self.conn
+            .query_row(
+                &format!("{SELECT_RUN} WHERE agent_id = ?1 AND ended_by IS NULL LIMIT 1"),
+                params![agent_id],
+                map_run,
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
+    /// Record what a resumed master chose to do about one of the runs it inherited.
+    ///
+    /// Answers false when the run is not this master's to choose for.
+    // cm:guard scoped to the MASTER that holds the run. A pane may only answer for runs it inherited,
+    // and without this a master on one project could satisfy another project's gate.
+    // cm:guard the verb is stored as the master WROTE it. This module does not police the vocabulary —
+    // `control.rs` refuses anything that is not `continue`, `restart` or `leave` before it gets here,
+    // which keeps the refusal next to the caller who can be told what the valid shapes are.
+    pub fn record_resume_choice(
+        &self,
+        run_id: &str,
+        master_session_id: &str,
+        choice: &str,
+        why: &str,
+    ) -> Result<bool> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET resume_choice = ?3, resume_choice_why = ?4
+                  WHERE run_id = ?1 AND master_session_id = ?2",
+                params![run_id, master_session_id, choice, why],
+            )
+            .map_err(sql_err)?;
+        Ok(n == 1)
+    }
+
+    /// A pane has just been resumed over these runs: each now owes a choice.
+    ///
+    /// Answers how many it marked.
+    // cm:guard the obligation is created by the RESUME and by nothing else. Keyed on "this run has
+    // no choice yet" alone, a pane's own fresh declarations would owe one too, and the second
+    // declaration of every ordinary pass would be refused — measured, that is exactly what happened
+    // before this column existed (ISS-1050 criterion 29).
+    // cm:guard `ended_by IS NULL`: a run that ended while the master was away needs no decision
+    // about whether to continue it, and owing one would wedge the pane behind an unanswerable
+    // question.
+    pub fn owe_resume_choices(&self, master_session_id: &str, boot_id: &str) -> Result<usize> {
+        let n = self
+            .conn
+            .execute(
+                "UPDATE runs SET resume_owed_at = ?3
+                  WHERE master_session_id = ?1 AND boot_id = ?2
+                    AND ended_by IS NULL AND resume_choice IS NULL",
+                params![master_session_id, boot_id, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(n)
+    }
+
+    /// The choices this master has recorded and core has not yet been told about.
+    // cm:guard `resume_owed_at` carries THREE states and this is the third: unset is nothing owed,
+    // set with no choice is a choice owed (which gates the next declaration), and set WITH a choice
+    // is a report owed. One column rather than two, because the two obligations are one thing —
+    // the pane has not finished answering until the answer is where a human reads it.
+    pub fn choices_awaiting_report(&self, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE boot_id = ?1
+                   AND resume_owed_at IS NOT NULL AND resume_choice IS NOT NULL"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![boot_id], map_run)
+            .map_err(sql_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(sql_err)?;
+        Ok(rows)
+    }
+
+    /// Core has the choice for this run; the obligation is discharged.
+    // cm:guard cleared only AFTER core answered, never on the write that recorded the choice. A
+    // mark set first turns one unreachable minute into a decision that exists on this box and
+    // nowhere else — which is the silence this whole issue is about, arriving from inside the fix.
+    pub fn mark_resume_choice_said(&self, run_id: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET resume_owed_at = NULL WHERE run_id = ?1",
+                params![run_id],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// The runs this master inherited that it has not yet said anything about.
+    // cm:guard `ended_by IS NULL` as well as the choice being unset: a run that ended while the
+    // master was away needs no choice about whether to continue it, and gating a declaration on one
+    // would wedge the pane behind a question with no answer.
+    pub fn runs_awaiting_choice(&self, master_session_id: &str, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE master_session_id = ?1 AND boot_id = ?2
+                   AND ended_by IS NULL AND resume_owed_at IS NOT NULL AND resume_choice IS NULL"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![master_session_id, boot_id], map_run)
+            .map_err(sql_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(sql_err)?;
+        Ok(rows)
+    }
+
+    /// Record, or refresh, what this box knows about a project's master pane.
+    // cm:guard `cold_started_at` is written ONCE and never refreshed, because it is what tells a pane rebuilt around an old conversation from one started fresh; `conversation_id` is only overwritten by a non-NULL value, so a hook event that carries none leaves the stored handle alone rather than erasing the only thing a resume can be built from (ISS-1050 criteria 12, 15).
+    pub fn note_master(
+        &self,
+        project_id: &str,
+        pane_name: &str,
+        conversation_id: Option<&str>,
+        boot_id: &str,
+    ) -> Result<()> {
+        self.conn
+            .execute(
+                "INSERT INTO masters (project_id, pane_name, conversation_id, boot_id, cold_started_at, last_seen_at)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?5)
+                 ON CONFLICT(project_id) DO UPDATE SET
+                   pane_name       = excluded.pane_name,
+                   conversation_id = COALESCE(excluded.conversation_id, masters.conversation_id),
+                   boot_id         = excluded.boot_id,
+                   last_seen_at    = excluded.last_seen_at",
+                params![project_id, pane_name, conversation_id, boot_id, now()],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
+    /// What this box knows about one project's master pane.
+    pub fn master_for_project(&self, project_id: &str) -> Result<Option<MasterRow>> {
+        self.conn
+            .query_row(
+                "SELECT project_id, pane_name, conversation_id, boot_id, cold_started_at, last_seen_at
+                 FROM masters WHERE project_id = ?1",
+                params![project_id],
+                |row| {
+                    Ok(MasterRow {
+                        project_id: row.get(0)?,
+                        pane_name: row.get(1)?,
+                        conversation_id: row.get(2)?,
+                        boot_id: row.get(3)?,
+                        cold_started_at: row.get(4)?,
+                        last_seen_at: row.get(5)?,
+                    })
+                },
+            )
+            .optional()
+            .map_err(sql_err)
+    }
+
     pub fn attach_pid(&self, run_id: &str, pid: u32) -> Result<()> {
         self.conn
             .execute(
@@ -1036,6 +1360,14 @@ mod tests {
             DECISION_COLUMNS.iter().map(|s| (*s).to_string()).collect();
         declared_decisions.sort();
         assert_eq!(columns(&led, "decisions"), declared_decisions);
+        let mut declared_masters: Vec<String> =
+            MASTER_COLUMNS.iter().map(|s| (*s).to_string()).collect();
+        declared_masters.sort();
+        assert_eq!(
+            columns(&led, "masters"),
+            declared_masters,
+            "the `masters` table has a column the declared registry does not name — this table holds what a box knows about a pane, and a column beyond that is the ledger growing a second purpose (ISS-933 criterion 10, ISS-1050)"
+        );
 
         for banned in ["cursor", "last_event", "offset", "wake", "processed", "seq"] {
             assert!(
@@ -1580,6 +1912,213 @@ mod tests {
         );
         assert_eq!(run.resume_id.as_deref(), Some("r-1"));
         assert_eq!(run.waiting_on.as_deref(), Some("q-1"));
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A second declaration under one master, while the first has no subagent.
+    // cm:guard the assertion is on the MESSAGE naming the pending run, not merely on `is_err`. The refusal's whole value to a master is that it says which row to close, and an error whose text said only "refused" would leave the pane guessing (ISS-1050 criterion 2).
+    #[test]
+    fn a_second_declaration_under_one_master_is_refused_naming_the_row_that_is_pending() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        let mut second = seed(&["ISS-2"]);
+        second.run_id = "run-2".into();
+        second.worktree_path = PathBuf::from("/w/two");
+        let err = led.create_run_group(second).unwrap_err().to_string();
+        assert!(
+            err.contains("run-1") && err.contains("no subagent has bound it"),
+            "the refusal must name the pending row a master has to close: {err}"
+        );
+    }
+
+    /// The same second declaration, once the first is bound to its subagent.
+    // cm:guard this is the case the rule must NOT refuse: a master running two subagents at once is the normal shape, and a rule that refused it would serialise every wave on this box. What is bounded is the number of rows no `SubagentStart` has claimed, which is the only thing the bind cannot tell apart (ISS-1050 criterion 2).
+    #[test]
+    fn a_bound_run_does_not_block_the_next_declaration() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert!(led.bind_agent("run-1", "child-a").unwrap());
+        let mut second = seed(&["ISS-2"]);
+        second.run_id = "run-2".into();
+        second.worktree_path = PathBuf::from("/w/two");
+        led.create_run_group(second)
+            .expect("a master with one bound run may declare its next");
+    }
+
+    #[test]
+    fn a_declaration_whose_subagent_never_started_is_cancelled_by_its_own_close() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert_eq!(
+            led.unbound_run_for_master("master-1", "boot-a")
+                .unwrap()
+                .map(|r| r.run_id)
+                .as_deref(),
+            Some("run-1")
+        );
+        led.end_run("run-1", "master", "the subagent never started")
+            .unwrap();
+        assert!(
+            led.unbound_run_for_master("master-1", "boot-a")
+                .unwrap()
+                .is_none(),
+            "a closed declaration is no longer pending"
+        );
+        let mut second = seed(&["ISS-2"]);
+        second.run_id = "run-2".into();
+        second.worktree_path = PathBuf::from("/w/two");
+        led.create_run_group(second)
+            .expect("the next declaration is accepted once the cancelled one is closed");
+    }
+
+    /// An unbound row from a previous boot names a master session this box no longer has.
+    // cm:guard without the boot scope this rule has no way out: the row cannot be closed by a master that no longer exists, so every declaration for the rest of the boot would be refused and the box would need its sqlite edited by hand. Same reasoning, and the same failure, as `live_run_holding`'s own boot guard.
+    #[test]
+    fn an_unbound_run_from_a_previous_boot_never_blocks_a_declaration() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        let mut old = seed(&["ISS-1"]);
+        old.boot_id = "boot-old".into();
+        led.create_run_group(old).unwrap();
+        let mut fresh = seed(&["ISS-2"]);
+        fresh.run_id = "run-2".into();
+        fresh.worktree_path = PathBuf::from("/w/two");
+        led.create_run_group(fresh)
+            .expect("a boot this box is not in cannot hold the declaration");
+    }
+
+    // cm:guard the second bind must fail rather than repoint: a `SubagentStart` for a child this box has already bound elsewhere, or a repeat of one it has seen, would otherwise move a live run onto the wrong subagent and the close would then return another run's issues.
+    #[test]
+    fn a_bound_run_cannot_be_rebound_and_a_repeated_hook_writes_once() {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(seed(&["ISS-1"])).unwrap();
+        assert!(led.bind_agent("run-1", "child-a").unwrap());
+        assert!(
+            !led.bind_agent("run-1", "child-b").unwrap(),
+            "a bound run is not repointed at another child"
+        );
+        assert!(
+            !led.bind_agent("run-1", "child-a").unwrap(),
+            "the same event twice binds once"
+        );
+        assert_eq!(
+            led.run_for_agent("child-a").unwrap().unwrap().run_id,
+            "run-1"
+        );
+        assert!(led.run_for_agent("child-b").unwrap().is_none());
+    }
+
+    #[test]
+    fn a_master_pane_and_its_conversation_survive_the_ledger_being_closed_and_reopened() {
+        let dir = std::env::temp_dir().join(format!("forge-ledger-masters-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let led = Ledger::open(&path).unwrap();
+            led.note_master("proj-1", "forge-proj-1", Some("conv-abc"), "boot-a")
+                .unwrap();
+        }
+        let led = Ledger::open(&path).unwrap();
+        let row = led.master_for_project("proj-1").unwrap().unwrap();
+        assert_eq!(row.pane_name, "forge-proj-1");
+        assert_eq!(row.conversation_id.as_deref(), Some("conv-abc"));
+        assert!(led.master_for_project("proj-2").unwrap().is_none());
+        let _ = std::fs::remove_file(&path);
+    }
+
+    /// A later report that carries no conversation must not erase the stored one.
+    // cm:guard this is the whole reason the upsert uses COALESCE. Most hook frames carry a conversation, but a frame that does not would otherwise null the only handle a resume can be built from, and the pane would cold-start silently at its next rebuild — the substitution this issue exists to prevent, arriving from inside the fix (ISS-1050 criterion 15).
+    #[test]
+    fn a_report_carrying_no_conversation_leaves_the_stored_one_alone() {
+        let led = Ledger::open_in_memory().unwrap();
+        led.note_master("proj-1", "forge-proj-1", Some("conv-abc"), "boot-a")
+            .unwrap();
+        led.note_master("proj-1", "forge-proj-1", None, "boot-a")
+            .unwrap();
+        assert_eq!(
+            led.master_for_project("proj-1")
+                .unwrap()
+                .unwrap()
+                .conversation_id
+                .as_deref(),
+            Some("conv-abc"),
+            "a report with no conversation must not erase the handle a resume needs"
+        );
+    }
+
+    /// The migration, against a ledger whose `runs` table predates both additions.
+    // cm:guard the old table is built by RAW SQL rather than by an older build of this code, because the point is a table that does not have the columns — and the write at the end is what separates a ledger that merely opens from one that works. `CREATE TABLE IF NOT EXISTS` adds no column to a table that exists, so without `ADDED_COLUMNS` every statement naming `agent_id` fails at runtime on the 287-row ledger live on forge-vm (ISS-1050 criteria 15, 16).
+    #[test]
+    fn a_ledger_written_by_an_earlier_build_gains_the_masters_table_and_the_agent_column() {
+        let dir = std::env::temp_dir().join(format!("forge-ledger-1050-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let path = dir.join("ledger.sqlite");
+        let _ = std::fs::remove_file(&path);
+        {
+            let conn = Connection::open(&path).unwrap();
+            conn.execute_batch(
+                "CREATE TABLE runs (
+                   run_id TEXT PRIMARY KEY, master_session_id TEXT NOT NULL, session_id TEXT,
+                   worktree_path TEXT NOT NULL, pid INTEGER, boot_id TEXT NOT NULL,
+                   incarnation TEXT NOT NULL, work TEXT NOT NULL, blocker_kind TEXT,
+                   waiting_on TEXT, resume_id TEXT, park_deadline_at INTEGER,
+                   session_terminal_at INTEGER, worktree_gone_at INTEGER,
+                   created_at INTEGER NOT NULL);
+                 CREATE TABLE run_issues (
+                   run_id TEXT NOT NULL, issue_key TEXT NOT NULL, lease_returned_at INTEGER,
+                   PRIMARY KEY (run_id, issue_key));
+                 INSERT INTO runs (run_id, master_session_id, worktree_path, boot_id,
+                                   incarnation, work, created_at)
+                 VALUES ('old-run', 'old-master', '/tmp/w-old', 'boot-old', 'live', 'runnable', 1);
+                 INSERT INTO run_issues (run_id, issue_key) VALUES ('old-run', 'ISS-900');",
+            )
+            .unwrap();
+        }
+        let mut led = Ledger::open(&path).unwrap();
+
+        let old = led
+            .run("old-run")
+            .expect("a ledger an earlier build wrote must still open")
+            .expect("the row it already held must survive");
+        assert!(
+            old.agent_id.is_none(),
+            "a row written before the column existed reads as unbound, never as bound to something invented"
+        );
+        assert_eq!(
+            led.issues("old-run").unwrap().len(),
+            1,
+            "the membership it already held must survive too"
+        );
+
+        led.create_run_group(NewRun {
+            run_id: "new-run".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: PathBuf::from("/tmp/w-new"),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-901".into()],
+        })
+        .expect("a ledger an earlier build wrote must accept a write under this build");
+        assert!(led.bind_agent("new-run", "child-a").unwrap());
+        led.note_master("proj-1", "forge-proj-1", Some("conv-abc"), "boot-a")
+            .unwrap();
+
+        assert_eq!(
+            led.run_for_agent("child-a").unwrap().unwrap().run_id,
+            "new-run"
+        );
+        assert_eq!(
+            led.master_for_project("proj-1")
+                .unwrap()
+                .unwrap()
+                .conversation_id
+                .as_deref(),
+            Some("conv-abc")
+        );
+        assert!(
+            led.run("old-run").unwrap().is_some(),
+            "the row the earlier build wrote is still there after this build has written its own"
+        );
         let _ = std::fs::remove_file(&path);
     }
 

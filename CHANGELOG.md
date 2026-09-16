@@ -2854,6 +2854,67 @@
   organisation, the store, the theme, the domain — and leaves every project's own settings where
   they belong.
 
+- **When work stops part-way, the issue now says what was left behind and what the work itself
+  said last.** Before, a run that was cut off — the machine restarted, the account it was using
+  stopped answering, the process killed — left nothing anybody could read. The branch was on a disk
+  somewhere and whatever the work had said about where it had got to was gone with it, so picking
+  it up again meant guessing, or starting over. The issue now carries two records, kept apart on
+  purpose: what the machine could see for itself (the branch, what changed, how much of it had been
+  saved anywhere else, whether anything was still uncommitted) and, separately, the last thing the
+  work said about where it had got to, in its own words and untouched. If it said nothing before it
+  stopped, that half says so plainly rather than being filled in from the other one — a guess
+  printed where a statement should be is worse than an empty space, because you cannot tell them
+  apart afterwards. Neither record recommends anything. Whether to carry on or start again is a
+  judgement for whoever picks it up, and the point of writing both down is that they can make it
+  with the facts instead of without them. Reported once however many times the machine retries, and
+  recorded even for work the system had already given up on — which is the case it matters most in.
+
+- **Work that was saved on the machine but never sent anywhere is no longer thrown away when the
+  workspace is cleared, and the machine now says on the issue when it is holding the only copy.**
+  Clearing a finished run's workspace asked one question first: is there anything unsaved here? Work
+  that had been saved properly on that machine, and only on that machine, answered no — so the
+  workspace was cleared and the work went with it, silently, and looked exactly like a run that had
+  finished cleanly. Over one night on the maintainer's own box that was four runs and seventy-six
+  pieces of work, recovered by hand. The machine now sends the work somewhere safe **before**
+  clearing anything, and then asks whether it actually arrived rather than trusting that it did — a
+  send can report success against a machine's stale memory of an earlier one. If it did not arrive,
+  the workspace is kept and the issue is told: which branch, which commit, how much exists nowhere
+  else, and why it could not be sent. If the machine could not even find out — no route at all to
+  the place it sends work — it says it does not know, rather than reporting the work as unsafe,
+  because those are two different situations and only one of them is about the work. Said once and
+  not once a minute, though a run that saves more work while being held gets said again, since what
+  is at risk has changed. Nothing about the issue moves, and the machine goes on trying by itself: a
+  connection that comes back clears the whole thing with nobody involved. This exists for the one
+  that does not come back.
+
+- **An issue that says work is in progress with nothing actually working it is now named, and
+  nothing about it is moved.** Two records have to agree for the product to be telling you the
+  truth: the issue's status, which says somebody is on it, and the machine's own record of what it
+  handed out. When those disagreed there was nothing anywhere that said so, and the issue went on
+  claiming to be worked for as long as anybody left it there. Project admins are now told which
+  issue is making the claim and how long it has been making it — once per episode rather than once
+  a minute, because a warning that arrives every minute is one nobody reads. It stops at telling
+  you, deliberately: an issue reaches "in progress" because a person put it there as readily as
+  because a machine did, so quietly putting it back would pull the work out from under whoever is
+  actually doing it. Which of the two records is the wrong one is not a question the product can
+  answer, so it asks instead of guessing.
+
+- **A box now keeps a record of the work it hands out, so that work can be found again if the
+  machine handing it out stops.** Every piece of work a box takes on is handed to a helper, and
+  since 13 September the box had been keeping no note of which helper had been given what. Nothing
+  broke while everything ran, but if the thing handing out the work stopped — killed, crashed, out
+  of memory, machine restarted — the work it had handed out stayed marked as being worked on, with
+  nobody working on it, and there was nothing to read that could put it back. The note is kept
+  again: the dispatcher says what it is handing out before it hands it out, the note records which
+  helper took it, and work that finishes closes its own note. Each machine also keeps, per project,
+  the conversation its dispatcher is having — kept now so that a dispatcher rebuilt later can be
+  handed it, which is a separate change and is not yet in. Registries that were written before this
+  change are read and added to as they are, so a machine that has been running for weeks loses
+  nothing, and nothing about its existing notes is rewritten or invented. If the machine announces
+  the same piece of work twice — because the first answer never got back to it — it is told about
+  the one record that already exists rather than a second being made, even when both announcements
+  are in the air at once.
+
 - **A conversation you archive from the all-projects Conversations page can now be found and
   brought back there.** Every room in that page's sidebar offered to archive it, and archiving
   worked — the room left the list. Nothing on the page then showed the archived ones, so the only

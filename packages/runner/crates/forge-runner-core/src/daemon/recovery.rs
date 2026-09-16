@@ -13,10 +13,27 @@ use crate::error::Result;
 use crate::runner::close_loop::{self, CloseState, LeaseKeeper, SessionReader};
 use crate::runner::ledger::{Ledger, Liveness};
 
+/// What this box can honestly say about a master pane.
+// cm:guard three-valued for the same reason `Liveness` is, and the third value is the whole point:
+// a master this box's registry has NO entry for is "cannot tell", not "gone". The registry is an
+// in-process map that a daemon restart empties, and a project that has left `/me/runners` is never
+// re-adopted into it, so a miss says nothing about whether the pane is running. Collapsing it to
+// `Gone` is an absence of evidence, and `agent_gone` spends that absence on telling core a run died
+// and on removing its checkout (ISS-1050).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum MasterPresence {
+    /// The registry named a pane and tmux answered for it.
+    Alive,
+    /// The registry named a pane and tmux has no such pane — a positive observation.
+    Gone,
+    /// This box has no entry for that master, which is not the same as it being over.
+    Unknown,
+}
+
 /// Whether the master that started a run is still there to finish it.
 #[async_trait::async_trait]
 pub trait MasterLiveness: Send + Sync {
-    async fn is_alive(&self, master_session_id: &str) -> bool;
+    async fn state(&self, master_session_id: &str) -> MasterPresence;
     /// The master now serving this project, if one is up.
     // cm:guard asked ONLY for a park, and the reason is the asymmetry below: a live run whose master died is genuinely orphaned and must be closed, while a park is a question already put to a human and has to outlive the process that asked it. Re-parenting a live run would hand a new master a pane it never spawned and cannot address (ISS-964 criterion 28).
     async fn live_master_for_project(&self, project_id: &str) -> Option<String>;
@@ -89,7 +106,7 @@ pub async fn reconcile(
     for run in ledger.unclosed_runs()? {
         // cm:guard the park is answered BEFORE either orphan premise is read, because a park satisfies both of them by design: its process is gone, so a reboot changes the boot it recorded, and its master may well have exited over it. Read in the other order, the death of a master — or any reboot of the box — releases the worktree and returns the lease of a question a human has already been asked (ISS-964 criterion 28).
         if run.is_parked_on_human() {
-            if !masters.is_alive(&run.master_session_id).await {
+            if masters.state(&run.master_session_id).await != MasterPresence::Alive {
                 if let Some(project) = run.project_id.as_deref() {
                     if let Some(parent) = masters.live_master_for_project(project).await {
                         ledger.reparent_run(&run.run_id, &parent)?;
@@ -108,9 +125,35 @@ pub async fn reconcile(
             Some(pid) => procs.is_gone(pid).await,
             None => false,
         };
-        let orphaned = run.boot_id != boot_id
-            || matches!(Ledger::liveness(&run, boot_id, pid_refuted), Liveness::Dead)
-            || !masters.is_alive(&run.master_session_id).await;
+        let master = masters.state(&run.master_session_id).await;
+        // cm:why THE run's own agent, answered the way the subagent model allows, and this is the
+        // term the two marks below are keyed on. It used to be `pid_refuted` alone, which is
+        // permanently `false` in production: `ledger.rs:attach_pid` has no caller outside
+        // `#[cfg(test)]`, because `ddabc1f2b` made a run a SUBAGENT inside its master's session and
+        // a subagent has no process of its own. Both marks are conjunctions, so a term that is
+        // always false made both of them unreachable — `report_run_death` and `release_held_tree`
+        // never fired, every orphan waited out core's ten-minute silence into `runner_unreachable`,
+        // and no orphaned worktree was ever released. The guard below this was written against that
+        // exact measured symptom and sat on the conjunction that prevented it (ISS-1050).
+        //
+        // cm:why `Ledger::liveness` already carries the subagent-model answer and was being bypassed:
+        // `(Exited, _)` is `Dead`, and `control.rs:bind_or_release` sets `exited` through `end_run`
+        // the moment `SubagentStop` arrives. Reading it here rather than the raw `pid_refuted` is
+        // most of the repair; the master term is the rest, and is sound in one direction only — see
+        // the guard on `owed_death_report`.
+        // cm:why TWO predicates over the same facts, with different burdens of proof, and they are
+        // not a duplication to be collapsed. `orphaned` decides to stop beating a run and close the
+        // loop on it; being wrong costs a lease returned early, and it is deliberately permissive —
+        // `Unknown` counts, exactly as `!is_alive` did before this change, so nothing about that
+        // decision moves here. `agent_gone` decides to tell core the run DIED and to remove its
+        // checkout, and it spends only positive observations: the ledger saying `Dead`, or the
+        // registry naming a pane that tmux says is not there. A master this box simply has no entry
+        // for buys neither.
+        let dead_in_the_ledger =
+            matches!(Ledger::liveness(&run, boot_id, pid_refuted), Liveness::Dead);
+        let agent_gone = dead_in_the_ledger || master == MasterPresence::Gone;
+        let orphaned =
+            run.boot_id != boot_id || dead_in_the_ledger || master != MasterPresence::Alive;
         if !orphaned {
             let Some(id) = run.session_id.as_deref() else {
                 continue;
@@ -133,12 +176,45 @@ pub async fn reconcile(
         }
         let state = close_loop::close(ledger, &run.run_id, sessions, leases).await?;
         // cm:why the deadlock this term exists to break: `end_run` is reached only through `close.is_closed()`, that needs the `worktree_gone` mark, the mark is set only by OBSERVING the tree gone, and the sole remover — the reap — refuses every tree whose run is `ended_by IS NULL`. A run whose session ends outside `terminate` therefore holds its checkout and its leases forever. Measured forge-vm 2026-09-10: 24 runs, 24 trees, every mark in that cycle true and nothing on the box able to advance one of them.
-        // cm:guard all four terms are load-bearing and none may be dropped for the others: `pid_refuted` is a POSITIVE refutation of the run's own process (unknown and not-permitted both answer false), the boot must be THIS one because a pid recorded before a reboot names a stranger, `session_terminal` is core's row rather than this box's opinion, and a tree already gone is owed nothing. Weaken any one and recovery deletes the checkout of a run still writing into it.
+        // cm:guard all four terms are load-bearing and none may be dropped for the others: `agent_gone` is a POSITIVE observation that the run's agent is over (`Ledger::liveness` answering `Dead`, or its master's session being gone — never an absence of evidence), the boot must be THIS one because anything recorded before a reboot names a stranger, `session_terminal` is core's row rather than this box's opinion, and a tree already gone is owed nothing. Weaken any one and recovery deletes the checkout of a run still writing into it.
         // cm:edge protocol -> packages/runner/crates/forge-runner-core/src/runner/terminate.rs — this only NAMES the runs owed a release; performing it is `force_terminal`'s (preserve → remove → close → `end_run`, in that order), and it belongs to the caller because resolving a project's repo path is `resolve_repo`'s alone.
         let owed_release =
-            pid_refuted && run.boot_id == boot_id && state.session_terminal && !state.worktree_gone;
-        // cm:guard keyed on the run's OWN process being refuted within THIS boot, never on the master being gone: a master that exited over a run whose pane is still working would otherwise have that run reported dead, and core returns a `died` run's issues to the claimable set while the agent is still writing to the worktree.
-        let owed_death_report = pid_refuted && run.boot_id == boot_id && !state.session_terminal;
+            agent_gone && run.boot_id == boot_id && state.session_terminal && !state.worktree_gone;
+        // cm:guard the master being gone IS a term here, and this reverses what this line said
+        // before. The old rule — never key on the master, because a master that exited over a run
+        // whose pane is still working would have that run reported dead while its agent still wrote
+        // to the worktree — was a fact about the model `ddabc1f2b` removed, where a run was a
+        // process of its own. A subagent runs INSIDE its master's process and cannot outlive it, so
+        // the scenario the old rule protected against is no longer constructible, and keeping the
+        // rule cost both marks entirely (ISS-1050).
+        // cm:guard the master term is sound in ONE direction and the incompleteness is deliberate,
+        // NAMED here because it is not repaired by this change. `Gone` is never answered for a
+        // master that is up, so no live run is ever reported dead. It is also never answered for a
+        // master whose pane was killed and RESPAWNED: `POST /me/master-session` re-finds the
+        // existing session, the id survives the rebuild, the registry maps it to the new pane, and
+        // tmux confirms that pane — so the run reads `Alive` and its dead subagent is invisible here.
+        //
+        // cm:why that case does NOT fall through to core's ten-minute sweep, and saying it did would
+        // be the comfortable version of this note. A run reading `Alive` is not orphaned, so it takes
+        // the beat branch above and its core session is heartbeaten every thirty seconds forever —
+        // core's silence reaper can never fire on it. That is the measured ISS-933 condition (19 of
+        // 22 unclosed runs beating, 24 leases over 5 projects, pool empty) and it survives this
+        // change untouched. Closing it needs the master's conversation id to be comparable across a
+        // rebuild, which `masters` carries and which is NOT usable today: `note_master` never
+        // refreshes `cold_started_at` on conflict, so a rebuilt pane is indistinguishable from the
+        // one it replaced. That is ISS-1050's steps 18-21, and until they land this hole is open.
+        // cm:guard `ended_by IS NULL` is a term of its own and it is not covered by the others. A
+        // run that reached `SubagentStop` records WHY it ended and `Ledger::liveness` answers `Dead`
+        // for it exactly as it does for a run that was killed, so `agent_gone` cannot tell them
+        // apart. `close_ended_runs` closes such a run at core as `Ended` earlier in the same sweep,
+        // but only when core took the close; when core refused, the run arrives here `Exited` with a
+        // session that is not terminal, and without this term it would be reported as a DEATH —
+        // sending `returnIssuesForRun` over issues an agent had deliberately advanced (ISS-1050
+        // criteria 8, 9). A core that would not take a close is a reason to try the close again.
+        let owed_death_report = agent_gone
+            && run.ended_by.is_none()
+            && run.boot_id == boot_id
+            && !state.session_terminal;
         let session_id = run.session_id.clone();
         out.push(Recovered {
             run_id: run.run_id,
@@ -163,11 +239,29 @@ mod tests {
 
     const SOURCE: &str = include_str!("recovery.rs");
 
+    /// Masters this box has a registry entry for: in the set is up, out of it is positively gone.
     struct Masters(HashSet<String>);
     #[async_trait::async_trait]
     impl MasterLiveness for Masters {
-        async fn is_alive(&self, master_session_id: &str) -> bool {
-            self.0.contains(master_session_id)
+        async fn state(&self, master_session_id: &str) -> MasterPresence {
+            if self.0.contains(master_session_id) {
+                MasterPresence::Alive
+            } else {
+                MasterPresence::Gone
+            }
+        }
+        async fn live_master_for_project(&self, _: &str) -> Option<String> {
+            None
+        }
+    }
+
+    /// A box that has never heard of this master — a restarted daemon, or a project that has left
+    /// `/me/runners` and is therefore never re-adopted into the registry.
+    struct NoRegistryEntry;
+    #[async_trait::async_trait]
+    impl MasterLiveness for NoRegistryEntry {
+        async fn state(&self, _: &str) -> MasterPresence {
+            MasterPresence::Unknown
         }
         async fn live_master_for_project(&self, _: &str) -> Option<String> {
             None
@@ -177,8 +271,12 @@ mod tests {
     struct Respawned(&'static str);
     #[async_trait::async_trait]
     impl MasterLiveness for Respawned {
-        async fn is_alive(&self, master_session_id: &str) -> bool {
-            master_session_id == self.0
+        async fn state(&self, master_session_id: &str) -> MasterPresence {
+            if master_session_id == self.0 {
+                MasterPresence::Alive
+            } else {
+                MasterPresence::Gone
+            }
         }
         async fn live_master_for_project(&self, _: &str) -> Option<String> {
             Some(self.0.to_string())
@@ -190,6 +288,15 @@ mod tests {
     impl SessionReader for Sessions {
         async fn is_terminal(&self, _: &str) -> Result<bool> {
             Ok(true)
+        }
+    }
+
+    /// Core's row still says the session is running, which is what a master that just died leaves.
+    struct SessionCoreStillHolds;
+    #[async_trait::async_trait]
+    impl SessionReader for SessionCoreStillHolds {
+        async fn is_terminal(&self, _: &str) -> Result<bool> {
+            Ok(false)
         }
     }
 
@@ -341,7 +448,7 @@ mod tests {
 
     // cm:guard the pid answering is the ONLY difference from the test above, and it must be enough on its own: everything downstream of `owed_release` kills a process group and removes a checkout, so a build that owed a release here would delete the tree an agent is writing into.
     #[tokio::test]
-    async fn a_run_whose_own_pid_still_answers_is_owed_no_release() {
+    async fn a_run_whose_master_is_gone_is_owed_its_release_whatever_its_pid_says() {
         let done = reconcile_held(424_243, &[], "boot-a", "boot-a").await;
         assert_eq!(
             done.len(),
@@ -349,8 +456,142 @@ mod tests {
             "a dead master still leaves the run to recovery"
         );
         assert!(
+            done[0].owed_release,
+            "a run whose master's session is gone has no agent — a subagent runs inside that process and cannot outlive it — so the release it is owed may not wait on a pid nothing writes"
+        );
+    }
+
+    // cm:guard the LEDGER half of `agent_gone` carries this case on its own, and the master term
+    // cannot: the master is alive and stays alive, and the run simply finished under it. Without it
+    // the checkout of every normally-finished run is held forever — which is the deadlock the
+    // `cm:why` on `owed_release` describes, since `end_run` is reached only through a close that
+    // needs the `worktree_gone` mark, and the mark is set only by observing the tree gone.
+    #[tokio::test]
+    async fn a_finished_run_under_a_live_master_is_still_owed_its_checkout_back() {
+        let (mut led, wt) = seeded_holding_a_tree(0, "boot-a");
+        led.end_run("run-1", "subagent", "the subagent finished")
+            .unwrap();
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            // the fixture's master, named ALIVE here on purpose: the master term must answer
+            // `Alive` so that only the ledger half of `agent_gone` can carry this case
+            &Masters(HashSet::from(["master-dead".to_string()])),
+            &nothing_refuted(),
+            &Sessions,
+            &Leases(Mutex::new(HashSet::new())),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        let _ = std::fs::remove_dir_all(&wt);
+        assert_eq!(done.len(), 1, "a finished run is reconciled");
+        assert!(
+            done[0].owed_release,
+            "the run is over and core agrees its session is; nothing else will ever take this checkout back"
+        );
+    }
+
+    // cm:guard a run that ENDED ITSELF is not a run that died, even though `Ledger::liveness`
+    // answers `Dead` for both. `SubagentStop` sets `ended_by`, and `close_ended_runs` closes such a
+    // run at core as `Ended` earlier in the same sweep — but only if core took the close. When core
+    // refuses it, this pass sees an `Exited` run whose session is not terminal, and reporting that
+    // as a DEATH sends `returnIssuesForRun` over issues the agent deliberately advanced and pulls
+    // them back to the status they held when the run opened (ISS-1050 criteria 8, 9).
+    #[tokio::test]
+    async fn a_run_that_ended_itself_is_never_reported_as_one_that_died() {
+        let mut led = seeded("run-1", "master-live", "boot-a", &["ISS-957"]);
+        led.end_run("run-1", "subagent", "the subagent finished")
+            .unwrap();
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::from(["master-live".to_string()])),
+            &nothing_refuted(),
+            &SessionCoreStillHolds,
+            &Leases(Mutex::new(HashSet::new())),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(done.len(), 1, "an ended run is still reconciled");
+        assert!(
+            !done[0].owed_death_report,
+            "this run said it was finished; a core that would not take the close is a reason to try the close again, never a reason to call it a death"
+        );
+    }
+
+    // cm:guard a master this box has NO registry entry for buys neither mark. The registry is an
+    // in-process map: a daemon restart empties it, and a project that has left `/me/runners` is
+    // never re-adopted into it, so a miss is this box having no record rather than a pane having
+    // ended — and the pane may be running a subagent into that very checkout. The run is still
+    // treated as orphaned, exactly as it was before this change, so its leases come back and core's
+    // ten-minute sweep still closes it; what it does not buy is core being TOLD the run died or the
+    // checkout being removed. Found by consult on this diff, not by me (ISS-1050).
+    #[tokio::test]
+    async fn a_master_this_box_has_no_record_of_is_not_read_as_a_master_that_ended() {
+        let mut led = seeded("run-1", "master-unknown", "boot-a", &["ISS-957"]);
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &NoRegistryEntry,
+            &nothing_refuted(),
+            &SessionCoreStillHolds,
+            &Leases(Mutex::new(HashSet::new())),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(
+            done.len(),
+            1,
+            "an unknown master still leaves the run to recovery, as it did before this change"
+        );
+        assert!(
+            !done[0].owed_death_report,
+            "this box has no record of that master — saying the run died would be an absence reported as a fact"
+        );
+        assert!(
             !done[0].owed_release,
-            "an unrefuted pid may not license a kill and a worktree removal — `is_gone` answers false for both 'alive' and 'cannot tell'"
+            "and it may certainly not license removing a checkout a live subagent may be writing into"
+        );
+    }
+
+    // cm:guard this is the production shape, and it is the one that produced NOTHING before. No pid
+    // is ever written — `attach_pid` has no caller outside these tests — so a run whose master died
+    // reaches this pass with `pid: None`, which the old `pid_refuted` term read as "not refuted" and
+    // therefore as no death to report. Every orphan on a real box took core's ten-minute silence
+    // instead, and this asserts the report is made from the box now (ISS-1050).
+    #[tokio::test]
+    async fn a_run_with_no_pid_at_all_whose_master_died_is_reported_dead_rather_than_waited_out() {
+        let mut led = seeded("run-1", "master-dead", "boot-a", &["ISS-957"]);
+        let done = reconcile(
+            &mut led,
+            "boot-a",
+            &Masters(HashSet::new()),
+            &nothing_refuted(),
+            &SessionCoreStillHolds,
+            &Leases(Mutex::new(HashSet::new())),
+            RunWatch {
+                beat: &Beats::default(),
+                idle: &NeverReports,
+            },
+        )
+        .await
+        .unwrap();
+        assert_eq!(done.len(), 1, "a run whose master died is recovered");
+        assert!(
+            done[0].owed_death_report,
+            "core is told this run died by the box; waiting for the ten-minute silence is what this pass exists to replace"
         );
     }
 

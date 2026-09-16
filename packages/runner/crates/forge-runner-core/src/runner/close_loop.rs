@@ -28,7 +28,13 @@ pub trait SessionReader: Send + Sync {
 // cm:guard this port reports, it does not set a mark. `session_terminal` is still earned by `SessionReader::is_terminal` reading core's row back on a later sweep — a close that answered 200 and a close whose response was dropped must be indistinguishable here (ISS-933 criterion 13).
 #[async_trait::async_trait]
 pub trait RunCloser: Send + Sync {
-    async fn close(&self, agent_session_id: &str, outcome: Outcome, detail: &str) -> Result<()>;
+    async fn close(
+        &self,
+        agent_session_id: &str,
+        outcome: Outcome,
+        detail: &str,
+        checkpoint: Option<serde_json::Value>,
+    ) -> Result<()>;
 }
 
 /// Returns a lease, and separately reads back whether it is actually returned.

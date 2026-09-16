@@ -34,6 +34,12 @@ const DOORS: Record<string, RegExp> = {
  */
 const KERNEL_AUTHORED = [
   'agent-sessions/steer-session.ts',
+  // cm:why ISS-1050 — it builds the whole body itself from a box checkpoint and a lease `next`, and
+  // takes no caller text at all, so there is nothing for a door to gate. The one thing it does
+  // carry from elsewhere is the run's own words, and those are printed byte for byte inside a fence
+  // sized past the content on purpose: passing them through `prepareBody` would normalise a
+  // statement the block is labelled as quoting.
+  'devices/run-evidence.ts',
   'issues/apply-transition.ts',
   'issues/drop-unblock.ts',
   'issues/merge-marker.ts',

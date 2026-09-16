@@ -45,6 +45,10 @@ import {
   alarmStalledQueuedJobs,
   type Inv7AlarmResult,
 } from './inv7-alarms.js';
+import {
+  detectOrphanedRunAssertions,
+  type IssueRunInvariantResult,
+} from './issue-run-invariant.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
@@ -134,6 +138,8 @@ export interface SweepResult {
   rejectionStreaks: Inv7AlarmResult;
   /** ISS-764 — batch release claims orphaned by a terminal run (claim-subscriber backstop). */
   staleReleaseBatchClaims: StaleReleaseBatchClaimsResult;
+  /** ISS-1050 — issues asserting work in progress with no live run behind them (report only). */
+  orphanedRunAssertions: IssueRunInvariantResult;
   /** ISS-762 — issues parked at `waiting` with merged code, surfaced to project admins. */
   strandedIssues: StrandedIssuesResult;
   owedCloses: StrandedIssuesResult;
@@ -202,6 +208,18 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const staleReleaseBatchClaims = await runPass('reapStaleReleaseBatchClaims', () =>
     reapStaleReleaseBatchClaims(),
   );
+  // cm:guard REPORTS and moves nothing, and it must stay that way. `reapDeadRunSessions` may
+  // retract because it holds the fact that makes retraction sound — a session it opened stopped
+  // beating. This pass holds no such fact: an issue reaches `in_progress` on this project by a
+  // baseline record a person or a by-hand run wrote, so an arm that retracted here would pull the
+  // tree out from under exactly that work. It says the two halves disagree; whose fault that is, is
+  // not computable from either side (ISS-1050).
+  // cm:guard AFTER every reaping pass above, for the reason the loop monitor comment gives: a run
+  // session this tick is about to reap is not an orphaned assertion yet, and reporting it before
+  // the reaper reaches it names a disagreement that resolves itself within the same tick.
+  const orphanedRunAssertions = await runPass('detectOrphanedRunAssertions', () =>
+    detectOrphanedRunAssertions(now),
+  );
   const strandedIssues = await runPass('detectStrandedIssues', () => detectStrandedIssues(now));
   const owedCloses = await runPass('detectOwedCloses', () => detectOwedCloses(now));
   const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
@@ -238,6 +256,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     pausedRunsWithQueuedWork: pausedRunsWithQueuedWork as Inv7AlarmResult,
     rejectionStreaks: rejectionStreaks as Inv7AlarmResult,
     staleReleaseBatchClaims: staleReleaseBatchClaims as StaleReleaseBatchClaimsResult,
+    orphanedRunAssertions: orphanedRunAssertions as IssueRunInvariantResult,
     strandedIssues: strandedIssues as StrandedIssuesResult,
     owedCloses: owedCloses as StrandedIssuesResult,
     orphanedPauses: orphanedPauses as OrphanedPauseResult,

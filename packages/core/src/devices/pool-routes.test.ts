@@ -129,6 +129,29 @@ describe('POST /me/run-sessions', () => {
       projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
       issueKeys: ['ISS-957', 'ISS-958'],
       name: 'grp-957-958',
+      boxRunId: 'cccccccc-cccc-4ccc-8ccc-cccccccccccc',
+    });
+  });
+
+  // cm:guard the assertion is that the box's own run id REACHES the service, and it is separate
+  // from the case above because the schema has demanded this field since the route was written
+  // while the handler dropped it: every existing test passed a `runId` and none of them asked
+  // what became of it, so a 200 that discarded it was indistinguishable from a 200 that stored it
+  // (ISS-1050 criterion 6).
+  it('passes the box run id through rather than discarding the field it demands', async () => {
+    openRunSession.mockResolvedValue({ sessionId: 's9', runId: 'r9' });
+    await app.request('/api/devices/me/run-sessions', {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: JSON.stringify({
+        projectId: 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa',
+        runId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
+        issueKeys: ['ISS-957'],
+        name: 'grp',
+      }),
+    });
+    expect(openRunSession.mock.calls.at(-1)?.[0]).toMatchObject({
+      boxRunId: 'dddddddd-dddd-4ddd-8ddd-dddddddddddd',
     });
   });
 
@@ -221,5 +244,41 @@ describe('POST /me/limit', () => {
     const res = await app.request('/api/devices/me/limit', { method: 'DELETE', headers: AUTH });
     expect(res.status).toBe(200);
     expect(clearMasterLimit).toHaveBeenCalledWith('dev-1');
+  });
+});
+
+// cm:guard the four run-session paths are asserted HERE, on the parent router, because they are
+// SERVED by a module split out of it. The handlers keep their own suites either way; what a split
+// can break silently, and what nothing else in this repo reads, is whether the sub-router is still
+// mounted and still mounted at the same prefix. A missing mount answers 404 — the same status a
+// device gets for another box's session — so without this the regression looks like normal scoping.
+describe('the run-session family stays mounted where it was', () => {
+  const SESSION = 'cccccccc-cccc-4ccc-8ccc-cccccccccccc';
+  const paths: [string, string][] = [
+    ['POST', '/api/devices/me/run-sessions'],
+    ['POST', `/api/devices/me/run-sessions/${SESSION}/close`],
+    ['POST', `/api/devices/me/run-sessions/${SESSION}/held-worktree`],
+    ['POST', `/api/devices/me/run-sessions/${SESSION}/resume-choice`],
+  ];
+
+  it.each(paths)('%s %s reaches a handler rather than falling through', async (method, path) => {
+    const res = await app.request(path, {
+      method,
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    // An empty body is invalid for every one of the four, so a mounted route refuses it at its
+    // validator with 400. A route that is NOT mounted answers 404, which is the thing being ruled
+    // out — the assertion is "not 404", so it cannot be satisfied by a handler that fell through.
+    expect(res.status).toBe(400);
+  });
+
+  it('answers 404 for a run-session path that was never served', async () => {
+    const res = await app.request(`/api/devices/me/run-sessions/${SESSION}/not-a-verb`, {
+      method: 'POST',
+      headers: { ...AUTH, 'content-type': 'application/json' },
+      body: '{}',
+    });
+    expect(res.status).toBe(404);
   });
 });

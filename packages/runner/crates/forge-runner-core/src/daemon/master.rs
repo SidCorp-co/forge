@@ -25,15 +25,18 @@ use std::time::{Duration, Instant};
 
 use crate::config::Config;
 use crate::daemon::agent_activity;
+use crate::daemon::checkpoint;
 use crate::daemon::dispatch::resolve_repo;
+use crate::daemon::held_report;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::recovery;
 use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
 use crate::daemon::run_exit;
+use crate::daemon::run_record;
 use crate::daemon::session_tokens;
 use crate::daemon::terminal;
 use crate::runner::close_loop;
-use crate::runner::ledger::Ledger;
+use crate::runner::ledger::{Ledger, Run};
 use crate::runner::terminate;
 use crate::transport::admissible::{self, AdmissibleIssue};
 use crate::transport::{master as master_api, mcp_servers, runners, CoreClient};
@@ -258,6 +261,18 @@ impl Masters {
         reg.live.remove(project_id).map(|m| m.session_id)
     }
 
+    /// Which project's master a session id is, for a declaration this box is
+    /// about to bound.
+    // cm:guard the REVERSE of `pane_for_session`, and it is a local read of a map already keyed by project — it does NOT ask core which project a session belongs to, which is the thing the guard below says core neither knows nor says on a frame. The two answer opposite questions and neither is the other's fallback (ISS-1050 criterion 7).
+    // cm:guard `None` is REFUSED by the caller and never guessed. This map is an optimisation rather than the bound, so a daemon restart empties it while every master is still running: a declaration arriving in that window has to be told this box does not yet know which project its pane serves, and that the next sweep re-adopts the pane and restores the answer. Deriving a project from the only entry present, or from the frame's own claim, is how a pane on one project opens a run over another's issue.
+    pub fn project_for_session(&self, session_id: &str) -> Option<String> {
+        let reg = self.0.lock().expect("masters poisoned");
+        reg.live
+            .iter()
+            .find(|(_, m)| m.session_id == session_id)
+            .map(|(project_id, _)| project_id.clone())
+    }
+
     /// The pane name for a master session id, for the inbox's terminal arm.
     // cm:guard keyed by SESSION id, not project id. Core addresses a master by the `agent_sessions` row it registered, which is the only identity a `session.send` frame carries — a lookup by project would need core to know which project a session belongs to and to say so on the frame, and it does neither.
     pub fn pane_for_session(&self, session_id: &str) -> Option<String> {
@@ -462,8 +477,57 @@ async fn sweep(
             }
         };
 
-        if !ensure_master(client, masters, &runner.project_id, &resolved).await {
+        // cm:guard read into an OWNED `Option<String>` before the await below. `Ledger` wraps
+        // `rusqlite` behind a `RefCell` and is not `Sync`, so a borrow held across `ensure_master`
+        // makes this future non-`Send` and the `tokio::spawn` in `daemon/mod.rs` refuses it.
+        let stored_conversation = ledger
+            .as_ref()
+            .and_then(|led| led.master_for_project(&runner.project_id).ok().flatten())
+            .and_then(|row| row.conversation_id);
+        // cm:guard built HERE, into owned rows, because `Ledger` is not `Sync` and a borrow held
+        // across `ensure_master`'s awaits makes this future non-`Send`.
+        let inherited: Vec<InheritedRun> = masters
+            .get(&runner.project_id)
+            .map(|(sid, _)| sid)
+            .and_then(|sid| {
+                ledger
+                    .as_ref()
+                    .map(|led| inherited_runs(led, &sid, &runner.project_id))
+            })
+            .unwrap_or_default();
+        let pane = ensure_master(
+            client,
+            masters,
+            &runner.project_id,
+            &resolved,
+            stored_conversation.as_deref(),
+            &inherited,
+        )
+        .await;
+        if pane == PaneState::Absent {
             continue;
+        }
+        // cm:guard the obligation is written by the RESUME, in the same pass that made it. A pane
+        // resumed over runs its predecessor left is the one thing that makes a choice owed, and
+        // marking anywhere else — on the declaration, on the sweep, on a timer — would either owe a
+        // choice for a pane's own fresh work or owe none at all (ISS-1050 criterion 29).
+        if pane == PaneState::Resumed {
+            let pane_boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+            if let (Some(led), Some((session_id, _))) =
+                (ledger.as_mut(), masters.get(&runner.project_id))
+            {
+                match led.owe_resume_choices(&session_id, &pane_boot) {
+                    Ok(0) => {}
+                    Ok(n) => tracing::info!(
+                        "[master] {}: resumed holding {n} run(s) — it must say what happens to each before declaring new work",
+                        resolved.slug
+                    ),
+                    Err(e) => tracing::warn!(
+                        "[master] {}: cannot mark the runs this pane inherited: {e}",
+                        resolved.slug
+                    ),
+                }
+            }
         }
 
         if admissible.is_empty() {
@@ -475,10 +539,36 @@ async fn sweep(
         }
     }
 
+    // cm:guard BEFORE `give_back_lost_runs` and at the same brace depth, both deliberately. A run
+    // declared this sweep has no core session yet, and `reconcile` reads a row with none as a run
+    // that never started and closes the loop over it — so the row has to reach core first or a
+    // master's freshly declared work is given back from under the subagent it was just handed to
+    // (ISS-1050 criteria 5, 8).
+    let boot = crate::runner::inflight::boot_identity().unwrap_or_default();
+    let sessions = run_record::CoreSessions(client);
+    let opened = run_record::open_declared_runs(&sessions, ledger, &boot).await;
+    let closed = run_record::close_ended_runs(&sessions, ledger, &boot).await;
+    // cm:guard AFTER `close_ended_runs` and BEFORE `give_back_lost_runs`, and both ends matter. A
+    // run this sweep is about to close is not a held checkout yet, so reporting before the close
+    // would name a hold that ends seconds later. Running before the release attempt is what makes
+    // the report describe the state the release is about to refuse — and when the release succeeds
+    // instead, the tree is gone and the next sweep finds nothing to report, which is the correct
+    // silence (ISS-1050 criterion 33).
+    let choices_said = say_resume_choices(&CoreChoice(client), ledger, &boot).await;
+    if choices_said > 0 {
+        tracing::info!("[master] {choices_said} resume choice(s) said on their issues");
+    }
+    let held_said =
+        held_report::report_held_worktrees(&held_report::CoreHeld(client), ledger, &boot).await;
+    if held_said > 0 {
+        tracing::info!("[master] {held_said} held checkout(s) reported onto their issues");
+    }
+    if opened > 0 || closed > 0 {
+        tracing::info!("[run-record] {opened} run(s) opened at core, {closed} closed");
+    }
+
     give_back_lost_runs(
-        crate::runner::inflight::boot_identity()
-            .unwrap_or_default()
-            .as_str(),
+        boot.as_str(),
         &PaneMasters { masters },
         &Reclaim {
             served: &served,
@@ -578,9 +668,25 @@ async fn release_held_tree(
 /// Tell core a run's process is gone, so its session stops being guessed at.
 // cm:guard `Died` is the outcome, and `closeRunSession` returns this run's issues to the status they were claimed from on exactly that value — which is the point: the work stopped mid-turn, so leaving the issues at `in_progress` strands them behind a run nothing is doing (ISS-457 stood there 18 hours).
 // cm:guard this sets NO local mark. `session_terminal` is still earned by `close_loop` reading core's row back on the next sweep, so a report whose response was dropped and one that never landed are indistinguishable here, as criterion 13 requires.
-async fn report_run_death(r: &recovery::Recovered, world: &Reclaim<'_>) {
+// cm:guard the checkpoint is built HERE, on the death report, because this is the case the evidence
+// exists for: the run died mid-turn and its own testimony is whatever it managed to write before it
+// stopped. A `Died` close that carried no reconstruction would leave the only copy of what the run
+// left on a disk nobody reads (ISS-1050).
+// cm:guard a run the ledger can no longer name still gets its close, carrying no checkpoint. The
+// close is what stops core guessing at the session from silence, and trading that away for the
+// evidence would leave the issues held for the full ten minutes to save a block nobody could have
+// filled anyway.
+// cm:guard the run row is looked up by the CALLER and handed in owned, never `&Ledger`. `Ledger`
+// wraps a `rusqlite` connection behind a `RefCell` and is therefore not `Sync`, so a reference held
+// across the `.await` below makes the whole master future non-`Send` and `tokio::spawn` refuses it
+// — at the spawn site in `daemon/mod.rs`, hundreds of lines from the cause.
+async fn report_run_death(run: Option<Run>, r: &recovery::Recovered, world: &Reclaim<'_>) {
     let Some(session_id) = r.session_id.as_deref() else {
         return;
+    };
+    let checkpoint = match run {
+        Some(run) => Some(checkpoint::reconstruct_within_budget(&run).await.to_json()),
+        None => None,
     };
     if let Err(e) = world
         .closer
@@ -588,6 +694,7 @@ async fn report_run_death(r: &recovery::Recovered, world: &Reclaim<'_>) {
             session_id,
             close_loop::Outcome::Died,
             "the run's process is gone from this box",
+            checkpoint,
         )
         .await
     {
@@ -641,6 +748,7 @@ async fn end_idle_run(led: &mut Ledger, run_id: &str, world: &Reclaim<'_>) {
             session_id,
             close_loop::Outcome::KilledIdle,
             "idle past the run's exit boundary; the box ended it",
+            Some(checkpoint::reconstruct_within_budget(&run).await.to_json()),
         )
         .await
     {
@@ -678,7 +786,7 @@ async fn give_back_lost_runs(
                 }
                 // cm:guard reported BEFORE the release is attempted and WITHOUT a `continue`: `owed_release` needs `session_terminal`, core alone writes that mark, and until this report lands the only writer is core's ten-minute silence sweep — so every orphan on this box waited it out and landed in `runner_unreachable` whether or not the box was reachable (forge-vm 2026-09-12, ~95% of 203 sessions over 7 days on two projects). The release still waits for the next sweep to read the row back, which is criterion 13 and not a delay worth trading away.
                 if r.owed_death_report {
-                    report_run_death(&r, world).await;
+                    report_run_death(led.run(&r.run_id).ok().flatten(), &r, world).await;
                 }
                 // cm:guard the release is attempted BEFORE the report and its result decides whether one is printed, because a run recovery just reclaimed is not a run an operator has anything to do about. Report first and every reclaimed run also files a complaint about the state it was reclaimed out of.
                 if r.owed_release
@@ -730,6 +838,251 @@ fn install_hooks_logged(repo: &std::path::Path, slug: &str) {
             repo.display()
         ),
     }
+}
+
+/// What telling core about a resume choice needs of it.
+#[allow(async_fn_in_trait)]
+pub trait ChoiceReporter {
+    async fn report(
+        &self,
+        session_id: &str,
+        run_id: &str,
+        choice: &str,
+        why: &str,
+    ) -> crate::error::Result<()>;
+}
+
+/// The live implementation, over this box's device credential.
+pub struct CoreChoice<'a>(pub &'a CoreClient);
+
+impl ChoiceReporter for CoreChoice<'_> {
+    async fn report(
+        &self,
+        session_id: &str,
+        run_id: &str,
+        choice: &str,
+        why: &str,
+    ) -> crate::error::Result<()> {
+        crate::transport::run_sessions::report_resume_choice(
+            self.0,
+            session_id,
+            serde_json::json!({ "runId": run_id, "choice": choice, "why": why }),
+        )
+        .await
+    }
+}
+
+/// Carry every recorded resume choice onto the issues its run holds.
+///
+/// Answers how many it said. Never fails: one core would not take is tried
+/// again next sweep, because the obligation is still recorded.
+// cm:guard the local mark is cleared only once core ANSWERED. Marking first would turn one
+// unreachable minute into a decision that exists on this box and nowhere else, which is the exact
+// silence this issue is about (ISS-1050 criterion 29).
+pub(crate) async fn say_resume_choices(
+    reporter: &impl ChoiceReporter,
+    ledger: &mut Option<Ledger>,
+    boot_id: &str,
+) -> usize {
+    if boot_id.is_empty() {
+        return 0;
+    }
+    let owed = {
+        let Some(led) = ledger.as_ref() else { return 0 };
+        match led.choices_awaiting_report(boot_id) {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!("[master] cannot read recorded resume choices: {e}");
+                return 0;
+            }
+        }
+    };
+    let mut said = 0;
+    for run in owed {
+        let (Some(session_id), Some(choice)) = (run.session_id.clone(), run.resume_choice.clone())
+        else {
+            continue;
+        };
+        let why = run.resume_choice_why.clone().unwrap_or_default();
+        match reporter.report(&session_id, &run.run_id, &choice, &why).await {
+            Ok(()) => {
+                if let Some(led) = ledger.as_mut() {
+                    if let Err(e) = led.mark_resume_choice_said(&run.run_id) {
+                        tracing::warn!(
+                            "[master] run {}: core has the choice and the mark did not land: {e} — it will be said again",
+                            run.run_id
+                        );
+                        continue;
+                    }
+                }
+                said += 1;
+            }
+            Err(e) => tracing::warn!(
+                "[master] run {}: core would not take the resume choice ({e}) — the next sweep tries again",
+                run.run_id
+            ),
+        }
+    }
+    said
+}
+
+/// Every run still open under this master, as raw fields.
+// cm:guard reads by MASTER SESSION and not by project alone: two projects' masters may be up on one
+// box, and a pane handed another project's runs would be asked to judge work it has never seen.
+fn inherited_runs(led: &Ledger, master_session_id: &str, _project_id: &str) -> Vec<InheritedRun> {
+    let Ok(runs) = led.unclosed_runs() else {
+        return Vec::new();
+    };
+    runs.into_iter()
+        .filter(|r| r.master_session_id == master_session_id && r.ended_by.is_none())
+        .map(|r| InheritedRun {
+            issue_keys: led
+                .issues(&r.run_id)
+                .map(|m| m.into_iter().map(|i| i.issue_key).collect())
+                .unwrap_or_default(),
+            run_id: r.run_id,
+            worktree_path: r.worktree_path.display().to_string(),
+            incarnation: r.incarnation.wire(),
+            work: r.work.wire(),
+            agent_id: r.agent_id,
+            ended_by: r.ended_by,
+        })
+        .collect()
+}
+
+/// One run a resumed pane inherited, as the fields the box can state and nothing else.
+// cm:guard there is NO recommendation field and there will not be one. The box preserves, the
+// kernel retracts what became false, and the MASTER decides whether work continues or restarts —
+// a surface that handed over a pre-computed verdict would have moved that judgement into the box
+// through a second door, which is the one thing this issue's owner ruled out (ISS-1050 criterion
+// 28).
+// cm:guard the fields are RAW and are not summarised, scored or ordered by anything but the
+// ledger's own order. "3 commits ahead, tree dirty" is a fact; "probably worth restarting" is a
+// verdict wearing a fact's clothes.
+pub(crate) struct InheritedRun {
+    pub run_id: String,
+    pub issue_keys: Vec<String>,
+    pub worktree_path: String,
+    pub incarnation: &'static str,
+    pub work: &'static str,
+    pub agent_id: Option<String>,
+    pub ended_by: Option<String>,
+}
+
+/// The block a resumed pane is handed: every run still open under it, raw.
+// cm:guard says it was RESUMED in the first line (criterion 27). A pane cannot tell from inside
+// whether it is new or continuing, and one that assumes it is new re-declares work already running.
+pub(crate) fn resumed_brief(conversation: &str, runs: &[InheritedRun]) -> String {
+    let mut out = format!(
+        "\nThis pane was RESUMED, not started fresh: it is continuing conversation `{conversation}`, \
+so what you remember of this project may be from before the interruption that ended the last pane.\n"
+    );
+    if runs.is_empty() {
+        out.push_str(
+            "\nNo run rows were left open under this master, so there is nothing to decide before \
+you carry on.\n",
+        );
+        return out;
+    }
+    out.push_str(&format!(
+        "\n{} run(s) were left open under this master. For EACH of them, before you declare any new \
+work, record one of `continue`, `restart` or `leave` with your reason — the declaration will be \
+refused until you have. These are the fields this box can state about each. It states them and \
+judges none of them; the judgement is yours:\n",
+        runs.len()
+    ));
+    for r in runs {
+        out.push_str(&format!(
+            "\n- run `{}`\n  issues: {}\n  worktree: {}\n  incarnation: {}\n  work: {}\n  subagent: {}\n  ended: {}\n",
+            r.run_id,
+            if r.issue_keys.is_empty() { "none recorded".to_string() } else { r.issue_keys.join(", ") },
+            r.worktree_path,
+            r.incarnation,
+            r.work,
+            r.agent_id.as_deref().unwrap_or("never bound"),
+            r.ended_by.as_deref().unwrap_or("not ended"),
+        ));
+    }
+    out.push_str(
+        "\nRead the worktree and the issue before you choose. `continue` means the work stands and \
+you will carry it on; `restart` means it does not and you will cut it again; `leave` means it is \
+somebody else's to settle and you will touch neither. Whichever you pick, say why in your own \
+words: the record is what the next reader has.\n",
+    );
+    out
+}
+
+/// What `ensure_master` did about this project's pane on this pass.
+// cm:guard `Resumed` is distinguished from `ColdStarted` because only a resume creates an
+// obligation: the runs the previous pane left are now this one's to answer for, and a cold start
+// inherits a conversation it cannot read and therefore cannot be asked about (ISS-1050 criteria
+// 27, 29).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum PaneState {
+    /// No master is up for this project and none could be started.
+    Absent,
+    /// A pane was already running and this daemon adopted it.
+    Adopted,
+    /// A pane was started with no conversation behind it.
+    ColdStarted,
+    /// A pane was started on the conversation its predecessor had.
+    Resumed,
+}
+
+/// Where Claude Code keeps the conversation for a directory, if it keeps one.
+///
+/// Answers the path it would be at, which may not exist.
+// cm:guard this encodes Claude Code's OWN on-disk layout, which is not ours and carries no promise.
+// Verified against claude 2.1.273 on forge-vm 2026-09-16: conversations live at
+// `~/.claude/projects/<cwd with every `/` and `.` replaced by `-`>/<conversation-id>.jsonl`, e.g.
+// `/home/forge/projects/apiflow/.worktrees/ISS-16` -> `-home-forge-projects-apiflow--worktrees-ISS-16`.
+// cm:guard every failure direction here is COLD START, never a resume. If this layout changes, the
+// file stops being found, `resume_for` answers `None`, and every master cold-starts while saying
+// which conversation and which path it could not reach — noisy and recoverable. The other direction
+// would pass `--resume` for a conversation that is not there, which kills the pane on spawn and
+// leaves the next sweep to rebuild and kill it again, with no line naming anything (ISS-1050
+// criterion 18).
+pub(crate) fn conversation_transcript(
+    cwd: &std::path::Path,
+    conversation_id: &str,
+) -> Option<std::path::PathBuf> {
+    let encoded: String = cwd
+        .to_string_lossy()
+        .chars()
+        .map(|c| if c == '/' || c == '.' { '-' } else { c })
+        .collect();
+    Some(
+        dirs_next::home_dir()?
+            .join(".claude")
+            .join("projects")
+            .join(encoded)
+            .join(format!("{conversation_id}.jsonl")),
+    )
+}
+
+/// The conversation this project's pane should be resumed from, if this box can
+/// actually reach it.
+///
+/// Says so in the log when it cannot, naming the conversation and the path.
+// cm:guard takes the id OWNED and does no ledger read of its own, because `Ledger` is not `Sync`:
+// a `&Ledger` held across the `.await` in `ensure_master` makes the master future non-`Send` and
+// `tokio::spawn` refuses it. The caller reads the row into a `String` before any await.
+pub(crate) fn resume_for(
+    slug: &str,
+    repo: &std::path::Path,
+    stored: Option<&str>,
+) -> Option<String> {
+    let id = stored.filter(|s| !s.is_empty())?;
+    let path = conversation_transcript(repo, id)?;
+    if path.is_file() {
+        tracing::info!("[master] {slug}: resuming conversation {id}");
+        return Some(id.to_string());
+    }
+    tracing::warn!(
+        "[master] {slug}: conversation {id} is recorded for this project but this box has no transcript for it at {} — starting cold, so this pane begins with no memory of what its predecessor was doing",
+        path.display()
+    );
+    None
 }
 
 /// Where a project's master keeps what only it can say.
@@ -861,7 +1214,9 @@ async fn ensure_master(
     masters: &Arc<Masters>,
     project_id: &str,
     resolved: &crate::daemon::dispatch::Resolved,
-) -> bool {
+    stored_conversation: Option<&str>,
+    inherited: &[InheritedRun],
+) -> PaneState {
     let name = terminal::session_name(terminal::MASTER_PREFIX, &resolved.slug);
     // cm:guard refuse by name when tmux is missing rather than falling back to the per-pass `claude -p` this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of the liveness, the transcript or the addressable pane exist on it.
     if !terminal::available() {
@@ -869,14 +1224,14 @@ async fn ensure_master(
             "[master] {}: tmux is not installed on this box — no master will run for it; install tmux (`forge-runner doctor` checks for it)",
             resolved.slug
         );
-        return false;
+        return PaneState::Absent;
     }
 
     let session = match master_api::register(client, project_id, &name).await {
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("[master] {}: cannot register with core: {e}", resolved.slug);
-            return false;
+            return PaneState::Absent;
         }
     };
 
@@ -897,7 +1252,7 @@ async fn ensure_master(
             );
             remember(masters, project_id, &session);
         }
-        return true;
+        return PaneState::Adopted;
     }
 
     // cm:guard refuse to start when the skill cannot be written, rather than starting without it. A master with no skill still starts, still claims, and runs the whole orchestration off a four-line prompt — work that looks like it is being managed and is not.
@@ -907,7 +1262,7 @@ async fn ensure_master(
             resolved.slug,
             resolved.repo_path.display()
         );
-        return false;
+        return PaneState::Absent;
     }
 
     // cm:guard hooks are installed but a failure does NOT stop the master, and the asymmetry with the skill above is deliberate: a master with no skill improvises the whole process, while a master with no hooks is exactly what every box ran before this channel existed — blind, and working. Trading the pass for the telemetry would be the wrong way round.
@@ -927,7 +1282,7 @@ async fn ensure_master(
                     "[master] {}: cannot mint a control capability: {e} — not starting a master",
                     resolved.slug
                 );
-                return false;
+                return PaneState::Absent;
             }
         },
         None => {
@@ -935,7 +1290,7 @@ async fn ensure_master(
                 "[master] {}: cannot resolve the control token map — not starting a master",
                 resolved.slug
             );
-            return false;
+            return PaneState::Absent;
         }
     }
     let mcp_config = match crate::mcp::config::write_session(&resolved.slug, &declared.mcp_servers)
@@ -965,7 +1320,7 @@ async fn ensure_master(
                     resolved.slug,
                     crate::mcp::config::session_dir().display()
                 );
-                return false;
+                return PaneState::Absent;
             }
             None
         }
@@ -978,10 +1333,14 @@ async fn ensure_master(
             path.display()
         );
     }
+    // cm:guard resolved on the SPAWN path only. A pane this daemon adopted is already running its
+    // own conversation and returned above; deciding a resume for it would be deciding for a pane
+    // that cannot be told anything (ISS-1050 criterion 17).
+    let resume = resume_for(&resolved.slug, &resolved.repo_path, stored_conversation);
     match terminal::ensure(
         &name,
         &resolved.repo_path,
-        &terminal::pane_argv(mcp_config.as_deref()),
+        &terminal::pane_argv(mcp_config.as_deref(), resume.as_deref()),
         &env,
         transcript.as_deref(),
     )
@@ -990,12 +1349,16 @@ async fn ensure_master(
         Ok(_) => {}
         Err(e) => {
             tracing::error!("[master] {}: could not start {name}: {e}", resolved.slug);
-            return false;
+            return PaneState::Absent;
         }
     }
     tracing::info!(
-        "[master] {}: resident session {name} started in {} — `tmux attach -t {name}` to watch it",
+        "[master] {}: resident session {name} {} in {} — `tmux attach -t {name}` to watch it",
         resolved.slug,
+        match resume.as_deref() {
+            Some(id) => format!("resumed from conversation {id}"),
+            None => "cold-started".to_string(),
+        },
         resolved.repo_path.display()
     );
     remember(masters, project_id, &session);
@@ -1008,10 +1371,20 @@ async fn ensure_master(
         &declared.dropped_names,
         asked.is_none(),
     );
+    // cm:guard the resumed block is APPENDED to the standing brief rather than replacing it. A
+    // resumed pane still needs the base branch, the policy and the MCP warnings; a pane told only
+    // what it inherited would decide three runs' fates and then work the project blind.
+    let brief = match resume.as_deref() {
+        Some(conv) => format!("{brief}{}", resumed_brief(conv, inherited)),
+        None => brief,
+    };
     if let Err(e) = terminal::brief_new_pane(&name, &brief).await {
         tracing::warn!("[master] {}: could not brief {name}: {e}", resolved.slug);
     }
-    true
+    match resume {
+        Some(_) => PaneState::Resumed,
+        None => PaneState::ColdStarted,
+    }
 }
 
 fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::MasterSession) {
@@ -1489,11 +1862,317 @@ mod give_back_tests {
 
     type R<T> = crate::error::Result<T>;
 
+    #[derive(Default)]
+    struct ChoiceSpy {
+        seen: std::sync::Mutex<Vec<(String, String, String, String)>>,
+        refuse: bool,
+    }
+
+    impl ChoiceReporter for ChoiceSpy {
+        async fn report(
+            &self,
+            session_id: &str,
+            run_id: &str,
+            choice: &str,
+            why: &str,
+        ) -> crate::error::Result<()> {
+            self.seen.lock().unwrap().push((
+                session_id.to_string(),
+                run_id.to_string(),
+                choice.to_string(),
+                why.to_string(),
+            ));
+            if self.refuse {
+                return Err(crate::error::Error::Other("503".into()));
+            }
+            Ok(())
+        }
+    }
+
+    fn a_run_that_chose(choice: &str, why: &str) -> Option<Ledger> {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(crate::runner::ledger::NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: std::path::PathBuf::from("/w/one"),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-7".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        led.owe_resume_choices("master-1", "boot-a").unwrap();
+        led.record_resume_choice("run-1", "master-1", choice, why)
+            .unwrap();
+        Some(led)
+    }
+
+    // cm:guard criterion 29's second half: the choice has to reach the ISSUE, not just the ledger.
+    // A decision recorded on one box and nowhere a human reads is the silence this whole issue is
+    // about, one level up.
+    #[tokio::test]
+    async fn a_recorded_choice_is_carried_to_core_with_its_reason() {
+        let mut led = a_run_that_chose("restart", "the branch has nothing on it");
+        let spy = ChoiceSpy::default();
+
+        let said = say_resume_choices(&spy, &mut led, "boot-a").await;
+
+        assert_eq!(said, 1);
+        let seen = spy.seen.lock().unwrap();
+        let (session, run, choice, why) = seen.first().expect("one report");
+        assert_eq!(session, "core-sess-1");
+        assert_eq!(run, "run-1");
+        assert_eq!(choice, "restart");
+        assert_eq!(why, "the branch has nothing on it");
+    }
+
+    // cm:guard said ONCE. The sweep runs every thirty seconds and the obligation is cleared only
+    // after core answered, so a decision must not become a comment a minute forever.
+    #[tokio::test]
+    async fn a_choice_core_has_taken_is_not_said_again() {
+        let mut led = a_run_that_chose("leave", "somebody else's to settle");
+        let spy = ChoiceSpy::default();
+
+        assert_eq!(say_resume_choices(&spy, &mut led, "boot-a").await, 1);
+        assert_eq!(say_resume_choices(&spy, &mut led, "boot-a").await, 0);
+
+        assert_eq!(spy.seen.lock().unwrap().len(), 1, "one report, one comment");
+    }
+
+    // cm:guard the mark is cleared only once core ANSWERED. Marking first turns one unreachable
+    // minute into a decision that exists on this box and nowhere else.
+    #[tokio::test]
+    async fn a_choice_core_refused_is_said_again_on_the_next_sweep() {
+        let mut led = a_run_that_chose("continue", "the work stands");
+        let refusing = ChoiceSpy {
+            refuse: true,
+            ..Default::default()
+        };
+
+        assert_eq!(say_resume_choices(&refusing, &mut led, "boot-a").await, 0);
+
+        let taking = ChoiceSpy::default();
+        assert_eq!(say_resume_choices(&taking, &mut led, "boot-a").await, 1);
+        assert_eq!(taking.seen.lock().unwrap().len(), 1);
+    }
+
+    fn three_inherited() -> Vec<InheritedRun> {
+        (1..=3)
+            .map(|n| InheritedRun {
+                run_id: format!("run-{n}"),
+                issue_keys: vec![format!("ISS-{n}")],
+                worktree_path: format!("/w/{n}"),
+                incarnation: "starting",
+                work: "runnable",
+                agent_id: None,
+                ended_by: None,
+            })
+            .collect()
+    }
+
+    // cm:guard criterion 27: a pane cannot tell from inside whether it is new or continuing, and
+    // one that assumes it is new re-declares work already running.
+    #[test]
+    fn a_resumed_pane_is_told_that_it_was_resumed() {
+        let brief = resumed_brief("conv-abc", &three_inherited());
+        assert!(brief.contains("RESUMED"), "{brief}");
+        assert!(brief.contains("conv-abc"), "{brief}");
+    }
+
+    // cm:guard criterion 28, and it is the owner's rule rather than a style preference: the box
+    // preserves, the kernel retracts, the MASTER decides. A recommendation here moves that
+    // judgement into the box through a second door.
+    #[test]
+    fn the_inherited_block_carries_no_recommendation_and_no_suggested_action() {
+        let brief = resumed_brief("conv-abc", &three_inherited());
+        for verdict in [
+            "recommend",
+            "suggest",
+            "you should",
+            "probably",
+            "advise",
+            "best to",
+            "likely wants",
+        ] {
+            assert!(
+                !brief.to_lowercase().contains(verdict),
+                "the block must hand over raw fields, not a verdict — found `{verdict}`:\n{brief}"
+            );
+        }
+    }
+
+    // cm:guard every inherited run appears, with the fields the box can state. A block that named
+    // only the first would have the master decide three fates from one row.
+    #[test]
+    fn every_inherited_run_appears_as_raw_fields() {
+        let brief = resumed_brief("conv-abc", &three_inherited());
+        for n in 1..=3 {
+            assert!(brief.contains(&format!("run-{n}")), "{brief}");
+            assert!(brief.contains(&format!("ISS-{n}")), "{brief}");
+            assert!(brief.contains(&format!("/w/{n}")), "{brief}");
+        }
+        assert!(
+            brief.contains("never bound"),
+            "an unbound run says so: {brief}"
+        );
+        assert!(brief.contains("continue"), "{brief}");
+        assert!(brief.contains("restart"), "{brief}");
+        assert!(brief.contains("leave"), "{brief}");
+    }
+
+    // cm:guard a resumed pane holding nothing must not be asked to decide anything, or every
+    // restart of a quiet project costs a round of prose about an empty list.
+    #[test]
+    fn a_resumed_pane_holding_nothing_is_asked_for_nothing() {
+        let brief = resumed_brief("conv-abc", &[]);
+        assert!(brief.contains("RESUMED"), "{brief}");
+        assert!(brief.contains("nothing to decide"), "{brief}");
+    }
+
+    // cm:guard criterion 18: a stored conversation this box cannot reach must COLD START and say so
+    // naming the conversation. The temptation is to pass `--resume` anyway and let claude decide —
+    // which kills the pane on spawn, and the next sweep rebuilds it and kills it again, a loop whose
+    // only trace is a pane that keeps disappearing (ISS-1050).
+    /// What the daemon log SAYS when a recorded conversation cannot be resumed.
+    ///
+    /// cm:why captured through a real subscriber rather than asserted on a returned string:
+    /// criterion 18 is a claim about the operator-facing log, and `resume_for` returns `None` for
+    /// "nothing stored" and for "stored but unreachable" alike. The return value cannot tell those
+    /// two apart, so a test reading only the return value passes just as happily when the warning
+    /// is deleted — and the warning is the entire difference between a pane that silently forgot
+    /// what it was doing and one whose operator can see why.
+    fn logged_while(f: impl FnOnce()) -> String {
+        use std::sync::{Arc, Mutex};
+        #[derive(Clone)]
+        struct Buf(Arc<Mutex<Vec<u8>>>);
+        impl std::io::Write for Buf {
+            fn write(&mut self, b: &[u8]) -> std::io::Result<usize> {
+                self.0.lock().unwrap().extend_from_slice(b);
+                Ok(b.len())
+            }
+            fn flush(&mut self) -> std::io::Result<()> {
+                Ok(())
+            }
+        }
+        let buf = Buf(Arc::new(Mutex::new(Vec::new())));
+        let made = buf.clone();
+        let sub = tracing_subscriber::fmt()
+            .with_writer(move || made.clone())
+            .with_ansi(false)
+            .finish();
+        tracing::subscriber::with_default(sub, f);
+        let out = buf.0.lock().unwrap().clone();
+        String::from_utf8_lossy(&out).into_owned()
+    }
+
+    #[test]
+    fn a_conversation_this_box_cannot_reach_is_named_in_the_log_it_starts_cold_from() {
+        let repo = std::env::temp_dir().join("forge-resume-log");
+        let out = logged_while(|| {
+            assert_eq!(
+                resume_for("some-slug", &repo, Some("conv-9f3a-unreachable")),
+                None
+            );
+        });
+
+        // cm:why the TRANSCRIPT PATH is what is asserted, not a bare mention of the id. The id
+        // appears in this line twice over — once as itself and once inside the path, which is
+        // `<conversation>.jsonl` — so an assertion on the id alone stays green when the explicit
+        // mention is deleted, and cannot tell the two apart. Planting exactly that proved it: the
+        // message was stripped of `{id}` and this test did not notice. The path is also the half
+        // that is actually worth naming, because it is the thing an operator goes and looks at.
+        assert!(
+            out.contains("conv-9f3a-unreachable.jsonl"),
+            "the transcript it could not reach must be named by PATH, so an operator can go and \
+             look for it rather than guess where it should have been; log was: {out}"
+        );
+        assert!(
+            out.contains("some-slug"),
+            "and which project's pane it was, since one box runs several; log was: {out}"
+        );
+        assert!(
+            out.contains("WARN"),
+            "at WARN: starting cold means the pane has lost its predecessor's memory, which is not \
+             routine information; log was: {out}"
+        );
+    }
+
+    #[test]
+    fn a_pane_with_nothing_recorded_starts_cold_quietly() {
+        // cm:guard the absence of a warning is asserted too. A box that has never resumed anything
+        // has no conversation to fail to reach, and warning there would put a line in every
+        // operator's log on every cold start, which is how the real one stops being read.
+        let repo = std::env::temp_dir().join("forge-resume-log-quiet");
+        let out = logged_while(|| {
+            assert_eq!(resume_for("some-slug", &repo, None), None);
+        });
+        assert!(
+            !out.contains("WARN"),
+            "nothing stored is not a fault; log was: {out}"
+        );
+    }
+
+    #[test]
+    fn a_conversation_with_no_transcript_on_this_box_starts_cold() {
+        let repo = std::env::temp_dir().join("forge-resume-none");
+        assert_eq!(
+            resume_for("slug", &repo, Some("conv-that-was-never-here")),
+            None,
+            "a conversation with no transcript may not be handed to --resume"
+        );
+    }
+
+    #[test]
+    fn a_conversation_whose_transcript_is_here_is_resumed() {
+        let repo = std::env::temp_dir().join(format!("forge-resume-{}", std::process::id()));
+        let id = format!("conv-{}", std::process::id());
+        let path = conversation_transcript(&repo, &id).expect("a home directory");
+        std::fs::create_dir_all(path.parent().expect("parent")).expect("mkdir");
+        std::fs::write(&path, "{}\n").expect("write");
+
+        let got = resume_for("slug", &repo, Some(&id));
+
+        let _ = std::fs::remove_file(&path);
+        assert_eq!(got.as_deref(), Some(id.as_str()));
+    }
+
+    // cm:guard nothing stored and an empty string are both cold, and the empty string matters: the
+    // ledger column is nullable and a hook that carried a blank conversation would write one.
+    #[test]
+    fn nothing_stored_is_a_cold_start_and_so_is_an_empty_string() {
+        let repo = std::env::temp_dir().join("forge-resume-empty");
+        assert_eq!(resume_for("slug", &repo, None), None);
+        assert_eq!(resume_for("slug", &repo, Some("")), None);
+    }
+
+    // cm:guard the encoding is Claude Code's, verified on this box, and this is the test that fails
+    // if it drifts rather than every master silently cold-starting forever.
+    #[test]
+    fn the_transcript_path_is_the_one_claude_code_actually_uses() {
+        let home = dirs_next::home_dir().expect("a home directory");
+        let got = conversation_transcript(
+            std::path::Path::new("/home/forge/projects/apiflow/.worktrees/ISS-16"),
+            "conv-1",
+        )
+        .expect("a path");
+        assert_eq!(
+            got,
+            home.join(".claude")
+                .join("projects")
+                .join("-home-forge-projects-apiflow--worktrees-ISS-16")
+                .join("conv-1.jsonl")
+        );
+    }
+
     struct Alive(bool);
     #[async_trait::async_trait]
     impl recovery::MasterLiveness for Alive {
-        async fn is_alive(&self, _id: &str) -> bool {
-            self.0
+        async fn state(&self, _id: &str) -> recovery::MasterPresence {
+            if self.0 {
+                recovery::MasterPresence::Alive
+            } else {
+                recovery::MasterPresence::Gone
+            }
         }
         async fn live_master_for_project(&self, _: &str) -> Option<String> {
             None
@@ -1555,7 +2234,7 @@ mod give_back_tests {
     }
 
     #[derive(Default)]
-    struct Closes(Mutex<Vec<(String, close_loop::Outcome)>>);
+    struct Closes(Mutex<Vec<(String, close_loop::Outcome, Option<serde_json::Value>)>>);
     #[async_trait::async_trait]
     impl close_loop::RunCloser for Closes {
         async fn close(
@@ -1563,11 +2242,12 @@ mod give_back_tests {
             agent_session_id: &str,
             outcome: close_loop::Outcome,
             _detail: &str,
+            checkpoint: Option<serde_json::Value>,
         ) -> R<()> {
             self.0
                 .lock()
                 .unwrap()
-                .push((agent_session_id.to_string(), outcome));
+                .push((agent_session_id.to_string(), outcome, checkpoint));
             Ok(())
         }
     }
@@ -1633,10 +2313,19 @@ mod give_back_tests {
         )
         .await;
 
+        let seen = closes.0.lock().unwrap();
+        let (sess, outcome, checkpoint) = seen.first().expect("one close");
         assert_eq!(
-            closes.0.lock().unwrap().as_slice(),
-            &[("core-sess-1".to_string(), close_loop::Outcome::KilledIdle)],
+            (sess.as_str(), *outcome),
+            ("core-sess-1", close_loop::Outcome::KilledIdle),
             "an idle reap must reach core as its own outcome, not as silence"
+        );
+        // cm:guard the checkpoint RIDES the close. Without it the only copy of what the run left is
+        // on a disk nobody reads, which is the whole failure this issue exists to end (ISS-1050).
+        assert_eq!(
+            checkpoint.as_ref().and_then(|c| c["source"].as_str()),
+            Some("reconstructed_from_box"),
+            "the close must carry the box's half, labelled as reconstruction: {checkpoint:?}"
         );
         assert_eq!(killed.0.load(std::sync::atomic::Ordering::SeqCst), 1);
     }
@@ -1857,10 +2546,32 @@ mod give_back_tests {
         )
         .await;
 
+        let seen = closes.0.lock().unwrap();
+        let (sess, outcome, checkpoint) = seen.first().expect("one close");
         assert_eq!(
-            closes.0.lock().unwrap().as_slice(),
-            &[("core-sess-1".to_string(), close_loop::Outcome::Died)],
+            (sess.as_str(), *outcome),
+            ("core-sess-1", close_loop::Outcome::Died),
             "a run whose process this box refuted must reach core as a death, from the box, now"
+        );
+        // cm:guard a DEATH is the case the evidence exists for, so this is the close that must
+        // never lose it.
+        let cp = checkpoint.as_ref().expect("a death carries the box's half");
+        assert_eq!(cp["source"].as_str(), Some("reconstructed_from_box"));
+        // cm:guard the branch asserted is the RUN's worktree branch and deliberately not the one
+        // this test process is standing in. Every `git` in `checkpoint.rs` runs with
+        // `current_dir(worktree)`, so a relative or empty path resolves against the daemon's own
+        // cwd and the payload would confidently describe a different checkout entirely — which an
+        // equality on `source` alone would not catch. This fixture's branch differs from the
+        // repository this suite runs inside, which is what makes the assertion mean anything.
+        assert_eq!(
+            cp["branch"].as_str(),
+            Some("ISS-957"),
+            "the reconstruction must be of the run's own worktree: {cp}"
+        );
+        let unread = cp["unread"].as_array().expect("unread is a list");
+        assert!(
+            unread.is_empty(),
+            "a worktree that is still on disk reconstructs completely: {cp}"
         );
         let _ = std::fs::remove_dir_all(&repo);
         let _ = std::fs::remove_dir_all(repo.with_extension("remote.git"));
@@ -2048,6 +2759,46 @@ mod give_back_tests {
         );
     }
 
+    // cm:guard the same source scan as its neighbour, and for the same reason a `contains` check
+    // would not do: a declaration reaches core only here, so behind a condition it reaches core on
+    // some sweeps and not others, and a master's run row would sit unpublished for as long as that
+    // condition held while the master dispatched against it (ISS-1050 criterion 5).
+    #[test]
+    fn the_sweep_tells_core_about_declared_runs_unconditionally() {
+        assert_eq!(
+            depth_of_call_in_sweep("run_record::open_declared_runs("),
+            Some(1),
+            "a declared run reaches core only from this call; behind a condition it reaches core on some sweeps and not others"
+        );
+        assert_eq!(
+            depth_of_call_in_sweep("run_record::close_ended_runs("),
+            Some(1),
+            "a finished run is released only from this call; behind a condition its issues wait out core's ten-minute reaper instead"
+        );
+    }
+
+    // cm:guard ORDER, not merely presence. `reconcile` reads a row with no core session as a run
+    // that never started and closes the loop over it, so a declaration made this sweep has to reach
+    // core BEFORE the reconciler sees it — otherwise a master's freshly declared work is given back
+    // from under the subagent it was just handed to (ISS-1050 criteria 5, 8).
+    #[test]
+    fn a_declaration_reaches_core_before_the_reconciler_reads_it() {
+        let body = THIS_SOURCE
+            .split("async fn sweep(")
+            .nth(1)
+            .expect("sweep must exist");
+        let opens = body
+            .find("run_record::open_declared_runs(")
+            .expect("the sweep must tell core about declared runs");
+        let reconciles = body
+            .find("give_back_lost_runs(")
+            .expect("the sweep must reconcile");
+        assert!(
+            opens < reconciles,
+            "a run declared this sweep must reach core before the reconciler reads it as one that never started"
+        );
+    }
+
     fn admiss(issue_id: &str) -> AdmissibleIssue {
         serde_json::from_value(serde_json::json!({ "issueId": issue_id }))
             .expect("admissible fixture")
@@ -2155,5 +2906,28 @@ mod give_back_tests {
                 "a nudge_master call must sit inside a claim_nudge gate — an ungated one spends a full agent pass on every sweep (~$0.18, measured 2026-09-08)"
             );
         }
+    }
+}
+
+// cm:guard this `#[cfg(test)]` block is at the END of the file and must stay there. Three tests in
+// this module read their subject by splitting the source on the FIRST `#[cfg(test)]` and scanning
+// what precedes it, so a test-only item placed above `sweep` or `nudge` truncates the half they
+// read — `the_sweep_reconciles_unconditionally` and its neighbours then answer about a body that is
+// not there. All three fail loudly when that happens, which is how this block ended up down here.
+#[cfg(test)]
+impl Masters {
+    /// Put a master in the registry without spawning one.
+    // cm:guard test-only, so no production path can register a pane nothing started: adoption goes through `ensure_master`, which asks tmux first.
+    pub fn remember_for_test(&self, project_id: &str, session_id: &str, name: &str) {
+        self.remember(
+            project_id,
+            MasterState {
+                session_id: session_id.to_string(),
+                name: name.to_string(),
+                last_work: Instant::now(),
+                last_nudge: None,
+                mcp_stale_reported: false,
+            },
+        );
     }
 }
