@@ -18,6 +18,8 @@ import {
   judgeMessages,
   NO_REPLY,
   parseVerdict,
+  REFERENCE_HEADER,
+  REPLIED_HEADER,
   tally,
   tallyLine,
 } from './judge.js';
@@ -131,6 +133,36 @@ describe('tally and agreement', () => {
     expect(agreementLine(a)).toBe(
       'agreement: rule-failed rows judged no 1/2, clean rows judged yes 1/2',
     );
+  });
+});
+
+describe('the rubric and the reference block (ISS-1061)', () => {
+  const base = { query: 'q', reply: 'r', calls: [], error: null };
+  const text = (m: { content: unknown } | undefined): string => String(m?.content ?? '');
+
+  it('appends the task rule to the system prompt and the reference under its header, only when given', () => {
+    const plain = judgeMessages(base);
+    const rich = judgeMessages({
+      ...base,
+      rubric: 'Served means the count is 3.',
+      reference: 'openCount: 3',
+    });
+    expect(text(plain[0])).not.toContain('read by this rule as well');
+    expect(
+      text(rich[0]).endsWith(
+        'For this exchange, "served" is read by this rule as well: Served means the count is 3.',
+      ),
+    ).toBe(true);
+    expect(text(rich[0]).startsWith(text(plain[0]))).toBe(true);
+    expect(text(plain[1])).not.toContain(REFERENCE_HEADER);
+    expect(text(rich[1]).endsWith(`${REFERENCE_HEADER}\nopenCount: 3`)).toBe(true);
+    expect(text(rich[1]).startsWith(text(plain[1]))).toBe(true);
+  });
+
+  it('with neither, the system prompt ends on the quote rule and the user message on the reply', () => {
+    const plain = judgeMessages(base);
+    expect(text(plain[0]).endsWith('nothing in it to rest on.')).toBe(true);
+    expect(text(plain[1]).endsWith(`${REPLIED_HEADER}\nr`)).toBe(true);
   });
 });
 

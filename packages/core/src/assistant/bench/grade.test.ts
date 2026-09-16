@@ -321,6 +321,94 @@ describe('trail checks', () => {
   });
 });
 
+describe('inOrder', () => {
+  const inOrder = (delivered: string | null) =>
+    gradeTurn(
+      { message: 'm', checks: [{ kind: 'inOrder', patterns: ['{first}', /wednesday/i, 'last'] }] },
+      facts({ delivered, values: { first: 'Priya' } }),
+    ).evidence;
+
+  it('passes when every pattern matches and each first match comes after the one before', () => {
+    expect(inOrder('Priya reviews; we deploy on Wednesday; last of all, the smoke test.')).toEqual(
+      [],
+    );
+  });
+
+  it('names a pattern that never matched, and one that came before its predecessor', () => {
+    expect(inOrder('On Wednesday Priya reviews; last.').map((e) => e.fact)).toEqual([
+      'reply names /wednesday/i before Priya',
+    ]);
+    expect(inOrder('Priya, then last.').map((e) => [e.mode, e.fact])).toEqual([
+      ['unanswered', 'reply does not match /wednesday/i'],
+    ]);
+    expect(inOrder(null)).toEqual([{ mode: 'unanswered', fact: 'no assistant message delivered' }]);
+  });
+});
+
+describe('listInOrder, labeled and linkTo (codex F1–F3 on ISS-1061)', () => {
+  const grade = (check: Check, delivered: string | null) =>
+    gradeTurn(
+      { message: 'm', checks: [check] },
+      facts({
+        delivered,
+        values: { stateList: 'open, in_progress, awaiting_release', n: '3', id: UUID },
+      }),
+    ).evidence;
+
+  it('listInOrder splits the filled list and holds every member to its place', () => {
+    const check: Check = { kind: 'listInOrder', list: '{stateList}' };
+    expect(grade(check, 'open → in_progress → awaiting_release')).toEqual([]);
+    expect(grade(check, 'open → awaiting_release').map((e) => e.fact)).toEqual([
+      'reply does not match in_progress',
+    ]);
+    expect(grade(check, 'in_progress, open, awaiting_release').map((e) => e.fact)).toEqual([
+      'reply names in_progress before open',
+    ]);
+    expect(grade(check, null)).toEqual([
+      { mode: 'unanswered', fact: 'no assistant message delivered' },
+    ]);
+  });
+
+  it('labeled reads the number after the label in its clause, or before it only when none follows, so a borrowed neighbour never counts', () => {
+    const check: Check = { kind: 'labeled', label: /open/i, value: '{n}' };
+    for (const ok of [
+      'Open: 3.',
+      '3 open issues',
+      '| open | 3 |',
+      'Open issues — 3 of them',
+      'closed 1, 3 open and 0 drafts',
+      '1 closed / 3 open / 0 drafts',
+    ]) {
+      expect(grade(check, ok), ok).toEqual([]);
+    }
+    for (const bad of [
+      'Open: 30.',
+      'Open: 13',
+      'Open: 1, closed: 3',
+      'closed 3. open 1',
+      'open\n3',
+      'Closed: 3 and open: 1',
+      '3 closed and open: 1',
+      '3 closed / 1 open',
+    ]) {
+      expect(grade(check, bad), bad).toEqual([
+        { mode: 'unanswered', fact: 'reply does not pair /open/i with 3' },
+      ]);
+    }
+  });
+
+  it('linkTo needs an issue link whose segment is the filled id', () => {
+    const check: Check = { kind: 'linkTo', issueId: '{id}' };
+    expect(grade(check, `see /projects/qa/issues/${UUID}`)).toEqual([]);
+    expect(grade(check, `see /projects/qa/issues/${DEAD}`)).toEqual([
+      { mode: 'unanswered', fact: `no link to issue ${UUID}` },
+    ]);
+    expect(grade(check, 'ISS-7 is the one')).toEqual([
+      { mode: 'unanswered', fact: `no link to issue ${UUID}` },
+    ]);
+  });
+});
+
 describe('preferenceRows', () => {
   const moved = { field: 'answer_style', previousValue: 'default', newValue: 'bullets' };
 

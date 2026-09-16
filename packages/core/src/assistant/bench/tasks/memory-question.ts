@@ -3,6 +3,7 @@ import type { Task } from '../task.js';
 /** A fact stated in the room is answered from the room: forgetting it is the regression. */
 export const memoryQuestion: Task = {
   id: 'memory-question',
+  capability: 'method',
   intent: 'Remember a fact the person states and answer a later question from it.',
   budgetSeconds: 90,
   turns: [

@@ -67,6 +67,7 @@ const file = (rows: JudgedRow[], judge = true): HistoryResult =>
 /** A task set whose intents are known, so coverage is planted rather than inherited. */
 const linked: Task = {
   id: 'open-issues-linked',
+  capability: 'method',
   intent: 'List all open issues in the project, one line each, with a link to each issue.',
   budgetSeconds: 60,
   turns: [{ message: 'm', checks: [{ kind: 'notFallback' }] }],
@@ -160,6 +161,7 @@ describe('what is written and what is skipped', () => {
     if (!c) throw new Error('no candidate');
     const task: Task = {
       id: c.id,
+      capability: 'method',
       intent: c.intent,
       budgetSeconds: 90,
       turns: [{ message: 'm', checks: [] }],

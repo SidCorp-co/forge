@@ -17,7 +17,6 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
   // a chat-only cross-project surface. Pipeline job sessions stay reachable via
   // the project-tier Agents view + Ops monitor (see conversations-screen.tsx).
   { key: "conversations", label: "Conversations", icon: "agent", href: "/conversations" },
-  { key: "usage", label: "Usage", icon: "dollar", href: "/usage" },
   { key: "runners", label: "Runners", icon: "server", href: "/runners" },
   // ISS-628 — workspace resource management, first type = Private Keys.
   { key: "resources", label: "Resources", icon: "lock", href: "/resources" },
@@ -33,6 +32,7 @@ export const WORKSPACE_ITEMS: Array<NavItem & { href: string }> = [
  *  Overview. They are NOT rendered as rail rows. */
 export const SECONDARY_DESTINATIONS: Array<NavItem & { href: string }> = [
   { key: "attention", label: "Attention", icon: "inbox", href: "/attention" },
+  { key: "usage", label: "Usage", icon: "dollar", href: "/usage" },
   { key: "settings", label: "Settings", icon: "settings", href: "/settings" },
   { key: "pipeline-ops", label: "Pipeline ops", icon: "pipeline", href: "/ops" },
 ];
@@ -133,7 +133,6 @@ export function buildBottomActiveKey(pathname: string, slug: string | null): str
   }
   if (pathname.startsWith("/projects")) return "projects";
   if (pathname.startsWith("/attention")) return "attention";
-  if (pathname.startsWith("/usage")) return "usage";
   if (pathname.startsWith("/settings")) return "you";
   return "";
 }
@@ -193,7 +192,6 @@ export function bottomTabItems(
   return [
     { key: "projects", label: "Projects", icon: "folder" },
     { key: "attention", label: "Attention", icon: "inbox", badge: attentionCount },
-    { key: "usage", label: "Usage", icon: "dollar" },
     { key: "search", label: "Search", icon: "search" },
     { key: "you", label: "You", icon: "settings" },
   ];

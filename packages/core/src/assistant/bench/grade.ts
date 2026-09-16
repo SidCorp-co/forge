@@ -134,6 +134,54 @@ const isHelp = (call: ToolCall): boolean =>
 
 const unanswered = (fact: string): Evidence[] => [{ mode: 'unanswered', fact }];
 
+/** A clause ends at a line break, a full stop, a semicolon, a comma, a slash or the word "and"; a pipe is not a break, so a table cell pairs with its row's label. */
+const CLAUSE_BREAK = /[\n.;,/]|\band\b/i;
+
+/**
+ * The number each occurrence of the label stands with: the first number after it in the same
+ * clause, or, only when the clause after it holds none, the last number before it in its clause.
+ * One direction per occurrence, so "Open: 1 and closed: 0" pairs closed with 0, never with the 1
+ * that precedes it (codex F2 on ISS-1061).
+ */
+function labelPairs(text: string, label: RegExp): string[] {
+  const out: string[] = [];
+  const re = new RegExp(label.source, label.flags.includes('i') ? 'gi' : 'g');
+  for (const m of text.matchAll(re)) {
+    const after = text.slice(m.index + m[0].length);
+    const stop = CLAUSE_BREAK.exec(after);
+    const next = /\d+/.exec(stop ? after.slice(0, stop.index) : after);
+    if (next) {
+      out.push(next[0]);
+      continue;
+    }
+    const before = text.slice(0, m.index);
+    const clause = before.split(CLAUSE_BREAK).at(-1) ?? '';
+    const previous = clause.match(/\d+/g)?.at(-1);
+    if (previous) out.push(previous);
+  }
+  return out;
+}
+
+/** Every pattern matches and each first match lies after the one before it; the order fact names the filled value. */
+function ordered(text: string, patterns: Pattern[], values: Record<string, string>): Evidence[] {
+  const out: Evidence[] = [];
+  const shown = (p: Pattern): string => (typeof p === 'string' ? fill(p, values) : String(p));
+  let cursor = -1;
+  let previous = '';
+  for (const p of patterns) {
+    const m = literal(p, values).exec(text);
+    if (!m) {
+      out.push({ mode: 'unanswered', fact: `reply does not match ${String(p)}` });
+      continue;
+    }
+    if (m.index < cursor)
+      out.push({ mode: 'unanswered', fact: `reply names ${shown(p)} before ${previous}` });
+    cursor = Math.max(cursor, m.index);
+    previous = shown(p);
+  }
+  return out;
+}
+
 const checkers: Record<Check['kind'], Checker> = {
   linkShape: (_c, f) =>
     extractIssueLinks(f.delivered ?? '').flatMap((link) => {
@@ -159,6 +207,32 @@ const checkers: Record<Check['kind'], Checker> = {
     return c.patterns
       .filter((p) => !literal(p, f.values).test(text))
       .map((p) => ({ mode: 'unanswered', fact: `reply does not match ${String(p)}` }));
+  },
+  inOrder: (c, f) => {
+    if (c.kind !== 'inOrder') return [];
+    if (f.delivered === null) return unanswered('no assistant message delivered');
+    return ordered(f.delivered, c.patterns, f.values);
+  },
+  listInOrder: (c, f) => {
+    if (c.kind !== 'listInOrder') return [];
+    if (f.delivered === null) return unanswered('no assistant message delivered');
+    return ordered(f.delivered, fill(c.list, f.values).split(', '), f.values);
+  },
+  labeled: (c, f) => {
+    if (c.kind !== 'labeled') return [];
+    if (f.delivered === null) return unanswered('no assistant message delivered');
+    const value = fill(c.value, f.values);
+    return labelPairs(f.delivered, c.label).some((n) => n === value)
+      ? []
+      : unanswered(`reply does not pair ${String(c.label)} with ${value}`);
+  },
+  linkTo: (c, f) => {
+    if (c.kind !== 'linkTo') return [];
+    if (f.delivered === null) return unanswered('no assistant message delivered');
+    const id = fill(c.issueId, f.values);
+    return extractIssueLinks(f.delivered).some((l) => l.segment === id)
+      ? []
+      : unanswered(`no link to issue ${id}`);
   },
   mustNotMatch: (c, f) => {
     if (c.kind !== 'mustNotMatch') return [];

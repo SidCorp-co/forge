@@ -22,7 +22,17 @@ import type { PromptLayer } from './layer.js';
 
 export const TOOLS_LAYER: PromptLayer = {
   id: 'tools',
-  benchTasks: ['one-issue-by-key', 'open-issues-linked', 'filing-guidance', 'preference-restore'],
+  benchTasks: [
+    'one-issue-by-key',
+    'open-issues-linked',
+    'filing-guidance',
+    'preference-restore',
+    'project-issue-counts',
+    'project-pipeline-states',
+    'project-waiting-issue',
+    'memory-store-recall',
+    'memory-correction',
+  ],
   text: `### The tracker
 
 - **THE TRACKER IS THE \`forge\` TOOL, and the forms you need are already in its description.** Send

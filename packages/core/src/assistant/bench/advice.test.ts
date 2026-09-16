@@ -231,9 +231,10 @@ describe('the inputs read off the files', () => {
       seconds: 1,
       turns,
       cleanup: {
-        room: { id: 'r', expected: 'deleted' as const, observed: '404', at: 'x' },
+        rooms: [{ id: 'r', expected: 'deleted' as const, observed: '404', at: 'x' }],
         preferences: { expected: null, observed: null, equal: null, at: null },
         auditRowsAdded: 0,
+        memories: null,
       },
     });
     const run: BenchResult = {
@@ -247,6 +248,7 @@ describe('the inputs read off the files', () => {
       tasks: [
         {
           id: 'a',
+          capability: 'method',
           trials: [
             trial([turn(['screen_repair'], 'yes'), turn([])]),
             trial([turn(['help_roundtrip'])]),

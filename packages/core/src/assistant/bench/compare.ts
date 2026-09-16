@@ -5,6 +5,7 @@
  */
 
 import { type AdviceInput, adviceInputsOfRun, adviceLines, advise } from './advice.js';
+import { type CapabilitySummary, summarizeCapabilities } from './capability.js';
 import { type Agreement, agreement, agreementLine, type Tally, tally, tallyLine } from './judge.js';
 import type { BenchResult, TrialResult } from './result.js';
 
@@ -39,6 +40,8 @@ export interface Comparison {
   differences: string[];
   /** The after side's counts per task, for the advice block; the build under judgement. */
   advice: AdviceInput[];
+  /** Each side's figures grouped by capability (ISS-1061). */
+  capabilities: { before: CapabilitySummary[]; after: CapabilitySummary[] };
 }
 
 /** C(n, k) as a number; 0 where k > n. */
@@ -114,6 +117,13 @@ function differences(before: BenchResult, after: BenchResult): string[] {
   return out;
 }
 
+/** The run's tasks sided at `k` and grouped by the capability each carries. */
+export function capabilitiesOf(r: BenchResult, k: number): CapabilitySummary[] {
+  return summarizeCapabilities(
+    r.tasks.map((t) => ({ id: t.id, capability: t.capability, side: sideOf(t.trials, k) })),
+  );
+}
+
 /** The two files compared per task; `k` is the after file's unless the before file names a larger one. */
 export function compare(before: BenchResult, after: BenchResult): Comparison {
   const k = Math.max(before.k, after.k);
@@ -129,6 +139,7 @@ export function compare(before: BenchResult, after: BenchResult): Comparison {
     agreement: { before: agreementOf(before), after: agreementOf(after) },
     differences: differences(before, after),
     advice: adviceInputsOfRun(after),
+    capabilities: { before: capabilitiesOf(before, k), after: capabilitiesOf(after, k) },
   };
 }
 
@@ -149,6 +160,12 @@ function sideLines(label: string, side: TaskSide | null, k: number): string[] {
   ];
 }
 
+/** One side's capability figures: the score never without its lowest task (the ladder's rule), then the count at 100%. */
+const capabilitySide = (s: CapabilitySummary | undefined): string =>
+  s
+    ? `${num(s.score)} (lowest ${s.lowest ? `${s.lowest.id} ${pct(s.lowest.passK)}` : '—'}; full ${s.fullTasks}/${s.tasks.length})`
+    : 'not walked';
+
 /** The comparison as lines for a terminal; there is no total line to print. */
 export function compareLines(c: Comparison): string[] {
   const lines: string[] = [];
@@ -162,6 +179,15 @@ export function compareLines(c: Comparison): string[] {
   for (const side of ['before', 'after'] as const) {
     const a = c.agreement[side];
     if (a) lines.push(`${side} ${agreementLine(a)}`);
+  }
+  const names = [
+    ...new Set([...c.capabilities.before, ...c.capabilities.after].map((s) => s.capability)),
+  ];
+  if (names.length > 0) lines.push('capabilities:');
+  for (const name of names) {
+    const b = c.capabilities.before.find((s) => s.capability === name);
+    const a = c.capabilities.after.find((s) => s.capability === name);
+    lines.push(`  ${name}: before ${capabilitySide(b)} → after ${capabilitySide(a)}`);
   }
   lines.push(
     c.differences.length === 0
