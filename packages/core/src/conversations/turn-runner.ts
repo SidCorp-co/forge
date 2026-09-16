@@ -17,18 +17,14 @@ import type { ImageResolver, TurnImage } from '../assistant/vision.js';
 import { logger } from '../logger.js';
 import type { DoorId } from '../messaging/contract.js';
 import { Sentry } from '../observability/sentry.js';
+import { errorFallbackReply } from './fallback-replies.js';
 import {
   type ConversationVenue,
   codeAuthored,
   conversationTransport,
   type ScreenedMessage,
 } from './ports.js';
-import {
-  assertAnswerableDoor,
-  declinedTurn,
-  errorFallbackReply,
-  screenedTurnReply,
-} from './screened-reply.js';
+import { assertAnswerableDoor, declinedTurn, screenedTurnReply } from './screened-reply.js';
 import { openConversation } from './store.js';
 import { recordDeliveredReply, recordSilence } from './transcript.js';
 
