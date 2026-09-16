@@ -46,9 +46,7 @@ describe('the product’s own copy of the rule (ISS-1066)', () => {
   const resolveSource = readFileSync(new URL('./resolve.ts', import.meta.url), 'utf8');
 
   it('still filters the canonical ladder on the same condition this function does', () => {
-    expect(resolveSource).toContain(
-      "CANONICAL_LADDER.filter((s) => states[s]?.enabled !== false)",
-    );
+    expect(resolveSource).toContain('CANONICAL_LADDER.filter((s) => states[s]?.enabled !== false)');
   });
 
   it('holds exactly one such filter, so a second copy in that file is caught too', () => {
