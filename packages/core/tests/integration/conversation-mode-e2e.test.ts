@@ -157,6 +157,34 @@ describe('the mode a room is opened in', () => {
     expect(body.agentMode.reason).toContain('no box paired');
   });
 
+  // cm:guard criterion 5 — a client that names nothing gets the lane the product answers in, and it
+  // is SETTLED rather than left null: a room whose column stayed null would go on offering the pick
+  // after a conversation had already happened in it.
+  it('opens a room in Assistant mode when the first send names none', async () => {
+    const created = await webRoom();
+    const res = await send(created.id, { content: 'no mode named' });
+    expect([201, 202]).toContain(res.status);
+    expect((await store.getConversation(created.id))?.mode).toBe('assistant');
+  });
+
+  // cm:guard criterion 6, which is the whole point of settling it rather than storing a preference:
+  // there is no value of the field meaning "change it", and a later send that names one is refused
+  // whether or not it names the mode that won. To talk to the other one, open another room.
+  it('never changes the mode after the first send, by any later send', async () => {
+    const created = await webRoom();
+    expect([201, 202]).toContain((await send(created.id, { content: 'first' })).status);
+
+    const quiet = await send(created.id, { content: 'second, naming nothing' });
+    expect([201, 202]).toContain(quiet.status);
+    expect((await store.getConversation(created.id))?.mode).toBe('assistant');
+
+    for (const mode of ['agent', 'assistant'] as const) {
+      const res = await send(created.id, { content: 'switch lanes', mode });
+      expect(res.status, mode).toBe(409);
+      expect((await store.getConversation(created.id))?.mode, mode).toBe('assistant');
+    }
+  });
+
   // cm:guard criteria 8 and 9: two first sends racing in one empty room. The settle is fenced on
   // `mode IS NULL` inside the transaction that commits the message, so exactly one is admitted —
   // and the loser is told which mode won rather than having its message quietly collected into the
