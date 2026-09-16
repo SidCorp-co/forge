@@ -51,7 +51,11 @@ export function ConversationsScreen() {
   const projectsQ = useProjects();
   const { projects: orgProjects, projectIds: orgProjectIds } = useOrgScopedProjects();
   const projectIdList = useMemo(() => [...orgProjectIds].sort(), [orgProjectIds]);
-  const conversations = useConversationsAcrossProjects(projectIdList);
+  // cm:guard which set is on screen is state of the SCREEN and not of the sidebar: the rail and the
+  // mobile drawer are two mounts of the same component, and a toggle each of them owned would leave
+  // the drawer showing the live rooms while the rail behind it showed the archived ones.
+  const [showArchived, setShowArchived] = useState(false);
+  const conversations = useConversationsAcrossProjects(projectIdList, showArchived);
 
   const [selection, setSelection] = useState<Selection | null>(null);
   const selectionKeyRef = useRef(0);
@@ -108,6 +112,8 @@ export function ConversationsScreen() {
       {...(inDrawer ? { onClose: () => setMobileHistoryOpen(false) } : {})}
       onNew={startNew}
       onOpen={openRow}
+      showArchived={showArchived}
+      onToggleArchived={() => setShowArchived((v) => !v)}
       onRename={(title, row) => rename.mutate({ id: row.id, title })}
       onArchive={(archived, row) => {
         archive.mutate({ id: row.id, archived }, { onSuccess: () => dropIfOpen(row.id) });

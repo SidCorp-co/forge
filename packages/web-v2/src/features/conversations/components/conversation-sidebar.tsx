@@ -1,14 +1,19 @@
 // ISS-729 — collapsible left history rail for the single-conversation
 // Conversations page. Presentational: owns the collapsed/expanded visual +
-// keyboard affordances only, selection/collapse state lives in
-// `ConversationsScreen`. Reads conversations rather than sessions since
-// ISS-1004 step 5.
+// keyboard affordances only — selection, collapse and which of the two sets is
+// on screen all live in `ConversationsScreen`. Reads conversations rather than
+// sessions since ISS-1004 step 5, and offers the archived set since ISS-1040.
 
 import { Button, EmptyState, ErrorState, IconButton, SessionRowSkeleton, Tooltip } from "@/design";
 import { formatApiError } from "@/lib/api/error";
 import { groupByRecency } from "../grouping";
 import type { ListedConversation } from "../hooks";
 import { ConversationRow } from "./conversation-row";
+
+// cm:why the placeholder rows are keyed by a fixed list of names rather than by their index, for the
+// reason `conversation-list.tsx` gives over the same six: the set never reorders, and an index key
+// on a list that never reorders is still a lint the budget counts.
+const SKELETON_ROWS = ["s1", "s2", "s3", "s4", "s5", "s6"];
 
 interface ProjectInfo {
   name: string;
@@ -29,6 +34,10 @@ interface ConversationSidebarProps {
   onToggleCollapse: () => void;
   onNew: () => void;
   onOpen: (row: ListedConversation) => void;
+  /** Which of the two sets `rows` holds — the live rooms, or the archived ones. */
+  showArchived: boolean;
+  /** Ask the caller for the other set. */
+  onToggleArchived: () => void;
   loading: boolean;
   error: unknown;
   onRetry: () => void;
@@ -54,6 +63,8 @@ export function ConversationSidebar({
   onToggleCollapse,
   onNew,
   onOpen,
+  showArchived,
+  onToggleArchived,
   loading,
   error,
   onRetry,
@@ -90,12 +101,32 @@ export function ConversationSidebar({
         )}
       </div>
 
+      {/* cm:guard the toggle is rendered only while the rail is EXPANDED, and not as a third icon on
+          the 64px rail: the rail hides the list entirely, so a control there would swap a set nobody
+          can see and read as having done nothing until the rail is opened again. */}
+      {!collapsed && (
+        <div className="flex flex-none items-center gap-1.5 border-b border-line px-2 py-1.5">
+          <span className="fg-overline flex-1 px-1 text-subtle">
+            {showArchived ? "Archived conversations" : "Your conversations"}
+          </span>
+          <Button
+            variant={showArchived ? "secondary" : "ghost"}
+            size="sm"
+            icon="archive"
+            aria-pressed={showArchived}
+            onClick={onToggleArchived}
+          >
+            Archived
+          </Button>
+        </div>
+      )}
+
       {!collapsed && (
         <div className="min-h-0 flex-1 overflow-y-auto p-2">
           {loading && (
             <div className="overflow-hidden rounded-lg border border-line">
-              {Array.from({ length: 6 }).map((_, i) => (
-                <SessionRowSkeleton key={i} />
+              {SKELETON_ROWS.map((k) => (
+                <SessionRowSkeleton key={k} />
               ))}
             </div>
           )}
@@ -106,9 +137,15 @@ export function ConversationSidebar({
 
           {!loading && error == null && rows.length === 0 && (
             <EmptyState
-              title="No conversations yet"
-              message="Start a conversation with the agent on any project — it'll show up here."
-              action={{ label: "New conversation", onClick: onNew }}
+              title={showArchived ? "Nothing archived" : "No conversations yet"}
+              message={
+                showArchived
+                  ? "Archive a conversation and it waits for you here."
+                  : "Start a conversation with the agent on any project — it'll show up here."
+              }
+              {...(showArchived
+                ? {}
+                : { action: { label: "New conversation", onClick: onNew } })}
             />
           )}
 
