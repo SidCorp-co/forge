@@ -2856,6 +2856,10 @@
 
 ### Fixed
 
+- **An edit you make while an agent is running an issue no longer vanishes.** Status, priority,
+  complexity and the description go read-only on the issue, in the list and in bulk, each saying
+  why. *Needs info* stays open.
+
 - **The assistant no longer files a memory note for every sentence you say.** Each note is read
   against rules before it is written; one that fails is refused with the rule and an example
   of what would pass.

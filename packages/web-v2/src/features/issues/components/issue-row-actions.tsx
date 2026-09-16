@@ -37,6 +37,7 @@ import {
 } from "../waiting";
 import { groupedTransitions, transitionLabels } from "../derive";
 import { useStatusExits } from "../hooks";
+import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
 import { useStatusLabeller } from "../vocabulary";
 import { waitedFor } from "../waiting";
 import {
@@ -198,6 +199,12 @@ function useRowMenuItems(
 
   // cm:why a viewer keeps navigation and loses every mutation item; the server 403s those writes regardless, so this is the affordance and never the gate
   if (actions.canWrite === false) return items;
+
+  // cm:guard the lock says why on ONE disabled line rather than dropping the items silently — a menu that shrinks from fourteen entries to one with no explanation reads as a broken menu, and this is the widest surface the lock reaches: every row of every issues table.
+  if (heldByAgent(row.status, row.agentStatus)) {
+    items.push({ label: AGENT_HOLDS_EDIT, disabled: true, separatorBefore: true });
+    return items;
+  }
 
   const grouped = groupedTransitions(exits, row.status);
   if (isPending) {

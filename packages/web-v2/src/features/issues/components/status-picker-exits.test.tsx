@@ -214,10 +214,10 @@ describe("BulkActionBar", () => {
 describe("row overflow menu", () => {
   const actions = { patch: vi.fn(), transition: vi.fn(), isPending: false };
 
-  function openRowMenu(status: IssueStatus) {
+  function openRowMenu(status: IssueStatus, agentStatus?: "running" | "queued" | "failed" | null) {
     wrap(
       <IssueMobileCard
-        row={row({ status })}
+        row={row({ status, agentStatus })}
         slug="p1"
         actions={actions}
         now={Date.now()}
@@ -284,5 +284,148 @@ describe("StatusEdit, while an agent is working the issue", () => {
     expect(labels()).not.toContain(
       "An agent is working this — your move would be overwritten",
     );
+  });
+});
+
+// ISS-1010 — the lock reaches every surface a live drive job writes over, not
+// only the status picker. The row menu is the widest of them: it carries Status,
+// Priority and Complexity on every row of every issues table.
+describe("row overflow menu, while an agent is working the row", () => {
+  const actions = { patch: vi.fn(), transition: vi.fn(), isPending: false };
+
+  function openRowMenu(status: IssueStatus, agentStatus?: "running" | "queued" | "failed" | null) {
+    wrap(
+      <IssueMobileCard
+        row={row({ status, agentStatus })}
+        slug="p1"
+        actions={actions}
+        now={Date.now()}
+      />,
+    );
+    fireEvent.click(screen.getByLabelText("Row actions"));
+  }
+
+  const held = "An agent is working this — your edit would be overwritten";
+
+  it("offers no status move", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("in_progress", "running");
+    await screen.findByText(held);
+    expect(labels().filter((l) => l.startsWith("Status: "))).toEqual([]);
+  });
+
+  it("offers no priority change", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("in_progress", "running");
+    await screen.findByText(held);
+    expect(labels().filter((l) => l.startsWith("Priority: "))).toEqual([]);
+  });
+
+  it("offers no complexity change", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("in_progress", "running");
+    await screen.findByText(held);
+    expect(labels().filter((l) => l.startsWith("Complexity: "))).toEqual([]);
+  });
+
+  // cm:guard the reason is a rendered MENU ITEM, not a silent shrink from fourteen entries to one
+  it("says why it offers nothing, rather than going quiet", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("in_progress", "running");
+    await screen.findByText(held);
+    expect(labels()).toEqual(["Open issue", held]);
+  });
+
+  it("still offers Open issue, which nothing overwrites", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("in_progress", "running");
+    await screen.findByText(held);
+    expect(labels()).toContain("Open issue");
+  });
+
+  // cm:guard `needs_info` is the one park a person's answer restarts — the lock must never reach it on any surface, or the only way forward on a resident session is closed off.
+  it("leaves a needs_info row its moves however busy it is", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("needs_info", "running");
+    await vi.waitFor(() => expect(labels()).not.toContain(held));
+    expect(labels().filter((l) => l.startsWith("Priority: ")).length).toBeGreaterThan(0);
+  });
+
+  it("locks nothing on a row no agent holds", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("in_progress", null);
+    await screen.findByText("Status: Running");
+    expect(labels()).not.toContain(held);
+  });
+
+  // cm:guard a deferred retry reads as `failed`; locking it refuses a person on a row nothing is working (ISS-903's own shape)
+  it("locks nothing on a row whose last session failed", async () => {
+    get.mockResolvedValue(ANSWERED);
+    openRowMenu("in_progress", "failed");
+    await screen.findByText("Status: Running");
+    expect(labels()).not.toContain(held);
+  });
+});
+
+describe("BulkActionBar, while an agent is working part of the selection", () => {
+  function bulk(rows: IssueRow[]) {
+    wrap(<BulkActionBar projectId="p1" selectedRows={rows} onCleared={vi.fn()} />);
+    return (name: RegExp) => screen.getByRole("button", { name });
+  }
+
+  const describedBy = (el: HTMLElement) =>
+    document.getElementById(el.getAttribute("aria-describedby") ?? "")?.textContent;
+
+  it("refuses Set status", async () => {
+    get.mockResolvedValue(ANSWERED);
+    const btn = bulk([row({ status: "open", agentStatus: "running" })]);
+    await screen.findByText(/An agent is working this issue/);
+    expect(btn(/Set status/)).toBeDisabled();
+  });
+
+  it("refuses Set priority, which has no state-machine constraint and was always offered", async () => {
+    get.mockResolvedValue(ANSWERED);
+    const btn = bulk([row({ status: "open", agentStatus: "running" })]);
+    await screen.findByText(/An agent is working this issue/);
+    expect(btn(/Set priority/)).toBeDisabled();
+  });
+
+  // cm:guard the count is in the sentence: "one of nine" and "nine of nine" are different re-selections for the person holding the mouse
+  it("says how many of the selection an agent is holding", async () => {
+    get.mockResolvedValue(ANSWERED);
+    const btn = bulk([
+      row({ status: "open", agentStatus: "running" }),
+      row({ id: "i2", status: "open", agentStatus: null }),
+    ]);
+    await screen.findByText(/1 of the 2 selected issues/);
+    expect(describedBy(btn(/Set status/))).toMatch(/1 of the 2 selected issues/);
+  });
+
+  // cm:guard the live job outranks the registry states — "loading the status moves" over a selection that would be overwritten anyway sends the person off to wait for a menu they must not use
+  it("names the live job rather than the unread registry", () => {
+    get.mockReturnValue(new Promise(() => {}));
+    bulk([row({ status: "open", agentStatus: "running" })]);
+    expect(screen.queryByText("Loading the status moves…")).toBeNull();
+    expect(screen.getByText(/An agent is working this issue/)).toBeInTheDocument();
+  });
+
+  // The shared fixture declares no exits out of `needs_info`, which would disable
+  // Set status for a reason that is not the lock; this one declares them, so the
+  // assertion is about the lock and nothing else.
+  const ANSWERED_FROM_NEEDS_INFO = {
+    ...ANSWERED,
+    statusExits: { ...STATUS_EXITS, needs_info: ["in_progress", "on_hold"] },
+  };
+
+  it("offers Set status when every running issue in the selection is at needs_info", async () => {
+    get.mockResolvedValue(ANSWERED_FROM_NEEDS_INFO);
+    const btn = bulk([row({ status: "needs_info", agentStatus: "running" })]);
+    await vi.waitFor(() => expect(btn(/Set status/)).not.toBeDisabled());
+  });
+
+  it("offers Set priority in that same selection", async () => {
+    get.mockResolvedValue(ANSWERED_FROM_NEEDS_INFO);
+    const btn = bulk([row({ status: "needs_info", agentStatus: "running" })]);
+    await vi.waitFor(() => expect(btn(/Set priority/)).not.toBeDisabled());
   });
 });
