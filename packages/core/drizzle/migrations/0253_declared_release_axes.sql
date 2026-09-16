@@ -199,7 +199,25 @@ INSERT INTO iss1046_bindings (binding_id, slug, provider, old_environment, role,
   -- Forge cannot do. The sentry row is the one this issue's description cites as the evidence —
   -- the release channel that was an error tracker. It keeps its `environment` for the way back.
   ('4866a074-e511-4543-b778-ce55b12e9227', 'dodgeprint-api', 'sentry', 'prod', 'service', '{}'::text[]),
-  ('4e11a87b-e739-4a26-8fc0-cd1a33dab313', 'dodgeprint-api', 'rocketchat', 'prod', 'service', '{}'::text[]);--> statement-breakpoint
+  ('4e11a87b-e739-4a26-8fc0-cd1a33dab313', 'dodgeprint-api', 'rocketchat', 'prod', 'service', '{}'::text[]),
+  -- The six the binding roster could not see either, for the same reason the project
+  -- roster missed twelve: both lists were transcribed from one measurement, and the
+  -- fleet kept moving afterwards. All six belong to the two QA throwaways, which this
+  -- migration declares `release_model = 'none'`.
+  --
+  -- They are declared `deploy` rather than `service` on purpose. `integration_bindings_service_uq`
+  -- admits one SERVICE binding per (project, provider, label), and qa-project-available-for-testing
+  -- carries THREE epodsystem rows plus two coolify rows; declaring them service would
+  -- stake the deploy on labels this list cannot read. `deploy` is exempt from that index,
+  -- and it is also what the rows are: coolify staging/prod is `preview`/`live` in all
+  -- twenty-five fleet precedents, and epodsystem prod is `{preview,live}` wherever it
+  -- deploys (butlocs, mowment, pixelight).
+  ('749993a9-132a-4268-a724-8c67340b88d0', 'qa-project-available-for-testing', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
+  ('924679c1-43c5-4783-92fa-4f0653a76ff3', 'qa-iss319-create-verify', 'coolify', 'staging', 'deploy', ARRAY['preview']::text[]),
+  ('efc97d7e-6f61-4a3f-9264-f0318091a454', 'qa-project-available-for-testing', 'coolify', 'prod', 'deploy', ARRAY['live']::text[]),
+  ('a6782c32-8ef7-42c9-905b-d055023edfc8', 'qa-project-available-for-testing', 'epodsystem', 'prod', 'deploy', ARRAY['preview', 'live']::text[]),
+  ('aac45791-3758-4178-b992-129f312df2c2', 'qa-project-available-for-testing', 'epodsystem', 'prod', 'deploy', ARRAY['preview', 'live']::text[]),
+  ('e5544f43-d94f-4bb6-984e-c9f4d4954640', 'qa-project-available-for-testing', 'epodsystem', 'prod', 'deploy', ARRAY['preview', 'live']::text[]);--> statement-breakpoint
 
 -- === 4. coverage, BEFORE anything is dropped ==============================
 --
