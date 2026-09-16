@@ -3,7 +3,6 @@ import { and, eq, isNull, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { assistantWeeklyRoutes } from '../assistant/weekly/routes.js';
 import { type IssueBranchOverride, resolveIssueBranches } from '../branches/resolve.js';
 import { db } from '../db/client.js';
 import { withKernelMarker } from '../db/kernel-marker.js';
@@ -723,7 +722,6 @@ projectRoutes.patch(
 // ./project-facts.ts. Mounted here so they inherit this router's auth
 // middleware exactly as before the split.
 projectRoutes.route('/', projectFactsRoutes);
-projectRoutes.route('/', assistantWeeklyRoutes);
 
 // ─── Branch config (ISS-135 PR-A) ───────────────────────────────────────────
 //

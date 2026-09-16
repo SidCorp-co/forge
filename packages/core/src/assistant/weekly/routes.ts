@@ -13,7 +13,7 @@ import { z } from 'zod';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
 import { assertOrgRoleOnProject, loadProjectAccess } from '../../lib/authz.js';
-import type { AuthVars } from '../../middleware/auth.js';
+import { type AuthVars, assertEmailVerified, requireAuth } from '../../middleware/auth.js';
 import { readAssistantWeekly } from './config.js';
 import { realDeps, runAssistantWeeklyForProject } from './run.js';
 
@@ -22,9 +22,9 @@ const idParamSchema = z.object({ id: z.uuid() });
 const badRequest = (details: unknown) =>
   new HTTPException(400, { message: 'Invalid input', cause: { code: 'BAD_REQUEST', details } });
 
-// cm:guard add NO middleware here: this router is mounted under `projectRoutes`, which already applies `requireAuth()` + `assertEmailVerified()` to every request
-// cm:edge protocol -> packages/core/src/projects/routes.ts — that mount is what supplies `userId`; mounted anywhere else, every handler here reads it as undefined
+// cm:why a router of its own, mounted at `/api/projects` from `index.ts` beside `gitCredentialRoutes` and NOT under `projectRoutes`: that file already coordinates six modules and the archmap contract refuses a seventh; so this one carries its own auth pair, the same two `projectRoutes` applies
 export const assistantWeeklyRoutes = new Hono<{ Variables: AuthVars }>();
+assistantWeeklyRoutes.use('*', requireAuth(), assertEmailVerified());
 
 assistantWeeklyRoutes.post(
   '/:id/assistant-weekly/run',

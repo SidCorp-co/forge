@@ -28,6 +28,7 @@ import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/ident
 import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
 import { chatRoutes } from './assistant/routes.js';
 import { registerAssistantWeekly, unregisterAssistantWeekly } from './assistant/weekly/register.js';
+import { assistantWeeklyRoutes } from './assistant/weekly/routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
 import { loginRoutes } from './auth/login.js';
 import { logoutRoutes } from './auth/logout.js';
@@ -320,6 +321,7 @@ app.route('/api/projects', projectMetricsRoutes);
 app.route('/api/projects', gitCredentialRoutes);
 app.route('/api/projects', runLedgerRoutes);
 app.route('/api/projects', projectRoutes);
+app.route('/api/projects', assistantWeeklyRoutes);
 app.route('/api/orgs', orgRoutes);
 // cm:guard several route modules may share one prefix — Hono composes sub-apps by path, not one-Hono-per-prefix (ISS-628) — but it then runs the middleware of EVERY router whose mount prefix matches, so a bare `use('*', ...)` on any one of them gates its neighbours' paths too. Check the sibling's middleware, not only its paths, before adding a mount here.
 app.route('/api/orgs', sshKeyRoutes);

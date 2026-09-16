@@ -39,7 +39,7 @@ vi.mock('./run.js', () => ({
   runAssistantWeeklyForProject: (...args: unknown[]) => runForProject(...args),
 }));
 
-const { projectRoutes } = await import('../../projects/routes.js');
+const { assistantWeeklyRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../../auth/jwt.js');
 const { errorHandler } = await import('../../middleware/error.js');
 const { requestId } = await import('../../middleware/request-id.js');
@@ -68,7 +68,7 @@ const projectRow = (assistantWeekly: unknown) => ({
 async function run(orgRole: 'owner' | 'admin' | 'member' | null) {
   const app = new Hono<{ Variables: import('../../middleware/request-id.js').RequestIdVars }>();
   app.use('*', requestId());
-  app.route('/api/projects', projectRoutes);
+  app.route('/api/projects', assistantWeeklyRoutes);
   app.onError(errorHandler);
   projectAccess.mockResolvedValue(access(orgRole));
   const token = await signUserToken('u1');
@@ -81,7 +81,7 @@ async function run(orgRole: 'owner' | 'admin' | 'member' | null) {
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
-  // the mount's assertEmailVerified reads the user row first, then the handler reads the project
+  // the router's own assertEmailVerified reads the user row first, then the handler reads the project
   selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
 });
 
