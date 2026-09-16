@@ -167,3 +167,62 @@ describe('directMcpIntegrations', () => {
     expect(directMcpIntegrations()).toEqual([]);
   });
 });
+
+/**
+ * Criteria 3 and 4 are claims about the COMPILER, so their evidence has to be a thing that would
+ * compile if the type were loosened — a runtime assertion cannot make either of them.
+ *
+ * `@ts-expect-error` IS the assertion here, and `pnpm typecheck` (the `core typecheck` gate) is what
+ * runs it: `packages/core/tsconfig.json` includes `src/**`, and a directive whose error stops
+ * happening becomes an error itself, `Unused '@ts-expect-error' directive`. So widening
+ * `IntegrationCapabilities` or making `justification` optional turns this file red without anyone
+ * having to remember these two cases exist. Core's vitest has no `typecheck` block, unlike
+ * contracts', and this needs no new one.
+ *
+ * Nothing below runs. It is a type-level fixture and is deliberately never registered: registering
+ * a declaration the type rejects is not a thing the tests above could do anyway.
+ */
+const COMPILE_ONLY = {
+  // A declaration that omits a required capability field. `structuredRollback` stands for all of
+  // them: `capabilities` is required as a whole, and every field on it is required individually,
+  // which is what stops an adapter opting out by leaving one off and reading as inert.
+  missingCapabilityField: () =>
+    // @ts-expect-error criterion 3 — `structuredRollback` is required; omitting it must not compile
+    fixture('fake-missing-field', {
+      canDispatch: false,
+      canReceiveWebhook: false,
+      canDeploy: false,
+      liveConfirmGate: false,
+      hasDeliveryLog: false,
+      multiBinding: false,
+      agentPath: { kind: 'none' },
+    }),
+
+  // A direct-MCP arm with no written reason for putting a project's credential on a runner box.
+  directMcpWithoutJustification: () =>
+    fixture('fake-unjustified', {
+      canDispatch: false,
+      canReceiveWebhook: false,
+      canDeploy: false,
+      liveConfirmGate: false,
+      hasDeliveryLog: false,
+      multiBinding: false,
+      structuredRollback: false,
+      // The two directives sit at different levels ON PURPOSE, and each is where tsc puts the
+      // error: a MISSING capability field fails the whole argument, so criterion 3's is on the
+      // call; a malformed `agentPath` fails that property against the union, so this one is here.
+      // @ts-expect-error criterion 4 — a `direct-mcp` arm without `justification` must not compile
+      agentPath: {
+        kind: 'direct-mcp',
+        tools: [],
+        serverName: 'fake-unjustified',
+        previewSecrets: {},
+        buildEntry: () => null,
+      },
+    }),
+};
+
+// Referenced so it is not dead code. Nothing here is ever CALLED: these two declarations do
+// not compile, which is the whole assertion, and calling one would only be a runtime error about
+// a fixture the type already refused.
+void COMPILE_ONLY;
