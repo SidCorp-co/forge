@@ -158,9 +158,10 @@ export function judgeNote(input: NoteJudgeInput): NoteRefusal | null {
           .trim() || 'The fact they gave you, stated once.',
     };
   const newest = input.recentTurns.at(-1) ?? '';
-  const framed = FRAMING.test(newest) && FRAMING.exec(newest)?.[0].trim().length !== 0;
-  if (framed && input.recentTurns.some((m) => FRAMING.test(m) && sameWords(text, m))) {
-    const fact = newest.replace(FRAMING, '').trim();
+  // cm:guard the framed message the note copies may be an earlier one, not the newest: "Remember: X" then "Thanks." then a note of "Remember: X" is still the request copied back (codex F1, third pass)
+  const copied = input.recentTurns.find((m) => FRAMING.test(m) && sameWords(text, m));
+  if (copied) {
+    const fact = copied.replace(FRAMING, '').trim();
     return {
       code: 'restates_message',
       rule: 'the note is the message copied back; keep the fact, not the request to remember it.',
@@ -181,7 +182,8 @@ export function judgeNote(input: NoteJudgeInput): NoteRefusal | null {
     };
   const twin = [...input.existingNotes].sort((a, b) => b.score - a.score)[0];
   // cm:guard a correction is not a duplicate: "the code name is X2, forget the first one" scores above the threshold against the note holding X1, and refusing it would freeze the wrong value in the store; the twin word for word is still refused, correction or not (codex F2)
-  const correcting = CORRECTION.test(newest) && !(twin && sameWords(text, twin.text));
+  // cm:guard exact words, not the 0.9 overlap `sameWords` reads: a long note whose one changed word is the correction overlaps its twin above 0.9 and would be refused as the value it replaces (codex F2, third pass)
+  const correcting = CORRECTION.test(newest) && !(twin && normalise(text) === normalise(twin.text));
   if (twin && twin.score >= DUPLICATE_SCORE && !correcting)
     return {
       code: 'duplicate',

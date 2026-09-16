@@ -42,6 +42,13 @@ describe('judgeNote', () => {
     ).toBe('restates_message');
   });
 
+  it('the framed message copied back may be an earlier one: a "Thanks" after it does not clear the copy', () => {
+    const r = judgeNote(base({ text: REMEMBER, recentTurns: [REMEMBER, 'Thanks.'] }));
+    expect(r?.code).toBe('restates_message');
+    expect(r?.howToWrite).toBe('the release code name is bench-1a2b3c4d5e6f.');
+    expect(code(base({ recentTurns: [REMEMBER, 'Thanks.'] }))).toBeNull();
+  });
+
   it('a message with no remember-framing may be kept word for word: the sentence is the fact', () => {
     const said = 'The deploy window is Thursday 14:00 UTC.';
     expect(code(base({ text: said, recentTurns: [said] }))).toBeNull();
@@ -107,6 +114,17 @@ describe('judgeNote', () => {
           existingNotes: [held],
         }),
       ),
+    ).toBe('duplicate');
+    // one changed word in a long note overlaps its twin above 0.9 and is still the correction
+    const long = (day: string) =>
+      `The production deployment window for the main customer service in our European region is every week on ${day} at 14:00 UTC.`;
+    const said = 'Correction: we deploy on Thursday now, not Wednesday.';
+    const twinNote = { text: long('Wednesday'), score: 0.97 };
+    expect(
+      code(base({ text: long('Thursday'), recentTurns: [said], existingNotes: [twinNote] })),
+    ).toBeNull();
+    expect(
+      code(base({ text: long('Wednesday'), recentTurns: [said], existingNotes: [twinNote] })),
     ).toBe('duplicate');
   });
 
