@@ -25,8 +25,8 @@ import {
   CONVERSATION_AGENT_MARKER,
   type ConversationAgentMeta,
   readConversationAgentMeta,
-  redispatchConversationAgentTurn,
 } from './conversation-agent.js';
+import { redispatchConversationAgentTurn } from './conversation-agent-failover.js';
 import { messageRoleToTurnRole } from './turns-helpers.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;

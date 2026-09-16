@@ -48,36 +48,43 @@ export function ConversationModeToggle({
   const agentBlocked = !offer.available;
 
   return (
-    <div
-      className="flex flex-wrap items-center gap-2 px-4 pt-3"
-      role="radiogroup"
-      aria-label="What this conversation talks to"
+    // cm:guard each option is a NATIVE radio in a label rather than a button carrying
+    // `role="radio"`: the group is a single choice, and the native control is what gives a keyboard
+    // its arrow-key walk and a screen reader its "1 of 2" for free. The input is visually hidden
+    // and the label is the pill, so the hit target is the whole pill either way.
+    <fieldset
+      className="flex flex-wrap items-center gap-2 border-0 px-4 pt-3"
       data-testid="conversation-mode-toggle"
     >
+      <legend className="sr-only">What this conversation talks to</legend>
       {MODES.map(({ mode, label, hint }) => {
         const blocked = mode === "agent" && agentBlocked;
         const selected = value === mode;
         return (
-          <button
+          <label
             key={mode}
-            type="button"
-            role="radio"
-            aria-checked={selected}
-            aria-describedby={blocked ? "conversation-mode-blocked" : undefined}
-            disabled={disabled || blocked}
             title={blocked ? (offer.reason ?? undefined) : hint}
-            onClick={() => onChange(mode)}
             className={[
               "rounded-full border px-3 py-1 text-sm transition-colors",
-              "focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-accent",
+              "focus-within:outline-none focus-within:ring-2 focus-within:ring-accent",
               selected
                 ? "border-accent bg-accent-soft text-fg"
                 : "border-line bg-surface text-muted hover:text-fg",
-              blocked ? "cursor-not-allowed opacity-50 hover:text-muted" : "",
+              blocked ? "cursor-not-allowed opacity-50 hover:text-muted" : "cursor-pointer",
             ].join(" ")}
           >
+            <input
+              type="radio"
+              name="conversation-mode"
+              className="sr-only"
+              value={mode}
+              checked={selected}
+              disabled={disabled || blocked}
+              aria-describedby={blocked ? "conversation-mode-blocked" : undefined}
+              onChange={() => onChange(mode)}
+            />
             {label}
-          </button>
+          </label>
         );
       })}
       {agentBlocked && offer.reason && (
@@ -90,6 +97,6 @@ export function ConversationModeToggle({
           {MODES.find((m) => m.mode === value)?.hint}
         </p>
       )}
-    </div>
+    </fieldset>
   );
 }

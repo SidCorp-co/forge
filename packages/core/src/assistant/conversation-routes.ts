@@ -364,7 +364,7 @@ async function agentModeOffer(
   if (!projectId) {
     return {
       available: false,
-      reason: 'a turn runs under exactly one project, and this room is about ' + scope.length,
+      reason: `a turn runs under exactly one project, and this room is about ${scope.length}`,
     };
   }
   if (!(await conversationAgentDeviceAvailable(projectId))) {

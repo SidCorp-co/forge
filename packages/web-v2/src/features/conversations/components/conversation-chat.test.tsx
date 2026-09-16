@@ -337,7 +337,7 @@ describe("ConversationChat · picking what the room talks to", () => {
     detail.mockResolvedValue(emptyRoom({ available: true, reason: null }));
     mountRoom();
     await waitFor(() => expect(screen.getByTestId("conversation-mode-toggle")).toBeInTheDocument());
-    expect(screen.getByRole("radio", { name: "Assistant" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Assistant" })).toBeChecked();
     expect(screen.getByRole("radio", { name: "Agent" })).toBeEnabled();
   });
 

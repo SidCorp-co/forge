@@ -14,19 +14,15 @@
  */
 
 import { and, eq, sql } from 'drizzle-orm';
-import {
-  type ConversationVenue,
-  codeAuthored,
-  conversationTransport,
-} from '../conversations/ports.js';
+import type { ConversationVenue } from '../conversations/ports.js';
 import { db } from '../db/client.js';
-import { agentSessions, type MemberLens, projects } from '../db/schema.js';
+import { agentSessions, type MemberLens } from '../db/schema.js';
 import { buildProgressFactsBlock, computeProjectProgress } from '../issues/progress.js';
-import { findAvailableDeviceForProject } from '../lib/device-pool.js';
 import { applyKernelTransition } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { createChatSessionRow, dispatchChatTurn, resolveChatDevice } from './chat-turn.js';
+import { scheduleAck } from './conversation-agent-ack.js';
 
 type SessionRow = typeof agentSessions.$inferSelect;
 
@@ -34,7 +30,7 @@ type SessionRow = typeof agentSessions.$inferSelect;
 // cm:edge contract -> packages/core/src/agent-sessions/terminal-effects.ts — the terminal-session bridge list fans out on exactly this key, so a rename here without one there hangs every runner-hosted conversation reply silently.
 export const CONVERSATION_AGENT_MARKER = 'conversationAgent';
 
-const TITLE_MAX = 80;
+export const TITLE_MAX = 80;
 
 /** What the venue is shown when this lane has no model answer to give it. */
 // cm:guard the sentences are the CALLER's and not this module's, and that is what keeps one lane serving two venues: a Rocket.Chat room is answered in Vietnamese by a named bot and a Forge UI thread in English beside a state label, and a module holding both would be choosing between them on something it would have to be told anyway.
@@ -326,37 +322,6 @@ export async function startConversationAgentTurn(
 }
 
 /**
- * Post an interim ack, but only if the turn is genuinely slow.
- */
-// cm:guard best-effort by design: the timer is `unref`-ed and a core restart inside the window simply drops the ack, because the answer still arrives via the bridge and a hung session is still reaped by the loop monitor — an undelivered ack must never surface as a failure.
-// cm:guard it is NOT recorded in the transcript: it is this handle saying it is working, not the answer, and a room's log holding it would make the eventual reply read as a second message about the same question.
-// cm:guard a venue whose reader already sees the turn's state needs no ack at all, which is what a null `replies.ack` says: the Forge UI prints `dispatched` and `running` on the thread, so a sentence promising an answer would be the same fact twice (ISS-1039).
-function scheduleAck(sessionId: string, marker: ConversationAgentMeta): void {
-  if (!marker.replies.ack || marker.ackAfterMs === null) return;
-  const timer = setTimeout(() => {
-    void postAck(sessionId, marker);
-  }, marker.ackAfterMs);
-  timer.unref?.();
-}
-
-async function postAck(sessionId: string, marker: ConversationAgentMeta): Promise<void> {
-  try {
-    const [row] = await db
-      .select({ status: agentSessions.status, metadata: agentSessions.metadata })
-      .from(agentSessions)
-      .where(eq(agentSessions.id, sessionId))
-      .limit(1);
-    if (row?.status !== 'running') return;
-    if (readConversationAgentMeta(row.metadata)?.deliveredAt) return;
-    const transport = conversationTransport(marker.venue.adapter);
-    if (!transport || !marker.replies.ack) return;
-    await transport.deliver(marker.venue, codeAuthored(marker.replies.ack));
-  } catch (err) {
-    logger.error({ err, sessionId }, 'conversation-agent: the interim ack could not be posted');
-  }
-}
-
-/**
  * The prompt a runner-hosted conversation turn runs.
  */
 // cm:guard it must keep telling the session its reply is delivered VERBATIM: there is no synthesis turn downstream to reshape it, unlike escalation.
@@ -384,127 +349,7 @@ export function buildConversationAgentPrompt(args: {
   return lines.join('\n\n');
 }
 
-// cm:why mirrors `redispatchScheduleSessionOnFailover` (schedules/dispatch.ts) — that machinery is hard-gated to `metadata.source === 'schedule.run'`, so this lane needs its own.
-const MAX_FAILOVERS = 2;
-
-export type ConversationAgentFailoverResult =
-  | { ok: true; sessionId: string; deviceId: string }
-  | {
-      ok: false;
-      status: 'not-a-conversation-turn' | 'exhausted' | 'no-device' | 'no-prompt' | 'error';
-    };
-
-/**
- * Try another box for a turn whose runner failed on infrastructure.
- */
-// cm:guard reuse the STORED prompt, never rebuild it: the stored text is exactly what `buildConversationAgentPrompt` produced for the first attempt, and the caller has already claimed `deliveredAt` so this cannot race a second failover for the same turn.
-export async function redispatchConversationAgentTurn(
-  session: SessionRow,
-): Promise<ConversationAgentFailoverResult> {
-  const meta = readConversationAgentMeta(session.metadata);
-  if (!meta) return { ok: false, status: 'not-a-conversation-turn' };
-
-  const prior = meta.failover ?? { attempt: 0, triedDeviceIds: [] };
-  const tried = Array.from(
-    new Set([...(prior.triedDeviceIds ?? []), session.deviceId].filter((d): d is string => !!d)),
-  );
-  const attempt = (prior.attempt ?? 0) + 1;
-  if (attempt > MAX_FAILOVERS) return { ok: false, status: 'exhausted' };
-
-  const messages = Array.isArray(session.messages) ? session.messages : [];
-  const firstUser = messages.find(
-    (m): m is { role: string; content: string } =>
-      !!m &&
-      (m as { role?: string }).role === 'user' &&
-      typeof (m as { content?: unknown }).content === 'string',
-  );
-  if (!firstUser) return { ok: false, status: 'no-prompt' };
-
-  const deviceId = await findAvailableDeviceForProject(session.projectId, {
-    excludeDeviceIds: tried,
-  });
-  if (!deviceId) return { ok: false, status: 'no-device' };
-
-  const [project] = await db
-    .select({ id: projects.id, slug: projects.slug, repoPath: projects.repoPath })
-    .from(projects)
-    .where(eq(projects.id, session.projectId))
-    .limit(1);
-  if (!project) return { ok: false, status: 'error' };
-
-  const priorMeta = (session.metadata as Record<string, unknown>) ?? {};
-  const next: ConversationAgentMeta = {
-    ...meta,
-    deliveredAt: null,
-    failure: null,
-    failover: { attempt, triedDeviceIds: tried },
-  };
-
-  let retry: SessionRow;
-  try {
-    retry = await createChatSessionRow({
-      projectId: session.projectId,
-      userId: session.userId,
-      title: session.title ?? `Chat: ${meta.question.slice(0, TITLE_MAX)}`,
-      runKind: 'system',
-      runMetadata: { source: 'conversation.agentTurn', conversationId: meta.conversationId },
-      metadata: {
-        [CONVERSATION_AGENT_MARKER]: next,
-        ...(priorMeta.lensOverride ? { lensOverride: priorMeta.lensOverride } : {}),
-        progressFacts: priorMeta.progressFacts ?? null,
-      },
-    });
-  } catch (err) {
-    logger.error(
-      { err, failedSessionId: session.id, conversationId: meta.conversationId, attempt },
-      'conversation-agent failover: retry session creation failed',
-    );
-    return { ok: false, status: 'error' };
-  }
-
-  try {
-    const dispatched = await dispatchChatTurn({
-      session: retry,
-      project,
-      client: { deviceId, isLocal: false, migrated: false },
-      message: firstUser.content,
-      ...(priorMeta.lensOverride
-        ? { forceLenses: priorMeta.lensOverride as readonly MemberLens[] }
-        : {}),
-      broadcastEvent: 'agent-session.created',
-    });
-    logger.info(
-      {
-        failedSessionId: session.id,
-        retrySessionId: dispatched.id,
-        fromDeviceId: session.deviceId,
-        toDeviceId: deviceId,
-        failureReason: session.failureReason,
-        attempt,
-      },
-      'conversation-agent failover: re-dispatched to another runner',
-    );
-    // cm:guard the RETRY gets its own ack window too: the first attempt's timer fired against a
-    // session that is now terminal and posted nothing, so without this a venue whose turn failed
-    // over waits out both windows in silence — which is the one case the ack exists for.
-    scheduleAck(dispatched.id, next);
-    return { ok: true, sessionId: dispatched.id, deviceId };
-  } catch (err) {
-    logger.error(
-      { err, failedSessionId: session.id, retrySessionId: retry.id, attempt },
-      'conversation-agent failover: re-dispatch failed',
-    );
-    // cm:edge lockstep -> packages/core/src/agent-sessions/conversation-agent-bridge.ts — `dispatchChatTurn` commits `status: 'running'` before its throwable work, so a throw here must terminate the retry row itself or `hasInFlightConversationAgentTurn` wedges the room on a phantom live turn.
-    // cm:why `deliveredAt` is pre-stamped in the same write so the row the transition hands the bridge already has one — without it the bridge claims the retry row and posts a second failure sentence while the original caller posts one too.
-    await markSessionFailed(retry, 'conversation-agent-failover', {
-      ...next,
-      deliveredAt: new Date().toISOString(),
-    });
-    return { ok: false, status: 'error' };
-  }
-}
-
-async function markSessionFailed(
+export async function markSessionFailed(
   session: SessionRow,
   source: string,
   marker?: ConversationAgentMeta,

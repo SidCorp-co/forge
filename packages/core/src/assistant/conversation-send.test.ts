@@ -109,6 +109,7 @@ const send = () =>
     userLabel: 'Alice',
     content: 'how are the issues doing?',
     mode: 'assistant' as const,
+    namedMode: false,
   });
 
 describe('a send', () => {
