@@ -48,13 +48,21 @@ function isCatalogEnabled(value: unknown): boolean {
   return value === true;
 }
 
-/** Custom (non-catalog, non-integration) entries: name → raw JSON spec.
- *  ISS-1038 — an integration sentinel used to fall through here and render as a
- *  custom server. It is split out by `integrationEntries` below instead. */
+/** A stored value is an integration SENTINEL only when it is literally `true`.
+ *  An object under an integration name is a raw custom spec — core's
+ *  `expandMcpServers` passes it through verbatim and the resolvers test for
+ *  `=== true`, so it injects no credential and belongs in the custom list. ISS-1038. */
+function isSentinelValue(name: string, value: unknown): boolean {
+  return value === true && isIntegrationServerName(name);
+}
+
+/** Custom (non-catalog, non-sentinel) entries: name → raw JSON spec.
+ *  ISS-1038 — a sentinel used to fall through here and render as a custom
+ *  server whose spec printed as `true`. It is split out below instead. */
 function customEntries(map: ServerMap): Array<{ name: string; value: unknown }> {
   return Object.entries(map)
     .filter(([name, value]) => {
-      if (isIntegrationServerName(name)) return false;
+      if (isSentinelValue(name, value)) return false;
       if (MCP_CATALOG_NAMES.includes(name)) return value !== true && value != null && value !== false;
       return value != null && value !== false;
     })
@@ -64,7 +72,7 @@ function customEntries(map: ServerMap): Array<{ name: string; value: unknown }> 
 /** Integration sentinels stored in this map. Read-only here. ISS-1038. */
 function integrationEntries(map: ServerMap): string[] {
   return Object.entries(map)
-    .filter(([name, value]) => isIntegrationServerName(name) && value !== false && value != null)
+    .filter(([name, value]) => isSentinelValue(name, value))
     .map(([name]) => name);
 }
 

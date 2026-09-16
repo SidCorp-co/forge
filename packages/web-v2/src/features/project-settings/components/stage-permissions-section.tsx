@@ -34,6 +34,20 @@ import {
 } from "../types";
 import { ToolListEditor } from "./tool-list-editor";
 
+/**
+ * ISS-1038 — what a stored integration entry MEANS for this stage, not merely
+ * which integration it names. A stage's explicit `false` is an opt-OUT that
+ * this change made effective at dispatch; labelling it the same as a `true`
+ * would leave the screen stating the opposite of what a job at that stage gets.
+ * An object value is a raw custom spec, which injects no credential at all.
+ */
+function stageEntryLabel(name: string, value: unknown): string {
+  const label = integrationServerLabel(name);
+  if (value === true) return `${label} · injected at this stage`;
+  if (value === false || value === null) return `${label} · NOT injected at this stage`;
+  return `${label} · custom spec, no credential attached`;
+}
+
 function ToolChips({ tools }: { tools: string[] }) {
   return (
     <div className="flex flex-wrap gap-1.5">
@@ -157,7 +171,7 @@ function StageEditor({
                       defect pointed the other way. */}
                   {isIntegrationServerName(n) && (
                     <span className="fg-caption rounded-pill bg-sunken px-2 py-0.5 text-subtle">
-                      {integrationServerLabel(n)} · this stage only
+                      {stageEntryLabel(n, mcp[n])}
                     </span>
                   )}
                 </span>

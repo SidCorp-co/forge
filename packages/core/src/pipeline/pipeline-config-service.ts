@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, projects, runners } from '../db/schema.js';
+import { isIntegrationSentinelName } from './mcp-catalog.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
@@ -19,6 +20,7 @@ export type PipelineConfigErrorCode =
   | 'STAGE_HAS_ISSUES'
   | 'STAGE_POOL_UNKNOWN_RUNNER'
   | 'CONFIG_CONFLICT'
+  | 'MCP_SENTINEL_NOT_WRITABLE_HERE'
   | 'PROJECT_NOT_FOUND';
 
 export class PipelineConfigError extends Error {
@@ -34,6 +36,44 @@ export class PipelineConfigError extends Error {
     this.code = code;
     this.details = details;
   }
+}
+
+/**
+ * ISS-1038 — the project-default integration sentinels have exactly ONE writer,
+ * `setMcpServerSentinel`, reached from Settings → Integrations. This call
+ * replaces `mcpServers` wholesale from a map the CLIENT fetched, so a Pipeline
+ * tab saved from a config fetched before a sentinel was switched on would
+ * switch it back off, and `pixelight` and `butlocs` would lose their whole
+ * autonomous lane to a save about something else.
+ *
+ * Round-tripping the sentinels unchanged is fine, and is what that screen does.
+ * A patch that would ADD or REMOVE one is refused BY NAME rather than having
+ * the offending keys quietly dropped: dropping them would answer the caller
+ * with a 200 and a stored config that is not what they sent.
+ *
+ * Only a literal `true` under an integration name is a sentinel; an object
+ * value there is a raw custom spec, which that screen does own.
+ */
+function assertSentinelsUnchanged(
+  patched: Record<string, unknown> | null | undefined,
+  stored: Record<string, unknown> | null | undefined,
+): void {
+  const sentinelsOf = (m: Record<string, unknown> | null | undefined) =>
+    new Set(
+      Object.entries(m ?? {})
+        .filter(([name, value]) => value === true && isIntegrationSentinelName(name))
+        .map(([name]) => name),
+    );
+  const before = sentinelsOf(stored);
+  const after = sentinelsOf(patched);
+  const added = [...after].filter((n) => !before.has(n));
+  const removed = [...before].filter((n) => !after.has(n));
+  if (added.length === 0 && removed.length === 0) return;
+  throw new PipelineConfigError(
+    'MCP_SENTINEL_NOT_WRITABLE_HERE',
+    `${[...added, ...removed].join(', ')}: a connected integration is switched on Settings → Integrations → Agent MCP servers, not through the pipeline config. Send this map with its integration entries exactly as stored (${[...before].join(', ') || 'none'}).`,
+    { added, removed, stored: [...before] },
+  );
 }
 
 export interface UpdatePipelineConfigInput {
@@ -101,82 +141,107 @@ export async function updatePipelineConfig(
   }
 
   if (Object.keys(mergeDoc).length > 0) {
-    const [row] = await db
-      .select({ agentConfig: projects.agentConfig })
-      .from(projects)
-      .where(eq(projects.id, projectId))
-      .limit(1);
-    if (!row) throw new PipelineConfigError('PROJECT_NOT_FOUND', 'project not found');
-    const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
-    const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
-    const nextDoc: Record<string, unknown> = {};
-    if (mergeDoc.pipelineConfig) {
-      const nextPipeline = { ...currentPipeline, ...(mergeDoc.pipelineConfig as object) };
-      const patchStates = (pipelinePatch as { states?: StagesConfig }).states;
-      if (patchStates) {
-        if (patchStates.open && patchStates.open.enabled === false) {
-          throw new PipelineConfigError('OPEN_LOCKED_ON', 'open stage cannot be disabled');
-        }
+    // ISS-1038 — read, validate and write inside ONE transaction holding a row
+    // lock. The read below is what the merge is built on, and this call replaces
+    // `mcpServers` wholesale from a map the CLIENT fetched earlier, so without
+    // the lock two writers interleave: an operator saving the Pipeline tab from
+    // a config fetched a minute ago silently erases a sentinel the Integrations
+    // panel wrote in between, and the panel's one-key statement does not save
+    // them from it because the loss happens on this side. The lock does not make
+    // the client's map fresher — it makes the two writes serial, so the second
+    // one merges onto what the first actually stored.
+    await db.transaction(async (tx) => {
+      const [row] = await tx
+        .select({ agentConfig: projects.agentConfig })
+        .from(projects)
+        .where(eq(projects.id, projectId))
+        .for('update')
+        .limit(1);
+      if (!row) throw new PipelineConfigError('PROJECT_NOT_FOUND', 'project not found');
+      const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
+      const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
+      const nextDoc: Record<string, unknown> = {};
+      if (mergeDoc.pipelineConfig) {
+        const nextPipeline = { ...currentPipeline, ...(mergeDoc.pipelineConfig as object) };
+        const patchStates = (pipelinePatch as { states?: StagesConfig }).states;
+        if (patchStates) {
+          if (patchStates.open && patchStates.open.enabled === false) {
+            throw new PipelineConfigError('OPEN_LOCKED_ON', 'open stage cannot be disabled');
+          }
 
-        const stagesBeingDisabled = (
-          Object.entries(patchStates) as Array<[string, { enabled?: boolean } | undefined]>
-        )
-          .filter(([, v]) => v?.enabled === false)
-          .map(([stage]) => stage as IssueStatus);
-        if (stagesBeingDisabled.length > 0) {
-          const blocking = await db
-            .select({ id: issues.id, status: issues.status })
-            .from(issues)
-            .where(
-              and(eq(issues.projectId, projectId), inArray(issues.status, stagesBeingDisabled)),
-            );
-          if (blocking.length > 0) {
-            throw new PipelineConfigError(
-              'STAGE_HAS_ISSUES',
-              'cannot disable stages while issues are at those stages',
-              {
-                blockingIssueIds: blocking.map((b) => b.id),
-                stagesBlocked: Array.from(new Set(blocking.map((b) => b.status))),
-              },
-            );
+          const stagesBeingDisabled = (
+            Object.entries(patchStates) as Array<[string, { enabled?: boolean } | undefined]>
+          )
+            .filter(([, v]) => v?.enabled === false)
+            .map(([stage]) => stage as IssueStatus);
+          if (stagesBeingDisabled.length > 0) {
+            const blocking = await db
+              .select({ id: issues.id, status: issues.status })
+              .from(issues)
+              .where(
+                and(eq(issues.projectId, projectId), inArray(issues.status, stagesBeingDisabled)),
+              );
+            if (blocking.length > 0) {
+              throw new PipelineConfigError(
+                'STAGE_HAS_ISSUES',
+                'cannot disable stages while issues are at those stages',
+                {
+                  blockingIssueIds: blocking.map((b) => b.id),
+                  stagesBlocked: Array.from(new Set(blocking.map((b) => b.status))),
+                },
+              );
+            }
+          }
+
+          // cm:why validated at WRITE time because the runtime failure is invisible: a pool naming a device with no runner on this project produces an unplaceable job that sits `queued` while the fleet reads healthy — rejecting the patch is the only place an operator learns about the typo
+          const pooledStages = (
+            Object.entries(patchStates) as Array<[string, { deviceIds?: string[] } | undefined]>
+          ).filter((entry): entry is [string, { deviceIds: string[] }] =>
+            Boolean(entry[1]?.deviceIds?.length),
+          );
+          if (pooledStages.length > 0) {
+            const wanted = Array.from(new Set(pooledStages.flatMap(([, v]) => v.deviceIds)));
+            const bound = await db
+              .select({ deviceId: runners.deviceId })
+              .from(runners)
+              .where(and(eq(runners.projectId, projectId), inArray(runners.deviceId, wanted)));
+            const have = new Set(bound.map((r) => r.deviceId));
+            const unknown = pooledStages
+              .map(([stage, v]) => ({ stage, deviceIds: v.deviceIds.filter((d) => !have.has(d)) }))
+              .filter((e) => e.deviceIds.length > 0);
+            if (unknown.length > 0) {
+              throw new PipelineConfigError(
+                'STAGE_POOL_UNKNOWN_RUNNER',
+                'stage runner pool names a device with no runner on this project',
+                { stagesWithUnknownDevices: unknown },
+              );
+            }
           }
         }
 
-        // cm:why validated at WRITE time because the runtime failure is invisible: a pool naming a device with no runner on this project produces an unplaceable job that sits `queued` while the fleet reads healthy — rejecting the patch is the only place an operator learns about the typo
-        const pooledStages = (
-          Object.entries(patchStates) as Array<[string, { deviceIds?: string[] } | undefined]>
-        ).filter((entry): entry is [string, { deviceIds: string[] }] =>
-          Boolean(entry[1]?.deviceIds?.length),
-        );
-        if (pooledStages.length > 0) {
-          const wanted = Array.from(new Set(pooledStages.flatMap(([, v]) => v.deviceIds)));
-          const bound = await db
-            .select({ deviceId: runners.deviceId })
-            .from(runners)
-            .where(and(eq(runners.projectId, projectId), inArray(runners.deviceId, wanted)));
-          const have = new Set(bound.map((r) => r.deviceId));
-          const unknown = pooledStages
-            .map(([stage, v]) => ({ stage, deviceIds: v.deviceIds.filter((d) => !have.has(d)) }))
-            .filter((e) => e.deviceIds.length > 0);
-          if (unknown.length > 0) {
-            throw new PipelineConfigError(
-              'STAGE_POOL_UNKNOWN_RUNNER',
-              'stage runner pool names a device with no runner on this project',
-              { stagesWithUnknownDevices: unknown },
-            );
-          }
+        // ISS-1038 — the row lock above serialises the two writers of this
+        // document; it cannot make a client's map fresher, and a whole-map
+        // `mcpServers` patch carries whatever the client last fetched. Only
+        // this refuses the stale one. `states[x].mcpServers` is untouched: a
+        // stage-scoped sentinel is a deliberate narrower answer and stays
+        // editable on that screen.
+        if ((pipelinePatch as { mcpServers?: unknown }).mcpServers !== undefined) {
+          assertSentinelsUnchanged(
+            nextPipeline.mcpServers as Record<string, unknown> | null | undefined,
+            currentPipeline.mcpServers as Record<string, unknown> | null | undefined,
+          );
         }
+
+        assertMergedConfigValid(currentPipeline, nextPipeline);
+        nextDoc.pipelineConfig = nextPipeline;
       }
-
-      assertMergedConfigValid(currentPipeline, nextPipeline);
-      nextDoc.pipelineConfig = nextPipeline;
-    }
-    const subkey = JSON.stringify(nextDoc);
-    await db.execute(
-      sql`UPDATE projects
+      const subkey = JSON.stringify(nextDoc);
+      await tx.execute(
+        sql`UPDATE projects
           SET agent_config = COALESCE(agent_config, '{}'::jsonb) || ${subkey}::jsonb
           WHERE id = ${projectId}`,
-    );
+      );
+    });
   }
 
   const [row] = await db
@@ -220,37 +285,39 @@ export async function setMcpServerSentinel(input: {
 }): Promise<UpdatePipelineConfigResult> {
   const { projectId, name, enabled } = input;
 
-  const [row] = await db
-    .select({ agentConfig: projects.agentConfig })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!row) throw new PipelineConfigError('PROJECT_NOT_FOUND', 'project not found');
+  await db.transaction(async (tx) => {
+    const [row] = await tx
+      .select({ agentConfig: projects.agentConfig })
+      .from(projects)
+      .where(eq(projects.id, projectId))
+      .for('update')
+      .limit(1);
+    if (!row) throw new PipelineConfigError('PROJECT_NOT_FOUND', 'project not found');
 
-  const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
-  const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
-  const currentServers = (currentPipeline.mcpServers ?? {}) as Record<string, unknown>;
+    const currentAc = (row.agentConfig ?? {}) as Record<string, unknown>;
+    const currentPipeline = (currentAc.pipelineConfig ?? {}) as Record<string, unknown>;
+    const currentServers = (currentPipeline.mcpServers ?? {}) as Record<string, unknown>;
 
-  // Validate the document this write PROJECTS, on the same terms the patch
-  // path uses: a merge that fails while the stored document parses clean is
-  // this write's own doing and is refused; one that was already failing is
-  // not answered with a rule the caller did not break.
-  const nextServers = { ...currentServers };
-  if (enabled) nextServers[name] = true;
-  else delete nextServers[name];
-  assertMergedConfigValid(currentPipeline, { ...currentPipeline, mcpServers: nextServers });
+    // Validate the document this write PROJECTS, on the same terms the patch
+    // path uses: a merge that fails while the stored document parses clean is
+    // this write's own doing and is refused; one that was already failing is
+    // not answered with a rule the caller did not break.
+    const nextServers = { ...currentServers };
+    if (enabled) nextServers[name] = true;
+    else delete nextServers[name];
+    assertMergedConfigValid(currentPipeline, { ...currentPipeline, mcpServers: nextServers });
 
-  // One statement, one key. `jsonb_set` needs the parent to exist, so seed
-  // `mcpServers` with `||` in the same expression when it does not.
-  //
-  // The path is a Postgres `text[]` built with ARRAY[...] and the provider name
-  // bound as a parameter. A JSON-shaped literal reads as a malformed array
-  // literal at the server (22P02) — which a mocked `db.execute` cannot show,
-  // and which tests/integration/mcp-injection-concurrency.test.ts caught.
-  const path = sql`ARRAY['pipelineConfig', 'mcpServers', ${name}]`;
-  await db.execute(
-    enabled
-      ? sql`UPDATE projects
+    // One statement, one key. `jsonb_set` needs the parent to exist, so seed
+    // `mcpServers` with `||` in the same expression when it does not.
+    //
+    // The path is a Postgres `text[]` built with ARRAY[...] and the provider name
+    // bound as a parameter. A JSON-shaped literal reads as a malformed array
+    // literal at the server (22P02) — which a mocked `db.execute` cannot show,
+    // and which tests/integration/mcp-injection-concurrency.test.ts caught.
+    const path = sql`ARRAY['pipelineConfig', 'mcpServers', ${name}]`;
+    await tx.execute(
+      enabled
+        ? sql`UPDATE projects
             SET agent_config = jsonb_set(
               COALESCE(agent_config, '{}'::jsonb)
                 || jsonb_build_object(
@@ -266,10 +333,11 @@ export async function setMcpServerSentinel(input: {
               true
             )
             WHERE id = ${projectId}`
-      : sql`UPDATE projects
+        : sql`UPDATE projects
             SET agent_config = COALESCE(agent_config, '{}'::jsonb) #- ${path}
             WHERE id = ${projectId}`,
-  );
+    );
+  });
 
   return updatePipelineConfig({ projectId, patch: {} });
 }

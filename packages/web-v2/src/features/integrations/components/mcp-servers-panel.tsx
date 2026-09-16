@@ -249,20 +249,22 @@ export function McpServersPanel({ projectId }: { projectId: string }) {
   const injection = useMcpInjection(projectId);
   const setInjection = useSetMcpInjection(projectId);
 
-  // Which provider has a write in flight, and the last failure, both keyed by
-  // provider: a failure on `postman` must not blank the control on `sentry`.
-  const [busy, setBusy] = useState<string | null>(null);
-  const [failed, setFailed] = useState<{ provider: string; message: string; enabled: boolean } | null>(
-    null,
-  );
+  // In-flight writes and the last failure are both keyed BY PROVIDER. The lock
+  // has to be per provider rather than global: the endpoint changes one jsonb
+  // key in one statement and two providers are proved to survive each other
+  // against real Postgres, so a global lock would silently swallow a click on
+  // `sentry` while `postman` was saving — a control that accepts a press and
+  // does nothing. What must not happen is two writes for the SAME provider,
+  // where the panel would settle on whichever response came back last.
+  const [busy, setBusy] = useState<ReadonlySet<string>>(() => new Set());
+  const [failed, setFailed] = useState<
+    Record<string, { message: string; enabled: boolean } | undefined>
+  >({});
 
   function toggle(provider: string, enabled: boolean) {
-    // One write at a time. The control is disabled while one is in flight, so
-    // this is the belt: a second write would race the first and the panel would
-    // settle on whichever response came back last.
-    if (busy) return;
-    setBusy(provider);
-    setFailed(null);
+    if (busy.has(provider)) return;
+    setBusy((b) => new Set(b).add(provider));
+    setFailed((f) => ({ ...f, [provider]: undefined }));
     setInjection.mutate(
       { provider, enabled },
       {
@@ -270,8 +272,13 @@ export function McpServersPanel({ projectId }: { projectId: string }) {
         // the cache by the hook. On failure nothing is written, so the control
         // stays where the server last said it was.
         onError: (err) =>
-          setFailed({ provider, message: formatApiError(err), enabled }),
-        onSettled: () => setBusy(null),
+          setFailed((f) => ({ ...f, [provider]: { message: formatApiError(err), enabled } })),
+        onSettled: () =>
+          setBusy((b) => {
+            const next = new Set(b);
+            next.delete(provider);
+            return next;
+          }),
       },
     );
   }
@@ -313,19 +320,21 @@ export function McpServersPanel({ projectId }: { projectId: string }) {
                   entries={servers.filter((s) => s.provider === state.provider)}
                   projectId={projectId}
                   canEdit={canEdit}
-                  busy={busy === state.provider}
+                  busy={busy.has(state.provider)}
                   onToggle={(enabled) => toggle(state.provider, enabled)}
                 />
-                {failed?.provider === state.provider && (
+                {failed[state.provider] && (
                   <li className="flex items-center gap-3 rounded-md border border-[var(--red-600)] px-3 py-2">
                     <p className="fg-body-sm text-[var(--red-600)]">
-                      Could not change it: {failed.message}
+                      Could not change it: {failed[state.provider]?.message}
                     </p>
                     <Button
                       variant="secondary"
                       size="sm"
                       className="ml-auto"
-                      onClick={() => toggle(failed.provider, failed.enabled)}
+                      onClick={() =>
+                        toggle(state.provider, failed[state.provider]?.enabled ?? false)
+                      }
                     >
                       Try again
                     </Button>

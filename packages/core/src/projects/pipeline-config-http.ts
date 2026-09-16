@@ -14,6 +14,8 @@ export function pipelineConfigHttpError(err: unknown): unknown {
     case 'STAGE_POOL_UNKNOWN_RUNNER':
     // cm:why 400, not 409: the two settings CONFLICT with each other, they do not conflict with live state the operator could wait out. Retrying is never the answer; editing one of the two named settings is.
     case 'CONFIG_CONFLICT':
+    // cm:why 400, not 409: the sentinel is not writable through this door at all, so there is no state to wait out and no retry that helps. The message names the screen that does own it.
+    case 'MCP_SENTINEL_NOT_WRITABLE_HERE':
       return new HTTPException(400, { message: err.message, cause });
     case 'STAGE_HAS_ISSUES':
       return new HTTPException(409, { message: err.message, cause });

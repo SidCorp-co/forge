@@ -37,16 +37,31 @@ function renderStages(stageMcp: Record<string, unknown>) {
 }
 
 describe("StagePermissionsSection integration sentinels (ISS-1038)", () => {
-  it("labels a stored sentinel as an integration scoped to this stage", () => {
+  it("says a `true` sentinel IS injected at this stage", () => {
     renderStages({ epodsystem: true });
     expect(screen.getByText("epodsystem")).toBeTruthy();
-    expect(screen.getByText(/Epodsystem · this stage only/)).toBeTruthy();
+    expect(screen.getByText(/Epodsystem · injected at this stage/)).toBeTruthy();
+  });
+
+  it("says a `false` entry is NOT injected at this stage", () => {
+    // The state this change made effective at dispatch. Labelling it the same
+    // as a `true` would leave the screen stating the opposite of what a job at
+    // this stage gets — which is the defect this whole issue is about, one
+    // level down.
+    renderStages({ epodsystem: false });
+    expect(screen.getByText("epodsystem")).toBeTruthy();
+    expect(screen.getByText(/Epodsystem · NOT injected at this stage/)).toBeTruthy();
+  });
+
+  it("says an object value under an integration name carries no credential", () => {
+    renderStages({ sentry: { type: "stdio", command: "npx" } });
+    expect(screen.getByText(/Sentry · custom spec, no credential attached/)).toBeTruthy();
   });
 
   it("labels a labelled epodsystem_<label> sentinel too", () => {
     renderStages({ epodsystem_store_a: true });
     expect(screen.getByText("epodsystem_store_a")).toBeTruthy();
-    expect(screen.getByText(/Epodsystem · this stage only/)).toBeTruthy();
+    expect(screen.getByText(/Epodsystem · injected at this stage/)).toBeTruthy();
   });
 
   it("names where the project-wide switch lives", () => {
@@ -64,6 +79,6 @@ describe("StagePermissionsSection integration sentinels (ISS-1038)", () => {
   it("does not label a genuine custom server as an integration", () => {
     renderStages({ mything: { type: "stdio" } });
     expect(screen.getByText("mything")).toBeTruthy();
-    expect(screen.queryByText(/· this stage only/)).toBeNull();
+    expect(screen.queryByText(/injected at this stage/)).toBeNull();
   });
 });

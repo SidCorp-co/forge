@@ -72,9 +72,22 @@ async function storedServers(): Promise<Record<string, unknown>> {
   return ((row[0]?.m ?? {}) as Record<string, unknown>) ?? {};
 }
 
+/** Seed the non-sentinel half through the ordinary patch, and any integration
+ *  sentinel through its own writer — which is the only door that writes one. */
 async function seed(mcpServers: Record<string, unknown>): Promise<void> {
-  await mods.updatePipelineConfig({ projectId, patch: { mcpServers } as never });
+  const plain: Record<string, unknown> = {};
+  const sentinels: string[] = [];
+  for (const [name, value] of Object.entries(mcpServers)) {
+    if (value === true && MCP_SENTINELS.includes(name)) sentinels.push(name);
+    else plain[name] = value;
+  }
+  await mods.updatePipelineConfig({ projectId, patch: { mcpServers: plain } as never });
+  for (const name of sentinels) {
+    await mods.setMcpServerSentinel({ projectId, name, enabled: true });
+  }
 }
+
+const MCP_SENTINELS = ['postman', 'epodsystem', 'sentry'];
 
 describe('setMcpServerSentinel against real Postgres (ISS-1038)', () => {
   it('two providers switched on from the same starting map both survive', async () => {
@@ -135,5 +148,71 @@ describe('setMcpServerSentinel against real Postgres (ISS-1038)', () => {
     await seed({ playwright: true });
     await mods.setMcpServerSentinel({ projectId, name: 'postman', enabled: false });
     expect(await storedServers()).toEqual({ playwright: true });
+  });
+});
+
+describe('the Pipeline tab against the Integrations panel (ISS-1038)', () => {
+  const staleSave = (mcpServers: Record<string, unknown>) =>
+    mods.updatePipelineConfig({ projectId, patch: { mcpServers } as never });
+
+  it('refuses BY NAME a save whose map has lost a sentinel, and changes nothing', async () => {
+    // The shape the review named. An operator opens the Pipeline tab, someone
+    // switches Epodsystem on from the Integrations panel, and the first
+    // operator then saves an unrelated catalog change from the config they
+    // fetched a minute ago. That map has no `epodsystem` in it.
+    await seed({ playwright: true });
+    await mods.setMcpServerSentinel({ projectId, name: 'epodsystem', enabled: true });
+
+    await expect(
+      staleSave({ playwright: true, 'chrome-devtools-mcp': true }),
+    ).rejects.toMatchObject({ code: 'MCP_SENTINEL_NOT_WRITABLE_HERE' });
+
+    const stored = await storedServers();
+    // The sentinel is intact — `pixelight` and `butlocs` carry one today and a
+    // save about something else must not take it away.
+    expect(stored.epodsystem).toBe(true);
+    // And the refused write landed NOTHING, rather than half of it.
+    expect(stored['chrome-devtools-mcp']).toBeUndefined();
+    expect(stored.playwright).toBe(true);
+  });
+
+  it('names the provider and where its switch lives', async () => {
+    await seed({ playwright: true });
+    await mods.setMcpServerSentinel({ projectId, name: 'sentry', enabled: true });
+    await expect(staleSave({ playwright: true })).rejects.toMatchObject({
+      message: expect.stringContaining('sentry'),
+    });
+    await expect(staleSave({ playwright: true })).rejects.toMatchObject({
+      message: expect.stringContaining('Settings → Integrations'),
+    });
+  });
+
+  it('accepts a save that round-trips the stored sentinel unchanged', async () => {
+    // What the Pipeline tab actually sends: the map it fetched, sentinels and
+    // all, plus the operator's edit. This must keep working.
+    await seed({ playwright: true });
+    await mods.setMcpServerSentinel({ projectId, name: 'epodsystem', enabled: true });
+
+    await staleSave({ playwright: true, epodsystem: true, 'chrome-devtools-mcp': true });
+
+    const stored = await storedServers();
+    expect(stored.epodsystem).toBe(true);
+    expect(stored['chrome-devtools-mcp']).toBe(true);
+  });
+
+  it('refuses a save that tries to ADD a sentinel through this door', async () => {
+    await seed({ playwright: true });
+    await expect(staleSave({ playwright: true, postman: true })).rejects.toMatchObject({
+      code: 'MCP_SENTINEL_NOT_WRITABLE_HERE',
+    });
+    expect((await storedServers()).postman).toBeUndefined();
+  });
+
+  it('leaves an OBJECT spec under an integration name alone — it is a custom server', async () => {
+    // `expandMcpServers` passes an object through verbatim and the resolvers
+    // test for `=== true`, so this injects no credential and is not a sentinel.
+    await seed({ playwright: true });
+    await staleSave({ playwright: true, sentry: { type: 'stdio', command: 'npx' } });
+    expect((await storedServers()).sentry).toEqual({ type: 'stdio', command: 'npx' });
   });
 });

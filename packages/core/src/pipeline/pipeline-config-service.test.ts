@@ -13,12 +13,14 @@ function buildSelectChain() {
   const rows = selectQueue.shift() ?? [];
   const chain: Record<string, unknown> = {};
   const final = async () => rows;
-  chain.from = () => ({
-    where: () => ({
-      limit: () => final(),
-      then: (onFulfilled: (v: unknown) => unknown) => final().then(onFulfilled),
-    }),
+  // `.for('update')` is the row lock both writers take (ISS-1038); it is
+  // chainable before `.limit()` and returns the same thenable shape.
+  const afterWhere = (): Record<string, unknown> => ({
+    limit: () => final(),
+    for: () => afterWhere(),
+    then: (onFulfilled: (v: unknown) => unknown) => final().then(onFulfilled),
   });
+  chain.from = () => ({ where: () => afterWhere() });
   return chain;
 }
 
@@ -26,10 +28,23 @@ function buildSelectChain() {
 // (ISS-1038); `updatePipelineConfig`'s own tests ignore it.
 const dbExecute = vi.fn(async (_query?: unknown) => undefined);
 
+// ISS-1038 — both writers now run inside `db.transaction`, taking a row lock so
+// a stale whole-map save cannot land on top of a one-key sentinel write. The
+// stub hands the callback a `tx` with the same surface, so these tests still
+// exercise the merge rather than the transaction plumbing; the serialisation
+// itself is proved against real Postgres in
+// tests/integration/mcp-injection-concurrency.test.ts, which is the only place
+// it CAN be proved.
+const tx = {
+  select: () => buildSelectChain(),
+  execute: dbExecute,
+};
+
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => buildSelectChain(),
     execute: dbExecute,
+    transaction: async (fn: (t: typeof tx) => Promise<unknown>) => fn(tx),
   },
 }));
 
