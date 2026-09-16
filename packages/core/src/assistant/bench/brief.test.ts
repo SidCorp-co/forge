@@ -14,7 +14,6 @@ import {
   FAKE_ISSUE,
   FAKE_PROJECT,
   FAKE_TOKEN,
-  FAKE_WAITING,
   type FakeOptions,
 } from './fake-deployment.js';
 import { loadTasks } from './tasks/index.js';

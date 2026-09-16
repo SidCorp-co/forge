@@ -287,9 +287,12 @@ describe('the reference block after the brief joined it (ISS-1066)', () => {
   const base = { query: 'q', reply: 'r', calls: [], error: null };
   const FIXTURES = 'openCount: 682\nclosedCount: 482';
   const TURNS = 'turn 1 asked: hello\nturn 1 replied: hi';
-  const userOf = (input: Parameters<typeof judgeMessages>[0]): string =>
-    judgeMessages(input)[1]?.content ?? '';
-  const before = (reference: string | undefined): string =>
+  const userOf = (input: Parameters<typeof judgeMessages>[0]): string => {
+    const content = judgeMessages(input)[1]?.content;
+    return typeof content === 'string' ? content : '';
+  };
+  // cm:why not named `before`: biome reads a call of that name as a test hook (noDuplicateTestHooks)
+  const preChange = (reference: string | undefined): string =>
     [
       `${ASKED_HEADER}\nq`,
       `${CALLS_HEADER}\n- none`,
@@ -299,27 +302,27 @@ describe('the reference block after the brief joined it (ISS-1066)', () => {
     ].join('\n\n');
 
   it('is byte-identical to the pre-change block with no brief: fixtures alone', () => {
-    expect(userOf({ ...base, reference: FIXTURES })).toBe(before(FIXTURES));
+    expect(userOf({ ...base, reference: FIXTURES })).toBe(preChange(FIXTURES));
   });
 
   it('is byte-identical with no brief: turns alone', () => {
-    expect(userOf({ ...base, turns: TURNS })).toBe(before(TURNS));
+    expect(userOf({ ...base, turns: TURNS })).toBe(preChange(TURNS));
   });
 
   it('is byte-identical with no brief: both halves, joined by the one newline they always were', () => {
     expect(userOf({ ...base, reference: FIXTURES, turns: TURNS })).toBe(
-      before(`${FIXTURES}\n${TURNS}`),
+      preChange(`${FIXTURES}\n${TURNS}`),
     );
   });
 
   it('is byte-identical with no brief: neither half, so no block at all', () => {
-    expect(userOf(base)).toBe(before(undefined));
+    expect(userOf(base)).toBe(preChange(undefined));
     expect(userOf(base)).not.toContain(REFERENCE_HEADER);
   });
 
   it('puts the brief under its own sub-header, after the fixtures and before the turns', () => {
     expect(userOf({ ...base, reference: FIXTURES, brief: '# P', turns: TURNS })).toBe(
-      before(`${FIXTURES}\n${BRIEF_HEADER}\n# P\n${TURNS}`),
+      preChange(`${FIXTURES}\n${BRIEF_HEADER}\n# P\n${TURNS}`),
     );
   });
 
