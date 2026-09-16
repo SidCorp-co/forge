@@ -134,6 +134,39 @@ pub async fn close(
     Ok(())
 }
 
+/// Tell core what a resumed master decided about a run it inherited.
+// cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST
+// /me/run-sessions/:sessionId/resume-choice` is the other half and is device-scoped.
+// cm:guard a 404 is NOT swallowed, for the same reason as the held-worktree report beside it: a
+// report that cannot find its session has failed to say the thing it exists to say, and answering
+// success would leave a decision recorded on one box and nowhere a human looks.
+pub async fn report_resume_choice(
+    client: &CoreClient,
+    session_id: &str,
+    choice: serde_json::Value,
+) -> Result<()> {
+    let url = client.url(&format!(
+        "/api/devices/me/run-sessions/{session_id}/resume-choice"
+    ));
+    let resp = client
+        .http()
+        .post(&url)
+        .bearer_auth(client.device_token())
+        .json(&choice)
+        .send()
+        .await
+        .map_err(|e| Error::Other(format!("resume-choice report: {e}")))?;
+    if resp.status().as_u16() == 401 {
+        return Err(Error::Unauthorized);
+    }
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let text = resp.text().await.unwrap_or_default();
+        return Err(Error::Other(format!("resume-choice report: {status}: {text}")));
+    }
+    Ok(())
+}
+
 /// Tell core this box is keeping a checkout because its work is on no remote.
 // cm:edge contract -> packages/core/src/devices/pool-routes.ts — `POST
 // /me/run-sessions/:sessionId/held-worktree` is the other half, and it is device-scoped: a box

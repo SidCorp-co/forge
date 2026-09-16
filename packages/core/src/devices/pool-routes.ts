@@ -48,8 +48,10 @@ import { closeMasterSession, ensureMasterSession } from './master-session.js';
 import { readPool } from './pool.js';
 import {
   heldWorktreeSchema,
+  resumeChoiceSchema,
   runCheckpointSchema,
   writeHeldWorktreeReport,
+  writeResumeChoice,
   writeRunEvidence,
 } from './run-evidence.js';
 import {
@@ -213,6 +215,29 @@ devicePoolRoutes.post(
     });
     if (reported === null) throw notFound('run session');
     return c.json(reported);
+  },
+);
+
+// cm:guard the same device scoping as its two neighbours: a box may only speak for its own run
+// sessions, so a report about another box's resumed master is a 404 rather than a comment.
+devicePoolRoutes.post(
+  '/me/run-sessions/:sessionId/resume-choice',
+  requireDevice(),
+  zValidator('param', sessionParamsSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  zValidator('json', resumeChoiceSchema, (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { sessionId } = c.req.valid('param');
+    const written = await writeResumeChoice({
+      deviceId: c.get('device').id,
+      sessionId,
+      choice: c.req.valid('json'),
+    });
+    if (written === null) throw notFound('run session');
+    return c.json(written);
   },
 );
 

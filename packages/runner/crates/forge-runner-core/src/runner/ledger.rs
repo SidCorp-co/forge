@@ -780,6 +780,41 @@ impl Ledger {
         Ok(n)
     }
 
+    /// The choices this master has recorded and core has not yet been told about.
+    // cm:guard `resume_owed_at` carries THREE states and this is the third: unset is nothing owed,
+    // set with no choice is a choice owed (which gates the next declaration), and set WITH a choice
+    // is a report owed. One column rather than two, because the two obligations are one thing —
+    // the pane has not finished answering until the answer is where a human reads it.
+    pub fn choices_awaiting_report(&self, boot_id: &str) -> Result<Vec<Run>> {
+        let mut stmt = self
+            .conn
+            .prepare(&format!(
+                "{SELECT_RUN} WHERE boot_id = ?1
+                   AND resume_owed_at IS NOT NULL AND resume_choice IS NOT NULL"
+            ))
+            .map_err(sql_err)?;
+        let rows = stmt
+            .query_map(params![boot_id], map_run)
+            .map_err(sql_err)?
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(sql_err)?;
+        Ok(rows)
+    }
+
+    /// Core has the choice for this run; the obligation is discharged.
+    // cm:guard cleared only AFTER core answered, never on the write that recorded the choice. A
+    // mark set first turns one unreachable minute into a decision that exists on this box and
+    // nowhere else — which is the silence this whole issue is about, arriving from inside the fix.
+    pub fn mark_resume_choice_said(&self, run_id: &str) -> Result<()> {
+        self.conn
+            .execute(
+                "UPDATE runs SET resume_owed_at = NULL WHERE run_id = ?1",
+                params![run_id],
+            )
+            .map_err(sql_err)?;
+        Ok(())
+    }
+
     /// The runs this master inherited that it has not yet said anything about.
     // cm:guard `ended_by IS NULL` as well as the choice being unset: a run that ended while the
     // master was away needs no choice about whether to continue it, and gating a declaration on one

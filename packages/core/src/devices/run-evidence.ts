@@ -148,6 +148,61 @@ export const heldWorktreeSchema = z
 
 export type HeldWorktree = z.infer<typeof heldWorktreeSchema>;
 
+/**
+ * What a resumed master decided about a run it inherited.
+ */
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/control.rs — `RESUME_CHOICES`
+// there is the same closed set, refused by name before it reaches this box's transport.
+// cm:guard `.strict()` and a CLOSED enum, so a fourth word is a 400 rather than a comment nobody
+// can act on. The box refuses it first; this is the half that holds when the box is an older build.
+export const resumeChoiceSchema = z
+  .object({
+    runId: z.string().min(1).max(200),
+    choice: z.enum(['continue', 'restart', 'leave']),
+    why: z.string().min(1).max(2000),
+  })
+  .strict();
+
+export type ResumeChoice = z.infer<typeof resumeChoiceSchema>;
+
+/** The line that makes a second report of the SAME choice a no-op. */
+// cm:guard keyed on the RUN, not the session: one resumed pane answers for several runs and each
+// gets its own comment, while a pane asked twice about one run says it once.
+export function resumeChoiceMarker(runId: string): string {
+  return `resume-choice: ${runId}`;
+}
+
+export function buildResumeChoiceBody(args: { choice: ResumeChoice }): string {
+  const { choice } = args;
+  const said = {
+    continue: 'carry this work on from where it stopped',
+    restart: 'start this work again rather than carry it on',
+    leave: 'leave this work alone — it is somebody else\'s to settle',
+  }[choice.choice];
+  return [
+    '## The master that picked this issue back up chose to ' + `**${choice.choice}**`,
+    '',
+    `\`${resumeChoiceMarker(choice.runId)}\``,
+    '',
+    'The machine handing out work on this project was interrupted and has been resumed. It found',
+    'this issue still held by a run from before the interruption, and had to decide what happens to',
+    'that work before it could hand out anything new.',
+    '',
+    `It chose to ${said}.`,
+    '',
+    'In its own words:',
+    '',
+    `> ${choice.why.replace(/\n/g, '\n> ')}`,
+    '',
+    // cm:guard says the choice was the MASTER's. The box handed it the branch, the worktree and the
+    // state raw and no recommendation; printing this without saying whose judgement it was would
+    // read as the system having decided, which is the thing the design refuses to do.
+    'That judgement is the resumed machine\'s own. It was handed the run\'s branch, checkout and',
+    'state as plain facts with no recommendation attached, and this is what it made of them.',
+  ].join('\n');
+}
+
+
 /** The line that makes a second report of the SAME held state a no-op. */
 // cm:guard keyed on the session AND the head commit, not the session alone. The hold is retried
 // every thirty seconds and must not say so every thirty seconds; but a run that commits again while
@@ -346,6 +401,54 @@ export async function writeHeldWorktreeReport(args: {
       written,
     },
     'run-evidence: a checkout is held because its work is on no remote',
+  );
+  return { issues: rows.length, written };
+}
+
+/**
+ * Say on each issue a resumed master's inherited run holds what it chose and why.
+ */
+// cm:guard REPORTS, like its two neighbours. The master has already decided and the box has already
+// recorded; this is the half that puts the decision where a human reads it, and it moves no status
+// (ISS-1050 criterion 29).
+export async function writeResumeChoice(args: {
+  deviceId: string;
+  sessionId: string;
+  choice: ResumeChoice;
+}): Promise<RunEvidenceResult | null> {
+  const session = await runSessionForDevice(args.deviceId, args.sessionId);
+  if (!session) return null;
+  const keys = (session.issueKeys ?? []).map((k) => canonicalIssueKey(Number(k.split('-')[1])));
+  const rows = await runIssuesWithTestimony(session.projectId, keys);
+  const marker = resumeChoiceMarker(args.choice.runId);
+  const body = buildResumeChoiceBody({ choice: args.choice });
+  let written = 0;
+  for (const row of rows) {
+    const existing = await db
+      .select({ id: comments.id })
+      .from(comments)
+      .where(and(eq(comments.issueId, row.id), sql`${comments.body} LIKE ${`%${marker}%`}`))
+      .limit(1);
+    if (existing.length > 0) continue;
+    await db.insert(comments).values({
+      issueId: row.id,
+      authorId: await ownerOfDevice(args.deviceId),
+      authorDeviceId: args.deviceId,
+      authorAgency: 'agent',
+      body,
+    });
+    written += 1;
+  }
+  logger.info(
+    {
+      sessionId: args.sessionId,
+      deviceId: args.deviceId,
+      runId: args.choice.runId,
+      choice: args.choice.choice,
+      issues: rows.length,
+      written,
+    },
+    'run-evidence: a resumed master said what happens to a run it inherited',
   );
   return { issues: rows.length, written };
 }

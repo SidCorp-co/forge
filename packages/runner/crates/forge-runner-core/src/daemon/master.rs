@@ -554,6 +554,10 @@ async fn sweep(
     // the report describe the state the release is about to refuse — and when the release succeeds
     // instead, the tree is gone and the next sweep finds nothing to report, which is the correct
     // silence (ISS-1050 criterion 33).
+    let choices_said = say_resume_choices(&CoreChoice(client), ledger, &boot).await;
+    if choices_said > 0 {
+        tracing::info!("[master] {choices_said} resume choice(s) said on their issues");
+    }
     let held_said =
         held_report::report_held_worktrees(&held_report::CoreHeld(client), ledger, &boot).await;
     if held_said > 0 {
@@ -834,6 +838,92 @@ fn install_hooks_logged(repo: &std::path::Path, slug: &str) {
             repo.display()
         ),
     }
+}
+
+/// What telling core about a resume choice needs of it.
+#[allow(async_fn_in_trait)]
+pub trait ChoiceReporter {
+    async fn report(
+        &self,
+        session_id: &str,
+        run_id: &str,
+        choice: &str,
+        why: &str,
+    ) -> crate::error::Result<()>;
+}
+
+/// The live implementation, over this box's device credential.
+pub struct CoreChoice<'a>(pub &'a CoreClient);
+
+impl ChoiceReporter for CoreChoice<'_> {
+    async fn report(
+        &self,
+        session_id: &str,
+        run_id: &str,
+        choice: &str,
+        why: &str,
+    ) -> crate::error::Result<()> {
+        crate::transport::run_sessions::report_resume_choice(
+            self.0,
+            session_id,
+            serde_json::json!({ "runId": run_id, "choice": choice, "why": why }),
+        )
+        .await
+    }
+}
+
+/// Carry every recorded resume choice onto the issues its run holds.
+///
+/// Answers how many it said. Never fails: one core would not take is tried
+/// again next sweep, because the obligation is still recorded.
+// cm:guard the local mark is cleared only once core ANSWERED. Marking first would turn one
+// unreachable minute into a decision that exists on this box and nowhere else, which is the exact
+// silence this issue is about (ISS-1050 criterion 29).
+pub(crate) async fn say_resume_choices(
+    reporter: &impl ChoiceReporter,
+    ledger: &mut Option<Ledger>,
+    boot_id: &str,
+) -> usize {
+    if boot_id.is_empty() {
+        return 0;
+    }
+    let owed = {
+        let Some(led) = ledger.as_ref() else { return 0 };
+        match led.choices_awaiting_report(boot_id) {
+            Ok(rows) => rows,
+            Err(e) => {
+                tracing::warn!("[master] cannot read recorded resume choices: {e}");
+                return 0;
+            }
+        }
+    };
+    let mut said = 0;
+    for run in owed {
+        let (Some(session_id), Some(choice)) = (run.session_id.clone(), run.resume_choice.clone())
+        else {
+            continue;
+        };
+        let why = run.resume_choice_why.clone().unwrap_or_default();
+        match reporter.report(&session_id, &run.run_id, &choice, &why).await {
+            Ok(()) => {
+                if let Some(led) = ledger.as_mut() {
+                    if let Err(e) = led.mark_resume_choice_said(&run.run_id) {
+                        tracing::warn!(
+                            "[master] run {}: core has the choice and the mark did not land: {e} — it will be said again",
+                            run.run_id
+                        );
+                        continue;
+                    }
+                }
+                said += 1;
+            }
+            Err(e) => tracing::warn!(
+                "[master] run {}: core would not take the resume choice ({e}) — the next sweep tries again",
+                run.run_id
+            ),
+        }
+    }
+    said
 }
 
 /// Every run still open under this master, as raw fields.
@@ -1771,6 +1861,100 @@ mod give_back_tests {
     const THIS_SOURCE: &str = include_str!("master.rs");
 
     type R<T> = crate::error::Result<T>;
+
+    #[derive(Default)]
+    struct ChoiceSpy {
+        seen: std::sync::Mutex<Vec<(String, String, String, String)>>,
+        refuse: bool,
+    }
+
+    impl ChoiceReporter for ChoiceSpy {
+        async fn report(
+            &self,
+            session_id: &str,
+            run_id: &str,
+            choice: &str,
+            why: &str,
+        ) -> crate::error::Result<()> {
+            self.seen.lock().unwrap().push((
+                session_id.to_string(),
+                run_id.to_string(),
+                choice.to_string(),
+                why.to_string(),
+            ));
+            if self.refuse {
+                return Err(crate::error::Error::Other("503".into()));
+            }
+            Ok(())
+        }
+    }
+
+    fn a_run_that_chose(choice: &str, why: &str) -> Option<Ledger> {
+        let mut led = Ledger::open_in_memory().unwrap();
+        led.create_run_group(crate::runner::ledger::NewRun {
+            run_id: "run-1".into(),
+            project_id: "proj-1".into(),
+            master_session_id: "master-1".into(),
+            worktree_path: std::path::PathBuf::from("/w/one"),
+            boot_id: "boot-a".into(),
+            issue_keys: vec!["ISS-7".into()],
+        })
+        .unwrap();
+        led.attach_session("run-1", "core-sess-1").unwrap();
+        led.owe_resume_choices("master-1", "boot-a").unwrap();
+        led.record_resume_choice("run-1", "master-1", choice, why)
+            .unwrap();
+        Some(led)
+    }
+
+    // cm:guard criterion 29's second half: the choice has to reach the ISSUE, not just the ledger.
+    // A decision recorded on one box and nowhere a human reads is the silence this whole issue is
+    // about, one level up.
+    #[tokio::test]
+    async fn a_recorded_choice_is_carried_to_core_with_its_reason() {
+        let mut led = a_run_that_chose("restart", "the branch has nothing on it");
+        let spy = ChoiceSpy::default();
+
+        let said = say_resume_choices(&spy, &mut led, "boot-a").await;
+
+        assert_eq!(said, 1);
+        let seen = spy.seen.lock().unwrap();
+        let (session, run, choice, why) = seen.first().expect("one report");
+        assert_eq!(session, "core-sess-1");
+        assert_eq!(run, "run-1");
+        assert_eq!(choice, "restart");
+        assert_eq!(why, "the branch has nothing on it");
+    }
+
+    // cm:guard said ONCE. The sweep runs every thirty seconds and the obligation is cleared only
+    // after core answered, so a decision must not become a comment a minute forever.
+    #[tokio::test]
+    async fn a_choice_core_has_taken_is_not_said_again() {
+        let mut led = a_run_that_chose("leave", "somebody else's to settle");
+        let spy = ChoiceSpy::default();
+
+        assert_eq!(say_resume_choices(&spy, &mut led, "boot-a").await, 1);
+        assert_eq!(say_resume_choices(&spy, &mut led, "boot-a").await, 0);
+
+        assert_eq!(spy.seen.lock().unwrap().len(), 1, "one report, one comment");
+    }
+
+    // cm:guard the mark is cleared only once core ANSWERED. Marking first turns one unreachable
+    // minute into a decision that exists on this box and nowhere else.
+    #[tokio::test]
+    async fn a_choice_core_refused_is_said_again_on_the_next_sweep() {
+        let mut led = a_run_that_chose("continue", "the work stands");
+        let refusing = ChoiceSpy {
+            refuse: true,
+            ..Default::default()
+        };
+
+        assert_eq!(say_resume_choices(&refusing, &mut led, "boot-a").await, 0);
+
+        let taking = ChoiceSpy::default();
+        assert_eq!(say_resume_choices(&taking, &mut led, "boot-a").await, 1);
+        assert_eq!(taking.seen.lock().unwrap().len(), 1);
+    }
 
     fn three_inherited() -> Vec<InheritedRun> {
         (1..=3)
