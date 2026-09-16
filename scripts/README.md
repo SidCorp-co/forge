@@ -273,7 +273,6 @@ unit-tested.
 
 - (none) — full run
 - `--ci-parity` — only the parity proof; cheap, zero-dep, no install needed
-- `--no-advisory` — skip the `cm impact` pass
 
 Exit codes: `0` clean, `1` violations, `2` a check could not run.
 
@@ -628,9 +627,10 @@ every neighbour stubbed out — that proves the function runs, not that the flow
 sources marked `authoritative` in `.forge/conformance.json` (today: the integration suite) settle a
 step.
 
-The step list comes from a grep, but the step **count** comes from `cm flow <name>`; a disagreement
-exits `2`. Deleting the last annotation of a declared flow, or declaring a flow nobody annotated,
-also exits `2` — never `0`.
+The step list and the step count both come from one `git grep -n -I -- cm:flow` over the checkout;
+there is no second source and so no disagreement to detect. What the flows declared in
+`.forge/conformance.json` carry is a name and a description, not a count. Deleting the last
+annotation of a declared flow, or declaring a flow nobody annotated, exits `2` — never `0`.
 
 ```bash
 pnpm --filter @forge/core test:integration:coverage   # produces the authoritative report
