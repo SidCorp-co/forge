@@ -2856,17 +2856,9 @@
 
 ### Fixed
 
-- **The assistant no longer writes a memory note for every sentence you say.** Asked to remember
-  something, it used to file a note for each fact stated in passing, and often the request itself,
-  word for word: ten turns of a release thread left eight or nine notes, and a store that keeps every
-  sentence is one nobody reads back. Before a note is written it is now read against a short set of
-  rules, the same ones Forge's own agents are held to: one durable fact or decision per note, not the
-  message copied back, not a second note for one thing, not a copy of what the project already holds,
-  not a note about the conversation itself. A note that fails is refused with the rule named and an
-  example of what would pass, so the assistant rewrites or drops it. The assistant also learned the
-  tracker's word for an issue waiting on information, `needs_info`, and that a draft is unfiled, not
-  waiting, after naming a draft when asked which issue was waiting. The benchmark's release-thread
-  task now holds it to two notes.
+- **The assistant no longer files a memory note for every sentence you say.** Each note is read
+  against rules before it is written; one that fails is refused with the rule and an example
+  of what would pass.
 
 - **The assistant benchmark no longer passes a reply that recites the product's whole issue
   lifecycle when asked for this project's pipeline states, and no longer counts a dropped
