@@ -67,6 +67,51 @@ async function anotherBox() {
   return createTestDevice(harness.db, user.id);
 }
 
+/** Wait until Postgres itself says both declarations are blocked on the box run key. */
+// cm:why this asks the DATABASE what is happening rather than timing how long nothing happens, and
+// the difference is the whole point of the test. The assertion it feeds — that neither caller has
+// answered — is an ABSENCE, and an absence is satisfied by any reason at all: a pool with no free
+// connection, a worker the scheduler has not run, a box carrying five suites at once. That is the
+// same wrong-green this test was written to replace (see the guard above), reintroduced through the
+// clock. TWO advisory locks on this exact key is a POSITIVE fact that only the locking code can
+// produce: the unlocked `openRunSession` never takes the lock, so the second and third never
+// appear, and this fails by its own bound instead of by a timeout somebody will read as flake.
+//
+// cm:why the count of two is what discriminates, and `NOT granted` is not. Measured, not assumed: a
+// plant that removed the lock AND dropped the `NOT granted` clause still failed, reporting one — the
+// harness's own holder. The clause narrows what is counted to callers that are WAITING, which rules
+// out an implementation that asks for the key without blocking on it and proceeds anyway; it does
+// not carry the weight the bound does.
+//
+// cm:why the timing dependency that REMAINS is the bound, and it is one-sided on purpose. A slow
+// box takes longer to reach two waiters and still passes; only a box that never reaches them fails.
+// Raising it would not turn a red green, which is why it is safe at a number chosen to sit well
+// inside vitest's 30s default rather than tuned to this machine.
+async function bothAreWaitingOn(deviceId: string, boxRunId: string): Promise<void> {
+  const key = `run-session:${deviceId}:${boxRunId}`;
+  const deadline = Date.now() + 10_000;
+  let seen = -1;
+  while (Date.now() < deadline) {
+    const rows = (await harness.db.execute(sql`
+      SELECT count(*)::int AS n
+        FROM pg_locks
+       WHERE locktype = 'advisory'
+         AND NOT granted
+         AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+         AND classid = ((hashtextextended(${key}, 0) >> 32) & 4294967295)::oid
+         AND objid = (hashtextextended(${key}, 0) & 4294967295)::oid
+    `)) as unknown as { n: number }[];
+    seen = rows[0]?.n ?? 0;
+    if (seen >= 2) return;
+    await new Promise((r) => setTimeout(r, 25));
+  }
+  throw new Error(
+    `both declarations should be BLOCKED on the box run key while the harness holds it; ` +
+      `Postgres reports ${seen} waiter(s) after 10s. A declaration that does not wait on this key ` +
+      `is reading around the claim rather than making it.`,
+  );
+}
+
 describe('a declaration retried after a lost answer', () => {
   // cm:guard this is the failure this whole issue is about, arriving from inside the fix. The box
   // writes its ledger row and then calls core; if core commits and the answer never gets back — a
@@ -198,7 +243,7 @@ describe('a declaration retried after a lost answer', () => {
       settled.push('second');
       return r;
     });
-    await new Promise((r) => setTimeout(r, 500));
+    await bothAreWaitingOn(device.id, boxRunId);
 
     expect(
       settled,
