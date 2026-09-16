@@ -15,6 +15,7 @@ function deps(fetch: CliDeps['fetch'], files: Record<string, string> = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const written: Record<string, string> = {};
+  const made: string[] = [];
   const d: CliDeps = {
     fetch,
     readFile: async (path) => {
@@ -25,12 +26,20 @@ function deps(fetch: CliDeps['fetch'], files: Record<string, string> = {}) {
     writeFile: async (path, text) => {
       written[path] = text;
     },
+    mkdir: async (path) => {
+      made.push(path);
+    },
+    writeNew: async (path, text) => {
+      if (written[path] !== undefined)
+        throw Object.assign(new Error(`EEXIST: ${path}`), { code: 'EEXIST' });
+      written[path] = text;
+    },
     stdout: (line) => out.push(line),
     stderr: (line) => err.push(line),
     now: () => new Date('2026-09-16T00:00:00.000Z'),
     randomId: () => 'deadbeef',
   };
-  return { d, out, err, written };
+  return { d, out, err, written, made };
 }
 
 const RUN = ['run', '--api', 'https://api.test', '--project', 'qa', '--out', '/tmp/out.json'];

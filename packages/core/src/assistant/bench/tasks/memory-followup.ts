@@ -3,6 +3,7 @@ import type { Task } from '../task.js';
 /** "It" in the second turn is the project the first turn named; the follow-up must resolve it. */
 export const memoryFollowup: Task = {
   id: 'memory-followup',
+  intent: 'Name the project this room is scoped to and count its open issues.',
   budgetSeconds: 120,
   fixtures: ['projectName'],
   turns: [

@@ -230,6 +230,80 @@ The first block is the evidence ISS-1057 starts from: five screen rejections who
 read as served, so the five rejected attempts are the reading ISS-1057 owes before it touches the
 shape check; twelve of forty-eight turns spent on `-h`; and five links in a shape the web does not open.
 
+## Harvest: judged rows become candidate tasks
+
+`pnpm --filter @forge/core bench:assistant harvest <history.json> --out <dir>` reads a judged
+history file and writes one candidate task module per row the judge called `no` or `partial`
+whose intent no shipped task covers (`harvest.ts:harvest`). It reads a file and writes files:
+no model is asked and the deployment is never called. A file with no `judge` key, or one judged
+before its rows carried the person's `query` (`history --judge` writes `query` and `askedBy` on
+every judged row since ISS-1055), is refused by name with `history --judge` as the way to a file
+it can read.
+
+A candidate is a `Task` in the benchmark's own shape, ready to be moved into `tasks/` by a
+person's commit and nowhere else: the scrubbed real query as the message, the judge's `intent`
+as the task's `intent` line, `budgetSeconds: 90`, and `checks: []` — the one field a person must
+write, and the reason `validateTasks` refuses the candidate (`turn 1 carries no check`) until
+they do. Its header carries the provenance: the `chat_logs` id, the room (`session_id`), the
+created-at time, and the judge's verdict and reason. Every shipped task carries an `intent` line
+for the same reason; coverage (`harvest.ts:coverage`) is the share of the row's intent content
+words (letters only, four or more, minus `STOPWORDS`) found in one task's intent and id, covered
+at `COVERED_SHARE` (0.6) or above. No model is asked.
+
+Every text the module carries is scrubbed first — the query, and the judge's intent and reason,
+which repeat what the person wrote (`harvest.ts:scrubQuery`): e-mail addresses become `<email>`,
+`@handles` and the name the row knows the asker by (`askedBy`) become `<person>`, issue keys
+become `ISS-<n>`, UUIDs `<uuid>`, and a URL's host `<host>`. Nothing is guessed from
+capitalisation. The rows skipped are printed with the reason: `judged yes`, `intent covered by
+<task> (<share>)`, `unreadable verdict`, `query too short` (under `MIN_QUERY_WORDS`, three).
+
+The printout on 2026-09-16 over the QA project window 2026-09-14..17 on beta, re-read with
+`history --judge cx/gpt-6-astra` at this change (40 judged rows: 31 yes, 8 partial, 1 no); the
+skipped list is cut to the rows not judged `yes`:
+
+```
+$ bench:assistant harvest beta-history-judged.json --out /tmp/a1055/candidates
+wrote 3 candidate(s) to /tmp/a1055/candidates
+  assistant-identify-itself-explain-role-2110b11a.ts — The person wanted the assistant to identify itself and explain its role in two sentences.
+  proof-archiving-keeps-message-7418d242.ts — The person wanted proof from ISS-<n> of whether archiving keeps the message.
+  filed-profile-page-header-remaining-cc2f3a23.ts — The person wanted a bug filed for the profile page header remaining light in dark mode.
+skipped 37:
+  8646c47d — intent covered by out-of-reach-tests (80%)
+  8ee70263 — retry row, not a person's query
+  64d3da6d — retry row, not a person's query
+  031a5b1e — intent covered by open-issues-linked (100%)
+  81f8607b — intent covered by open-issues-linked (100%)
+  e6264100 — retry row, not a person's query
+  ... 31 rows — judged yes
+
+$ bench:assistant harvest <the ISS-1054 file, judged before query was recorded> --out /tmp/old
+beta-history-judged.json was judged before ISS-1055 and its rows carry no query; run history --judge on the window again
+```
+
+One of the three, as written (`checks: []` is the person's to fill; the query's issue key, had it
+carried one, would read `ISS-<n>`):
+
+```ts
+// Harvested by bench:assistant harvest (ISS-1055) from a judged history row.
+// chat_logs id: cc2f3a23-bdfa-46d6-928b-d3f7bfed0efc
+// room (session_id): 7419a207-d918-4a84-80aa-a9b300ebbad5
+// created at: 2026-09-14T17:37:34.233Z
+// judge cx/gpt-6-astra said partial: The assistant drafted a relevant bug report and requested some useful details, but explicitly did not file it and also imposed unnecessary requirements.
+import type { Task } from '../task.js';
+
+/** The expectations are a person's to write: `validateTasks` refuses the empty checks list until then. */
+export const filedProfilePageHeaderRemainingCc2f3a23: Task = {
+  id: "filed-profile-page-header-remaining-cc2f3a23",
+  intent: "The person wanted a bug filed for the profile page header remaining light in dark mode.",
+  budgetSeconds: 90,
+  turns: [{ message: "The header on the profile page stays light when I turn dark mode on. Can you file that as a bug?", checks: [] }],
+};
+```
+
+The door's retry rows — a query that is the corrective instruction the screen sent back, marked
+`screen_repair` by history — are skipped as `retry row, not a person's query`: a task built on one
+would send the model a system check.
+
 ## What it does not do
 
 - Weight the judge into `pass`, pass^k or the ladder's score; `--judge` annotates, it never scores.

@@ -15,6 +15,10 @@ export interface JudgedRow {
   source: string;
   modes: FailureMode[];
   judge: JudgeResult;
+  /** The person's query as the judge read it; absent on a file judged before ISS-1055. */
+  query?: string;
+  /** The row's `user_key`, the name the door knew the asker by; null where it had none. */
+  askedBy?: string | null;
 }
 
 export interface JudgeGroup {

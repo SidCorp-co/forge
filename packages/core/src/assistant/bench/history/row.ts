@@ -11,6 +11,8 @@ export type HistoryRow = ChatLogRow & {
   query: string | null;
   model: string | null;
   source: string | null;
+  /** `chat_logs.user_key`; absent from rows the route served before it carried the column. */
+  userKey?: string | null;
 };
 
 export interface Window {

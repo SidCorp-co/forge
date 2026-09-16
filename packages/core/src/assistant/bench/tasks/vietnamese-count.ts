@@ -3,6 +3,8 @@ import type { Task } from '../task.js';
 /** A Vietnamese question gets a Vietnamese answer with a number in it. */
 export const vietnameseCount: Task = {
   id: 'vietnamese-count',
+  intent:
+    'Answer a Vietnamese question about the open-issue count in Vietnamese, the language the person wrote in.',
   budgetSeconds: 120,
   turns: [
     {

@@ -24,6 +24,7 @@ function deps(fetch: CliDeps['fetch'], files: Record<string, string> = {}) {
   const out: string[] = [];
   const err: string[] = [];
   const written: Record<string, string> = {};
+  const made: string[] = [];
   const d: CliDeps = {
     fetch,
     readFile: async (path) => {
@@ -34,12 +35,20 @@ function deps(fetch: CliDeps['fetch'], files: Record<string, string> = {}) {
     writeFile: async (path, text) => {
       written[path] = text;
     },
+    mkdir: async (path) => {
+      made.push(path);
+    },
+    writeNew: async (path, text) => {
+      if (written[path] !== undefined)
+        throw Object.assign(new Error(`EEXIST: ${path}`), { code: 'EEXIST' });
+      written[path] = text;
+    },
     stdout: (line) => out.push(line),
     stderr: (line) => err.push(line),
     now: () => new Date('2026-09-16T12:00:00.000Z'),
     randomId: () => 'deadbeef',
   };
-  return { d, out, err, written };
+  return { d, out, err, written, made };
 }
 
 let n = 0;
@@ -356,5 +365,108 @@ describe('history --judge', () => {
     const h = readHistoryResult(written['/tmp/h.json'] ?? '');
     expect(h.judge?.sample).toBe(40);
     expect(h.judge?.rows).toHaveLength(4);
+  });
+});
+
+describe('harvest', () => {
+  const judged = (rows: unknown[]) =>
+    JSON.stringify({
+      at: 'x',
+      api: 'https://api.test',
+      commit: 'c',
+      version: 'v',
+      window: { projectSlug: 'qa', from: '2026-09-01', to: '2026-09-02', source: null },
+      budgetSeconds: 60,
+      maxIterations: 8,
+      resolved: false,
+      excludedSessions: [],
+      excludedRows: 0,
+      groups: [],
+      flagged: [],
+      judge: {
+        model: 'cx/judge',
+        sample: rows.length,
+        rows,
+        groups: [],
+        agreement: { ruleFailed: { judged: 0, no: 0 }, clean: { judged: 0, yes: 0 } },
+      },
+    });
+  const row = (chatLogId: string, served: string, intent: string, query: string) => ({
+    chatLogId,
+    sessionId: 'room',
+    createdAt: 'x',
+    model: 'm',
+    source: 'web',
+    modes: [],
+    judge: { intent, served, reason: 'r', quote: '' },
+    query,
+    askedBy: null,
+  });
+
+  it('writes every candidate under --out, prints what it wrote and skipped, exits 0 and never calls the deployment', async () => {
+    let calls = 0;
+    const fetch: CliDeps['fetch'] = async () => {
+      calls += 1;
+      throw new Error('the deployment must not be called');
+    };
+    const { d, out, err, written, made } = deps(fetch, {
+      '/h.json': judged([
+        row(
+          '8646c47d-0000-4000-8000-000000000001',
+          'no',
+          'Archive the room and prove the message survived.',
+          'Archive this room and show me the message is still there.',
+        ),
+        row('3333aaaa-0000-4000-8000-000000000003', 'yes', 'x', 'How many open issues are there?'),
+      ]),
+    });
+    expect(await main(['harvest', '/h.json', '--out', '/tmp/cands/'], {}, d)).toBe(0);
+    expect(calls).toBe(0);
+    expect(made).toEqual(['/tmp/cands/']);
+    expect(Object.keys(written)).toEqual([
+      '/tmp/cands/archive-room-prove-message-survived-8646c47d.ts',
+    ]);
+    expect(written['/tmp/cands/archive-room-prove-message-survived-8646c47d.ts']).toContain(
+      'export const archiveRoomProveMessageSurvived8646c47d: Task = {',
+    );
+    expect(out).toEqual([
+      'wrote 1 candidate(s) to /tmp/cands/',
+      '  archive-room-prove-message-survived-8646c47d.ts — Archive the room and prove the message survived.',
+      'skipped 1:',
+      '  3333aaaa — judged yes',
+    ]);
+    expect(err).toEqual([]);
+  });
+
+  it('never overwrites a candidate: a second harvest into the same directory is refused by path and the edited file stands', async () => {
+    const h = judged([
+      row(
+        '8646c47d-0000-4000-8000-000000000001',
+        'no',
+        'Archive the room and prove the message survived.',
+        'Archive this room and show me the message is still there.',
+      ),
+    ]);
+    const { d, err, written } = deps(fake().fetch, { '/h.json': h });
+    expect(await main(['harvest', '/h.json', '--out', '/tmp/cands'], {}, d)).toBe(0);
+    const path = '/tmp/cands/archive-room-prove-message-survived-8646c47d.ts';
+    written[path] = 'a person wrote the checks here';
+    expect(await main(['harvest', '/h.json', '--out', '/tmp/cands'], {}, d)).toBe(1);
+    expect(err[0]).toBe(
+      `${path} exists and a candidate is never overwritten; move or delete it first (nothing after it was written)`,
+    );
+    expect(written[path]).toBe('a person wrote the checks here');
+  });
+
+  it('refuses with the usage when the file or --out is missing, and by name a file with no judge', async () => {
+    const plain = JSON.stringify({ ...JSON.parse(judged([])), judge: undefined });
+    const { d, err } = deps(fake().fetch, { '/p.json': plain });
+    expect(await main(['harvest'], {}, d)).toBe(1);
+    expect(err[0]).toContain('harvest needs a history file');
+    expect(err[0]).toContain('bench:assistant harvest <history.json> --out <dir>');
+    expect(await main(['harvest', '/p.json'], {}, d)).toBe(1);
+    expect(err[1]).toContain('--out is required');
+    expect(await main(['harvest', '/p.json', '--out', '/tmp/x'], {}, d)).toBe(1);
+    expect(err[2]).toBe('/p.json carries no judge; run history --judge on the window first');
   });
 });

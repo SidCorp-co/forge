@@ -9,6 +9,7 @@ import { loadTasks, SHIPPED_TASKS } from './tasks/index.js';
 
 const base: Task = {
   id: 'x',
+  intent: 'a planted intent',
   budgetSeconds: 10,
   turns: [{ message: 'hi', checks: [{ kind: 'notFallback' }] }],
 };

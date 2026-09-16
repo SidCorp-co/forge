@@ -3,6 +3,7 @@ import type { Task } from '../task.js';
 /** With the style set to bullets before the turn, a prose summary is the regression. */
 export const summaryInStyle: Task = {
   id: 'summary-in-style',
+  intent: 'Summarize what the project is about in one message, in the style the person set.',
   budgetSeconds: 90,
   preference: { setup: { answerStyle: 'bullets' }, restore: 'baseline' },
   turns: [
