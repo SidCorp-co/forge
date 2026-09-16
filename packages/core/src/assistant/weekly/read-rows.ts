@@ -1,8 +1,10 @@
 /**
  * ISS-1056 — the week's rows read in-process: `chat_logs` by project and window, the same
  * conditions `chat-logs/routes.ts` builds, oldest first; the benchmark's own rooms named by the
- * title `bench/run.ts` gives every room it opens (`bench <runId> <taskId>`); and UUID issue links
- * resolved against `issues.id`, read-only. No API client, no credential.
+ * title `bench/run.ts` gives every room it opens (`bench <runId> <taskId>`) and, since the bench
+ * deletes those rooms with a read-back so the title lookup finds nothing afterwards, the sessions
+ * that spoke nothing but shipped task messages and whose room is gone (ISS-1065 D2); and UUID issue
+ * links resolved against `issues.id`, read-only. No API client, no credential.
  */
 
 import { and, asc, eq, gte, inArray, like, lt } from 'drizzle-orm';
@@ -10,7 +12,9 @@ import { db } from '../../db/client.js';
 import { chatLogs, issues } from '../../db/schema.js';
 import { conversations } from '../../db/schema-conversations.js';
 import { extractIssueLinks, type LinkOutcome } from '../bench/grade.js';
+import { benchSessions } from '../bench/history/bench-sessions.js';
 import type { HistoryRow } from '../bench/history/row.js';
+import { loadTasks } from '../bench/tasks/index.js';
 
 export interface WeekQuery {
   projectSlug: string;
@@ -25,6 +29,8 @@ export interface WeekRows {
   rows: HistoryRow[];
   /** The `conversations.id` of every bench room among the rows' sessions. */
   benchRooms: string[];
+  /** Sessions that spoke nothing but shipped task messages and whose room is gone (ISS-1065 D2), apart from `benchRooms`. */
+  benchRoomsGone: string[];
 }
 
 /** The title prefix `bench/run.ts:runTrial` gives every room the benchmark opens. */
@@ -76,7 +82,23 @@ export async function readWeekRows(q: WeekQuery, dbi: Executor = db): Promise<We
               ),
             )
         ).map((r) => r.id);
-  return { rows, benchRooms: benchRooms.sort() };
+  const candidates = benchSessions(rows, loadTasks()).filter((id) => !benchRooms.includes(id));
+  const present =
+    candidates.length === 0
+      ? new Set<string>()
+      : new Set(
+          (
+            await dbi
+              .select({ id: conversations.id })
+              .from(conversations)
+              .where(inArray(conversations.id, candidates))
+          ).map((r) => r.id),
+        );
+  return {
+    rows,
+    benchRooms: benchRooms.sort(),
+    benchRoomsGone: candidates.filter((id) => !present.has(id)),
+  };
 }
 
 /** Every UUID issue link across the rows, resolved against `issues.id`. */

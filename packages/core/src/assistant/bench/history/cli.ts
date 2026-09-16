@@ -12,6 +12,7 @@ import { agreement, callLines, type Judge, judgeFromEnv, tally, tallyLine } from
 import { readResult } from '../result.js';
 import { loadTasks } from '../tasks/index.js';
 import { readAttempt } from '../trail.js';
+import { benchSessions } from './bench-sessions.js';
 import { compareHistory, compareHistoryLines } from './compare.js';
 import { type GradeRowOptions, gradeRow } from './grade-row.js';
 import {
@@ -196,7 +197,13 @@ async function history(argv: string[], env: Env, deps: CliDeps): Promise<number>
   const version = await client.version();
   const excluded = await excludedSessions(deps, f.excludes);
   const rows = await readWindow(client, window);
-  const excludedSet = new Set(excluded);
+  const byRunFile = new Set(excluded);
+  const byTask: string[] = [];
+  // cm:guard a person's session whose one query happens to be a task's message keeps its room, and the room answers 200 or 403; only a room that is gone AND spoke nothing but task messages is a bench room (codex F1)
+  for (const id of benchSessions(rows, loadTasks()))
+    if (!byRunFile.has(id) && (await client.roomGone(id))) byTask.push(id);
+  const excludedSet = new Set([...byRunFile, ...byTask]);
+  const excludedRowsByTask = rows.filter((r) => r.sessionId && byTask.includes(r.sessionId)).length;
   const isExcluded = (row: HistoryRow) => Boolean(row.sessionId && excludedSet.has(row.sessionId));
   const base: GradeRowOptions = { budgetSeconds, maxIterations };
   // cm:why a link inside an excluded bench room is never fetched: those rows are dropped by
@@ -235,6 +242,9 @@ async function history(argv: string[], env: Env, deps: CliDeps): Promise<number>
     resolved: f.resolve,
     excludedSessions: excluded,
     ...summary,
+    excludedRows: summary.excludedRows - excludedRowsByTask,
+    excludedSessionsByTask: byTask,
+    excludedRowsByTask,
     ...(judged ? { judge: judged } : {}),
   };
   await deps.writeFile(f.values.out ?? '', serializeHistory(result));
@@ -252,7 +262,7 @@ async function history(argv: string[], env: Env, deps: CliDeps): Promise<number>
     );
   }
   deps.stdout(
-    `excluded ${result.excludedRows} row(s) of ${excluded.length} bench room(s); wrote ${f.values.out}`,
+    `excluded ${result.excludedRows} row(s) of ${excluded.length} bench room(s) by run file and ${excludedRowsByTask} row(s) of ${byTask.length} by task message; wrote ${f.values.out}`,
   );
   return 0;
 }

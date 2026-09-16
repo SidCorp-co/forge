@@ -10,6 +10,7 @@ import type { BenchResult, TrialResult } from './result.js';
 
 const trial = (pass: boolean, over: Partial<TrialResult> = {}): TrialResult => ({
   at: '2026-09-16T00:00:00.000Z',
+  retried: 0,
   pass,
   error: null,
   seconds: 10,

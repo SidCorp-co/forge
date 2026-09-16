@@ -107,7 +107,7 @@ const MATRIX: Record<
     messages: [
       'List this project’s pipeline states in order, from the first an issue enters to the last, using the exact state keys the pipeline config names.',
     ],
-    kinds: [['listInOrder', 'notFallback', 'noHelp', 'noPlaceholder']],
+    kinds: [['listInOrder', 'onlyFrom', 'notFallback', 'noHelp', 'noPlaceholder']],
     fixtures: ['pipelineStates'],
   },
   'project-waiting-issue': {
@@ -273,13 +273,14 @@ describe('what the loader refuses', () => {
     ).toBe('new');
   });
 
-  it('a listInOrder list, a labeled value or a linkTo id with a placeholder no fixture fills', () => {
+  it('a listInOrder list, a labeled value, a linkTo id or an onlyFrom list with a placeholder no fixture fills', () => {
     const turn = base.turns[0];
     if (!turn) throw new Error('base has no turn');
     for (const check of [
       { kind: 'listInOrder', list: '{ghost}' },
       { kind: 'labeled', label: /open/i, value: '{ghost}' },
       { kind: 'linkTo', issueId: '{ghost}' },
+      { kind: 'onlyFrom', list: '{ghost}' },
     ] as const) {
       expect(() => validateTasks([{ ...base, turns: [{ ...turn, checks: [check] }] }])).toThrow(
         '{ghost}',

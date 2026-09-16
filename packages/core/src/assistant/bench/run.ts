@@ -315,6 +315,7 @@ export async function runTrial(
 ): Promise<{ result: TrialResult; model: string | null; judgeRefused: string | null }> {
   const now = args.now ?? (() => new Date());
   const started = now();
+  const retriesBefore = args.client.retries();
   const dateFrom = new Date(started.getTime() - SKEW_MS).toISOString();
   const readTrail = (): Promise<TrailRow[]> =>
     args.client.trail<TrailRow>({
@@ -388,6 +389,7 @@ export async function runTrial(
     judgeRefused: refused,
     result: {
       at: started.toISOString(),
+      retried: args.client.retries() - retriesBefore,
       // cm:guard a trial whose room or notes outlived the cleanup is not a pass: the next reading of the project would carry them
       pass:
         error === null &&
