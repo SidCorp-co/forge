@@ -236,8 +236,12 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     }
   });
 
-  // cm:guard this is the only `action=update` case that reaches `assertPrincipalIsAdmin`: the refusal below short-circuits before the gate, so deleting this one takes the admin gate's coverage with it.
-  it('action=update writes a projectFacts patch for an admin principal', async () => {
+  // cm:guard this is the only `action=update` case that reaches `assertPrincipalIsAdmin`: every
+  // refusal below short-circuits before the gate, so deleting this one takes the admin gate's
+  // coverage with it. Until ISS-1048 the case was a `projectFacts` patch; that argument is now one
+  // of the refusals, so the gate is exercised through `plugins` instead — the remaining update
+  // argument that reaches a write.
+  it('action=update writes a plugins patch for an admin principal', async () => {
     const tool = forgeConfigTool({
       principal: fakePrincipal,
       projectSlug: null,
@@ -245,7 +249,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
 
     selectLimit
       .mockResolvedValueOnce([adminAccessRow])
-      .mockResolvedValueOnce([{ agentConfig: { projectFacts: { 'build-commands': 'keep' } } }])
+      .mockResolvedValueOnce([{ agentConfig: { plugins: {} } }])
       .mockResolvedValueOnce([
         {
           id: PROJECT_ID,
@@ -254,19 +258,17 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           baseBranch: 'develop',
           liveBranch: 'release',
           releaseModel: 'promote',
-          agentConfig: { projectFacts: { 'build-commands': 'keep', 'done-means': 'new' } },
+          agentConfig: {},
         },
       ]);
 
     await tool.handler({
       action: 'update',
       projectId: PROJECT_ID,
-      projectFacts: { 'done-means': 'new' },
+      plugins: [{ marketplace: 'sidcorp-co/forge-plugin', name: 'forge' }],
     });
 
-    expect(updateSet).toHaveBeenCalledWith({
-      agentConfig: { projectFacts: { 'build-commands': 'keep', 'done-means': 'new' } },
-    });
+    expect(updateSet).toHaveBeenCalled();
   });
 
   it('action=update refuses a stateContext argument by name, and writes nothing', async () => {
@@ -321,6 +323,36 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
  * promises exactly that. Its own describe because it is a different rule from the ISS-135 branch
  * layering above, and because the enclosing callback there is already at its frozen length.
  */
+describe('forge_config tool — the retired agentConfig keys (ISS-1048)', () => {
+  // cm:guard a refusal and not a dropped field. `inputSchema` is `.strict()`, so removing these two
+  // arguments alone would answer `Unrecognized key: projectFacts` — which tells an agent the
+  // argument is gone and nothing about where the project's prose went. The refusal carries the
+  // destination, and it fires before the admin gate, so an unprivileged caller gets it too.
+  it.each([
+    ['projectFacts', { 'done-means': 'new' }, /knowledge_entries/],
+    ['projectFactsConfig', { 'done-means': { alwaysInject: true } }, /injection/],
+  ])('action=update refuses %s by name, and writes nothing', async (key, value, expected) => {
+    const tool = forgeConfigTool({
+      principal: fakePrincipal,
+      projectSlug: null,
+    });
+
+    await expect(
+      tool.handler({ action: 'update', projectId: PROJECT_ID, [key]: value }),
+    ).rejects.toThrow(expected);
+    expect(updateSet).not.toHaveBeenCalled();
+  });
+
+  it('names forge_knowledge in both refusals, since that is where the caller must go', async () => {
+    const tool = forgeConfigTool({ principal: fakePrincipal, projectSlug: null });
+    for (const key of ['projectFacts', 'projectFactsConfig']) {
+      await expect(
+        tool.handler({ action: 'update', projectId: PROJECT_ID, [key]: {} }),
+      ).rejects.toThrow(/forge_knowledge/);
+    }
+  });
+});
+
 describe('forge_config tool — the live branch under the release model', () => {
   // cm:guard the column is deliberately NOT nulled for non-`promote` projects — 25 of 32 in the
   // fleet carry a branch nothing promotes to — so the ONLY thing stopping an agent acting on one is

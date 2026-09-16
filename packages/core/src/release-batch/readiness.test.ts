@@ -7,11 +7,25 @@
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+// cm:why `knowledge/service.js` reaches `embeddings/index.js`, which validates the whole
+// environment at import. This file reads the knowledge store and never embeds anything, so
+// it mocks env rather than declaring three secrets it has no use for.
+vi.mock('../config/env.js', () => ({ env: {} }));
+
 const listBindings = vi.fn(async () => [] as unknown[]);
 const selectLimit = vi.fn(async () => [] as unknown[]);
 
 vi.mock('../db/client.js', () => ({
   db: { select: () => ({ from: () => ({ where: () => ({ limit: selectLimit }) }) }) },
+}));
+
+// cm:why the db mock below answers `select().from().where().limit()`, which is the shape THIS
+// module's own queries have. The knowledge read is `.orderBy()` with no `.limit()`, so it is
+// stubbed at the service seam instead of widening the chain mock — what these tests are about is
+// which gaps get reported, not how the store spells its select.
+const heldSlugs = vi.fn(async (_id: string): Promise<string[]> => Object.keys(CONTRACT_KNOWLEDGE));
+vi.mock('../knowledge/service.js', () => ({
+  selectAllSlugsFromKnowledge: (id: string) => heldSlugs(id),
 }));
 
 vi.mock('../integrations/store.js', async (importActual) => {
@@ -23,7 +37,7 @@ const { loadReleaseReadiness } = await import('./readiness.js');
 
 const PROJECT_ID = '44444444-4444-4444-8444-444444444444';
 
-const CONTRACT_FACTS = {
+const CONTRACT_KNOWLEDGE = {
   'build-commands': 'pnpm build',
   'test-commands': 'pnpm test',
 };
@@ -34,14 +48,24 @@ function project(over: {
   releaseModel?: 'none' | 'promote' | 'publish';
   releaseStrategy?: string | null;
   facts?: Record<string, unknown>;
+  repoPath?: string | null;
 }) {
   const row = {
+    // Every real project on this deployment declares a repository — the pipeline cannot check one
+    // out otherwise — so the fixture declares one too. Since ISS-1048 the build/test obligations are
+    // conditioned on that declaration, and a fixture silently missing it would make the contract
+    // tests below pass by owing nothing at all. The repo-less case gets its own test.
+    repoPath: over.repoPath === undefined ? '/srv/app' : over.repoPath,
+    repoUrl: null,
     baseBranch: over.baseBranch ?? 'main',
     liveBranch: over.liveBranch === undefined ? null : over.liveBranch,
     releaseModel: over.releaseModel ?? 'none',
     releaseStrategy: over.releaseStrategy ?? null,
-    agentConfig: { projectFacts: over.facts ?? CONTRACT_FACTS },
+    agentConfig: {},
   };
+  // The knowledge store answers the contract now, so what a test used to express as jsonb keys is
+  // expressed as the slugs the store holds. The bodies are ignored; presence is the whole question.
+  heldSlugs.mockResolvedValue(Object.keys(over.facts ?? CONTRACT_KNOWLEDGE));
   // cm:guard ONE row shape answers both project reads this path makes (`resolveReleaseDeclaration`'s and this module's own) — a `mockResolvedValueOnce` here would satisfy the first and leave the second reading an empty project, which passes for the wrong reason.
   selectLimit.mockResolvedValue([row]);
 }
@@ -88,6 +112,19 @@ describe('loadReleaseReadiness', () => {
     expect(out?.gaps).not.toContain('release-runner');
   });
 
+  // cm:guard ISS-1048 conditioned the build and test obligations on a declared repository, where
+  // the old six-key contract owed them unconditionally. That is only sound because a project with
+  // no repository has no checkout to build: asking it for build commands reports a gap nobody can
+  // close. If a repo-less project ever becomes buildable, this test is the one that must change.
+  it('owes no build or test commands to a project that declares no repository', async () => {
+    project({ facts: {}, repoPath: null });
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps).not.toContain('build-commands');
+    expect(out?.gaps).not.toContain('test-commands');
+  });
+
   it('says nothing at all when a none project has answered its contract', async () => {
     project({});
 
@@ -118,7 +155,7 @@ describe('loadReleaseReadiness', () => {
       releaseModel: 'promote',
       liveBranch: 'production',
       releaseStrategy: 'merge-branch',
-      facts: { ...CONTRACT_FACTS, 'release-procedure': 'cut a tag, then deploy' },
+      facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
     });
     liveBinding({
       releaseRunnerLabel: 'prod-box',
@@ -140,7 +177,7 @@ describe('loadReleaseReadiness', () => {
       releaseModel: 'promote',
       liveBranch: 'production',
       releaseStrategy: 'merge-branch',
-      facts: { ...CONTRACT_FACTS, 'release-procedure': 'cut a tag, then deploy' },
+      facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
     });
     liveBinding({
       releaseRunnerLabel: 'prod-box',
@@ -265,7 +302,7 @@ describe('loadReleaseReadiness — more than one live channel', () => {
   it('names two live channels as their own gap, even where nothing else is missing', async () => {
     project({
       releaseModel: 'publish',
-      facts: { ...CONTRACT_FACTS, 'release-procedure': 'ship it' },
+      facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'ship it' },
     });
     listBindings.mockResolvedValue(
       ['b-1', 'b-2'].map((id) => ({
@@ -295,7 +332,7 @@ describe('loadReleaseReadiness — more than one live channel', () => {
   it('reports no multi-channel gap for the one-channel projects the fleet actually has', async () => {
     project({
       releaseModel: 'publish',
-      facts: { ...CONTRACT_FACTS, 'release-procedure': 'ship it' },
+      facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'ship it' },
     });
     liveBinding({
       releaseRunnerLabel: 'prod-box',

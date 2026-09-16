@@ -1,6 +1,7 @@
 import { RECONCILE_GATES, RECONCILE_RUN_STATUSES, RECONCILE_VERDICTS } from '@forge/contracts';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('../config/env.js', () => ({ env: {} })); // cm:why `knowledge/service.js` reaches `embeddings/index.js`, which validates the whole environment at import. This file reads the knowledge store and never embeds anything, so it mocks env rather than declaring three secrets it has no use for.
 // cm:why `tables`, when set, routes `.limit()` by the real table object passed to `.from()` so one query (e.g. runners) can resolve different rows than another (e.g. skills) in the same test; unset keeps every query resolving to `rows`.
 // cm:why `txSelect`/`txReturning` are the transaction-scoped analogues — keyed by table, consulted only inside `db.transaction`'s callback, so a run's FOR-UPDATE select and a guarded UPDATE...returning() on the SAME table can resolve independently.
 const dbStub = vi.hoisted(() => ({
@@ -159,7 +160,7 @@ describe('validateC1C5', () => {
     runningBody: 'some body',
     runningHash: 'abc123',
     charter: null,
-    projectFacts: {},
+    projectKnowledge: {},
     pipelineConfig: {},
     recentRunEvidence: [],
     priorReconcileHistory: [],

@@ -33,12 +33,24 @@ export const slugSchema = z
   .min(1)
   .max(512)
   .regex(/^[a-z0-9][a-z0-9-]*$/, 'slug must be kebab-case');
-export const bodySchema = z.string().min(1).max(100_000);
+// cm:guard `.min(1)` alone lets a whitespace-only body through, and since ISS-1048 the presence of
+// a slug is what answers a project's knowledge obligations. The old `missingAutonomousFacts` read
+// the text and trimmed it, so `'   '` counted as unanswered there; without this refusal a project
+// could satisfy `build-commands` with three spaces and flip autonomous with nothing to run.
+export const bodySchema = z
+  .string()
+  .min(1)
+  .max(100_000)
+  .refine((s) => s.trim().length > 0, 'body must contain more than whitespace');
 
 export const upsertKnowledgeInputSchema = z.object({
   projectId: z.uuid(),
   slug: slugSchema,
-  title: z.string().min(1).max(500),
+  title: z
+    .string()
+    .min(1)
+    .max(500)
+    .refine((s) => s.trim().length > 0, 'title must contain more than whitespace'),
   body: bodySchema,
   kind: z.enum(knowledgeKindEnum).default('guide'),
   injection: z.enum(knowledgeInjectionEnum).default('on_demand'),

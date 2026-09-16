@@ -1771,16 +1771,6 @@ export const knowledgeEntriesRelations = relations(knowledgeEntries, ({ one }) =
   project: one(projects, { fields: [knowledgeEntries.projectId], references: [projects.id] }),
 }));
 
-// cm:guard the rollback source for migration 0254, which writes both original maps here verbatim BEFORE it strips them. The knowledge rows cannot serve as the way back: the inverse of the copy cannot tell a migrated row from an entry that was always a knowledge entry, and cannot recover a body edited after the cutover. Restoring is one statement over this table; prose written or edited in `knowledge_entries` after the cutover stays there and is not copied back.
-export const projectFactsMigrationBackup = pgTable('project_facts_migration_backup', {
-  projectId: uuid('project_id')
-    .primaryKey()
-    .references(() => projects.id, { onDelete: 'cascade' }),
-  projectFacts: jsonb('project_facts').notNull().default({}),
-  projectFactsConfig: jsonb('project_facts_config').notNull().default({}),
-  migratedAt: timestamp('migrated_at', { withTimezone: true }).notNull().defaultNow(),
-});
-
 export const taskStatuses = ['backlog', 'todo', 'in_progress', 'in_review', 'done'] as const;
 export type TaskStatus = (typeof taskStatuses)[number];
 

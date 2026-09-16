@@ -459,7 +459,7 @@ export function renderStageFactsText(
     projectParts.push(
       [
         '### Project guides (fetch on demand)',
-        "This project's knowledge store could not be read while this prompt was built, so the guide index below is missing rather than empty. Do not conclude that this project has no guides: list them yourself with `forge_knowledge` (action `list`) before deciding anything rests on their absence.",
+        "This project's knowledge store could not be read while this prompt was built, so this index is missing rather than empty. Do not conclude that this project has no guides: list them yourself with `forge_knowledge` (action `list`) before deciding anything rests on their absence.",
       ].join('\n'),
     );
   } else {

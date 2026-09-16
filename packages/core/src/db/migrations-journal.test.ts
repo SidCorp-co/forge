@@ -106,7 +106,10 @@ describe('drizzle migration journal', () => {
       let inBlock = false;
       for (const [i, line] of sql.split('\n').entries()) {
         const text = line.trim();
-        const dollars = text.match(/\$[a-z_]*\$/gi)?.length ?? 0;
+        // Digits are legal in a dollar-quote tag and `[a-z_]*` could not see one, so a block
+        // opened as `$iss1048$` never toggled `inBlock` and its PL/pgSQL `BEGIN` was reported as
+        // transaction control — a refusal naming the wrong thing, on a migration doing nothing wrong.
+        const dollars = text.match(/\$[a-z_][a-z0-9_]*\$|\$\$/gi)?.length ?? 0;
         if (!text.startsWith('--') && !inBlock) {
           const bare = text.replace(/;$/, '').toUpperCase();
           // cm:why `END` is absent though it commits: it also closes a `CASE`, which three live
