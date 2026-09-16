@@ -11,6 +11,36 @@ export type ConversationShape = "direct" | "group";
 export type ConversationMessageRole = "user" | "assistant" | "system";
 
 /**
+ * What a room is talking to, picked in the composer and frozen by the first message.
+ */
+// cm:edge contract -> packages/core/src/db/schema-conversations.ts — the same two names the
+// `conversations_mode_known` check constraint holds. A third added there and not here arrives as a
+// value this file's unions cannot represent.
+export type ConversationMode = "assistant" | "agent";
+
+/** What a person is told about a runner-hosted turn while it is not yet an answer. */
+export type AgentTurnState = "dispatched" | "running" | "delivered" | "failed";
+
+export interface AgentTurn {
+  windowId: string;
+  sessionId: string;
+  state: AgentTurnState;
+  /** On `failed` only: which failure it was. */
+  reason: string | null;
+}
+
+/**
+ * Whether this room may still be opened in Agent mode, and why not where it may not.
+ */
+// cm:guard SERVED and never derived here, the same rule `canChangeMembership` follows: whether a box
+// could take a turn is a fleet read the browser cannot make, and a composer that guessed would offer
+// a control every press of which the server refuses (ISS-1039).
+export interface AgentModeOffer {
+  available: boolean;
+  reason: string | null;
+}
+
+/**
  * Every way a window can close.
  */
 // cm:edge contract -> packages/core/src/db/schema-conversations.ts — the same eight names the `conversation_windows_decision_known` check constraint holds; a ninth added there and not here renders as an unlabelled silence rather than failing.
@@ -22,13 +52,16 @@ export type ConversationWindowDecision =
   | "guard-dormant"
   | "authority-refused"
   | "unreachable"
-  | "undetermined";
+  | "undetermined"
+  | "handed-off";
 
 export interface ConversationRow {
   id: string;
   adapter: ConversationAdapter;
   externalId: string;
   shape: ConversationShape;
+  /** Null while nobody has settled it — the one state in which the composer still offers the pick. */
+  mode: ConversationMode | null;
   title: string | null;
   updatedAt: string;
   /** Set = archived: out of the default list, still readable, still restorable (ISS-1028). */
@@ -57,7 +90,11 @@ export interface ConversationWindow {
 }
 
 /** Every decision that is NOT an answer — which is every decision a person reads a reason for. */
-export type SilenceDecision = Exclude<ConversationWindowDecision, "answered">;
+// cm:guard `handed-off` is excluded as well as `answered`, and for the opposite reason: `answered`
+// has a message row below it, and `handed-off` has a turn still being written that the thread
+// renders as its own live entry. Rendering it as a silence would tell a person the agent read their
+// question and said nothing, about a session that has not finished reading it (ISS-1039).
+export type SilenceDecision = Exclude<ConversationWindowDecision, "answered" | "handed-off">;
 
 export interface ConversationParticipant {
   id: string;
@@ -117,6 +154,8 @@ export interface ConversationCandidates {
 export interface ConversationDetail extends ConversationRow, ConversationMembership {
   messages: ConversationMessage[];
   windows: ConversationWindow[];
+  agentMode: AgentModeOffer;
+  agentTurns: AgentTurn[];
 }
 
 /**
@@ -142,6 +181,7 @@ export type ThreadEntry =
   | { kind: "said"; key: string; message: ConversationMessage }
   | { kind: "silence"; key: string; decision: SilenceDecision; detail: unknown }
   | { kind: "pending"; key: string }
+  | { kind: "agent-turn"; key: string; turn: AgentTurn }
   | { kind: "outbox"; key: string; item: OutboxMessage };
 
 /**
@@ -159,6 +199,19 @@ export const SILENCE_REASON: Record<SilenceDecision, string> = {
 };
 
 /**
+ * What a person reads beside a runner-hosted turn, in each of its four states.
+ */
+// cm:guard four sentences and not one, which is the whole of ISS-1039's screen rule: a blank thread
+// that means dispatched, running, delivered and failed alike is this feature failing in the field.
+// `delivered` carries none, because the answer is a message row below it and a label saying it
+// arrived would be the same fact twice.
+export const AGENT_TURN_LABEL: Record<Exclude<AgentTurnState, "delivered">, string> = {
+  dispatched: "Asked a paired box to take this — waiting for one to pick it up.",
+  running: "A session is working on this on a paired box. The reply arrives here when it finishes.",
+  failed: "This Agent turn did not produce an answer.",
+};
+
+/**
  * The thread, with every silence in the place it happened.
  */
 // cm:guard this is criterion 28, and the two states it separates are told apart by DIFFERENT SHAPES rather than by wording: a `silence` entry is a window that closed on a decision, and a `pending` entry is a window that has not closed at all. Rendering an unclosed window as a silence — or omitting it — is how "nobody has answered yet" and "it read this and said nothing" become the same thing on screen, which is the exact confusion this criterion names.
@@ -170,7 +223,12 @@ export function threadEntries(
   messages: ConversationMessage[],
   windows: ConversationWindow[],
   outbox: OutboxMessage[] = [],
+  agentTurns: AgentTurn[] = [],
 ): ThreadEntry[] {
+  // cm:guard a `handed-off` window is matched to its TURN by window id, and a window with no turn
+  // behind it renders as `pending` rather than as nothing: the pair can be split for as long as the
+  // read between them takes, and a gap there is the blank thread this rule exists to remove.
+  const turnByWindow = new Map(agentTurns.map((t) => [t.windowId, t]));
   const bySeq = new Map<number, ConversationWindow[]>();
   for (const w of windows) {
     const at = bySeq.get(w.lastSeq) ?? [];
@@ -183,7 +241,14 @@ export function threadEntries(
     out.push({ kind: "said", key: message.id, message });
     for (const w of bySeq.get(message.seq) ?? []) {
       if (!w.closedAt) out.push({ kind: "pending", key: w.id });
-      else if (w.decision && w.decision !== "answered")
+      else if (w.decision === "handed-off") {
+        const turn = turnByWindow.get(w.id);
+        // cm:guard a DELIVERED turn contributes no entry, for the reason `answered` does not: its
+        // reply is a message row below it, and a label beside it would print the same answer twice.
+        if (turn && turn.state !== "delivered")
+          out.push({ kind: "agent-turn", key: w.id, turn });
+        else if (!turn) out.push({ kind: "pending", key: w.id });
+      } else if (w.decision && w.decision !== "answered")
         out.push({ kind: "silence", key: w.id, decision: w.decision, detail: w.decisionDetail });
     }
   }

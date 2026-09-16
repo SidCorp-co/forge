@@ -5,7 +5,12 @@ import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/rea
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { conversationsApi, type OpenConversationArgs } from "./api";
-import type { ConversationDetail, ConversationMembership, ConversationRow } from "./types";
+import type {
+  ConversationDetail,
+  ConversationMembership,
+  ConversationMode,
+  ConversationRow,
+} from "./types";
 
 /** A room in a list that spans projects — the project is the query it came from, not a column. */
 export interface ListedConversation extends ConversationRow {
@@ -65,11 +70,29 @@ export function useConversationsAcrossProjects(projectIds: string[], archived = 
   };
 }
 
+/**
+ * How often a room with a live Agent turn in it re-reads itself.
+ */
+// cm:guard polling and NOT a socket, and the reason is what the two can carry: the delivery event
+// tells a tab a message arrived, and what a person watching an Agent turn is waiting on is a STATE —
+// a box picking the turn up, the session starting — which no row change publishes. It stops the
+// moment nothing is live, so a room in Assistant mode polls not at all (ISS-1039, plan consult F3).
+const AGENT_TURN_POLL_MS = 4000;
+
 export function useConversation(id: string | undefined) {
   return useQuery({
     queryKey: ["conversations", id],
     queryFn: () => conversationsApi.detail(id as string),
     enabled: !!id,
+    // cm:guard the predicate reads the SERVED state and never a local guess: `dispatched` and
+    // `running` are the two that can still move on their own, and a room holding neither is read
+    // exactly as often as it was before this change.
+    refetchInterval: (query) => {
+      const live = query.state.data?.agentTurns?.some(
+        (t) => t.state === "dispatched" || t.state === "running",
+      );
+      return live ? AGENT_TURN_POLL_MS : false;
+    },
   });
 }
 
@@ -157,12 +180,33 @@ export function useRemoveParticipant(conversationId: string | undefined) {
 export function useSendMessage() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: ({ conversationId, content }: { conversationId: string; content: string }) =>
-      conversationsApi.send(conversationId, content),
+    mutationFn: ({
+      conversationId,
+      content,
+      mode,
+    }: {
+      conversationId: string;
+      content: string;
+      /** Sent on the FIRST message of a room and never again; the server refuses it after that. */
+      mode?: ConversationMode | undefined;
+    }) => conversationsApi.send(conversationId, content, mode),
     onSuccess: async (result) => {
       await qc.cancelQueries({ queryKey: ["conversations", result.conversationId] });
+      // cm:guard the room's own `mode` and its `agentTurns` are written with the messages, because
+      // the first send is what settles the first and starts the second: a room that kept a cached
+      // `mode: null` would go on offering the pick after it had been made, and one that kept an
+      // empty `agentTurns` would show a dispatched Agent turn as a thread with nothing in it until
+      // the next poll (ISS-1039).
       qc.setQueryData<ConversationDetail>(["conversations", result.conversationId], (prev) =>
-        prev ? { ...prev, messages: result.messages, windows: result.windows } : prev,
+        prev
+          ? {
+              ...prev,
+              mode: result.mode,
+              messages: result.messages,
+              windows: result.windows,
+              agentTurns: result.agentTurns,
+            }
+          : prev,
       );
       qc.invalidateQueries({ queryKey: ["conversations", "list"] });
     },

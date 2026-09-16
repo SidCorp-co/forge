@@ -80,7 +80,7 @@ beforeEach(() => {
       id: r.id,
       adapter: "web",
       externalId: `v-${r.id}`,
-      shape: "direct",
+      shape: "direct", mode: null,
       title: r.title,
       updatedAt: r.updatedAt,
       archivedAt: archivedIds.has(r.id) ? "2026-09-10T00:00:00.000Z" : null,

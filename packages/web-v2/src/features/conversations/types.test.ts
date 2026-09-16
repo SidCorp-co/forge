@@ -92,6 +92,7 @@ describe("conversationTitle", () => {
     adapter: "web" as const,
     externalId: "v1",
     shape: "direct" as const,
+    mode: null,
     title: null,
     updatedAt: "2026-09-14T00:00:00.000Z",
     archivedAt: null,

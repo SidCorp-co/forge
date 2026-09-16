@@ -9,7 +9,10 @@
 
 import { Icon, StreamingText } from "@/design";
 import {
+  AGENT_TURN_LABEL,
   SILENCE_REASON,
+  type AgentTurn,
+  type AgentTurnState,
   type ConversationMessage,
   type ConversationWindow,
   type OutboxMessage,
@@ -97,15 +100,18 @@ export function ConversationThread({
   messages,
   windows,
   outbox = [],
+  agentTurns = [],
   onRetry,
 }: {
   messages: ConversationMessage[];
   windows: ConversationWindow[];
   /** What this browser has accepted and the server has not confirmed (ISS-1031). */
   outbox?: OutboxMessage[];
+  /** The runner-hosted turns this room has held, as the server reads their state (ISS-1039). */
+  agentTurns?: AgentTurn[];
   onRetry?: (id: string) => void;
 }) {
-  const entries = threadEntries(messages, windows, outbox);
+  const entries = threadEntries(messages, windows, outbox, agentTurns);
   return (
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
@@ -119,6 +125,7 @@ export function ConversationThread({
             </p>
           );
         }
+        if (entry.kind === "agent-turn") return <AgentTurnEntry key={entry.key} turn={entry.turn} />;
         return (
           <div
             key={entry.key}
@@ -130,6 +137,40 @@ export function ConversationThread({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * A runner-hosted turn, in whichever of its states it is in.
+ */
+// cm:guard the three states are told apart by what the person can DO about each, not by a colour:
+// `dispatched` and `running` are waits with nothing owed of them, and `failed` owes a sentence
+// saying which failure it was and a sentence saying what to do next. A single grey line for all
+// three is the blank thread ISS-1039 exists to remove.
+// cm:guard `delivered` never reaches here — `threadEntries` drops it, because its reply is a message
+// row below it and a label would print the same answer twice.
+function AgentTurnEntry({ turn }: { turn: AgentTurn }) {
+  const failed = turn.state === "failed";
+  return (
+    <div
+      data-testid="thread-agent-turn"
+      data-agent-turn-state={turn.state}
+      className="rounded-md border border-line bg-surface px-3 py-2"
+    >
+      <p className="fg-body-sm text-muted">
+        {AGENT_TURN_LABEL[turn.state as Exclude<AgentTurnState, "delivered">]}
+      </p>
+      {failed && turn.reason && <p className="fg-body-sm mt-1 text-fg">{turn.reason}</p>}
+      {failed && (
+        <p className="fg-caption mt-1 text-subtle">
+          Ask again to start a fresh session, or open a conversation in Assistant mode if the
+          question does not need the repository.
+        </p>
+      )}
+      {!failed && (
+        <p className="fg-caption mt-0.5 font-mono text-subtle">agent · {turn.state}</p>
+      )}
     </div>
   );
 }

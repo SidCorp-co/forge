@@ -31,7 +31,7 @@ const room = (id: string, updatedAt: string, title: string, archivedAt: string |
   id,
   adapter: "web",
   externalId: `v-${id}`,
-  shape: "group",
+  shape: "group", mode: null,
   title,
   updatedAt,
   archivedAt,

@@ -11,6 +11,7 @@ import type {
   ConversationCandidates,
   ConversationDetail,
   ConversationMembership,
+  ConversationMode,
   ConversationRow,
 } from "./types";
 
@@ -23,12 +24,15 @@ export interface OpenConversationArgs {
   handles?: Array<{ userId?: string | null; projectId: string }>;
 }
 
-export interface SendResult extends Pick<ConversationDetail, "messages" | "windows"> {
+export interface SendResult
+  extends Pick<ConversationDetail, "messages" | "windows" | "agentTurns"> {
   conversationId: string;
   windowId: string;
   seq: number;
   /** What the window this message opened settled on, where this call routed it. */
   decision: string | null;
+  /** What the room answers in, read back off the row rather than echoed from the request. */
+  mode: ConversationMode;
 }
 
 export const conversationsApi = {
@@ -100,12 +104,19 @@ export const conversationsApi = {
       method: "DELETE",
     }),
 
-  // cm:guard this call RUNS the turn and returns what the room then holds, so it takes as long as an answer takes: a caller that treats it as a fire-and-forget would show the question and never the reply, because there is no second request that fetches one.
+  // cm:guard this call runs an ASSISTANT turn and returns what the room then holds, so it takes as
+  // long as an answer takes. An AGENT-mode room answers 202 with no reply in it, and the state of
+  // the turn it started is in `agentTurns` — a caller that read the two the same way would show an
+  // Agent room as settled with nothing in it (ISS-1039).
+  // cm:guard `mode` is sent ONLY when the caller has one, and it is refused by the server on a room
+  // that already holds a message. There is no value of it meaning "leave it as it is": absence
+  // means that, and sending the room's current mode back on every message would be a request the
+  // server is right to refuse.
   /** `POST /api/conversations/:id/messages` — say something, and get the room back. */
-  send: (id: string, content: string) =>
+  send: (id: string, content: string, mode?: ConversationMode) =>
     apiClient<SendResult>(`/conversations/${id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content }),
+      body: JSON.stringify({ content, ...(mode ? { mode } : {}) }),
     }),
 
   /** `PATCH /api/conversations/:id` — rename. */
