@@ -118,10 +118,26 @@ async function history(argv: string[], env: Env, deps: CliDeps): Promise<number>
   const version = await client.version();
   const excluded = await excludedSessions(deps, f.excludes);
   const rows = await readWindow(client, window);
-  const opts: GradeRowOptions = { budgetSeconds, maxIterations };
-  if (f.resolve) opts.lookups = await lookups(client, rows);
-  const graded: Graded[] = rows.map((row) => ({ row, grade: gradeRow(row, opts) }));
-  const summary = summarize(graded, new Set(excluded));
+  const excludedSet = new Set(excluded);
+  const isExcluded = (row: HistoryRow) => Boolean(row.sessionId && excludedSet.has(row.sessionId));
+  const base: GradeRowOptions = { budgetSeconds, maxIterations };
+  // cm:why a link inside an excluded bench room is never fetched: those rows are dropped by
+  // summarize, and a lookup the deployment refuses there would abort the whole export (codex F1);
+  // so they are graded without lookups and the lookups cover the rows that stay.
+  const opts: GradeRowOptions = f.resolve
+    ? {
+        ...base,
+        lookups: await lookups(
+          client,
+          rows.filter((row) => !isExcluded(row)),
+        ),
+      }
+    : base;
+  const graded: Graded[] = rows.map((row) => ({
+    row,
+    grade: gradeRow(row, isExcluded(row) ? base : opts),
+  }));
+  const summary = summarize(graded, excludedSet);
   const result: HistoryResult = {
     at: deps.now().toISOString(),
     api: f.values.api ?? '',

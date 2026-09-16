@@ -187,6 +187,20 @@ describe('history', () => {
     expect(out.at(-1)).toBe('excluded 2 row(s) of 1 bench room(s); wrote /tmp/h.json');
   });
 
+  it('--exclude with --resolve never looks up a link inside an excluded room', async () => {
+    const { fetch, state } = fake();
+    const { d, err, written } = deps(fetch, { '/tmp/run.json': runFile() });
+    expect(
+      await main([...HISTORY, '--exclude', '/tmp/run.json', '--resolve'], ENV, d),
+      err.join('\n'),
+    ).toBe(0);
+    const h = readHistoryResult(written['/tmp/h.json'] ?? '');
+    expect(h.resolved).toBe(true);
+    expect(h.excludedRows).toBe(2);
+    expect(h.groups[0]?.modes.dead_link).toEqual({ count: 0, rate: 0 });
+    expect(state.requests.filter((r) => r.path === `/api/issues/${DEAD_ISSUE_ID}`)).toHaveLength(0);
+  });
+
   it('--source reads one door only, and --resolve looks each link up once and can name dead_link', async () => {
     const { fetch, state } = fake();
     const one = deps(fetch);
