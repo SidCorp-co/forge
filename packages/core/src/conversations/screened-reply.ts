@@ -13,9 +13,13 @@ import { type DoorId, type MessageVerdict, problemsOf } from '../messaging/contr
 import { doorPolicy } from '../messaging/doors.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
+import {
+  emptyFallbackReply,
+  errorFallbackReply,
+  unverifiedFallbackReply,
+} from './fallback-replies.js';
 import { codeAuthored, type ScreenedMessage, screened } from './ports.js';
 
-// cm:guard fallbacks speak AS the handle by name — never as an anonymous "the system" or "the model" voice
 /**
  * What a turn says when it has nothing to add.
  */
@@ -31,19 +35,6 @@ export function declinedTurn(text: string): boolean {
       .replace(/[.!]+$/, '') === NOTHING_TO_ADD
   );
 }
-
-export const errorFallbackReply = (name: string): string =>
-  // cm:ignore CM001 — the i18n pragma `check-source-language` reads to allow this user-facing Vietnamese reply; deleting it to satisfy codemap reds the language gate instead
-  `Xin lỗi, ${name} đang quá tải hoặc gặp sự cố — bạn thử lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
-
-// cm:guard ISS-818 — name the REASON: a bare "couldn't verify" reads to a stakeholder as "didn't understand you" so they rephrase, which cannot help because the question WAS understood and the answer failed the check
-export const unverifiedFallbackReply = (name: string): string =>
-  // cm:ignore CM001 — the i18n pragma `check-source-language` reads to allow this user-facing Vietnamese reply; deleting it to satisfy codemap reds the language gate instead
-  `Xin lỗi, ${name} chưa đối chiếu được số liệu dự án nên không dám gửi câu trả lời chưa chắc chắn — không phải do câu hỏi của bạn, bạn hỏi lại sau ít phút nhé.`; // i18n-allow: user-facing channel reply
-
-export const emptyFallbackReply = (name: string): string =>
-  // cm:ignore CM001 — the i18n pragma `check-source-language` reads to allow this user-facing Vietnamese reply; deleting it to satisfy codemap reds the language gate instead
-  `Xin lỗi, ${name} chưa đưa ra được câu trả lời cho yêu cầu này — bạn diễn đạt lại giúp ${name} nhé.`; // i18n-allow: user-facing channel reply
 
 const correctiveMessage = (problems: string[]): string =>
   `[SYSTEM CHECK — not from the user] Your previous reply cannot be sent as-is: ${problems.join('; ')}. Rewrite it now, keep only verified facts, actually CALL the tools if work is needed, cite issue ids/links only exactly as tools returned them, and reply in the user's language.`;

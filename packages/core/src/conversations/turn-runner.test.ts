@@ -59,7 +59,7 @@ vi.mock('../messaging/reply-screen.js', () => ({
 const { runConversationTurn } = await import('./turn-runner.js');
 const { clearConversationTransports, registerConversationTransport } = await import('./ports.js');
 const { unverifiedFallbackReply, errorFallbackReply, emptyFallbackReply } = await import(
-  './screened-reply.js'
+  './fallback-replies.js'
 );
 
 /** The neutral half of a transport: what the registry holds, and all a turn can reach. */

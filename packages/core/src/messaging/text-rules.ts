@@ -178,7 +178,7 @@ const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-
 /** A Forge issue-navigation target: `/projects/<slug>/issues/<segment>`, behind a host and/or a `#` or not. */
 // cm:why a backtick, a pipe and an asterisk end the segment too: a technical reply puts a valid path in inline code and the closing backtick is not part of the documentId (codex F3).
 // cm:guard a navigation path starts where a path starts — at the text's edge, after whitespace or an opening quote/bracket/backtick, or after an origin — never inside a longer path: `/api/projects/<uuid>/issues/search` is the API, not a link (codex F1 at effaee99).
-const ISSUE_NAV_RE =
+export const ISSUE_NAV_RE =
   /(?<![^\s([<"'`*_])(?:https?:\/\/[^\s/]+\/?)?(#?)\/projects\/([\w-]+)\/issues\/([^\s/?#)\]>,.;:!"'`|*]+)/gi;
 
 /** An issue link the web can open, or none. */

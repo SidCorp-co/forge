@@ -1,0 +1,22 @@
+import type { Task } from '../task.js';
+
+/** A fact stated in the room is answered from the room: forgetting it is the regression. */
+export const memoryQuestion: Task = {
+  id: 'memory-question',
+  budgetSeconds: 90,
+  turns: [
+    {
+      message: 'Please remember this for our chat: my deploy window is Thursday 14:00 UTC.',
+      checks: [{ kind: 'notFallback' }, { kind: 'maxSeconds' }],
+    },
+    {
+      message: 'When is my deploy window?',
+      checks: [
+        { kind: 'mustMatch', patterns: [/thursday/i] },
+        { kind: 'mustMatch', patterns: [/14:00/] },
+        { kind: 'notFallback' },
+        { kind: 'toolsAllowed', tools: ['forge_memory_search', 'forge_memory_note'] },
+      ],
+    },
+  ],
+};

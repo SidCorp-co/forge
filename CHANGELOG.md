@@ -114,6 +114,17 @@
 
 ### Added
 
+- **The assistant has a benchmark.** Until now a change to a persona line, a tool description or a
+  door budget was judged by hand from the next few replies. `pnpm --filter @forge/core
+  bench:assistant run` walks ten fixed tasks through the browser's chat door against a served build,
+  grades each turn from what the deployment itself recorded — the reply, the `chat_logs` rows under
+  the room, the preference trail and a lookup per issue link — with named failure modes and no model
+  judge, restores what it moved with a read-back, and writes one result file. `compare` puts two files
+  side by side per task as pass^k and pass@k with the trial counts, medians and modes; there is no
+  composite score. What it leaves behind is named: preference moves and their restores stay as audit
+  rows, identifiable by the bench room's id. `docs/modules/agent-execution/assistant-bench.md`.
+  (ISS-1051)
+
 - **The workspace connections page is now one list per app, not a wall of equal cards.** Every
   credential used to be an identical card in a three-column grid, and the only way to find one was
   to already know what to type into the search box. That reads fine with one credential per app and
