@@ -492,7 +492,7 @@ async fn stage_and_commit(target: &Target, job_id: &str, attempt: u32, failure: 
 
     let message = commit_message(branch, job_id, attempt, failure);
     let mut argv: Vec<String> = identity_args(wt).await;
-    // cm:guard `--no-verify` is load-bearing, not a shortcut: a pre-commit hook that fails is a likely REASON the job failed, and `core.hooksPath` pointing at a missing dir already refuses every commit on some boxes (see daemon/preflight.rs). A salvage blocked by the repo's own hooks preserves nothing.
+    // cm:guard `--no-verify` is load-bearing, not a shortcut: a pre-commit hook that fails is a likely REASON the job failed, and `core.hooksPath` pointing at a missing dir already refuses every commit on some boxes. A salvage blocked by the repo's own hooks preserves nothing.
     argv.extend(["commit", "--no-verify", "-m", &message].map(str::to_string));
     let argv_ref: Vec<&str> = argv.iter().map(String::as_str).collect();
     if let Some(out) = git(wt, &argv_ref).await {
