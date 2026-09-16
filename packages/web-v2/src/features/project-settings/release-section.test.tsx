@@ -89,6 +89,33 @@ describe("ReleaseSection", () => {
     expect(onScreen).not.toMatch(/closes its issues directly/i);
   });
 
+  // cm:guard the link names what the operator must DO, and `release-target` IS the absence of a
+  // live binding — sending the reader to "set it on the live binding" points at a row that does
+  // not exist. Caught by rendering the real screen against a real core, not by a component test.
+  it("tells a project with no live target to ADD one, not to set something on it", () => {
+    const { container } = renderWith({
+      hasReleaseGate: false,
+      releaseModel: "publish",
+      targetUndeclared: true,
+      gaps: ["release-target"],
+    });
+
+    expect(screen.getByRole("link", { name: /Add a live deploy binding/i })).toBeInTheDocument();
+    const onScreen = (container.textContent ?? "").replace(/\s+/g, " ");
+    expect(onScreen).not.toMatch(/Set it on the live binding/i);
+  });
+
+  it("still says set it on the live binding where the binding is the thing that is there", () => {
+    renderWith({
+      hasReleaseGate: true,
+      releaseModel: "publish",
+      providers: ["coolify"],
+      gaps: ["verify-probes"],
+    });
+
+    expect(screen.getByRole("link", { name: /Set it on the live binding/i })).toBeInTheDocument();
+  });
+
   it("says issues wait at the gate when both halves are declared", () => {
     const { container } = renderWith({
       hasReleaseGate: true,

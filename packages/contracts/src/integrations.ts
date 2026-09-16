@@ -332,72 +332,50 @@ export interface GoogleSecretsInput {
 
 
 /**
- * Body for `POST /:projectId/integrations` — discriminated on `provider`. Each
- * arm validates its own config + secrets. `role` is required on every arm and has NO default: the
- * column it replaced defaulted on seven of eight providers precisely because it demanded a value
- * they had no meaning for. `stages` accompanies `role: 'deploy'` and is refused beside `'service'`.
+ * What a binding is FOR, and — for a `deploy` one — which stages it serves.
+ *
+ * Discriminated on `role`, so the three shapes the server refuses are not expressible here
+ * either: a `service` binding carrying stages, a `deploy` binding carrying none, and a `deploy`
+ * binding carrying an empty array. `stages?: never` is what makes the first one a compile error
+ * rather than a 400 the caller discovers at runtime.
+ *
+ * The provider-capability rule — `role: 'deploy'` only where Forge has a deploy adapter — is NOT
+ * expressed here and is not meant to be. It is a list that changes (`DEPLOY_CAPABLE_PROVIDERS` in
+ * `@forge/contracts/deploy-capability`), and encoding it in this union would make adding an
+ * adapter a breaking type change for every caller. The server refuses it by name instead.
  */
-export type IntegrationBindingCreateInput =
-  | {
-      provider: 'coolify';
-      role: BindingRole;
-  /** Empty for `service`; one or both stages for `deploy`. */
-  stages: DeployStage[];
-      config: CoolifyConfigInput;
-      secrets: CoolifySecretsInput;
-    }
-  | {
-      provider: 'postman';
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: PostmanConfigInput;
-      secrets: PostmanSecretsInput;
-    }
-  | {
-      provider: 'epodsystem';
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: EpodsystemConfigInput;
-      secrets: EpodsystemSecretsInput;
-      /** ISS-558 — optional kebab label for a named storefront (e.g. 'partner-a').
-       *  Absent/empty = the default binding. */
-      label?: string;
-    }
-  | {
-      provider: 'sentry';
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: SentryConfigInput;
-      secrets: SentrySecretsInput;
-    }
-  | {
-      provider: 'rocketchat';
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: RocketchatConfigInput;
-      secrets: RocketchatSecretsInput;
-    }
-  | {
-      provider: 'github';
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: GithubConfigInput;
-      secrets: GithubSecretsInput;
-    }
-  | {
-      provider: 'google';
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: GoogleConfigInput;
-      secrets: GoogleSecretsInput;
-    }
-  | {
-      provider: 'agent';
-      role: BindingRole;
-      stages?: DeployStage[];
-      config: Record<string, unknown>;
-      secrets?: Record<string, never>;
-    };
+export type BindingShapeInput =
+  | { role: 'service'; stages?: never }
+  | { role: 'deploy'; stages: [DeployStage, ...DeployStage[]] };
+
+/**
+ * Body for `POST /:projectId/integrations` — discriminated on `provider`, and on `role` through
+ * `BindingShapeInput`. Each arm validates its own config + secrets. `role` is required on every
+ * arm and has NO default: the column it replaced defaulted on seven of eight providers precisely
+ * because it demanded a value they had no meaning for.
+ */
+export type IntegrationBindingCreateInput = BindingShapeInput &
+  (
+    | { provider: 'coolify'; config: CoolifyConfigInput; secrets: CoolifySecretsInput }
+    | { provider: 'postman'; config: PostmanConfigInput; secrets: PostmanSecretsInput }
+    | {
+        provider: 'epodsystem';
+        config: EpodsystemConfigInput;
+        secrets: EpodsystemSecretsInput;
+        /** ISS-558 — optional kebab label for a named storefront (e.g. 'partner-a').
+         *  Absent/empty = the default binding. */
+        label?: string;
+      }
+    | { provider: 'sentry'; config: SentryConfigInput; secrets: SentrySecretsInput }
+    | { provider: 'rocketchat'; config: RocketchatConfigInput; secrets: RocketchatSecretsInput }
+    | { provider: 'github'; config: GithubConfigInput; secrets: GithubSecretsInput }
+    | { provider: 'google'; config: GoogleConfigInput; secrets: GoogleSecretsInput }
+    | {
+        provider: 'agent';
+        config: Record<string, unknown>;
+        secrets?: Record<string, never>;
+      }
+  );
 
 /** Body for `PATCH /:projectId/integrations/:id` — re-validated against the existing provider. */
 export interface IntegrationBindingUpdateInput {

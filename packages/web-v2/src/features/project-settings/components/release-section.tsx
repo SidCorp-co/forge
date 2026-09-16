@@ -28,6 +28,15 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
     "A live binding declares no verify probe — a release batch is refused, because a gate with no probes closes on the agent's word.",
 };
 
+// cm:guard the link says what the operator must DO, and for one gap that is not "set it on the
+// live binding" — `release-target` IS the absence of a live binding, so sending the reader to
+// change one names a row that does not exist. Every other integration gap is about a declaration
+// missing FROM a binding that is there.
+const INTEGRATION_GAP_LINK: Partial<Record<ReleaseReadiness["gaps"][number], string>> = {
+  "release-target": "Add a live deploy binding",
+  "release-runner-ambiguous": "Reconcile the release runner labels",
+};
+
 // cm:edge contract -> packages/core/src/release-batch/channel.ts — the three modes are decided by `classifyRollback`; rendering `unrepresentable` as "declared" would show a green-looking declaration for a release that will abort (ISS-925).
 const ROLLBACK_TEXT: Record<NonNullable<ReleaseReadiness["rollbackMode"]>, string> = {
   manual: "declared — the release agent follows it",
@@ -190,7 +199,7 @@ export function ReleaseSection({
                 </Link>
               ) : integrationsHref ? (
                 <Link href={integrationsHref} className="underline">
-                  Set it on the live binding
+                  {INTEGRATION_GAP_LINK[g] ?? "Set it on the live binding"}
                 </Link>
               ) : null}
             </Banner>
