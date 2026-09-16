@@ -93,6 +93,7 @@ const runFile = (): string =>
     tasks: [
       {
         id: 't',
+        capability: 'method',
         trials: [
           {
             at: 'x',
@@ -101,9 +102,10 @@ const runFile = (): string =>
             seconds: 1,
             turns: [],
             cleanup: {
-              room: { id: BENCH_ROOM, expected: 'deleted', observed: '404', at: 'x' },
+              rooms: [{ id: BENCH_ROOM, expected: 'deleted', observed: '404', at: 'x' }],
               preferences: { expected: null, observed: null, equal: null, at: null },
               auditRowsAdded: 0,
+              memories: null,
             },
           },
         ],

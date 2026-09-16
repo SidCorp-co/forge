@@ -85,6 +85,73 @@ describe('lookups', () => {
   });
 });
 
+describe('the project readers (ISS-1061)', () => {
+  const on = (over: Partial<Parameters<typeof createFakeDeployment>[0]> = {}) => {
+    const { fetch, state } = fake(over);
+    const client = createClient({ api: 'https://api.test', fetch });
+    client.useToken(FAKE_TOKEN);
+    return { client, state };
+  };
+
+  it('issueCounts walks every page and counts by status', async () => {
+    const { client, state } = on({ pageSize: 1 });
+    expect(await client.issueCounts(FAKE_PROJECT.id)).toEqual({
+      openCount: 1,
+      closedCount: 1,
+      draftCount: 0,
+    });
+    const pages = state.requests.filter(
+      (r) => r.path === `/api/projects/${FAKE_PROJECT.id}/issues`,
+    );
+    expect(pages).toHaveLength(3);
+  });
+
+  it('waitingIssue reads the first needs_info issue and refuses by name where there is none', async () => {
+    const { client } = on();
+    expect(await client.waitingIssue(FAKE_PROJECT.id)).toMatchObject({
+      key: 'ISS-9',
+      id: '55555555-5555-4555-8555-555555555555',
+    });
+    const { client: none } = on({ issues: [FAKE_ISSUE] });
+    await expect(none.waitingIssue(FAKE_PROJECT.id)).rejects.toThrow(
+      'the project holds no issue waiting on information',
+    );
+  });
+
+  it('pipelineStates reads the state keys in config order and refuses an empty config', async () => {
+    const { client } = on({ states: ['triage', 'building', 'shipped'] });
+    expect(await client.pipelineStates(FAKE_PROJECT.id)).toEqual(['triage', 'building', 'shipped']);
+    const { client: empty } = on({ states: [] });
+    await expect(empty.pipelineStates(FAKE_PROJECT.id)).rejects.toThrow(
+      'the pipeline config names no state',
+    );
+  });
+
+  it('listNotes reads every page, archived rows included, and deleteNote removes by sourceRef', async () => {
+    const notes = [
+      { id: 'n1', sourceRef: 'ref-1', textContent: 'live one', archivedAt: null },
+      {
+        id: 'n2',
+        sourceRef: 'ref-2',
+        textContent: 'archived one',
+        archivedAt: '2026-09-01T00:00:00.000Z',
+      },
+      { id: 'n3', sourceRef: 'ref-3', textContent: 'live two', archivedAt: null },
+    ];
+    const { client, state } = on({ pageSize: 1, notes });
+    expect(await client.listNotes(FAKE_PROJECT.id)).toEqual([
+      { id: 'n1', sourceRef: 'ref-1', text: 'live one' },
+      { id: 'n2', sourceRef: 'ref-2', text: 'archived one' },
+      { id: 'n3', sourceRef: 'ref-3', text: 'live two' },
+    ]);
+    const lists = state.requests.filter((r) => r.path === '/api/memory');
+    expect(lists).toHaveLength(3);
+    expect(await client.deleteNote(FAKE_PROJECT.id, 'ref-2')).toBe(1);
+    expect(await client.deleteNote(FAKE_PROJECT.id, 'ref-2')).toBe(0);
+    expect(state.notes.map((n) => n.id)).toEqual(['n1', 'n3']);
+  });
+});
+
 describe('rooms and the trail', () => {
   it('opens, sends, reads, deletes and reads the deletion back', async () => {
     const { fetch, state } = fake();

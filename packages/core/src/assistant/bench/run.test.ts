@@ -14,6 +14,7 @@ import {
   FAKE_ISSUE,
   FAKE_PROJECT,
   FAKE_TOKEN,
+  FAKE_WAITING,
   type FakeOptions,
   type Script,
   type ScriptedAttempt,
@@ -30,8 +31,57 @@ const say = (reply: string, toolCalls: ScriptedAttempt['toolCalls'] = []): Scrip
   attempts: [{ reply, toolCalls }],
 });
 
-const good: Script = (_m, taskId, turn) => {
+const token = (m: string): string => /bench-[0-9a-f]{12}/.exec(m)?.[0] ?? '';
+const memoryNote = (text: string) => ({
+  name: 'forge_memory_note',
+  arguments: JSON.stringify({ text }),
+});
+const memorySearch = { name: 'forge_memory_search', arguments: '{"query":"release code name"}' };
+/** The tokens the current trial asked the assistant to keep, first to last. */
+let kept: string[] = [];
+
+/** The memory tasks' turns are told apart by their text: a new room starts its turn count over. */
+function memoryTurn(m: string, recallWith: string | null, search: boolean): ScriptedTurn {
+  if (m.startsWith('Remember')) {
+    kept = [token(m)];
+    return { ...say('Kept: the release code name.', [memoryNote(m)]), notes: [m] };
+  }
+  if (m.startsWith('Correction')) {
+    kept.push(token(m));
+    return { ...say('Updated: the release code name.', [memoryNote(m)]), notes: [m] };
+  }
+  return say(
+    `The release code name is ${recallWith ?? kept.at(-1)}.`,
+    search ? [memorySearch] : [],
+  );
+}
+
+const WAITING_LINK = `/projects/qa/issues/${FAKE_WAITING.id}`;
+const THREAD_LAST = 9;
+
+const good: Script = (m, taskId, turn) => {
   switch (taskId) {
+    case 'project-issue-counts':
+      return say('Open: 1, closed: 1, draft: 0.', [
+        forge('issue', '--status', 'open'),
+        forge('issue', '--status', 'closed'),
+        forge('issue', '--status', 'draft'),
+      ]);
+    case 'project-pipeline-states':
+      return say('open → in_progress → awaiting_release');
+    case 'project-waiting-issue':
+      return say(`ISS-9 Needs a repro is waiting on information.\n\n${WAITING_LINK}`, [
+        forge('issue', '--status', 'needs_info'),
+      ]);
+    case 'memory-store-recall':
+    case 'memory-correction':
+      return memoryTurn(m, null, true);
+    case 'long-context-needle':
+      return say('Thursday.');
+    case 'long-context-thread':
+      if (turn < 8) return say('Noted.');
+      if (turn === 8) return say('3 open issues.', [forge('issue', '--status', 'open')]);
+      return say('Priya Raman reviews the release, and we deploy on Wednesday.');
     case 'memory-question':
       return turn === 0
         ? say('Noted: Thursday 14:00 UTC.')
@@ -115,6 +165,31 @@ const planted: Record<string, { script: Script; mode: string }> = {
     mode: 'preference_not_moved',
     script: (m, t, i) => (i === 0 ? good(m, t, i) : say('Undone.')),
   },
+  'project-issue-counts': {
+    mode: 'missing_tool',
+    script: () => say('Open: 1, closed: 1, draft: 0.'),
+  },
+  'project-pipeline-states': {
+    mode: 'unanswered',
+    script: () => say('awaiting_release → in_progress → open'),
+  },
+  'project-waiting-issue': {
+    mode: 'unanswered',
+    script: () => say(`ISS-7 is waiting.\n\n${LINK}`, [forge('issue', '--status', 'needs_info')]),
+  },
+  'memory-store-recall': { mode: 'missing_tool', script: (m) => memoryTurn(m, null, false) },
+  'memory-correction': {
+    mode: 'unanswered',
+    script: (m) => memoryTurn(m, m.startsWith('What') ? (kept[0] ?? '') : null, true),
+  },
+  'long-context-needle': { mode: 'unanswered', script: () => say('Friday.') },
+  'long-context-thread': {
+    mode: 'unanswered',
+    script: (m, t, i) =>
+      i === THREAD_LAST
+        ? say('Which reviewer do you mean? Remind me of the deploy day.')
+        : good(m, t, i),
+  },
 };
 
 const task = (id: string): Task => {
@@ -142,8 +217,11 @@ describe('every shipped task alone', () => {
       ).toEqual(t.turns.map(() => []));
       expect(result.pass).toBe(true);
       expect(model).toBe('fake-model');
-      expect(result.cleanup.room.observed).toBe('404');
+      expect(result.cleanup.rooms.map((r) => r.observed)).toEqual(
+        result.cleanup.rooms.map(() => '404'),
+      );
       expect(fake.state.rooms.size).toBe(0);
+      expect(fake.state.notes, 'notes left behind').toEqual([]);
       expect(fake.state.prefs).toEqual({ answerStyle: 'default', assistantInstructions: null });
       if (t.preference) expect(result.cleanup.preferences.equal).toBe(true);
       else
@@ -162,7 +240,7 @@ describe('every shipped task alone', () => {
       const { result } = await run();
       expect(result.pass).toBe(false);
       expect(result.turns.flatMap((x) => x.modes)).toContain(plant.mode);
-      expect(result.cleanup.room.observed).toBe('404');
+      expect(result.cleanup.rooms[0]?.observed).toBe('404');
     });
   }
 });
@@ -216,7 +294,7 @@ describe('what a trial records', () => {
     const { result } = await run();
     expect(result.pass).toBe(false);
     expect(result.error).toContain('answered 500');
-    expect(result.cleanup.room.observed).toBe('404');
+    expect(result.cleanup.rooms[0]?.observed).toBe('404');
     expect(result.cleanup.preferences).toMatchObject({
       expected: { answerStyle: 'default', assistantInstructions: null },
       equal: true,
@@ -232,7 +310,7 @@ describe('what a trial records', () => {
     const { fake, run } = trialOn(task('summary-in-style'), { refuse });
     const { result } = await run();
     expect(result.turns[0]?.pass).toBe(true);
-    expect(result.cleanup.room.observed).toBe('404');
+    expect(result.cleanup.rooms[0]?.observed).toBe('404');
     expect(result.cleanup.preferences).toMatchObject({
       expected: { answerStyle: 'default' },
       observed: null,
@@ -241,13 +319,14 @@ describe('what a trial records', () => {
     expect(fake.state.prefs.answerStyle).toBe('bullets');
   });
 
-  it('a refused room deletion is written as refused', async () => {
+  it('a refused room deletion is written as refused, and the trial is not a pass (ISS-1061)', async () => {
     const refuse: FakeOptions['refuse'] = (method) => (method === 'DELETE' ? 500 : null);
     const { result } = await trialOn(task('filing-guidance'), { refuse }).run();
-    expect(result.cleanup.room.observed).toMatch(
+    expect(result.cleanup.rooms[0]?.observed).toMatch(
       /^refused: DELETE \/api\/conversations\/room-0001 answered 500/,
     );
-    expect(result.pass).toBe(true);
+    expect(result.turns.every((t) => t.pass)).toBe(true);
+    expect(result.pass).toBe(false);
   });
 
   it('a non-default baseline comes back equal', async () => {
@@ -284,7 +363,7 @@ describe('the result file', () => {
       model: 'fake-model',
       runId: 'r1',
       k: 3,
-      tasks: [{ id: 'memory-question', trials: [result] }],
+      tasks: [{ id: 'memory-question', capability: 'method', trials: [result] }],
     };
     const back = readResult(serializeResult(file));
     const trial = back.tasks[0]?.trials[0];
@@ -294,7 +373,7 @@ describe('the result file', () => {
       { mode: 'unanswered', fact: 'reply does not match /14:00/' },
     ]);
     expect(trial?.turns[1]?.reply).toBe("I don't have that information.");
-    expect(trial?.cleanup.room).toMatchObject({
+    expect(trial?.cleanup.rooms[0]).toMatchObject({
       id: 'room-0001',
       expected: 'deleted',
       observed: '404',
@@ -312,7 +391,13 @@ describe('the result file', () => {
       model: 1,
       runId: 1,
       k: 3,
-      tasks: [{ id: 'a', trials: [{ at: 1, pass: true, error: null, seconds: 1, turns: [] }] }],
+      tasks: [
+        {
+          id: 'a',
+          capability: 'method',
+          trials: [{ at: 1, pass: true, error: null, seconds: 1, turns: [] }],
+        },
+      ],
     };
     expect(() => readResult(JSON.stringify(noCleanup), 'before.json')).toThrow(
       'before.json.tasks[0].trials[0] lacks cleanup',

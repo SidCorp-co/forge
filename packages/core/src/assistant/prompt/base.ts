@@ -23,6 +23,8 @@ export const BASE_LAYER: PromptLayer = {
     'out-of-reach-tests',
     'vietnamese-count',
     'summary-in-style',
+    'long-context-needle',
+    'long-context-thread',
   ],
   text: `## Answering as the assistant
 

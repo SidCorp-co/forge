@@ -66,7 +66,7 @@ describe('run', () => {
       ),
     ).toBe(1);
     expect(err[0]).toBe(
-      'unknown task id nope; shipped: memory-question, memory-followup, open-issues-linked, one-issue-by-key, preference-bullets, summary-in-style, out-of-reach-tests, vietnamese-count, filing-guidance, preference-restore',
+      'unknown task id nope; shipped: memory-question, memory-followup, open-issues-linked, one-issue-by-key, preference-bullets, summary-in-style, out-of-reach-tests, vietnamese-count, filing-guidance, preference-restore, project-issue-counts, project-pipeline-states, project-waiting-issue, memory-store-recall, memory-correction, long-context-needle, long-context-thread',
     );
   });
 
@@ -102,6 +102,17 @@ describe('run', () => {
       'run deadbeef against https://api.test (abc1234), project qa',
       'out-of-reach-tests: 2/2 trials passed',
       'wrote /tmp/out.json',
+      'method: score — · full 0/1 · judge —',
+    ]);
+    expect(result.capabilities).toEqual([
+      {
+        capability: 'method',
+        tasks: ['out-of-reach-tests'],
+        score: null,
+        lowest: null,
+        fullTasks: 0,
+        judge: null,
+      },
     ]);
     expect(state.rooms.size).toBe(0);
   });
@@ -247,8 +258,8 @@ describe('run --judge', () => {
     expect(partial.tasks.map((t) => [t.id, t.trials.length])).toEqual([['out-of-reach-tests', 1]]);
     expect(trial?.pass).toBe(true);
     expect(trial?.turns[0]).not.toHaveProperty('judge');
-    expect(trial?.cleanup.room.id).not.toBe('');
-    expect(trial?.cleanup.room.observed).toBe('404');
+    expect(trial?.cleanup.rooms[0]?.id).not.toBe('');
+    expect(trial?.cleanup.rooms[0]?.observed).toBe('404');
     expect(state.rooms.size).toBe(0);
   });
 });
@@ -380,12 +391,14 @@ describe('ladder', () => {
       ),
     ).toBe(0);
     expect(out[0]).toBe('runs');
+    expect(out).toContain('capabilities');
+    expect(written['/l.md']).toContain('### Capabilities');
     const rows = out.filter((l) => /^\d+\s/.test(l));
     expect(rows[0]).toContain('/good.json');
     expect(rows[0]).toMatch(/100\.0\s+out-of-reach-tests 100%/);
     expect(rows[1]).toContain('/bad.json');
     expect(rows[1]).toMatch(/0\.0\s+out-of-reach-tests 0%/);
-    expect(rows[0]).toContain('partial (1 of 10 tasks)');
+    expect(rows[0]).toContain('partial (1 of 17 tasks)');
     expect(out.indexOf('history windows')).toBeGreaterThan(out.indexOf('runs'));
     expect(out.at(-1)).toBe('wrote /l.md');
     expect(written['/l.md']).toContain('### Runs');

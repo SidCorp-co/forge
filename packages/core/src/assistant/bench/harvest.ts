@@ -182,6 +182,8 @@ function candidateSource(
     `/** The expectations are a person's to write: \`validateTasks\` refuses the empty checks list until then. */`,
     `export const ${camel(id)}: Task = {`,
     `  id: ${JSON.stringify(id)},`,
+    `  // a harvested exchange measures the method until a person reads it as one of the other capabilities`,
+    `  capability: 'method',`,
     `  intent: ${JSON.stringify(oneLine(texts.intent))},`,
     `  budgetSeconds: 90,`,
     `  turns: [{ message: ${JSON.stringify(texts.query)}, checks: [] }],`,

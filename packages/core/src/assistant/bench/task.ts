@@ -25,6 +25,10 @@ export const CHECK_KINDS = [
   'maxIterations',
   'screenRepair',
   'preferenceRows',
+  'inOrder',
+  'listInOrder',
+  'labeled',
+  'linkTo',
 ] as const;
 export type CheckKind = (typeof CHECK_KINDS)[number];
 
@@ -58,18 +62,51 @@ export type Check =
   | { kind: 'maxCalls'; max: number }
   | { kind: 'maxIterations'; max: number }
   | { kind: 'screenRepair' }
-  | { kind: 'preferenceRows'; rows: ExpectedRow[] };
+  | { kind: 'preferenceRows'; rows: ExpectedRow[] }
+  /** Every pattern matches, and each first match lies after the one before it. */
+  | { kind: 'inOrder'; patterns: Pattern[] }
+  /** Every member of a `, `-joined fixture list matches, in the list's order (codex F1 on ISS-1061). */
+  | { kind: 'listInOrder'; list: string }
+  /** The filled value stands as a whole number in the same clause as the label, nearest to it, in either order (codex F2). */
+  | { kind: 'labeled'; label: RegExp; value: string }
+  /** Some issue link in the reply targets the filled issue id (codex F3). */
+  | { kind: 'linkTo'; issueId: string };
 
 /** What a fixture reads from the deployment before the first turn, and the placeholders it fills. */
-export type FixtureName = 'firstOpenIssue' | 'projectName';
+export type FixtureName =
+  | 'firstOpenIssue'
+  | 'projectName'
+  | 'issueCounts'
+  | 'waitingIssue'
+  | 'pipelineStates'
+  | 'nonce';
 export const FIXTURE_KEYS: Record<FixtureName, readonly string[]> = {
   firstOpenIssue: ['issueKey', 'issueId'],
   projectName: ['projectName'],
+  /** The project's issues counted by status, read before the turn so the answer is the project's own. */
+  issueCounts: ['openCount', 'closedCount', 'draftCount'],
+  /** The first issue waiting on information; its own fixture, so a project with none still runs the counts (codex F4). */
+  waitingIssue: ['needsInfoKey', 'needsInfoId'],
+  /** The pipeline's state keys in their declared order, joined by `, `. */
+  pipelineStates: ['stateList'],
+  /** Two independent random tokens per trial, so a correction task refuses the first by literal (codex F2). */
+  nonce: ['nonce', 'nonce2'],
 };
+
+/** What a task measures; the report groups its figures by this and never guesses it. */
+export const CAPABILITIES = [
+  'method',
+  'project-understanding',
+  'memory-storing',
+  'long-context',
+] as const;
+export type Capability = (typeof CAPABILITIES)[number];
 
 export interface Turn {
   message: string;
   checks: Check[];
+  /** This turn and the ones after it go to a fresh room; refused on a task's first turn. */
+  room?: 'new';
 }
 
 export interface TaskPreference {
@@ -81,8 +118,11 @@ export interface TaskPreference {
 
 export interface Task {
   id: string;
+  capability: Capability;
   /** One plain-English sentence: what the person wants from the turn(s). `harvest.ts` reads it for coverage. */
   intent: string;
+  /** One sentence the judge reads beside the generic rule: what "served" means for this task. */
+  judgeRubric?: string;
   budgetSeconds: number;
   fixtures?: FixtureName[];
   preference?: TaskPreference;
@@ -102,8 +142,13 @@ function placeholdersIn(text: string): string[] {
   return [...text.matchAll(PLACEHOLDER_RE)].map((m) => m[1] ?? '');
 }
 
+/** Every literal a check carries, so a placeholder no fixture fills is refused at load. */
 function literalPatterns(check: Check): string[] {
-  if (check.kind !== 'mustMatch' && check.kind !== 'mustNotMatch') return [];
+  if (check.kind === 'listInOrder') return [check.list];
+  if (check.kind === 'labeled') return [check.value];
+  if (check.kind === 'linkTo') return [check.issueId];
+  if (check.kind !== 'mustMatch' && check.kind !== 'mustNotMatch' && check.kind !== 'inOrder')
+    return [];
   return check.patterns.filter((p): p is string => typeof p === 'string');
 }
 
@@ -122,6 +167,15 @@ export function validateTasks(list: readonly Task[]): Task[] {
     if (seen.has(task.id)) throw new TaskLoadError(`task id ${task.id} appears twice`);
     seen.add(task.id);
     if (!task.intent?.trim()) throw new TaskLoadError(`task ${task.id} carries no intent line`);
+    if (!(CAPABILITIES as readonly string[]).includes(task.capability))
+      throw new TaskLoadError(
+        `task ${task.id} names capability ${String(task.capability)}, not one of ${CAPABILITIES.join(', ')}`,
+      );
+    if (
+      task.judgeRubric !== undefined &&
+      (/\n/.test(task.judgeRubric) || task.judgeRubric.length > 300)
+    )
+      throw new TaskLoadError(`task ${task.id} judgeRubric must be one line under 300 characters`);
     if (!(task.budgetSeconds > 0))
       throw new TaskLoadError(`task ${task.id} names no budget in seconds`);
     if (task.turns.length === 0) throw new TaskLoadError(`task ${task.id} has no turn`);
@@ -129,6 +183,8 @@ export function validateTasks(list: readonly Task[]): Task[] {
     task.turns.forEach((turn, index) => {
       const where = `task ${task.id} turn ${index + 1}`;
       if (turn.checks.length === 0) throw new TaskLoadError(`${where} carries no check`);
+      if (index === 0 && turn.room === 'new')
+        throw new TaskLoadError(`${where} asks for a new room, and the first turn opens the room`);
       for (const check of turn.checks) {
         if (!kinds.has(check.kind))
           throw new TaskLoadError(
