@@ -25,7 +25,7 @@ import { dirname, join, resolve } from 'node:path';
 import process from 'node:process';
 import { fileURLToPath } from 'node:url';
 import { baseRev } from './lib/baseline-ratchet.mjs';
-import { judge } from './lib/release-record.mjs';
+import { ENTRY_WORD_BUDGET, judge } from './lib/release-record.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const RECORD = 'CHANGELOG.md';
@@ -73,12 +73,25 @@ function report(verdict) {
     const extra = (v.removed?.length ?? 0) - 5;
     if (extra > 0) console.error(`  ... and ${extra} more`);
   }
-  console.error(
-    `\nAn entry in ${RECORD} is a line someone published about what shipped. Restore what went\n` +
-      `missing, or — if a removal is deliberate — declare it in ${AMNESTY} as\n` +
-      `{"removals": [{"entry": "<the entry, verbatim>", "reason": "<why it goes>"}]} so the\n` +
-      `trade-off is visible in the diff rather than only in the deletion.`,
-  );
+  const rules = new Set((verdict.violations ?? []).map((v) => v.rule));
+  if (rules.has('no-silent-loss')) {
+    console.error(
+      `\nAn entry in ${RECORD} is a line someone published about what shipped. Restore what went\n` +
+        `missing, or — if a removal is deliberate — declare it in ${AMNESTY} as\n` +
+        `{"removals": [{"entry": "<the entry, verbatim>", "reason": "<why it goes>"}]} so the\n` +
+        `trade-off is visible in the diff rather than only in the deletion.`,
+    );
+  }
+  // Deliberately no amnesty for this one: an over-long entry is rewritten, and a file that
+  // let you declare your way past the budget would be the budget's off switch.
+  if (rules.has('entry-budget')) {
+    console.error(
+      `\nThe budget is ${ENTRY_WORD_BUDGET} words per entry and it applies only to entries this change\n` +
+        `adds — nothing already published turns this red. There is no amnesty for it: rewrite the\n` +
+        `entry. Say what changed and what it means for the reader; leave the reasoning in the issue\n` +
+        `and the commit message, where it is not competing with every other release for attention.`,
+    );
+  }
 }
 
 function main() {

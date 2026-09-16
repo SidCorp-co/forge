@@ -1,5 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import { judge, normaliseEntry, parseRecord } from './release-record.mjs';
+import {
+  ENTRY_WORD_BUDGET,
+  judge,
+  normaliseEntry,
+  parseRecord,
+  wordCount,
+} from './release-record.mjs';
 
 const RECORD = `# Changelog
 
@@ -188,5 +194,54 @@ describe('judge', () => {
   it('cannot run when the record itself is unreadable', () => {
     expect(judge({ head: null, base: RECORD, amnesty: { removals: [] } }).code).toBe(2);
     expect(judge({ head: RECORD, base: 7, amnesty: { removals: [] } }).code).toBe(2);
+  });
+});
+
+describe('entry-budget', () => {
+  const withEntry = (entry) => `# Changelog\n\n## [Unreleased]\n\n- ${entry}\n`;
+  const BASE = withEntry('Something short that already shipped.');
+  const budgetOf = (verdict) => (verdict.violations ?? []).find((v) => v.rule === 'entry-budget');
+  const words = (n) => `An added entry ${'padding '.repeat(n).trim()}`;
+
+  it('refuses a new entry over the budget, naming its length', () => {
+    const long = words(ENTRY_WORD_BUDGET + 10);
+    const verdict = judge({ head: BASE + `\n- ${long}\n`, base: BASE, amnesty: null });
+    const v = budgetOf(verdict);
+    expect(verdict.code).toBe(1);
+    expect(v.detail).toContain(String(wordCount(long)));
+    expect(v.removed[0]).toContain(`[${wordCount(long)} words]`);
+  });
+
+  it('admits a new entry exactly at the budget — the boundary is not off by one', () => {
+    const exact = words(ENTRY_WORD_BUDGET - 3);
+    expect(wordCount(exact)).toBe(ENTRY_WORD_BUDGET);
+    const verdict = judge({ head: BASE + `\n- ${exact}\n`, base: BASE, amnesty: null });
+    expect(budgetOf(verdict)).toBeUndefined();
+  });
+
+  it('leaves an already-published over-long entry alone — the record is edited one line at a time', () => {
+    const long = `${words(ENTRY_WORD_BUDGET + 10)} already published`;
+    const record = withEntry(long);
+    const verdict = judge({ head: record, base: record, amnesty: null });
+    expect(budgetOf(verdict)).toBeUndefined();
+    expect(verdict.code).toBe(0);
+  });
+
+  it('measures the entry after its continuation lines are joined, not the first line alone', () => {
+    const wrapped = Array.from({ length: 8 }, () => 'seven words of padding on this line').join(
+      '\n  ',
+    );
+    const verdict = judge({ head: `${BASE}\n- ${wrapped}\n`, base: BASE, amnesty: null });
+    expect(budgetOf(verdict)).toBeDefined();
+  });
+
+  it('has no amnesty: declaring the entry does not buy past the budget', () => {
+    const long = words(ENTRY_WORD_BUDGET + 10);
+    const verdict = judge({
+      head: BASE + `\n- ${long}\n`,
+      base: BASE,
+      amnesty: { removals: [{ entry: long, reason: 'it is long on purpose' }] },
+    });
+    expect(budgetOf(verdict)).toBeDefined();
   });
 });
