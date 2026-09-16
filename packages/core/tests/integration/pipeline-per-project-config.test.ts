@@ -185,7 +185,7 @@ async function drive(
   if (to === 'approved') {
     await harness.db.execute(sql`
       UPDATE issues
-      SET plan = COALESCE(NULLIF(TRIM(plan), ''), 'fixture plan — see cm:why above')
+      SET plan = COALESCE(NULLIF(TRIM(plan), ''), 'fixture plan — see the comment above')
       WHERE id = ${live.id}
     `);
   }

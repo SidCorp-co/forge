@@ -14,7 +14,6 @@ FROM base AS build
 WORKDIR /repo
 # Copy the workspace skeleton first so dependency installation caches
 # don't bust on every source edit.
-# cm:guard .npmrc MUST be copied: it declares `node-linker=hoisted`, and without it the image installs with pnpm's default isolated linker. next 16.3.1's standalone tracer then copies the `@swc/helpers` SYMLINK without its target, and `node server.js` dies on MODULE_NOT_FOUND before serving a single request (forge-beta, 2026-08-23).
 COPY .npmrc pnpm-workspace.yaml package.json pnpm-lock.yaml ./
 COPY packages ./packages
 RUN --mount=type=cache,id=pnpm,target=/pnpm/store \
@@ -50,15 +49,6 @@ COPY --from=build /prod/core ./
 # in packages/web-v2/content/help and are bundled into the WEB build — the core
 # image serves no documentation.
 
-# cm:guard the commit is BAKED here, in the runtime stage, and never read from git at
-# runtime: this image carries no `.git`, so a `git rev-parse` would answer null on the one
-# machine that matters and succeed on every box it is tested on. Declared in this stage
-# because an ARG from an earlier stage is not in scope here.
-# cm:guard and BELOW the COPY, because this value changes on every commit: above it, the
-# layer carrying the whole app tree is invalidated by a deploy that changed nothing else.
-# cm:edge lockstep -> docker-compose.prod.yml — `core.build.args.SOURCE_COMMIT` is the only
-# thing that fills this; a build with no `--build-arg` leaves the empty string, which
-# `src/observability/source-commit.ts` reports as missing rather than serving.
 ARG SOURCE_COMMIT=
 ENV SOURCE_COMMIT=$SOURCE_COMMIT
 

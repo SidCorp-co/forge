@@ -1,7 +1,7 @@
 /**
  * ISS-987 — whose authority an escalated turn runs under, split out of
- * `escalation-bridge.test.ts` when that file reached its size budget. Its own
- * `cm:why` already named these the separate subject they are.
+ * `escalation-bridge.test.ts` when that file reached its size budget: whose authority
+ * a turn runs under is a separate subject from what the room keeps.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';

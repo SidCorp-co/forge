@@ -1272,8 +1272,8 @@ mod tests {
         );
     }
 
-    /// What the `cm:guard` on `unoverridden_config_dir` promises: the rule
-    /// spelled out there and `dirs_next`'s own must agree.
+    /// `unoverridden_config_dir` and `dirs_next`'s own resolution must agree, or the
+    /// override test above is comparing against a rule nothing else follows.
     #[test]
     fn the_unoverridden_dir_is_what_the_box_resolves_with_no_override() {
         let _env = ENV_TEST_LOCK.lock().unwrap_or_else(|e| e.into_inner());

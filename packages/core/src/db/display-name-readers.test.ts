@@ -63,7 +63,7 @@ function walk(dir: string, out: string[] = []): string[] {
   return out;
 }
 
-/** Comment lines are blanked, so a `cm:guard` explaining the rule is not a breach of it. */
+/** Comment lines are blanked, so a comment explaining the rule is not a breach of it. */
 function stripComments(source: string): string {
   return source
     .split('\n')

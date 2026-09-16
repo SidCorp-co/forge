@@ -88,7 +88,7 @@ flowchart LR
   [`docs/flows/issue-work.html`](../../flows/issue-work.html).
 - **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` means A must reach a
   terminal status before B may dispatch, and cross-project edges are legal. `relates`, `duplicates`
-  and `parent` are metadata no dispatch path may read. The `cm:guard` is on
+  and `parent` are metadata no dispatch path may read. The enum is
   `schema.ts:issueDependencyKinds`.
 - **`decomposes` gates no dispatch, but it is not inert.** `work-evidence.ts:hasChildIssues` reads
   this one kind, so a single live outgoing `decomposes` edge waives the ISS-786 work-evidence gate

@@ -5,7 +5,7 @@
 // "ported from the project overview's STATUS_TO_STAGE" into `features/issues/derive.ts`, then
 // ported again into `features/pipeline/derive.ts`, and by the time ISS-999 was filed the two copies
 // had drifted to 17 keys and 15 — the second answering `triage` for `releasing` and `dropped`
-// while its neighbour answered `release`. One of them carried a `cm:guard` reading "`dropped` has
+// while its neighbour answered `release`. One of them carried a comment reading "`dropped` has
 // no stage" on the line directly above `dropped: "triage"`.
 //
 // ISS-897 deleted the seven-stage lane from the kernel. A status says what is true of an issue
@@ -36,7 +36,7 @@ function sourceFiles(dir: string): string[] {
  * Every name a file's CODE uses: each identifier, plus each `A.b` property access written on an
  * identifier, taken off the parse tree.
  *
- * Several of the files below NAME the deleted symbols on purpose — a `cm:guard` saying what went
+ * Several of the files below NAME the deleted symbols on purpose — a comment saying what went
  * and why is the record that stops it coming back a third time, and a scan that counted those as
  * violations would push every one of them out of the tree. So comments do not count. This asks the
  * compiler's own parser rather than stripping comments with a regex: a regex stripper reads the

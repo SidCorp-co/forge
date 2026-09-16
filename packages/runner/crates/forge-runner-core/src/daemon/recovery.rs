@@ -383,8 +383,8 @@ mod tests {
         );
     }
 
-    // `cm:why` on `owed_release` describes, since `end_run` is reached only through a close that
-    // needs the `worktree_gone` mark, and the mark is set only by observing the tree gone.
+    // `end_run` is reached only through a close that needs the `worktree_gone` mark, and the
+    // mark is set only by observing the tree gone, so a finished run still owes its checkout.
     #[tokio::test]
     async fn a_finished_run_under_a_live_master_is_still_owed_its_checkout_back() {
         let (mut led, wt) = seeded_holding_a_tree(0, "boot-a");

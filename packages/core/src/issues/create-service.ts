@@ -9,8 +9,8 @@
  *
  * This module owns the ordering and the domain rules. Authorization, request
  * validation and serialization stay at the transport edge — including the
- * MCP-only `markUntrusted` framing, which is deliberate (see the `cm:guard`
- * in `mcp/tools/forge-issues.ts`).
+ * MCP-only `markUntrusted` framing, which is deliberate: `mcp/tools/forge-issues.ts`
+ * is where it is applied.
  */
 
 import { eq } from 'drizzle-orm';

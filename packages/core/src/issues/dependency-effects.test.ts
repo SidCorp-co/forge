@@ -2,8 +2,8 @@
  * ISS-935 — the pair nothing held: `hasChildIssues` reads one dependency kind
  * to waive the work-evidence gate, and six surfaces tell an agent what that
  * kind does. Four of them interpolate `WORK_EVIDENCE_WAIVER_NOTE`, so they
- * cannot drift; the other two are a `cm:guard` comment and a markdown file,
- * and these are the assertions that hold those.
+ * cannot drift; the other two are a doc comment on `issueDependencyKinds` and a
+ * markdown file, and these are the assertions that hold those.
  *
  * The test that matters is `the two surfaces that cannot interpolate it`: change
  * `WORK_EVIDENCE_WAIVER_KIND` and it names the file that did not follow.

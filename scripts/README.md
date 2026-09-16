@@ -191,9 +191,41 @@ Four contracts:
    zero exits `2`, not `0`. A checker whose scope matched nothing reports "clean"; forwarding that as
    a pass is the failure mode this guards.
 3. **Report everything** — no early exit. One fix cycle instead of six.
-4. **Advisory** — `cm impact` on every file changed against `origin/main`, including untracked ones,
-   printing the guards / edges / flows you should read. This is the pull-side stand-in for the
-   PreToolUse hook, and it works with no plugin installed.
+4. **Bounded width** — the checks run at a concurrency of 6 rather than all 20 at once. Measured
+   2026-09-06 on 12 cores: serial 41.9s, width 4 32.6s, width 6 28.4s, width 12 28.4s. It is flat
+   past 6 because `tsc` is itself multi-core and `conformance-levels` re-spawns eleven checkers, so
+   a wider fan-out buys nothing and costs memory. `VERIFY_CONCURRENCY` overrides it.
+
+This list said "Advisory — `cm impact` on every file changed" until 2026-09-16. `verify.mjs` never
+ran it, in any version; the sentence described an intention. ISS-1049 removed the annotations it
+would have printed, and `docs/architecture/comment-conventions.md` is what replaced them.
+
+### What each of these was bought with
+
+Four measurements that decided a gate's shape, kept here because they are the reason and not the
+rule. Each was carried by a comment in `verify.mjs` until ISS-1049.
+
+- **The runner gates exist because `pnpm verify` was 13/13 green while CI's `runner` job was red.**
+  0.7.6 shipped with an unformatted file, which failed that job and `runner-release` with it, so no
+  GitHub Release was cut and the install channel had nothing to serve (2026-08-18). `CI_COVERAGE`
+  had declared the hole honestly the whole time — a declared hole is still a hole. Note the bound:
+  this runs ONE platform and CI runs three, so a green here is no claim about windows or macos
+  (2026-09-09).
+- **`biome check scripts` exists because the checkers that hold every other axis were held by
+  nothing** — `turbo run lint` fans out to workspace packages only, and this directory is in none.
+  Measured 2026-08-25, the day it got a config: 21 diagnostics, one of them a real
+  `useIterableCallbackReturn`. Fixed rather than frozen, which is why this check has no baseline
+  and none is wanted.
+- **A prerequisite is checked BEFORE the spawn, never after.** A checker run without its tool
+  produces a message about its own subject — `archmap: scope matched no files` — which reads as a
+  defect in the thing being measured, and nothing downstream can unsay it. `observability-build` is
+  in that list for the same reason `core typecheck` declares it: archmap resolves TypeScript module
+  edges, so an unbuilt `@forge/observability` makes every edge through it unresolvable. Measured
+  2026-09-14 in a fresh worktree — 205 unresolvable against a 200 ceiling where a built tree
+  reports 171, and `conformance-audit` then declared the repo does not meet `hardened`, which is a
+  false claim about the code.
+- **`flow-map` is gated because a hand-kept map rots.** `docs/system.graph.json` sat five months
+  missing 2 of its 9 modules (2026-09-11); the gate is what keeps it generated.
 
 ### One proposition per verdict
 

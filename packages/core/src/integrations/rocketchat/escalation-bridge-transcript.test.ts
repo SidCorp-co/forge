@@ -4,8 +4,8 @@
  * and nothing joins it when the send failed or the room has no conversation.
  *
  * A sibling file rather than more cases in `escalation-bridge.test.ts`: that
- * file is at the 500-line budget, and its two describes are already the two
- * subjects the `cm:why` above its second one names.
+ * file is at the 500-line budget, and its two describes are already two separate
+ * subjects, which is why a third does not belong there.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';

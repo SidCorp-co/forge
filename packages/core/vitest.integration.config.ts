@@ -15,14 +15,11 @@ export default defineConfig({
   test: {
     include: ['tests/integration/**/*.test.ts'],
     environment: 'node',
-    // cm:edge contract -> packages/core/tests/helpers/db.ts — global-setup builds the migrated template ONCE; db.ts clones it per file. Dropping this line silently restores a container boot + full migration replay per test file (~8.6s each).
     globalSetup: ['./tests/helpers/global-setup.ts'],
     hookTimeout: 60_000,
     testTimeout: 30_000,
     pool: 'forks',
-    // cm:why vitest 5 removed `poolOptions`; parallel forks (the former `singleFork: false`) is the default, so the block is dropped rather than translated.
     fileParallelism: true,
-    // cm:edge contract -> scripts/check-flow-coverage.mjs — that checker reads this report as the AUTHORITATIVE source: a cm:flow step counts as defended only when the integration suite executed it. Narrowing `include` here silently turns settled steps into out-of-scope faults.
     coverage: {
       provider: 'v8',
       reporter: ['text', 'html'],

@@ -4,7 +4,7 @@
    no @/features/<other>. Consumers are app/admin/** and src/middleware.ts,
    which Next requires at that exact path and which therefore deep-imports
    server/operator-gate.ts. server/whoami.ts is deliberately NOT re-exported
-   here (RSC-only, see its cm:guard) — app/admin/layout.tsx imports it by its
+   here because it is RSC-only — app/admin/layout.tsx imports it by its
    deep path. */
 
 export { OperatorShell } from "./components/operator-shell";

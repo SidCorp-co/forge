@@ -75,6 +75,12 @@ and the couplings that crossed a repository or a language boundary were the ones
 `forge-plugin-coupling.md` and into knowledge entries before the sweep ran. What is gone is the
 same-repo, same-language edge: the one `cm`'s own rule says a tool should have derived.
 
+**A document written before 2026-09-16 may still cite a `cm:guard` or a `cm:edge` by name.** Those
+citations now point into git history at `33eabd7e` rather than into the tree; `git show 33eabd7e --
+<path>` is what resolves one. Every such citation in a live reference document was rewritten in the
+same change; the ones left standing are in `docs/proposals/`, which is a record of arguments made
+at a date rather than a description of the code as it is.
+
 If that loss is ever felt, the way back is not a new convention. Every removed annotation is in
 git at `33eabd7e` (`git show 33eabd7e -- <path>`), and `cm propose --source lockstep|contract`
 re-derives candidates from evidence already in the tree.

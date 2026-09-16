@@ -261,10 +261,10 @@ sitting at zero rows lifetime and was invisible to the query. It was deleted 202
 Commit `7f0c5a56` deleted six tools after claiming the audit log had cleared them. The split was on
 the wrong column; the fleet hit one of them at 09:07 the same day and read `not_found`.
 
-**A deletion shifts every `tools/list` index below it, and three `cm:guard`s in `server.ts` say
-callers pin to that order.** Those guards govern *insertion* — they exist so a new tool is appended
-rather than spliced in. Deletion cannot honour them: there is no position that leaves the tail where
-it was. The shrink this page describes is a sequence of deletions, so the pinning premise cannot
+**A deletion shifts every `tools/list` index below it, and `server.ts` builds that list in a fixed
+order because callers pin to it.** The rule that order was written for governs *insertion* — a new
+tool is appended rather than spliced in. Deletion cannot honour it: there is no position that
+leaves the tail where it was. The shrink this page describes is a sequence of deletions, so the pinning premise cannot
 survive it, and a deletion is the caller-visible change an insertion was written to avoid. Say so in
 the commit that takes one out, and treat a caller that pins by index as already broken.
 

@@ -1,7 +1,7 @@
 /**
  * ISS-879 — `resolveNotifications` against real Postgres.
  *
- * `auto-resolve.ts` carried a `cm:guard` predicting this: the `notificationRead`
+ * The failure this covers: the `notificationRead`
  * hook decrements a client-side unread count, so emitting it twice for one row
  * double-counts. It was unreachable while every resolution key had exactly ONE
  * clearer. `paused:<runId>` is the first key with two — the run-left-paused
