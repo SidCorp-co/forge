@@ -62,7 +62,7 @@ Where you find something worth recording, it goes where it can be searched and c
 
 | What you learned | Where it goes |
 |---|---|
-| a measured lesson, a cost, a falsifying experiment | \`forge knowledge write\` — found later by \`forge knowledge search\` |
+| a measured lesson, a cost, a falsifying experiment | \`forge knowledge write\` — read back with \`forge knowledge get\`, and searched through \`POST /api/projects/:id/knowledge/search\`. Not \`forge knowledge search\`, which answers out of the memory corpus and returns no \`knowledge_entries\` row at all (forge-plugin ISS-1316) |
 | a coupling with \`github.com/SidCorp-co/forge-plugin\` | \`docs/architecture/forge-plugin-coupling.md\` |
 | what a gate is, and what it was born from | \`scripts/README.md\` |
 | what shipped | \`CHANGELOG.md\` |
