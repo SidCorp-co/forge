@@ -192,9 +192,11 @@ describe('DELETE /api/notifications/:id', () => {
 });
 
 describe('createNotification helper + WS bridge', () => {
+  // cm:why the type is `ops_alert` and not `mention` (ISS-1063) — the emission switch
+  // suppresses every other type at this seam, so a hook-forwarding assertion written
+  // against a suppressed type would assert nothing and pass for the wrong reason. The
+  // mention preference gate is covered by its own case below, which asserts the null.
   it('emits notificationCreated which bridges to userRoom', async () => {
-    // mention gate: preferences lookup returns no row → opted-in by default.
-    selectLimit.mockResolvedValueOnce([]);
     insertReturning.mockResolvedValueOnce([{ id: NOTIF_ID }]);
     const seenUserIds: string[] = [];
     hooksModule.hooks.on('notificationCreated', (p) => {
@@ -203,8 +205,8 @@ describe('createNotification helper + WS bridge', () => {
     const { createNotification } = await import('./routes.js');
     await createNotification({
       userId: USER_ID,
-      type: 'mention',
-      title: 'You were mentioned',
+      type: 'ops_alert',
+      title: 'Orphan jobs detected',
       projectId: PROJECT_ID,
     });
     expect(seenUserIds).toEqual([USER_ID]);
@@ -219,8 +221,11 @@ describe('createNotification helper + WS bridge', () => {
     const { createNotification } = await import('./routes.js');
     await createNotification({
       userId: USER_ID,
-      type: 'issue_status_changed',
-      title: 'ISS-1 moved to reopen',
+      // cm:why `ops_alert` for the same reason as the case above (ISS-1063): it is the
+      // one type the emission switch lets through, so this is the only type an insert
+      // assertion can be written against while the old surface is off.
+      type: 'ops_alert',
+      title: 'Orphan jobs detected',
       projectId: PROJECT_ID,
       severity: 'error',
       resolutionKey: 'issue:abc:status',

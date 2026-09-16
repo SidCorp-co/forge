@@ -116,8 +116,23 @@ export async function writePmDecision(input: PmDecisionInput) {
       body,
       decisionId,
     });
+    // cm:guard ISS-1063 — this THROWS on a suppressed escalation and must keep throwing
+    // while the emission switch is on, because the escalation's question, options,
+    // severity and expiry live ONLY in that notification's body: there is no other
+    // durable home for them. Returning a null id here was tried and reverted in the
+    // same change — it reads as "escalated, nobody told" while the truth is "the
+    // question is gone", which is the silent substitution CLAUDE.md forbids. The
+    // decision row is already committed by the guard above, so the refusal costs the
+    // escalation and not the turn, and the caller is told by name which of the two it
+    // lost. When the record-kind model lands and `pm_escalation` becomes a task with a
+    // durable record of its own, this branch stops being reachable by suppression.
     if (!escalationNotification) {
-      throw new Error('writePmDecision: escalation notification insert returned no row');
+      throw new Error(
+        `writePmDecision: decision ${decisionId} was written, but its escalation could not be ` +
+          'recorded — `pm_escalation` is suppressed by the ISS-1063 emission switch and the ' +
+          'question, options and expiry have nowhere else to live. Record them on the issue ' +
+          'instead, or turn the type back on in notifications/emission-switch.ts.',
+      );
     }
 
     return {

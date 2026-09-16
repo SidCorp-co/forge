@@ -5322,6 +5322,8 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **Forge has gone quiet.** Every notification type except ops alerts stops arriving, on purpose,
+  until the new model lands: two thirds of what the bell said could not be acted on.
 - **A project now says what releasing it means, and each connection says what it is for, so Forge
   stops guessing both.** One setting on a connection was being asked three different questions at
   once: which environment a deploy target serves, whether this connection is the thing that ships

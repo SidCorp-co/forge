@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   createTestOrgMember,
   createTestProject,
@@ -27,6 +27,18 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+
+// cm:why ISS-1063 — this file is about what the DETECTOR writes, not about the emission
+// switch, and while the old notification surface is off the switch would suppress every
+// type this file asserts. Mocking it here rather than relaxing the assertions keeps the
+// detector's coverage intact for the whole of the silence; `src/notifications/emission-switch.test.ts`
+// is what covers the switch itself, including that ops_alert is the one exception.
+// cm:edge lockstep -> packages/core/src/notifications/emission-switch.ts — these mocks come out in the change that empties SUPPRESSED_TYPES; one left behind is a test asserting a surface nobody has turned back on
+vi.mock('../../src/notifications/emission-switch.js', () => ({
+  SUPPRESSED_TYPES: new Set<string>(),
+  emissionAllowed: () => true,
+  noteSuppressed: () => {},
+}));
 
 const JWT_SECRET = 'test-secret-at-least-32-chars-long-abcdef-123456';
 

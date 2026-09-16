@@ -52,7 +52,6 @@ const forgePmWriteDecisionTool = () => ({
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const DECISION_ID = '22222222-2222-4222-8222-222222222222';
-const NOTIFICATION_ID = '33333333-3333-4333-8333-333333333333';
 const OWNER_ID = '44444444-4444-4444-8444-444444444444';
 const DEVICE_ID = '55555555-5555-4555-8555-555555555555';
 
@@ -102,45 +101,39 @@ describe('forge_pm.write_decision', () => {
     );
   });
 
-  it('with escalate: inserts notification + emits hook + returns escalation', async () => {
+  // cm:why ISS-1063 — while the emission switch has `pm_escalation` off there is nowhere
+  // for the escalation's question and options to live: they are the notification's body
+  // and nothing else persists them. So the call refuses BY NAME after the decision row
+  // is already committed, rather than returning a shape that reads as "escalated". The
+  // decision survives; the escalation does not, and the caller is told which.
+  it('with escalate while the surface is off: writes the decision, then refuses naming the switch', async () => {
     const tool = forgePmWriteDecisionTool();
     const decisionInsert = [{ id: DECISION_ID }];
     const escalationProjectLookup = [{ createdBy: OWNER_ID }];
-    const notificationInsert = [{ id: NOTIFICATION_ID }];
-    queue.push(decisionInsert, escalationProjectLookup, notificationInsert);
+    queue.push(decisionInsert, escalationProjectLookup);
 
-    const result = (await tool.handler({
-      projectId: PROJECT_ID,
-      cause: 'needs-info',
-      summary: 'Need owner sign-off',
-      actions: [],
-      escalate: {
-        severity: 'high',
-        summary: 'Approve plan?',
-        question: 'Pick one',
-        options: [
-          { id: 'a', label: 'Approve' },
-          { id: 'b', label: 'Reject' },
-        ],
-        expiresAt: '2026-06-01T00:00:00.000Z',
-      },
-    })) as {
-      decisionId: string;
-      indexed: 'queued';
-      escalation: { notificationId: string; expiresAt: string };
-    };
-
-    expect(result.decisionId).toBe(DECISION_ID);
-    expect(result.escalation.notificationId).toBe(NOTIFICATION_ID);
-    expect(result.escalation.expiresAt).toBe('2026-06-01T00:00:00.000Z');
-    expect(hooksEmitSpy).toHaveBeenCalledWith(
-      'notificationCreated',
-      expect.objectContaining({
-        notificationId: NOTIFICATION_ID,
-        type: 'pm_escalation',
-        userId: OWNER_ID,
-        decisionId: DECISION_ID,
+    await expect(
+      tool.handler({
+        projectId: PROJECT_ID,
+        cause: 'needs-info',
+        summary: 'Need owner sign-off',
+        actions: [],
+        escalate: {
+          severity: 'high',
+          summary: 'Approve plan?',
+          question: 'Pick one',
+          options: [
+            { id: 'a', label: 'Approve' },
+            { id: 'b', label: 'Reject' },
+          ],
+          expiresAt: '2026-06-01T00:00:00.000Z',
+        },
       }),
+    ).rejects.toThrow(/ISS-1063 emission switch/);
+
+    expect(hooksEmitSpy).not.toHaveBeenCalledWith(
+      'notificationCreated',
+      expect.objectContaining({ type: 'pm_escalation' }),
     );
   });
 
