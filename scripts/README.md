@@ -424,6 +424,11 @@ here can install, and adding one has to be argued rather than merged. The refusa
 form for a public repository pinned to a commit and does not claim every SSH dependency has a
 credential-free equivalent — a genuinely private one does not.
 
+`--ci-parity` asserts the placement, because the composite is `.github/workflows/ci.yml`'s blind
+spot: the parity parser reads the workflow and never the action it calls, so deleting this step or
+moving it below `pnpm install` would cost nothing and say nothing, while the `CHECKS` entry stayed
+green on a clean lockfile. Both shapes now fail by name — measured by planting each one.
+
 `scripts/lib/lockfile-transport.mjs` holds the classification, so the verdict has a test
 (`lockfile-transport.test.mjs`, collected by `packages/core/vitest.config.ts`); the CLI reads the
 tree and exits. Exit `0` clean · `1` an entry resolves over SSH · `2` no lockfile, or a lockfile

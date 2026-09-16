@@ -8,7 +8,9 @@
 //
 // Three contracts, ordered by what breaks without them:
 //   1. CI parity — every step in ci.yml is run here or explicitly declared as
-//      covered by another root script. `--ci-parity` proves it.
+//      covered by another root script, and the one step that lives in the
+//      setup-workspace composite rather than in ci.yml still runs before the
+//      install it guards. `--ci-parity` proves both.
 //   2. Fail-closed — a checker that scanned zero files exits 2, never 0. A
 //      green report from a check that never ran is worse than no check at all.
 //   2b. One proposition per verdict — "the rule holds", "the rule is broken"
@@ -27,6 +29,7 @@ import { markFor, tally, tallyLine } from './lib/verify-report.mjs';
 
 const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
 const CI_PATH = join(ROOT, '.github', 'workflows', 'ci.yml');
+const COMPOSITE_PATH = join(ROOT, '.github', 'actions', 'setup-workspace', 'action.yml');
 
 // cm:guard every entry needs a `scanned` pattern that matches the checker's OWN success line. Without it a checker that walked an empty scope reports clean and this script forwards that as a pass.
 const CHECKS = [
@@ -384,6 +387,32 @@ function ciGateParity() {
   return { code: 1, unasserted };
 }
 
+// cm:guard the composite is `ci.yml`'s blind spot: `ciSteps` reads the workflow and never the action
+// it calls, so a step deleted from there or moved below the install costs nothing and says nothing
+// cm:why the pre-install guarantee is what criterion 16 of ISS-1045 rests on, and a guarantee only one reader's memory holds is the shape `ciGateParity` already exists to refuse
+// cm:edge contract -> .github/actions/setup-workspace/action.yml — the order of its `check-lockfile-transport` and `pnpm install` steps is asserted here
+function composedGuardParity() {
+  if (!existsSync(COMPOSITE_PATH)) {
+    return { code: 2, why: 'cannot find .github/actions/setup-workspace/action.yml' };
+  }
+  const runs = [...readFileSync(COMPOSITE_PATH, 'utf8').matchAll(/^\s+run:\s+(\S.*?)\s*$/gm)].map(
+    (m) => m[1],
+  );
+  if (runs.length === 0) {
+    return { code: 2, why: 'parsed 0 run steps out of the composite — the parser, not the action' };
+  }
+  const guard = runs.findIndex((r) => r.includes('check-lockfile-transport.mjs'));
+  const install = runs.findIndex((r) => r.startsWith('pnpm install'));
+  if (install < 0)
+    return { code: 2, why: 'the composite runs no `pnpm install` — the parser again' };
+  if (guard < 0)
+    return { code: 1, why: 'the composite no longer runs check-lockfile-transport.mjs' };
+  if (guard > install) {
+    return { code: 1, why: 'the composite runs check-lockfile-transport.mjs AFTER `pnpm install`' };
+  }
+  return { code: 0 };
+}
+
 function ciParity(quiet) {
   const steps = ciSteps();
   if (steps === null) {
@@ -408,6 +437,19 @@ function ciParity(quiet) {
     console.error('loop completes, is ignored, and cannot block the merge — the gate reads as');
     console.error('enforced and is not. Add it to the loop in .github/workflows/ci.yml.\n');
     return gate.code;
+  }
+
+  const composed = composedGuardParity();
+  if (composed.code !== 0) {
+    console.error(`\nci-parity: ${composed.why}`);
+    console.error(
+      '\nEvery job that installs the workspace reaches `pnpm install` through that composite,\n' +
+        'and the lockfile entry the checker refuses is the one that kills the install — so a\n' +
+        'check placed after it never runs at all. Six jobs died inside the install with exit 128\n' +
+        'and nothing named the cause for two days (ISS-1045). Restore the step between\n' +
+        '`actions/setup-node` and `pnpm install` in .github/actions/setup-workspace/action.yml.\n',
+    );
+    return composed.code;
   }
 
   const missing = steps.filter((s) => !(s in CI_COVERAGE));
