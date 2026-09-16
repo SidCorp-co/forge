@@ -99,9 +99,52 @@ describe('compareHistory', () => {
 
   it('says so when nothing separates the files', () => {
     expect(compareHistoryLines(compareHistory(before, before)).at(-1)).toBe(
-      'no differences: same commit, window, budgets and row count',
+      'no differences: same commit, window, budgets, judge and row count',
     );
     const clean = file({}, [group('m9', 10, 0)]);
     expect(compareHistoryLines(compareHistory(clean, clean))).toContain('    no mode on any row');
+  });
+});
+
+describe('the judge beside the rates', () => {
+  const plain = file({}, [group('m1', 40, 4)]);
+  const judged = file(
+    {
+      judge: {
+        model: 'j',
+        sample: 40,
+        rows: [],
+        groups: [
+          {
+            model: 'm1',
+            source: 'web-chat-reply',
+            tally: { judged: 10, yes: 7, partial: 2, no: 1, unreadable: 0 },
+          },
+        ],
+        agreement: { ruleFailed: { judged: 2, no: 2 }, clean: { judged: 5, yes: 4 } },
+      },
+    },
+    [group('m1', 40, 4)],
+  );
+
+  it('prints the judge line under the judged side only, one agreement line, and names the judge in the differences', () => {
+    const lines = compareHistoryLines(compareHistory(plain, judged));
+    expect(lines.filter((l) => l.includes('judge yes'))).toEqual([
+      '    judge yes 7/10, partial 2/10, no 1/10, unreadable 0/10',
+    ]);
+    expect(
+      lines.indexOf('    judge yes 7/10, partial 2/10, no 1/10, unreadable 0/10'),
+    ).toBeGreaterThan(lines.findIndex((l) => l.startsWith('  after:')));
+    expect(lines.filter((l) => l.startsWith('before judge'))).toEqual([]);
+    expect(lines).toContain(
+      'after judge j, 0 of 40 asked: agreement: rule-failed rows judged no 2/2, clean rows judged yes 4/5',
+    );
+    expect(lines.at(-1)).toBe('differences: judge: null -> j');
+    expect(lines.some((l) => /weighted|total|overall|score/i.test(l))).toBe(false);
+  });
+
+  it('a file without a judge prints no judge line at all', () => {
+    const lines = compareHistoryLines(compareHistory(plain, plain));
+    expect(lines.slice(0, -1).some((l) => l.includes('judge'))).toBe(false);
   });
 });

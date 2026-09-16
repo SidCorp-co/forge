@@ -4,6 +4,7 @@
  * No composite exists here: a weighted mean is where the task that cliffs goes to hide.
  */
 
+import { type Agreement, agreement, agreementLine, type Tally, tally, tallyLine } from './judge.js';
 import type { BenchResult, TrialResult } from './result.js';
 
 export interface TaskSide {
@@ -19,6 +20,8 @@ export interface TaskSide {
   medianSeconds: number | null;
   medianCalls: number | null;
   modes: Record<string, number>;
+  /** The sidecar judge's counts over the judged turns; null where no turn was judged. Not read into `s`. */
+  judge: Tally | null;
 }
 
 export interface TaskComparison {
@@ -30,6 +33,8 @@ export interface TaskComparison {
 export interface Comparison {
   k: number;
   tasks: TaskComparison[];
+  /** How far the judge agreed with the rules on each side; null where the file had no judge. */
+  agreement: { before: Agreement | null; after: Agreement | null };
   differences: string[];
 }
 
@@ -72,7 +77,21 @@ export function sideOf(trials: TrialResult[], k: number): TaskSide {
     medianSeconds: median(trials.map((t) => t.seconds)),
     medianCalls: median(trials.map(trialCalls)),
     modes,
+    judge: judgeTally(trials),
   };
+}
+
+function judgeTally(trials: TrialResult[]): Tally | null {
+  const verdicts = trials.flatMap((t) =>
+    t.turns.flatMap((turn) => (turn.judge ? [turn.judge] : [])),
+  );
+  return verdicts.length === 0 ? null : tally(verdicts);
+}
+
+function agreementOf(r: BenchResult): Agreement | null {
+  const turns = r.tasks.flatMap((t) => t.trials.flatMap((trial) => trial.turns));
+  if (!turns.some((t) => t.judge)) return null;
+  return agreement(turns.map((t) => ({ modes: t.modes, judge: t.judge })));
 }
 
 function differences(before: BenchResult, after: BenchResult): string[] {
@@ -82,6 +101,7 @@ function differences(before: BenchResult, after: BenchResult): string[] {
     ['api', before.api, after.api],
     ['model', before.model, after.model],
     ['k', before.k, after.k],
+    ['judge', before.judge?.model ?? null, after.judge?.model ?? null],
   ];
   for (const [name, a, b] of pairs) {
     if (a !== b) out.push(`${name}: ${String(a)} → ${String(b)}`);
@@ -100,7 +120,12 @@ export function compare(before: BenchResult, after: BenchResult): Comparison {
     const a = after.tasks.find((t) => t.id === id);
     return { id, before: b ? sideOf(b.trials, k) : null, after: a ? sideOf(a.trials, k) : null };
   });
-  return { k, tasks, differences: differences(before, after) };
+  return {
+    k,
+    tasks,
+    agreement: { before: agreementOf(before), after: agreementOf(after) },
+    differences: differences(before, after),
+  };
 }
 
 const pct = (v: number | null): string => (v === null ? '—' : `${Math.round(v * 100)}%`);
@@ -116,6 +141,7 @@ function sideLines(label: string, side: TaskSide | null, k: number): string[] {
   return [
     `  ${label}: pass^${k} ${pct(side.passK)} · pass@${k} ${pct(side.passAtK)} · ${side.s}/${side.n} trials passed${thin}`,
     `    median ${num(side.medianSeconds)}s · ${num(side.medianCalls)} calls${modes ? ` · modes ${modes}` : ''}`,
+    ...(side.judge ? [`    ${tallyLine(side.judge)}`] : []),
   ];
 }
 
@@ -129,9 +155,13 @@ export function compareLines(c: Comparison): string[] {
       ...sideLines('after', task.after, c.k),
     );
   }
+  for (const side of ['before', 'after'] as const) {
+    const a = c.agreement[side];
+    if (a) lines.push(`${side} ${agreementLine(a)}`);
+  }
   lines.push(
     c.differences.length === 0
-      ? 'differences: none (same commit, api, model, k and trial count)'
+      ? 'differences: none (same commit, api, model, judge, k and trial count)'
       : `differences: ${c.differences.join('; ')}`,
   );
   return lines;

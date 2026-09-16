@@ -113,6 +113,10 @@
 
 
 ### Added
+- `bench:assistant run --judge <model>` and `history --judge <model> [--judge-sample 40]`: a
+  second model, on another family, says whether the person was served; the verdict sits beside the
+  modes and is never read into `pass`, pass^k or a rate; comparisons print its counts and its
+  agreement with the rules. (ISS-1054)
 
 - **The assistant's chat history is graded too.** `bench:assistant history` reads a window of
   `chat_logs` rows through the API and grades each row with the benchmark's own graders on what a

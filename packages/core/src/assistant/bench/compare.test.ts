@@ -129,7 +129,7 @@ describe('compare', () => {
 
   it('holds no composite key and prints no total line', () => {
     const c = compare(before, after);
-    expect(Object.keys(c).sort()).toEqual(['differences', 'k', 'tasks']);
+    expect(Object.keys(c).sort()).toEqual(['agreement', 'differences', 'k', 'tasks']);
     for (const task of c.tasks) {
       expect(Object.keys(task).sort()).toEqual(['after', 'before', 'id']);
       for (const side of [task.before, task.after]) {
@@ -147,7 +147,62 @@ describe('compare', () => {
 
   it('reports no differences for the same build', () => {
     expect(compareLines(compare(before, before)).at(-1)).toBe(
-      'differences: none (same commit, api, model, k and trial count)',
+      'differences: none (same commit, api, model, judge, k and trial count)',
     );
+  });
+});
+
+describe('the judge beside the estimators', () => {
+  const judged = (pass: boolean, served: 'yes' | 'partial' | 'no'): TrialResult => {
+    const t = trial(pass);
+    const turn = t.turns[0];
+    if (!turn) throw new Error('fixture has no turn');
+    return { ...t, turns: [{ ...turn, judge: { intent: 'i', served, reason: 'r', quote: '' } }] };
+  };
+  const plain = file({}, { a: [trial(true), trial(true), trial(false)] });
+  const withJudge = file(
+    { judge: { model: 'j' } },
+    { a: [judged(true, 'yes'), judged(true, 'partial'), judged(false, 'no')] },
+  );
+
+  it('tallies verdicts per side and agreement per file, leaving s, n, the estimators and modes untouched', () => {
+    const c = compare(plain, withJudge);
+    const a = c.tasks[0];
+    expect(a?.before?.judge).toBeNull();
+    expect(a?.after?.judge).toEqual({ judged: 3, yes: 1, partial: 1, no: 1, unreadable: 0 });
+    for (const key of ['s', 'n', 'passRate', 'passK', 'passAtK', 'modes', 'thin'] as const)
+      expect(a?.after?.[key]).toEqual(a?.before?.[key]);
+    expect(c.agreement).toEqual({
+      before: null,
+      after: { ruleFailed: { judged: 1, no: 1 }, clean: { judged: 2, yes: 1 } },
+    });
+  });
+
+  it('prints the judge line and the agreement line for the judged side only, and no weighted line', () => {
+    const lines = compareLines(compare(plain, withJudge));
+    expect(lines.filter((l) => l.includes('judge yes'))).toEqual([
+      '    judge yes 1/3, partial 1/3, no 1/3, unreadable 0/3',
+    ]);
+    expect(lines.filter((l) => l.startsWith('before agreement'))).toEqual([]);
+    expect(lines).toContain(
+      'after agreement: rule-failed rows judged no 1/1, clean rows judged yes 1/2',
+    );
+    expect(lines.some((l) => /weighted|total|overall|score/i.test(l))).toBe(false);
+    expect(lines.at(-1)).toBe('differences: judge: null → j');
+  });
+
+  it('a file with every judge key stripped reads to the same estimators', () => {
+    const stripped = JSON.parse(JSON.stringify(withJudge)) as BenchResult;
+    delete stripped.judge;
+    for (const t of stripped.tasks)
+      for (const tr of t.trials) for (const turn of tr.turns) delete turn.judge;
+    const c = compare(withJudge, stripped);
+    const a = c.tasks[0];
+    expect([a?.before?.s, a?.before?.n, a?.before?.passK]).toEqual([
+      a?.after?.s,
+      a?.after?.n,
+      a?.after?.passK,
+    ]);
+    expect(a?.after?.judge).toBeNull();
   });
 });

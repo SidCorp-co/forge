@@ -108,9 +108,35 @@ file and drops every row whose `session_id` is a room that run opened (`cleanup.
 the sessions and the count dropped in the file. The verb writes result files and nothing else:
 `chat_logs.quality_signals` stays untouched.
 
+## Judge: a second model asked one question, never the last word
+
+The judge never rescues a failed check. `--judge <model>` on `bench:assistant run` and on
+`bench:assistant history` asks a second model, on a different family from the one under test, the
+one question the rules cannot answer: was this person served. It reads the query, the reply, the
+`forge` argv of every tool call and the row's error (`judge.ts:judgeMessages`) and answers one JSON
+object, `{ intent, served: yes | partial | no, reason, quote }`, where `quote` is a span copied
+from the reply that the reason rests on. The endpoint is named by `FORGE_BENCH_JUDGE_URL` and
+`FORGE_BENCH_JUDGE_KEY`, environment only, spoken on the OpenAI wire through
+`providers/openai.ts:createOpenAIProvider`, at temperature 0, one request per judged turn or row.
+
+The verdict is a sidecar. It is stored under `judge` on the turn record or on the history file's
+`judge.rows`, beside `modes`, and nothing reads it back: `pass`, pass^k, pass@k, every mode count
+and every rate are byte for byte what they are without the flag. `compare` and `compare-history`
+print the judge counts beside the mode counts (`judge yes 31/40, partial 6/40, no 3/40, unreadable
+0/40`) and two agreement figures that say whether the judge is worth reading: of the rows the rules
+called `fallback_sent` or `unanswered`, how many the judge also called `no`; of the rows with no
+mode, how many it called `yes` (`judge.ts:agreement`). There is no weighted line.
+
+An answer the parser cannot read (`judge.ts:parseVerdict`: not a JSON object, a key missing, a
+`served` outside the set, a `quote` the reply never said) is stored as `judge.error` on that row
+and counted as `unreadable`, never as a verdict. A judge whose model is one the trail names is
+refused by name before any call, and a run stops there with the refused trial's grades and room id
+in the partial file. `history --judge` judges the newest `--judge-sample` kept rows (default 40)
+after `--exclude` has dropped the bench rooms; `run --judge` judges every turn of every trial.
+
 ## What it does not do
 
-- Judge quality with a model, even advisory.
+- Weight the judge into `pass`, pass^k or any composite; `--judge` annotates, it never scores.
 - Walk the `POST /api/chat` or Rocket.Chat doors; only the browser's door is benchmarked.
 - Decide language: the `language` check is a diacritic heuristic (`grade.ts:vietnameseWords`).
   After code spans, URLs and double-quoted spans are removed it counts words carrying a Vietnamese

@@ -12,6 +12,8 @@ import {
   DEAD_ISSUE_ID,
   FAKE_TOKEN,
   type FakeState,
+  JUDGE_KEY,
+  JUDGE_URL,
 } from '../fake-deployment.js';
 import type { BenchResult } from '../result.js';
 import { readHistoryResult } from './result.js';
@@ -235,12 +237,118 @@ describe('compare-history', () => {
     expect(await main(['compare-history', '/a.json', '/b.json'], {}, d)).toBe(0);
     expect(out[0]).toBe('gpt-x / web-chat-reply');
     expect(out[2]).toBe('    unanswered 2/5 (40.0%), screen_repair 1/5 (20.0%)');
-    expect(out.at(-1)).toBe('no differences: same commit, window, budgets and row count');
+    expect(out.at(-1)).toBe('no differences: same commit, window, budgets, judge and row count');
   });
 
   it('refuses one file with the usage', async () => {
     const { d, err } = deps(fake().fetch);
     expect(await main(['compare-history', '/a.json'], {}, d)).toBe(1);
     expect(err[0]).toContain('compare-history needs two history files');
+  });
+});
+
+const JUDGE_ENV = { ...ENV, FORGE_BENCH_JUDGE_URL: JUDGE_URL, FORGE_BENCH_JUDGE_KEY: JUDGE_KEY };
+const say = (served: 'yes' | 'partial' | 'no', quote = ''): string =>
+  JSON.stringify({ intent: 'count the open issues', served, reason: 'r', quote });
+/** Yes for a real answer, no for none, and word salad for the repaired reply. */
+const scriptedJudge = ({ reply }: { reply: string | null }): string => {
+  if (reply === null) return say('no');
+  if (reply === 'Rewritten.') return 'salad';
+  return say('yes', 'Three.');
+};
+const judgeFake = (rows = seededRows()) =>
+  createFakeDeployment({
+    script: () => ({ attempts: [{ reply: 'x' }] }),
+    rows,
+    judge: scriptedJudge,
+  });
+
+describe('history --judge', () => {
+  it('refuses --judge-sample without --judge, and a sample that is not a positive integer', async () => {
+    const { d, err } = deps(judgeFake().fetch);
+    expect(await main([...HISTORY, '--judge-sample', '5'], JUDGE_ENV, d)).toBe(1);
+    expect(err[0]).toBe('--judge-sample needs --judge <model>');
+    expect(await main([...HISTORY, '--judge', 'j', '--judge-sample', '2.5'], JUDGE_ENV, d)).toBe(1);
+    expect(err[1]).toBe('--judge-sample must be a positive integer, got 2.5');
+    expect(await main([...HISTORY, '--judge', 'j'], ENV, d)).toBe(1);
+    expect(err[2]).toContain('set FORGE_BENCH_JUDGE_URL and FORGE_BENCH_JUDGE_KEY');
+  });
+
+  it('refuses by name before any call when the judge is a model the window names', async () => {
+    const { fetch, state } = judgeFake();
+    const { d, err } = deps(fetch);
+    expect(await main([...HISTORY, '--judge', 'gpt-x'], JUDGE_ENV, d)).toBe(1);
+    expect(err[0]).toBe(
+      'judge gpt-x is a model under test (group gpt-x / web-chat-reply); no row judged',
+    );
+    expect(state.requests.filter((r) => r.path === '/v1/chat/completions')).toHaveLength(0);
+  });
+
+  it('judges the newest sample of kept rows, records sample and rows, tallies per group with agreement, and grades as without it', async () => {
+    const rows = seededRows();
+    const judged = judgeFake(rows);
+    const plain = createFakeDeployment({ script: () => ({ attempts: [{ reply: 'x' }] }), rows });
+    const a = deps(judged.fetch, { '/tmp/run.json': runFile() });
+    const b = deps(plain.fetch, { '/tmp/run.json': runFile() });
+    const args = [...HISTORY, '--exclude', '/tmp/run.json'];
+    expect(
+      await main([...args, '--judge', 'judge-model', '--judge-sample', '3'], JUDGE_ENV, a.d),
+    ).toBe(0);
+    expect(await main(args, ENV, b.d)).toBe(0);
+    const withJudge = readHistoryResult(a.written['/tmp/h.json'] ?? '');
+    const without = readHistoryResult(b.written['/tmp/h.json'] ?? '');
+    const { judge, ...rest } = withJudge;
+    expect(rest).toEqual(without);
+    expect(without.judge).toBeUndefined();
+    expect(judge?.model).toBe('judge-model');
+    expect(judge?.sample).toBe(3);
+    expect(
+      judge?.rows.map((r) => [
+        r.source,
+        r.modes,
+        'error' in r.judge ? 'unreadable' : r.judge.served,
+      ]),
+    ).toEqual([
+      ['rocketchat', ['help_roundtrip'], 'yes'],
+      ['web-chat-reply', ['screen_repair'], 'unreadable'],
+      ['web-chat-reply', ['unanswered'], 'no'],
+    ]);
+    expect(
+      judge?.rows.every((r) => r.chatLogId.startsWith('seed-') && r.sessionId !== BENCH_ROOM),
+    ).toBe(true);
+    expect(judge?.groups).toEqual([
+      {
+        model: 'gpt-x',
+        source: 'rocketchat',
+        tally: { judged: 1, yes: 1, partial: 0, no: 0, unreadable: 0 },
+      },
+      {
+        model: 'gpt-x',
+        source: 'web-chat-reply',
+        tally: { judged: 2, yes: 0, partial: 0, no: 1, unreadable: 1 },
+      },
+    ]);
+    expect(judge?.agreement).toEqual({
+      ruleFailed: { judged: 1, no: 1 },
+      clean: { judged: 0, yes: 0 },
+    });
+    expect(judged.state.requests.filter((r) => r.path === '/v1/chat/completions')).toHaveLength(3);
+    expect(a.out).toContain(
+      'judge judge-model read 3 of 3 asked: judge yes 1/3, partial 0/3, no 1/3, unreadable 1/3',
+    );
+  });
+
+  it('the sample defaults to 40 and a smaller window is judged whole', async () => {
+    const { d, written } = deps(judgeFake().fetch, { '/tmp/run.json': runFile() });
+    expect(
+      await main(
+        [...HISTORY, '--exclude', '/tmp/run.json', '--judge', 'judge-model'],
+        JUDGE_ENV,
+        d,
+      ),
+    ).toBe(0);
+    const h = readHistoryResult(written['/tmp/h.json'] ?? '');
+    expect(h.judge?.sample).toBe(40);
+    expect(h.judge?.rows).toHaveLength(4);
   });
 });

@@ -46,7 +46,7 @@ export interface Summary {
 
 export type Graded = { row: HistoryRow; grade: RowGrade };
 
-const NONE = '(none)';
+export const NONE = '(none)';
 const keyOf = (row: HistoryRow): string => `${row.model ?? NONE} ${row.source ?? NONE}`;
 
 function emptyTallies(): Record<FailureMode, ModeTally> {
