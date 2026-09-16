@@ -84,6 +84,16 @@ export interface ConversationAgentMeta {
   door: 'agent-chat-completion' | 'web-agent-completion';
   replies: ConversationAgentReplies;
   ackAfterMs: number | null;
+  /**
+   * When the bridge took this turn's delivery, which is NOT when it was delivered.
+   */
+  // cm:guard two stamps and not one, because they answer different questions and only the second is
+  // a fact about the room: `claimedAt` fences the two terminal writers so exactly one of them does
+  // the screening and the post, and `deliveredAt` says the reply is in the transcript. Serving
+  // `delivered` off the claim shows a person a finished turn with no answer under it, and a crash
+  // in between makes that lie durable — which is the state a claim is taken to prevent, told
+  // backwards (ISS-1039, commit consult F1).
+  claimedAt: string | null;
   deliveredAt: string | null;
   /** Which failure the venue was told about, stamped by the bridge; null while none. */
   failure: string | null;
@@ -124,6 +134,15 @@ export function readConversationAgentMeta(metadata: unknown): ConversationAgentM
       ack: typeof replies.ack === 'string' ? replies.ack : null,
     },
     ackAfterMs: typeof m.ackAfterMs === 'number' ? m.ackAfterMs : null,
+    // cm:guard a row written before the split carries `deliveredAt` and no `claimedAt`, and it reads
+    // as claimed: the one thing that stamp meant then was "a bridge has this", which is what
+    // `claimedAt` means now. Reading it as unclaimed would re-open it to a second delivery.
+    claimedAt:
+      typeof m.claimedAt === 'string'
+        ? m.claimedAt
+        : typeof m.deliveredAt === 'string'
+          ? m.deliveredAt
+          : null,
     deliveredAt: typeof m.deliveredAt === 'string' ? m.deliveredAt : null,
     failure: typeof m.failure === 'string' ? m.failure : null,
     ...(m.failover ? { failover: m.failover as ConversationAgentMeta['failover'] } : {}),
@@ -158,6 +177,12 @@ export async function hasInFlightConversationAgentTurn(
  */
 // cm:guard `route-window.ts` asks this when it finds a reservation and no delivered row, which is the state a core that died between the dispatch and the close leaves behind: without it that window reopens as `undetermined` — "a reply was sent and never confirmed" — about an answer no session has written yet (ISS-1039, plan consult F5).
 // cm:guard it does NOT filter on status: a window whose session has already finished is still a window that was handed off, and reading only the running ones would make the recovery answer depend on how long the crash lasted.
+// cm:guard it DOES require the dispatch to have been accepted, which is what `startedAt` records:
+// `createChatSessionRow` commits the row and its marker before `dispatchChatTurn` does anything, so
+// a core that died between the two leaves a session that names this window and was never sent
+// anywhere. Reading that as a handoff closes the window announcing a box working on an answer no box
+// was asked for, and the reservation then stops the recovery dispatching it — a room waiting forever
+// on nothing (ISS-1039, commit consult F2).
 export async function conversationAgentTurnForWindow(
   windowId: string,
 ): Promise<{ sessionId: string } | null> {
@@ -165,7 +190,10 @@ export async function conversationAgentTurnForWindow(
     .select({ id: agentSessions.id })
     .from(agentSessions)
     .where(
-      sql`${agentSessions.metadata} -> ${CONVERSATION_AGENT_MARKER}::text ->> 'windowId' = ${windowId}`,
+      and(
+        sql`${agentSessions.metadata} -> ${CONVERSATION_AGENT_MARKER}::text ->> 'windowId' = ${windowId}`,
+        sql`${agentSessions.startedAt} IS NOT NULL`,
+      ),
     )
     .limit(1);
   return row ? { sessionId: row.id } : null;
@@ -193,6 +221,7 @@ export async function readConversationAgentTurns(
     .select({
       id: agentSessions.id,
       status: agentSessions.status,
+      runtimeState: agentSessions.runtimeState,
       metadata: agentSessions.metadata,
       createdAt: agentSessions.createdAt,
     })
@@ -208,17 +237,46 @@ export async function readConversationAgentTurns(
       windowId: meta.windowId,
       sessionId: row.id,
       // cm:guard `failure` and not the session's status decides between the last two: a session can end `completed` and still have produced nothing the screen could pass, and one that ended `failed` has had its reply delivered as the failure sentence — so what a person was SHOWN is the stamp the bridge wrote, not how the process exited.
-      state: meta.failure
-        ? 'failed'
-        : meta.deliveredAt
-          ? 'delivered'
-          : row.status === 'running'
-            ? 'running'
-            : 'dispatched',
-      reason: meta.failure,
+      state: turnState(row, meta),
+      reason: meta.failure ?? (interruptedDelivery(meta) ? DELIVERY_INTERRUPTED : null),
     });
   }
   return out;
+}
+
+/**
+ * How long a claimed-but-undelivered turn is read as being delivered rather than lost.
+ */
+// cm:guard the work between the claim and the stamp is one screening turn and one post, so the bound
+// is generous by two orders of magnitude and still finite: past it, the process that held the claim
+// is gone and no other will take it, because the claim is exactly what stops one. Reading it as
+// `running` forever is a room told a box is working, indefinitely, on a turn nothing holds.
+const DELIVERY_INTERRUPTED_AFTER_MS = 10 * 60 * 1000;
+
+/** What the venue is told when a delivery was claimed and then never finished. */
+const DELIVERY_INTERRUPTED = 'the reply was interrupted before it reached this room';
+
+function interruptedDelivery(meta: ConversationAgentMeta): boolean {
+  if (meta.deliveredAt || meta.failure || !meta.claimedAt) return false;
+  const at = Date.parse(meta.claimedAt);
+  return Number.isFinite(at) && Date.now() - at > DELIVERY_INTERRUPTED_AFTER_MS;
+}
+
+// cm:guard `running` is the RUNNER's word and never core's: `dispatchChatTurn` commits
+// `status: 'running'` before it has published anything, so a session waiting for a box to pick it up
+// is already `running` in this table. `runtimeState` is written only where the principal is a device
+// (`agent-sessions/routes.ts`), which makes it the one piece of evidence that a box actually has
+// this turn — and telling the two apart is criterion 19 (ISS-1039, commit consult F6).
+function turnState(
+  row: { status: string; runtimeState: string | null },
+  meta: ConversationAgentMeta,
+): ConversationAgentTurnState {
+  if (meta.failure) return 'failed';
+  if (meta.deliveredAt) return 'delivered';
+  if (interruptedDelivery(meta)) return 'failed';
+  if (meta.claimedAt) return 'running';
+  if (row.status !== 'running') return 'dispatched';
+  return row.runtimeState ? 'running' : 'dispatched';
 }
 
 /**
@@ -276,6 +334,7 @@ export async function startConversationAgentTurn(
     door: args.door,
     replies: args.replies,
     ackAfterMs: args.ackAfterMs ?? null,
+    claimedAt: null,
     deliveredAt: null,
     failure: null,
   };

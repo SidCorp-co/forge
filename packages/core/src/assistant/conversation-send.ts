@@ -26,6 +26,7 @@ import { routeWindow, type WindowTurnInputs } from '../conversations/route-windo
 import {
   effectiveConversationMode,
   getConversation,
+  readMessages,
   settleConversationMode,
 } from '../conversations/store.js';
 import {
@@ -83,6 +84,13 @@ export function webConversationTurn(args: {
     deliveryKey: string;
     mode: ConversationMode;
     question: string;
+    /**
+     * What was said in this room BEFORE this window, for a turn answered out of reach.
+     */
+    // cm:guard a thunk and not a value, because only the `agent` branch spends it: the in-core turn
+    // gets the room's history from its own window, and building this eagerly would put an extra read
+    // on every Assistant send for a string that branch never looks at.
+    conversationContext: () => Promise<string | null>;
     reserve: () => Promise<boolean>;
   };
 }): WindowTurnInputs {
@@ -120,6 +128,11 @@ export function webConversationTurn(args: {
         handleName: args.handleName,
         question: args.window.question,
         askedByLabel: args.askedBy,
+        // cm:guard the room's own earlier turns go WITH the dispatch, because this lane runs a fresh
+        // session per turn and the door above invites a follow-up: a person answering "the second
+        // one" reaches a session that never saw the first. The inline turn gets this for free from
+        // the window's own messages; a diverted one has to be handed it (commit consult F4).
+        conversationContext: await args.window.conversationContext(),
         persona: webAgentConversationPersona(args.project.name, args.project.slug, args.askedBy),
         door: 'web-agent-completion',
         replies: WEB_AGENT_REPLIES,
@@ -301,12 +314,32 @@ async function webWindowSubject(
   return { project, handle: await resolveProjectHandle(db, project.id) };
 }
 
+/**
+ * How many earlier messages a diverted turn is handed.
+ */
+// cm:guard bounded, and bounded HERE rather than in the prompt builder: the session has the history
+// tools for anything deeper, and an unbounded transcript in a prompt is a room's whole life paid for
+// on every turn (ISS-609's rule, this lane's version of it).
+const AGENT_CONTEXT_MESSAGES = 20;
+
+async function agentConversationContext(window: ConversationWindowRow): Promise<string | null> {
+  const before = (await readMessages(window.conversationId, AGENT_CONTEXT_MESSAGES + 1)).filter(
+    (m) => m.seq < window.firstSeq,
+  );
+  if (before.length === 0) return null;
+  return before
+    .slice(-AGENT_CONTEXT_MESSAGES)
+    .map((m) => `${m.authorLabel ?? (m.role === 'assistant' ? 'Assistant' : m.role)}: ${m.content}`)
+    .join('\n');
+}
+
 async function routeWebWindow(
   window: ConversationWindowRow,
   claim: WindowClaim,
 ): Promise<string | null> {
   const subject = await webWindowSubject(window, claim);
   if (!subject) return null;
+
   const outcome = await routeWindow({
     window,
     manySpeakersPrincipalUserId: subject.handle.userId,
@@ -331,6 +364,7 @@ async function routeWebWindow(
           deliveryKey,
           mode,
           question: messages.map((m) => m.content).join('\n'),
+          conversationContext: () => agentConversationContext(window),
           reserve,
         },
       }),

@@ -8,6 +8,7 @@
 
 import { apiClient, apiClientList } from "@/lib/api/client";
 import type {
+  AgentModeOffer,
   ConversationCandidates,
   ConversationDetail,
   ConversationMembership,
@@ -118,6 +119,13 @@ export const conversationsApi = {
       method: "POST",
       body: JSON.stringify({ content, ...(mode ? { mode } : {}) }),
     }),
+
+  // cm:guard a PROJECT-scoped read and not a room's, because the composer of a draft has no room to
+  // ask about: it is the only way the pick can be disabled with its reason before a person spends a
+  // message finding out (ISS-1039).
+  /** `GET /api/conversations/agent-mode` — could a new room here be opened in Agent mode? */
+  agentMode: (projectId: string) =>
+    apiClient<AgentModeOffer>(`/conversations/agent-mode?projectId=${projectId}`),
 
   /** `PATCH /api/conversations/:id` — rename. */
   rename: (id: string, title: string | null) =>

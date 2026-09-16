@@ -20,12 +20,14 @@ Element.prototype.scrollIntoView = vi.fn();
 const open = vi.fn();
 const send = vi.fn();
 const detail = vi.fn();
+const agentMode = vi.fn(async () => ({ available: true, reason: null }));
 
 vi.mock("../api", () => ({
   conversationsApi: {
     open: (...a: unknown[]) => open(...a),
     send: (...a: unknown[]) => send(...a),
     detail: (...a: unknown[]) => detail(...a),
+    agentMode: (...a: unknown[]) => agentMode(...a),
     list: async () => ({ items: [], total: 0 }),
     rename: async () => ({}),
     remove: async () => undefined,
@@ -393,5 +395,51 @@ describe("ConversationChat · picking what the room talks to", () => {
     });
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
     expect(send.mock.calls[0]?.[2]).toBe("agent");
+  });
+});
+
+// cm:guard the composer of a DRAFT is where this pick is usually made — there is no room yet, so the
+// room's own `agentMode` cannot answer, and the screen was offering Agent enabled on the strength of
+// nothing. A person on a project with no box paired then composed a question and learned from the
+// refusal. Criteria 15 and 16 are about the control being right BEFORE a message is spent
+// (ISS-1039, commit consult F5).
+describe("ConversationChat \u00b7 the pick before any room exists", () => {
+  function mountDraft() {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    return render(
+      <QueryClientProvider client={qc}>
+        <ConversationChat projectId="p1" />
+      </QueryClientProvider>,
+    );
+  }
+
+  it("asks the project whether a box is free, with no room in hand", async () => {
+    agentMode.mockResolvedValue({ available: true, reason: null });
+    mountDraft();
+    await waitFor(() => expect(agentMode).toHaveBeenCalledWith("p1"));
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Agent" })).toBeEnabled());
+  });
+
+  it("offers Agent disabled, with the project's own reason, where no box is paired", async () => {
+    agentMode.mockResolvedValue({ available: false, reason: "this project has no box paired" });
+    mountDraft();
+    // cm:why the wait is on the REASON and not on the disabled state: the control is disabled while
+    // the read is still in flight too, so waiting on that alone passes before the answer arrives and
+    // asserts the loading sentence.
+    await waitFor(() => expect(screen.getByText(/no box paired/)).toBeInTheDocument());
+    expect(screen.getByRole("radio", { name: "Agent" })).toBeDisabled();
+  });
+
+  // cm:guard an unknown is not a yes: while the read is in flight the control is disabled and says
+  // what it is doing, because offering it and refusing the send a second later is the same lie.
+  it("holds Agent closed while it does not yet know", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    agentMode.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+    mountDraft();
+    await waitFor(() => expect(screen.getByRole("radio", { name: "Agent" })).toBeDisabled());
+    expect(screen.getByText(/checking whether a box is free/)).toBeInTheDocument();
+    await act(async () => {
+      answer({ available: true, reason: null });
+    });
   });
 });

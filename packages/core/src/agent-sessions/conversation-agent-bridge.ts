@@ -87,6 +87,10 @@ function finalAssistantText(messages: unknown): string | null {
  */
 // cm:guard compare-and-set, so exactly one caller delivers even when the runner's happy-path PATCH and a kernel sweeper race on the same row.
 // cm:guard the spread preserves sibling keys — the failover writes `failover` under the same marker, and rebuilding this object from the read shape alone would drop the attempt counter that bounds the retry.
+// cm:guard the CAS is on `claimedAt` and the answer's own stamp is written LATER, by `stampDelivered`,
+// after the transcript row commits: claiming is one writer winning the right to do the work, and
+// delivering is the work being done. Stamping both here served `delivered` to a screen that had no
+// answer to show under it (ISS-1039, commit consult F1).
 async function claimDelivery(session: SessionRow, failure: string | null): Promise<boolean> {
   const prev = (session.metadata as Record<string, unknown>) ?? {};
   const prevMarker = (prev[CONVERSATION_AGENT_MARKER] as Record<string, unknown>) ?? {};
@@ -97,8 +101,11 @@ async function claimDelivery(session: SessionRow, failure: string | null): Promi
         ...prev,
         [CONVERSATION_AGENT_MARKER]: {
           ...prevMarker,
-          deliveredAt: new Date().toISOString(),
-          failure,
+          claimedAt: new Date().toISOString(),
+          // cm:guard a claim made to CLOSE a turn — an unreachable venue — carries its failure in the
+          // same write and is delivered by that alone, so it stamps the answer's side too. A claim
+          // made to do the work carries no failure and stamps nothing.
+          ...(failure ? { deliveredAt: new Date().toISOString(), failure } : { failure: null }),
         },
       } as never,
     })
@@ -106,11 +113,31 @@ async function claimDelivery(session: SessionRow, failure: string | null): Promi
       and(
         eq(agentSessions.id, session.id),
         // cm:guard the `::text` cast is load-bearing — drizzle renders the marker as a bind parameter, and `jsonb -> $1` with an untyped parameter is ambiguous in Postgres (`->` overloads on text and int), so it fails at runtime with "operator is not unique" rather than at build time.
-        sql`(${agentSessions.metadata} -> ${CONVERSATION_AGENT_MARKER}::text ->> 'deliveredAt') IS NULL`,
+        sql`(${agentSessions.metadata} -> ${CONVERSATION_AGENT_MARKER}::text ->> 'claimedAt') IS NULL AND (${agentSessions.metadata} -> ${CONVERSATION_AGENT_MARKER}::text ->> 'deliveredAt') IS NULL`,
       ),
     )
     .returning({ id: agentSessions.id });
   return claimed.length > 0;
+}
+
+/** The answer is in the transcript: stamp the fact, which is what the screen reads. */
+async function stampDelivered(sessionId: string): Promise<void> {
+  const [row] = await db
+    .select({ metadata: agentSessions.metadata })
+    .from(agentSessions)
+    .where(eq(agentSessions.id, sessionId))
+    .limit(1);
+  const prev = (row?.metadata as Record<string, unknown>) ?? {};
+  const marker = (prev[CONVERSATION_AGENT_MARKER] as Record<string, unknown>) ?? {};
+  await db
+    .update(agentSessions)
+    .set({
+      metadata: {
+        ...prev,
+        [CONVERSATION_AGENT_MARKER]: { ...marker, deliveredAt: new Date().toISOString() },
+      } as never,
+    })
+    .where(eq(agentSessions.id, sessionId));
 }
 
 /** Re-stamp which failure the venue was shown, once the delivery is already claimed. */
@@ -204,7 +231,13 @@ export async function deliverConversationAgentReplyOnce(session: SessionRow): Pr
     cause !== 'ws_publish_failed'
   ) {
     const failover = await redispatchConversationAgentTurn(session);
-    if (failover.ok) return;
+    // cm:guard the retry carries this window's live state from here, so THIS row is settled and must
+    // say so: left claimed-and-undelivered it reads as a turn still being delivered, and the room
+    // polls behind it for as long as the tab is open (ISS-1039, commit consult F1).
+    if (failover.ok) {
+      await stampDelivered(session.id);
+      return;
+    }
   }
 
   const outcome = await composeOutcome(session, meta);
@@ -223,6 +256,7 @@ export async function deliverConversationAgentReplyOnce(session: SessionRow): Pr
       deliveryKey: meta.deliveryKey,
       decision: 'handed-off',
     });
+    await stampDelivered(session.id);
   } catch (err) {
     // cm:guard nothing is recorded when the door refuses: the venue never saw this text, and a transcript row for it would say the opposite. The commonest refusal is a room rebound while the turn ran, which `deliver` names rather than swallows.
     logger.error(

@@ -174,3 +174,158 @@ describe('the mode a room is opened in', () => {
     expect((await store.getConversation(created.id))?.mode).toBe('assistant');
   });
 });
+
+// cm:guard the commit consult's F1, F2, F5 and F6, each of which is a READ answering from something
+// core wrote at dispatch time rather than from evidence the thing happened. They are integration
+// cases because every one of them is a fragment of SQL over a real row — a `->>` on jsonb, a null
+// `started_at` — and a mocked query builder would assert the shape of the builder instead.
+describe('what a room is told about a turn it handed to a box', () => {
+  /** One `agent_sessions` row carrying the conversation marker, as the dispatcher writes it. */
+  async function agentSession(over: {
+    windowId: string;
+    startedAt: string | null;
+    status?: string;
+    runtimeState?: string | null;
+    marker?: Record<string, unknown>;
+  }) {
+    const id = randomUUID();
+    const runId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO pipeline_runs (id, project_id, kind, status)
+      VALUES (${runId}::uuid, ${projectId}::uuid, 'interactive', 'running')`);
+    await harness.db.execute(sql`
+      INSERT INTO agent_sessions (id, project_id, pipeline_run_id, user_id, status, runtime_state, started_at, metadata)
+      VALUES (
+        ${id}::uuid, ${projectId}::uuid, ${runId}::uuid, ${ownerId}::uuid,
+        ${over.status ?? 'running'}, ${over.runtimeState ?? null},
+        ${over.startedAt}::timestamptz,
+        ${JSON.stringify({
+          conversationAgent: {
+            venue: { adapter: 'web', externalId: 'v1', shape: 'direct', projectId },
+            conversationId: 'set-below',
+            windowId: over.windowId,
+            deliveryKey: 'key-1',
+            handleName: 'Forge',
+            question: 'which file?',
+            askedByLabel: 'Ada',
+            door: 'web-agent-completion',
+            replies: { dedup: 'd', noDevice: 'n', failed: 'f', ack: null },
+            ackAfterMs: null,
+            claimedAt: null,
+            deliveredAt: null,
+            failure: null,
+            ...over.marker,
+          },
+        })}::jsonb
+      )`);
+    return id;
+  }
+
+  const turnsIn = async (conversationId: string) => {
+    const res = await app.request(`/api/conversations/${conversationId}`, {
+      headers: await auth(ownerId),
+    });
+    expect(res.status).toBe(200);
+    return ((await res.json()) as { agentTurns: Array<{ state: string; reason: string | null }> })
+      .agentTurns;
+  };
+
+  const withRoom = async (
+    conversationId: string,
+    over: Parameters<typeof agentSession>[0],
+  ): Promise<void> => {
+    await agentSession({ ...over, marker: { ...over.marker, conversationId } });
+  };
+
+  // cm:guard `dispatchChatTurn` commits `status: 'running'` before it publishes to any box, so this
+  // is the difference criterion 19 asks the screen to show: core sent it, and nothing has it yet.
+  it('calls a turn dispatched until a box has written a runtime state of its own', async () => {
+    const created = await webRoom();
+    await withRoom(created.id, { windowId: randomUUID(), startedAt: new Date().toISOString() });
+    expect((await turnsIn(created.id))[0]?.state).toBe('dispatched');
+  });
+
+  it('calls it running once the runner reports one', async () => {
+    const created = await webRoom();
+    await withRoom(created.id, {
+      windowId: randomUUID(),
+      startedAt: new Date().toISOString(),
+      runtimeState: 'working',
+    });
+    expect((await turnsIn(created.id))[0]?.state).toBe('running');
+  });
+
+  // cm:guard the claim is one writer winning the right to deliver; the answer is a transcript row
+  // written after it. A screen served `delivered` on the claim drops its waiting entry and stops
+  // polling over a turn whose reply does not exist yet.
+  it('does not call a claimed turn delivered until the answer is stamped', async () => {
+    const created = await webRoom();
+    await withRoom(created.id, {
+      windowId: randomUUID(),
+      startedAt: new Date().toISOString(),
+      status: 'completed',
+      marker: { claimedAt: new Date().toISOString() },
+    });
+    expect((await turnsIn(created.id))[0]?.state).toBe('running');
+  });
+
+  it('calls it delivered once the answer is stamped', async () => {
+    const created = await webRoom();
+    await withRoom(created.id, {
+      windowId: randomUUID(),
+      startedAt: new Date().toISOString(),
+      status: 'completed',
+      marker: { claimedAt: new Date().toISOString(), deliveredAt: new Date().toISOString() },
+    });
+    expect((await turnsIn(created.id))[0]?.state).toBe('delivered');
+  });
+
+  // cm:guard THE case the mocked reader cannot prove: a session created for a window and never
+  // dispatched carries a null `started_at`, and reading it as a handoff closes that window saying a
+  // box is working on an answer nothing was asked for — while the reservation stops the recovery
+  // dispatching one. The room then waits forever.
+  it('does not read a session that was created and never dispatched as a handoff', async () => {
+    const windowId = randomUUID();
+    const created = await webRoom();
+    await withRoom(created.id, { windowId, startedAt: null, status: 'idle' });
+    const { conversationAgentTurnForWindow } = await import(
+      '../../src/agent-sessions/conversation-agent.js'
+    );
+    expect(await conversationAgentTurnForWindow(windowId)).toBeNull();
+  });
+
+  it('reads one whose dispatch was accepted as exactly that handoff', async () => {
+    const windowId = randomUUID();
+    const created = await webRoom();
+    const id = await agentSession({
+      windowId,
+      startedAt: new Date().toISOString(),
+      marker: { conversationId: created.id },
+    });
+    const { conversationAgentTurnForWindow } = await import(
+      '../../src/agent-sessions/conversation-agent.js'
+    );
+    expect(await conversationAgentTurnForWindow(windowId)).toEqual({ sessionId: id });
+  });
+
+  // cm:guard the draft's own door, which exists because the composer's first question is asked
+  // before any room does: a screen with nothing to read was offering Agent enabled, and a person on
+  // a project with no box learned that only from the refusal, after composing and sending.
+  it('answers the draft composer about the project, with no room in hand', async () => {
+    const res = await app.request(`/api/conversations/agent-mode?projectId=${projectId}`, {
+      headers: await auth(ownerId),
+    });
+    expect(res.status).toBe(200);
+    const body = (await res.json()) as { available: boolean; reason: string | null };
+    expect(body.available).toBe(false);
+    expect(body.reason).toContain('no box paired');
+  });
+
+  it('refuses that door to somebody with no role on the project', async () => {
+    const stranger = (await createTestUser(harness.db)).id;
+    const res = await app.request(`/api/conversations/agent-mode?projectId=${projectId}`, {
+      headers: await auth(stranger),
+    });
+    expect(res.status).toBe(403);
+  });
+});

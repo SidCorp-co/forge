@@ -64,6 +64,7 @@ describe('the Forge UI reply door, against a real database', () => {
         deliveryKey: 'k1',
         mode: 'assistant',
         question: 'hello',
+        conversationContext: async () => null,
         reserve: async () => true,
       },
     }).door;

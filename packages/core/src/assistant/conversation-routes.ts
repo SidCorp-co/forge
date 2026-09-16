@@ -211,6 +211,34 @@ conversationRoutes.get(
   },
 );
 
+/**
+ * Whether a NEW conversation in this project could be opened in Agent mode.
+ */
+// cm:guard a door of its own, because the composer's first question is asked before any room exists:
+// a draft has no conversation to read `agentMode` off, and the screen was offering Agent enabled on
+// the strength of nothing — so a person on a project with no box paired composed a question, spent a
+// send, and learned only from the refusal. The issue asks for the control disabled and EXPLAINED
+// before a message is spent, which cannot be answered by the room's own read (ISS-1039, commit
+// consult F5).
+// cm:guard it answers the same two sentences `agentModeOffer` does and never a third: one probe, one
+// vocabulary, so a draft and a room cannot disagree about the same fleet.
+conversationRoutes.get(
+  '/agent-mode',
+  zValidator('query', z.object({ projectId: z.uuid() }).strict(), (r) => {
+    if (!r.success) throw badRequest(z.flattenError(r.error));
+  }),
+  async (c) => {
+    const { projectId } = c.req.valid('query');
+    const access = await loadProjectAccess(projectId, c.get('userId'));
+    assertProjectRole(access, 'viewer', 'not a project member');
+    return c.json(
+      (await conversationAgentDeviceAvailable(projectId))
+        ? { available: true, reason: null }
+        : { available: false, reason: 'this project has no box paired' },
+    );
+  },
+);
+
 conversationRoutes.post(
   '/',
   zValidator('json', createSchema, (r) => {

@@ -41,6 +41,7 @@ const webDoor = (): string =>
       deliveryKey: 'k1',
       mode: 'assistant',
       question: 'hello',
+      conversationContext: async () => null,
       reserve: async () => true,
     },
   }).door;

@@ -96,6 +96,21 @@ export function useConversation(id: string | undefined) {
   });
 }
 
+/**
+ * Whether a NEW room in this project could be opened in Agent mode.
+ */
+// cm:guard asked only while there is no room to ask about, which is the draft: once a room exists its
+// own `agentMode` is the answer, and two probes for one question is how a composer comes to disagree
+// with the room it is sitting in (ISS-1039).
+export function useDraftAgentMode(projectId: string | undefined, enabled: boolean) {
+  return useQuery({
+    queryKey: ["conversations", "agent-mode", projectId],
+    queryFn: () => conversationsApi.agentMode(projectId as string),
+    enabled: !!projectId && enabled,
+    staleTime: 30_000,
+  });
+}
+
 export function useOpenConversation() {
   const qc = useQueryClient();
   return useMutation({

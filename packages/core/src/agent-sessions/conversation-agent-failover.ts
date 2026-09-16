@@ -37,7 +37,7 @@ export type ConversationAgentFailoverResult =
 /**
  * Try another box for a turn whose runner failed on infrastructure.
  */
-// cm:guard reuse the STORED prompt, never rebuild it: the stored text is exactly what `buildConversationAgentPrompt` produced for the first attempt, and the caller has already claimed `deliveredAt` so this cannot race a second failover for the same turn.
+// cm:guard reuse the STORED prompt, never rebuild it: the stored text is exactly what `buildConversationAgentPrompt` produced for the first attempt, and the caller has already claimed this turn so this cannot race a second failover for the same turn.
 export async function redispatchConversationAgentTurn(
   session: SessionRow,
 ): Promise<ConversationAgentFailoverResult> {
@@ -75,6 +75,7 @@ export async function redispatchConversationAgentTurn(
   const priorMeta = (session.metadata as Record<string, unknown>) ?? {};
   const next: ConversationAgentMeta = {
     ...meta,
+    claimedAt: null,
     deliveredAt: null,
     failure: null,
     failover: { attempt, triedDeviceIds: tried },
@@ -135,10 +136,16 @@ export async function redispatchConversationAgentTurn(
       'conversation-agent failover: re-dispatch failed',
     );
     // cm:edge lockstep -> packages/core/src/agent-sessions/conversation-agent-bridge.ts — `dispatchChatTurn` commits `status: 'running'` before its throwable work, so a throw here must terminate the retry row itself or `hasInFlightConversationAgentTurn` wedges the room on a phantom live turn.
-    // cm:why `deliveredAt` is pre-stamped in the same write so the row the transition hands the bridge already has one — without it the bridge claims the retry row and posts a second failure sentence while the original caller posts one too.
+    // cm:why the retry row is pre-stamped CLAIMED AND DELIVERED in the same write, so the row the
+    // transition hands the bridge is already settled — without it the bridge claims the retry and
+    // posts a second failure sentence while the original caller posts one too. It carries the
+    // failure as well, because a row stamped delivered with nothing in the transcript under it is
+    // the false success the two stamps were split to end (ISS-1039, commit consult F1).
     await markSessionFailed(retry, 'conversation-agent-failover', {
       ...next,
+      claimedAt: new Date().toISOString(),
       deliveredAt: new Date().toISOString(),
+      failure: meta.replies.failed,
     });
     return { ok: false, status: 'error' };
   }

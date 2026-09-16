@@ -22,7 +22,12 @@ import { useProjects } from "@/features/projects/hooks";
 import { Composer, ReadOnlyComposerNote } from "@/features/session/components/composer";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { formatApiError } from "@/lib/api/error";
-import { useConversation, useOpenConversation, useSendMessage } from "../hooks";
+import {
+  useConversation,
+  useDraftAgentMode,
+  useOpenConversation,
+  useSendMessage,
+} from "../hooks";
 import { composerRefusal } from "../membership";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
 import { ConversationModeToggle } from "./conversation-mode-toggle";
@@ -93,10 +98,15 @@ export function ConversationChat({
   // Assistant mode, and offering the pick over it would offer something the server refuses. A draft
   // holds no room at all, which is the emptiest a room gets.
   const settled = Boolean(roomQ.data && (roomQ.data.mode !== null || messages.length > 0));
-  // cm:guard a DRAFT offers Agent on the strength of nothing, because there is no room to ask
-  // about yet: the send is where the truth is told, and it refuses by name rather than falling back.
-  // Once a room exists the server's own answer is what the control reads (ISS-1039).
-  const agentOffer = roomQ.data?.agentMode ?? { available: true, reason: null };
+  // cm:guard a DRAFT asks the PROJECT, because there is no room to ask about yet and the pick has to
+  // be right before a message is spent: offering Agent enabled on the strength of nothing sent a
+  // person on a box-less project through composing a question to find out from the refusal. While
+  // that read is in flight Agent stays disabled and says so — an unknown is not a yes (ISS-1039,
+  // commit consult F5).
+  const draftOfferQ = useDraftAgentMode(projectId, !resolvedId);
+  const agentOffer =
+    roomQ.data?.agentMode ??
+    draftOfferQ.data ?? { available: false, reason: "checking whether a box is free" };
 
   // cm:guard the composer is CLOSED before a person types rather than after they press enter, because the server refuses a turn in a room about more than one project by name — and a person who has written a paragraph into a box that was never going to send it has lost the paragraph and learned nothing. The reason and the way out below are the same ones that refusal carries (ISS-1011 criterion 33).
   const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;

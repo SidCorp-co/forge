@@ -17,6 +17,8 @@ import {
   startConversationAgentTurn,
 } from '../../agent-sessions/conversation-agent.js';
 import type { ConversationVenue } from '../../conversations/ports.js';
+import { parseRocketChatVenueId } from './conversation-port.js';
+import { hasInFlightRoomSession } from './room-delivery.js';
 
 // cm:guard under this delay the room sees NO ack at all — the bridge delivers the real answer first, which is the common case; only a genuinely slow turn ever shows one.
 export const AGENT_CHAT_ACK_DELAY_MS = 2 * 60 * 1000;
@@ -55,7 +57,22 @@ export type StartAgentChatResult = ConversationAgentTurnResult;
  * Hand one Rocket.Chat turn to a runner-hosted session.
  */
 // cm:guard the `product` lens and the Vietnamese sentences are supplied HERE and not defaulted in the neutral lane: they are what a Rocket.Chat room is answered in, and a lane holding them would be choosing a voice for the Forge UI too.
-export function startAgentChat(args: StartAgentChatArgs): Promise<StartAgentChatResult> {
+// cm:hack ISS-1039 until: no agent_sessions row with a non-terminal status carries a metadata.agentChat key
+// The neutral lane's "one live turn per room" is keyed on the CONVERSATION, and a session dispatched
+// before this change is keyed on a rid and a tmid — so across the deploy the two exclusions cannot
+// see each other, and a second question in a room whose old-format turn is still running would start
+// a second box. Priced: one extra indexed read per Rocket.Chat agent turn, on the dispatch path
+// only, retired with the legacy bridge by the condition above (commit consult F3).
+async function legacyTurnStillRunning(args: StartAgentChatArgs): Promise<boolean> {
+  const parts = parseRocketChatVenueId(args.venue.externalId);
+  if (!parts) return false;
+  return hasInFlightRoomSession(args.project.id, parts.rid, 'agentChat', parts.tmid);
+}
+
+export async function startAgentChat(args: StartAgentChatArgs): Promise<StartAgentChatResult> {
+  if (await legacyTurnStillRunning(args)) {
+    return { started: false, reason: 'deduped' };
+  }
   return startConversationAgentTurn({
     venue: args.venue,
     conversationId: args.conversationId,
