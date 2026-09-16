@@ -2248,6 +2248,12 @@
   marking itself is kept, along with the one project that carries it, because it is somebody's
   recorded intention and throwing it away is a decision for a person, not for a cleanup.
 
+  One thing you can ask for now gets an answer instead of a guess. The prompt preview — "show me
+  what an agent would be told for this step" — used to answer for the retired steps too, by handing
+  back the part of the briefing that is the same for everyone and letting you read it as though a
+  step like that could still run. It now says plainly that no agent can be given that kind of work,
+  and lists the kinds it can show you.
+
 - **The comment-grammar gate is gone, and the rationale it recorded stays.** A vendored checker
   read every comment in the repo and judged its form, its references and its density against a
   grammar, with roughly 5,600 annotations frozen as debt behind it. It was four of the twenty-two

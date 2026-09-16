@@ -26,6 +26,8 @@ const { promptRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
 const { requestId } = await import('../middleware/request-id.js');
+const { jobTypes } = await import('../db/schema.js');
+const { RUNNER_CAPABILITIES } = await import('../pipeline/registry.js');
 
 function buildApp() {
   const app = new Hono();
@@ -76,13 +78,13 @@ describe('POST /api/prompts/preview', () => {
         Authorization: await authHeader(),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ projectId: PROJECT_ID, state: 'code' }),
+      body: JSON.stringify({ projectId: PROJECT_ID, state: 'release_batch' }),
     });
     expect(res.status).toBe(200);
     const data = (await res.json()) as Record<string, unknown>;
     expect(data.systemPrompt).toContain('Pipeline Rules');
     expect(data.systemPrompt).toContain('baseBranch: main');
-    expect(data.userPrompt).toContain('/forge-code preview-no-issue');
+    expect(data.userPrompt).toContain('/forge-release_batch preview-no-issue');
     expect(data.blocks).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ id: 'pipeline-rules' }),
@@ -106,7 +108,7 @@ describe('POST /api/prompts/preview', () => {
       },
       body: JSON.stringify({
         projectId: PROJECT_ID,
-        state: 'code',
+        state: 'release_batch',
         overrides: {
           systemPrompt: { mode: 'replace', extras: 'ONLY THIS RULE.' },
         },
@@ -132,7 +134,7 @@ describe('POST /api/prompts/preview', () => {
       },
       body: JSON.stringify({
         projectId: PROJECT_ID,
-        state: 'code',
+        state: 'release_batch',
         overrides: {
           systemPrompt: { mode: 'append', extras: 'Custom rule.' },
         },
@@ -155,7 +157,7 @@ describe('POST /api/prompts/preview', () => {
         Authorization: await authHeader(),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ projectId: PROJECT_ID, state: 'code' }),
+      body: JSON.stringify({ projectId: PROJECT_ID, state: 'release_batch' }),
     });
     expect(res.status).toBe(403);
   });
@@ -190,7 +192,7 @@ describe('POST /api/prompts/preview', () => {
         Authorization: await authHeader(),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ projectId: PROJECT_ID, state: 'code', issueId: ISSUE_ID }),
+      body: JSON.stringify({ projectId: PROJECT_ID, state: 'release_batch', issueId: ISSUE_ID }),
     });
     expect(res.status).toBe(404);
   });
@@ -219,7 +221,7 @@ describe('POST /api/prompts/preview', () => {
         Authorization: await authHeader(),
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ projectId: PROJECT_ID, state: 'code', issueId: ISSUE_ID }),
+      body: JSON.stringify({ projectId: PROJECT_ID, state: 'release_batch', issueId: ISSUE_ID }),
     });
     expect(res.status).toBe(200);
     const data = (await res.json()) as Record<string, unknown>;
@@ -230,4 +232,66 @@ describe('POST /api/prompts/preview', () => {
     expect(data.userPrompt).toContain('forge_step_start');
     expect(data.userPrompt).not.toContain('Throttle the agents endpoint');
   });
+});
+
+// cm:guard its own `describe` because it is its own contract: every other case in this file asks
+// what the preview RETURNS, and these ask which states it will answer for at all (ISS-1047).
+describe('POST /api/prompts/preview — the states it will answer for', () => {
+  // cm:guard derived from `jobTypes` minus `RUNNER_CAPABILITIES`, never a literal list: one
+  // example passes while the other seven still answer 200, and the literal goes stale the moment a
+  // job type is retired.
+  const unclaimable = jobTypes.filter(
+    (t) => !new Set(Object.values(RUNNER_CAPABILITIES).flat()).has(t),
+  );
+
+  // cm:guard a 200 here is read as "this is the prompt that job gets", so a state no runner can
+  // claim has to be refused rather than answered with the shared prefix: there is no such job, and
+  // ISS-1047 deleted the state block and the facts that made the old answer look complete. The
+  // eight staged types stay in `jobTypes` for the ~30k historical `jobs` rows, so the enum cannot
+  // be the gate and `RUNNER_CAPABILITIES` is.
+
+  it('there is something to refuse', () => {
+    expect(unclaimable).toEqual(
+      expect.arrayContaining([
+        'triage',
+        'clarify',
+        'plan',
+        'code',
+        'review',
+        'test',
+        'fix',
+        'release',
+      ]),
+    );
+  });
+
+  it.each(unclaimable)(
+    'refuses `%s`, which no runner can claim, and names the ones it can',
+    async (state) => {
+      queueAuth();
+
+      const app = buildApp();
+      const res = await app.request('/api/prompts/preview', {
+        method: 'POST',
+        headers: { Authorization: await authHeader(), 'Content-Type': 'application/json' },
+        body: JSON.stringify({ projectId: PROJECT_ID, state }),
+      });
+      expect(res.status).toBe(400);
+      const body = (await res.json()) as {
+        code?: string;
+        message?: string;
+        details?: Record<string, unknown>;
+      };
+      expect(body.code).toBe('STATE_NOT_CLAIMABLE');
+      expect(body.details?.state).toBe(state);
+      expect(body.details?.previewableStates).toEqual([
+        'drive',
+        'reconcile',
+        'release_batch',
+        'smoke',
+        'verify_skill',
+      ]);
+      expect(body.message).toContain('runner_unsupported_type');
+    },
+  );
 });

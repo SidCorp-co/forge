@@ -23,6 +23,7 @@ vi.mock('../knowledge/service.js', () => ({
 }));
 vi.mock('../logger.js', () => ({ logger: { warn: vi.fn() } }));
 
+const { RUNNER_CAPABILITIES } = await import('../pipeline/registry.js');
 const { mandatoryPreambleBlocks } = await import('./facts/mandatory-blocks.js');
 const { renderStageFactsText } = await import('./facts/resolve.js');
 const { getStatePrompt } = await import('./state-prompts/index.js');
@@ -56,40 +57,64 @@ function fixedInputs(): Inputs {
   };
 }
 
-const AT_34D43E83 = {
-  drivePipelineRules: 'fbe5bb53fb025294b46388b8cad8cb86',
-  driveToolReference: 'db1d4c01c8e941a9bd62c6c8f853ee85',
-  releaseBatchPipelineRules: '7773c03e395152f7a6b1bad83edb76be',
-  releaseBatchToolReference: '9ca9c2695fa4ca38b656106199a8491c',
-  driveFacts: 'b013bb553f87f18690759b99d5e1fbcf',
-  releaseBatchFacts: 'a995f32f7ab94a52aaaa04ddee8bed7c',
-  releaseBatchStatePrompt: '8ea75419bba908b9a137c43c012ec3f9',
-};
+// cm:guard one entry per CLAIMABLE job type, and the keys are checked against
+// `RUNNER_CAPABILITIES` below rather than trusted: pinning only `drive` and `release_batch` would
+// leave a fact scoped to `smoke`, `reconcile` or `verify_skill` changing a working job's prompt
+// with every digest here still green, which is the hole this table had when it was first written.
+const AT_34D43E83: Record<string, { pipelineRules: string; toolReference: string; facts: string }> =
+  {
+    drive: {
+      pipelineRules: 'fbe5bb53fb025294b46388b8cad8cb86',
+      toolReference: 'db1d4c01c8e941a9bd62c6c8f853ee85',
+      facts: 'b013bb553f87f18690759b99d5e1fbcf',
+    },
+    release_batch: {
+      pipelineRules: '7773c03e395152f7a6b1bad83edb76be',
+      toolReference: '9ca9c2695fa4ca38b656106199a8491c',
+      facts: 'a995f32f7ab94a52aaaa04ddee8bed7c',
+    },
+    smoke: {
+      pipelineRules: '7773c03e395152f7a6b1bad83edb76be',
+      toolReference: '9ca9c2695fa4ca38b656106199a8491c',
+      facts: 'a995f32f7ab94a52aaaa04ddee8bed7c',
+    },
+    reconcile: {
+      pipelineRules: '7773c03e395152f7a6b1bad83edb76be',
+      toolReference: '9ca9c2695fa4ca38b656106199a8491c',
+      facts: 'a995f32f7ab94a52aaaa04ddee8bed7c',
+    },
+    verify_skill: {
+      pipelineRules: '7773c03e395152f7a6b1bad83edb76be',
+      toolReference: '9ca9c2695fa4ca38b656106199a8491c',
+      facts: 'a995f32f7ab94a52aaaa04ddee8bed7c',
+    },
+  };
+
+const RELEASE_BATCH_STATE_PROMPT_AT_34D43E83 = '8ea75419bba908b9a137c43c012ec3f9';
 
 describe('the prompt a claimable job receives is unchanged by ISS-1047', () => {
-  it('drive gets the same two mandatory blocks it got at 34d43e83', () => {
-    const { pipelineRules, toolReference } = mandatoryPreambleBlocks('drive');
-    expect(sha(pipelineRules)).toBe(AT_34D43E83.drivePipelineRules);
-    expect(sha(toolReference)).toBe(AT_34D43E83.driveToolReference);
+  const claimable = [...new Set(Object.values(RUNNER_CAPABILITIES).flat())].sort();
+
+  // cm:guard without this, a job type ADDED to RUNNER_CAPABILITIES gets no digest and the suite
+  // stays green while saying it covers every claimable job — the table would silently stop being
+  // the thing its own name claims.
+  it('pins exactly the job types a runner can claim', () => {
+    expect(Object.keys(AT_34D43E83).sort()).toEqual(claimable);
   });
 
-  it('release_batch gets the same two mandatory blocks it got at 34d43e83', () => {
-    const { pipelineRules, toolReference } = mandatoryPreambleBlocks('release_batch');
-    expect(sha(pipelineRules)).toBe(AT_34D43E83.releaseBatchPipelineRules);
-    expect(sha(toolReference)).toBe(AT_34D43E83.releaseBatchToolReference);
-  });
+  for (const step of ['drive', 'release_batch', 'smoke', 'reconcile', 'verify_skill'] as const) {
+    it(`${step} gets the same two mandatory blocks it got at 34d43e83`, () => {
+      const { pipelineRules, toolReference } = mandatoryPreambleBlocks(step);
+      expect(sha(pipelineRules)).toBe(AT_34D43E83[step]?.pipelineRules);
+      expect(sha(toolReference)).toBe(AT_34D43E83[step]?.toolReference);
+    });
 
-  it('the drive facts block is byte-identical', () => {
-    expect(sha(renderStageFactsText(fixedInputs(), 'p-1', 'drive'))).toBe(AT_34D43E83.driveFacts);
-  });
-
-  it('the release_batch facts block is byte-identical', () => {
-    expect(sha(renderStageFactsText(fixedInputs(), 'p-1', 'release_batch'))).toBe(
-      AT_34D43E83.releaseBatchFacts,
-    );
-  });
+    it(`the ${step} facts block is byte-identical`, () => {
+      expect(sha(renderStageFactsText(fixedInputs(), 'p-1', step))).toBe(AT_34D43E83[step]?.facts);
+    });
+  }
 
   it('the release_batch state block is byte-identical', () => {
-    expect(sha(getStatePrompt('release_batch') ?? '')).toBe(AT_34D43E83.releaseBatchStatePrompt);
+    expect(sha(getStatePrompt('release_batch') ?? '')).toBe(RELEASE_BATCH_STATE_PROMPT_AT_34D43E83);
   });
 });
