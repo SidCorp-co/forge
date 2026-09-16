@@ -85,6 +85,7 @@ export const runFile = (): string =>
     version: '0.3.0',
     model: 'fake-model',
     runId: 'r',
+    project: null,
     k: 3,
     tasks: [
       {

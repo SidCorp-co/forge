@@ -81,6 +81,7 @@ export type Check =
 /** What a fixture reads from the deployment before the first turn, and the placeholders it fills. */
 export type FixtureName =
   | 'firstOpenIssue'
+  | 'newestOpenIssues'
   | 'projectName'
   | 'issueCounts'
   | 'waitingIssue'
@@ -88,12 +89,14 @@ export type FixtureName =
   | 'nonce';
 export const FIXTURE_KEYS: Record<FixtureName, readonly string[]> = {
   firstOpenIssue: ['issueKey', 'issueId'],
+  /** The newest open issues, bounded: on a project holding 682 a task asking for every one measures patience rather than linking (ISS-1066). */
+  newestOpenIssues: ['openIssueKeys', 'openIssueCount'],
   projectName: ['projectName'],
   /** The project's issues counted by status, read before the turn so the answer is the project's own. */
   issueCounts: ['openCount', 'closedCount', 'draftCount'],
   /** The first issue waiting on information; its own fixture, so a project with none still runs the counts (codex F4). */
   waitingIssue: ['needsInfoKey', 'needsInfoId'],
-  /** The pipeline's state keys in their declared order, joined by `, `. */
+  /** The project's EFFECTIVE pipeline states in order, joined by `, ` — the canonical ladder with this project's stage overrides applied, never the stored config's keys (ISS-1066). */
   pipelineStates: ['stateList'],
   /** Two independent random tokens per trial, so a correction task refuses the first by literal (codex F2). */
   nonce: ['nonce', 'nonce2'],

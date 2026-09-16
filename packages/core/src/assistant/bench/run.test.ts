@@ -400,6 +400,7 @@ describe('the result file', () => {
       version: '0.3.0',
       model: 'fake-model',
       runId: 'r1',
+      project: null,
       k: 3,
       tasks: [{ id: 'memory-question', capability: 'method', trials: [result] }],
     };
@@ -428,6 +429,7 @@ describe('the result file', () => {
         version: '0.3.0',
         model: 'm',
         runId: 'r',
+        project: null,
         k: 1,
         tasks: [{ id: 'filing-guidance', capability: 'method', trials: [result] }],
       }),

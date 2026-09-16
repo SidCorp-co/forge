@@ -5,6 +5,8 @@ export const memoryQuestion: Task = {
   id: 'memory-question',
   capability: 'method',
   intent: 'Remember a fact the person states and answer a later question from it.',
+  judgeRubric:
+    'Served means the reply gives the deploy window the person stated earlier in this exchange; the project brief describes the project, not this person, so a window read off it is not the answer.',
   budgetSeconds: 90,
   turns: [
     {

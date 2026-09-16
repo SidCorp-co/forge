@@ -1,18 +1,24 @@
 import type { Task } from '../task.js';
 
-/** Every pipeline state in the order the project's config declares them; one left out or out of place fails by name. */
+/**
+ * The project's EFFECTIVE pipeline, in order: the product's canonical ladder with this project's
+ * stage overrides applied. Not the keys of the stored `pipelineConfig.states` map — that is
+ * per-stage configuration, `forge-plugin` stores one of them, and asking for "the keys the config
+ * names" pointed the assistant at exactly the one-state answer this task now rejects (ISS-1066).
+ */
 export const projectPipelineStates: Task = {
   id: 'project-pipeline-states',
   capability: 'project-understanding',
-  intent: 'List this project’s pipeline states in their configured order, by their exact keys.',
+  intent:
+    'List this project’s effective pipeline states in order, from the first an issue enters to the last.',
   judgeRubric:
-    'Served means the reply lists the states in the order stateList gives in the reference block, using the keys as written there.',
+    'Served means the states listed are the effective pipeline in the project brief, in that order and no others; the stored config’s override keys are not the answer.',
   budgetSeconds: 180,
   fixtures: ['pipelineStates'],
   turns: [
     {
       message:
-        'List this project’s pipeline states in order, from the first an issue enters to the last, using the exact state keys the pipeline config names.',
+        'What are this project’s pipeline states, in order, from the first an issue enters to the last? Give the state names as the pipeline uses them.',
       checks: [
         { kind: 'listInOrder', list: '{stateList}' },
         // cm:why onlyFrom beside listInOrder: on 2026-09-16 the assistant listed the product's whole lifecycle and passed, since the three configured states stood in order among ten (ISS-1065)

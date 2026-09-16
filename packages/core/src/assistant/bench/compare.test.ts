@@ -43,6 +43,7 @@ const file = (over: Partial<BenchResult>, trials: Record<string, TrialResult[]>)
   model: 'm1',
   runId: 'r1',
   k: 3,
+  project: null,
   tasks: Object.entries(trials).map(([id, t]) => ({
     id,
     capability: 'method' as const,

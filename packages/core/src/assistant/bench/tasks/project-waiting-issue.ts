@@ -6,7 +6,7 @@ export const projectWaitingIssue: Task = {
   capability: 'project-understanding',
   intent: 'Name the issue in this project that is waiting on information, with a link to it.',
   judgeRubric:
-    'Served means the reply names the issue key needsInfoKey from the reference block as the one waiting on information and links it.',
+    'Served means the reply names the issue the project brief’s waiting-on-information line names, as the one waiting on information, and links it.',
   budgetSeconds: 180,
   fixtures: ['waitingIssue'],
   turns: [

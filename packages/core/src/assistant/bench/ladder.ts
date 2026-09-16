@@ -28,6 +28,8 @@ export interface Rate {
 
 export interface RunRow {
   name: string;
+  /** The project this run was taken against; `null` on a file written before ISS-1066 recorded one. */
+  projectSlug: string | null;
   /** The common k every side of every file was taken at: the largest k any file names. */
   k: number;
   commit: string | null;
@@ -45,6 +47,8 @@ export interface RunRow {
   medianSeconds: number | null;
   /** The same score per capability the file's tasks carry (ISS-1061). */
   capabilities: CapabilitySummary[];
+  /** Tasks this project could not be asked, each with its reason; charged to no denominator (ISS-1066). */
+  notApplicable: Array<{ id: string; why: string }>;
 }
 
 export interface WindowRow {
@@ -82,20 +86,48 @@ const byScore = (a: RunRow, b: RunRow): number =>
   (b.lowest?.passK ?? -1) - (a.lowest?.passK ?? -1) ||
   a.name.localeCompare(b.name);
 
-/** Every run file ranked best first; `shipped` defaults to the task set this build carries. */
+/** The project slug a row is grouped under; a file that names none stands in its own group. */
+const slugOf = (result: BenchResult): string | null => result.project?.slug ?? null;
+
+/**
+ * Every run file ranked best first, GROUPED BY PROJECT: a task's pass rate is about the project it
+ * was walked on. `k` is computed inside each group and never across them, or a three-trial run of
+ * one project is marked thin and loses its score because another project's file named a larger
+ * one (codex F3 on ISS-1066).
+ */
 export function rankRuns(
   files: Array<{ name: string; result: BenchResult }>,
   shipped: string[] = loadTasks().map((t) => t.id),
 ): RunRow[] {
-  // cm:why one k for every file, the largest named, as compare.ts does: pass^k at k = 1 and at k = 3 are different figures, and a ladder that ranked one against the other would order builds by their k, not their passes (codex F1)
+  const order: Array<string | null> = [];
+  for (const f of files) {
+    const slug = slugOf(f.result);
+    if (!order.includes(slug)) order.push(slug);
+  }
+  return order.flatMap((slug) =>
+    rankGroup(
+      files.filter((f) => slugOf(f.result) === slug),
+      shipped,
+    ),
+  );
+}
+
+/** One project's files ranked against each other, at the largest `k` that group names. */
+function rankGroup(
+  files: Array<{ name: string; result: BenchResult }>,
+  shipped: string[],
+): RunRow[] {
+  // cm:why one k for every file IN THE GROUP, the largest named, as compare.ts does: pass^k at k = 1 and at k = 3 are different figures, and a ladder that ranked one against the other would order builds by their k, not their passes (codex F1)
   const k = Math.max(1, ...files.map((f) => f.result.k));
   return files
     .map(({ name, result }) => {
-      const sides = result.tasks.map((t) => ({ id: t.id, side: sideOf(t.trials, k) }));
-      const walked = new Set(sides.map((s) => s.id));
+      const applicable = result.tasks.filter((t) => t.notApplicable === undefined);
+      const sides = applicable.map((t) => ({ id: t.id, side: sideOf(t.trials, k) }));
+      const walked = new Set(result.tasks.map((t) => t.id));
       const s = score(sides);
       return {
         name,
+        projectSlug: slugOf(result),
         k,
         commit: result.commit,
         model: result.model,
@@ -106,9 +138,13 @@ export function rankRuns(
         tasksWalked: sides.length,
         tasksShipped: shipped.length,
         partial: !shipped.every((id) => walked.has(id)),
+        // cm:guard a task the project cannot be asked is not a thin one: `0/0 trials (thin)` marked the whole run thin on a run that walked every applicable task three times (ISS-1066)
         thin: sides.some((x) => x.side.thin),
+        notApplicable: result.tasks.flatMap((t) =>
+          t.notApplicable ? [{ id: t.id, why: t.notApplicable }] : [],
+        ),
         judgeServed: judgeServedOf(result),
-        medianSeconds: median(result.tasks.flatMap((t) => t.trials.map((trial) => trial.seconds))),
+        medianSeconds: median(applicable.flatMap((t) => t.trials.map((trial) => trial.seconds))),
         capabilities: capabilitiesOf(result, k),
       };
     })
@@ -253,14 +289,37 @@ function capabilityTable(runs: RunRow[]): { head: string[]; rows: string[][] } |
   };
 }
 
-/** The ladder for a terminal: the run table under its score definition, then the windows. */
+/** The rows of one project at a time, in the order `rankRuns` put them, so each gets its own table. */
+export function groupByProject(runs: RunRow[]): Array<{ slug: string | null; rows: RunRow[] }> {
+  const groups: Array<{ slug: string | null; rows: RunRow[] }> = [];
+  for (const row of runs) {
+    const last = groups.at(-1);
+    if (last && last.slug === row.projectSlug) last.rows.push(row);
+    else groups.push({ slug: row.projectSlug, rows: [row] });
+  }
+  return groups;
+}
+
+const projectHeading = (slug: string | null): string =>
+  slug === null ? 'runs (project not recorded)' : `runs · project ${slug}`;
+
+/** The ladder for a terminal: one run table per project under its own score definition, then the windows. */
 export function ladderLines(runs: RunRow[], windows: WindowRow[]): string[] {
   const lines: string[] = [];
-  if (runs.length > 0) {
-    lines.push('runs', ...table(RUN_HEAD, runs.map(runCells)), scoreDefinition(runs[0]?.k ?? 1));
-    const d = deltaLine(runs);
+  // cm:guard one table, one score definition and one delta PER PROJECT: a task's pass rate is about
+  // the project it was walked on, so a single ladder over two projects ranks two questions (ISS-1066)
+  for (const group of groupByProject(runs)) {
+    lines.push(
+      projectHeading(group.slug),
+      ...table(RUN_HEAD, group.rows.map(runCells)),
+      scoreDefinition(group.rows[0]?.k ?? 1),
+    );
+    const d = deltaLine(group.rows);
     if (d) lines.push(d);
-    const caps = capabilityTable(runs);
+    for (const row of group.rows)
+      for (const n of row.notApplicable)
+        lines.push(`${row.name}: ${n.id} not applicable — ${n.why}`);
+    const caps = capabilityTable(group.rows);
     if (caps) lines.push('capabilities', ...table(caps.head, caps.rows));
   }
   if (windows.length > 0) {
@@ -282,20 +341,23 @@ const mdTable = (head: string[], rows: string[][]): string[] => [
   ...rows.map(mdRow),
 ];
 
-/** The same ladder as Markdown, for an issue comment. */
+/** The same ladder as Markdown, for an issue comment; one section per project, as above. */
 export function ladderMarkdown(runs: RunRow[], windows: WindowRow[]): string {
   const parts: string[] = [];
-  if (runs.length > 0) {
+  for (const group of groupByProject(runs)) {
     parts.push(
-      '### Runs',
+      `### ${projectHeading(group.slug)}`,
       '',
-      ...mdTable(RUN_HEAD, runs.map(runCells)),
+      ...mdTable(RUN_HEAD, group.rows.map(runCells)),
       '',
-      `_${scoreDefinition(runs[0]?.k ?? 1)}_`,
+      `_${scoreDefinition(group.rows[0]?.k ?? 1)}_`,
     );
-    const d = deltaLine(runs);
+    const d = deltaLine(group.rows);
     if (d) parts.push('', d);
-    const caps = capabilityTable(runs);
+    for (const row of group.rows)
+      for (const n of row.notApplicable)
+        parts.push('', `${row.name}: ${n.id} not applicable — ${n.why}`);
+    const caps = capabilityTable(group.rows);
     if (caps) parts.push('', '### Capabilities', '', ...mdTable(caps.head, caps.rows));
   }
   if (windows.length > 0) {
