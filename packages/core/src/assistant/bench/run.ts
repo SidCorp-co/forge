@@ -140,23 +140,25 @@ async function deleteNotes(
   args: TrialArgs,
   rooms: string[],
   tokens: string[],
-): Promise<CleanupRecord['memories']> {
+): Promise<{ memories: NonNullable<CleanupRecord['memories']>; listed: boolean }> {
   // cm:why every trial, not only the memory tasks: the ten method tasks carry no token, and the notes the assistant kept for "remember my deploy window" outlived every ISS-1051 run (22 on the QA project on 2026-09-16) because the cleanup only knew the room
   const left = ownedBy(rooms, tokens);
   const projectId = args.project.id;
   let found = 0;
   let deleted = 0;
+  let listed = false;
   try {
     const hits = (await args.client.listNotes(projectId)).filter(left);
+    listed = true;
     found = hits.length;
     for (const ref of new Set(hits.map((h) => h.sourceRef)))
       deleted += await args.client.deleteNote(projectId, ref);
     const remaining = (await args.client.listNotes(projectId)).filter(left).length;
-    return { found, deleted, remaining };
+    return { memories: { found, deleted, remaining }, listed };
   } catch (err) {
     args.log?.(`memory cleanup refused: ${errorText(err)}`);
     // cm:guard a refusal mid-cleanup must not read as clean: what was found and not deleted is counted as remaining, and one is charged where the listing itself was refused
-    return { found, deleted, remaining: Math.max(1, found - deleted) };
+    return { memories: { found, deleted, remaining: Math.max(1, found - deleted) }, listed };
   }
 }
 
@@ -166,8 +168,10 @@ async function cleanup(
   baseline: Preferences | null,
   changesBefore: number,
   values: Record<string, string>,
-): Promise<CleanupRecord> {
+): Promise<{ record: CleanupRecord; notesKept: number | null }> {
   const now = args.now ?? (() => new Date());
+  // cm:why null and not the found count when the listing was refused: the record charges one remaining so the trial fails, and a grader reading `found` 0 there would call the assistant tidy (ISS-1064)
+  let notesKept: number | null = null;
   const record: CleanupRecord = {
     rooms: await deleteRooms(args, roomIds),
     preferences: { expected: null, observed: null, equal: null, at: null },
@@ -176,7 +180,9 @@ async function cleanup(
   };
   if (roomIds.length > 0) {
     const tokens = [values.nonce, values.nonce2].filter((t): t is string => Boolean(t));
-    record.memories = await deleteNotes(args, roomIds, tokens);
+    const notes = await deleteNotes(args, roomIds, tokens);
+    record.memories = notes.memories;
+    notesKept = notes.listed ? notes.memories.found : null;
   }
   if (baseline && args.task.preference) {
     const expected = preferenceValues(baseline);
@@ -199,7 +205,7 @@ async function cleanup(
   } catch (err) {
     args.log?.(`audit row count refused: ${errorText(err)}`);
   }
-  return record;
+  return { record, notesKept };
 }
 
 function turnRecord(
@@ -208,6 +214,7 @@ function turnRecord(
   args: TrialArgs,
   values: Record<string, string>,
   judge: JudgeResult | undefined,
+  notesKept: number | null,
 ): TurnRecord {
   const turn = args.task.turns[sent.index];
   if (!turn) throw new Error(`task ${args.task.id} has no turn ${sent.index + 1}`);
@@ -219,6 +226,7 @@ function turnRecord(
     values,
     lookups: sent.lookups,
     preferenceRows: sent.preferenceRows,
+    notesKept,
   });
   return {
     index: sent.index,
@@ -315,6 +323,7 @@ export async function runTrial(
 ): Promise<{ result: TrialResult; model: string | null; judgeRefused: string | null }> {
   const now = args.now ?? (() => new Date());
   const started = now();
+  const retriesBefore = args.client.retries();
   const dateFrom = new Date(started.getTime() - SKEW_MS).toISOString();
   const readTrail = (): Promise<TrailRow[]> =>
     args.client.trail<TrailRow>({
@@ -373,13 +382,14 @@ export async function runTrial(
     args.log?.(`${args.task.id} stopped: ${error}`);
   }
 
-  const record = await cleanup(args, rooms, baseline, changesBefore, values);
+  const { record, notesKept } = await cleanup(args, rooms, baseline, changesBefore, values);
   const attempts = pairRooms(rooms, rows, snapshots, sends);
   const roomRows = rows.filter((r) => r.sessionId !== null && rooms.includes(r.sessionId));
   const models = [...new Set(roomRows.flatMap((r) => (r.model ? [r.model] : [])))];
   const { judged, refused } = await judgeTurns(args, sends, attempts, models, values);
+  // cm:why the cleanup's count reaches every turn's grade: the notes a trial kept are known only after the rooms are read back, and a check on the last turn is where a task bounds them (ISS-1064)
   const turns = sends.map((sent, i) =>
-    turnRecord(sent, attempts[i] ?? [], args, values, judged[i]),
+    turnRecord(sent, attempts[i] ?? [], args, values, judged[i], notesKept),
   );
   const undeleted = record.rooms.some((r) => r.observed !== '404');
   const leftover = (record.memories?.remaining ?? 0) > 0;
@@ -388,6 +398,7 @@ export async function runTrial(
     judgeRefused: refused,
     result: {
       at: started.toISOString(),
+      retried: args.client.retries() - retriesBefore,
       // cm:guard a trial whose room or notes outlived the cleanup is not a pass: the next reading of the project would carry them
       pass:
         error === null &&

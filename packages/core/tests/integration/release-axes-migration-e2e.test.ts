@@ -6,6 +6,10 @@
  * and a backfill that quietly guesses one would reintroduce the defect in the act of removing it.
  * And that the declaration actually reaches every row, which a join on the wrong column would not.
  *
+ * The two rows the migration forces rather than refuses — a binding whose provider cannot deploy,
+ * and a project created inside the deploy window — are in `release-axes-window-e2e.test.ts`, which
+ * stands on the same ground and holds the line that keeps those two narrow.
+ *
  * What the DATABASE refuses afterwards, and what the way back does, are in
  * `release-axes-constraints-e2e.test.ts`: those are assertions about constraints and about a
  * separate SQL file rather than about the forward run, and both files stand on the same ground.
@@ -14,9 +18,11 @@
 import { randomUUID } from 'node:crypto';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import {
+  anyProject,
+  BEFORE_THE_WINDOW,
   declaredBindings,
+  declaredFleet,
   declaredProjects,
-  ground,
   type PreMigrationGround,
   plantBinding,
   plantProject,
@@ -34,51 +40,13 @@ afterAll(async () => {
   if (groundDb) await groundDb.stop();
 });
 
-const freshDb = () => groundDb.fresh();
-
-/** The first declared project, as a value rather than an index read. */
-function anyProject(projects: { id: string; slug: string }[]): { id: string; slug: string } {
-  const first = projects[0];
-  if (!first) throw new Error('the declared table names no projects');
-  return first;
-}
+const fleet = () => declaredFleet(groundDb);
 
 /** The single row a count query returns. */
 function one<T>(rows: readonly T[], what: string): T {
   const row = rows[0];
   if (row === undefined) throw new Error(`${what}: query returned no row`);
   return row;
-}
-
-/** A database with the whole declared fleet planted at its pre-0253 shape. */
-async function fleet() {
-  const db = await freshDb();
-  const g = await ground(db.sql);
-  const projects = declaredProjects();
-  const bindings = declaredBindings();
-  const bySlug = new Map<string, string>();
-  for (const p of projects) {
-    // `promote` needs a branch to satisfy projects_live_branch_chk; the six real
-    // ones are asserted by name in the rename case below.
-    await plantProject(db.sql, g, {
-      id: p.id,
-      slug: p.slug,
-      productionBranch: p.releaseModel === 'promote' ? 'production' : null,
-    });
-    bySlug.set(p.slug, p.id);
-  }
-  for (const b of bindings) {
-    const projectId = bySlug.get(b.slug);
-    if (!projectId) throw new Error(`declared binding ${b.id} names unknown project ${b.slug}`);
-    await plantBinding(db.sql, g, {
-      id: b.id,
-      projectId,
-      provider: b.provider,
-      environment: b.oldEnvironment,
-      label: '',
-    });
-  }
-  return { db, g, projects, bindings };
 }
 
 describe('0253 forward — a row it cannot map stops the deploy', () => {
@@ -121,7 +89,11 @@ describe('0253 forward — a row it cannot map stops the deploy', () => {
     const { db, g } = await fleet();
     try {
       const strayId = randomUUID();
-      await plantProject(db.sql, g, { id: strayId, slug: 'made-after-the-snapshot' });
+      await plantProject(db.sql, g, {
+        id: strayId,
+        slug: 'made-after-the-snapshot',
+        createdAt: BEFORE_THE_WINDOW,
+      });
 
       await expect(runForward(db.sql)).rejects.toThrow(
         new RegExp(`${strayId}.*made-after-the-snapshot`, 's'),
@@ -146,6 +118,7 @@ describe('0253 forward — a row it cannot map stops the deploy', () => {
         id: strayId,
         slug: 'archived-after-the-snapshot',
         archived: true,
+        createdAt: BEFORE_THE_WINDOW,
       });
 
       await expect(runForward(db.sql)).rejects.toThrow(
@@ -168,7 +141,7 @@ describe('0253 forward — a row it cannot map stops the deploy', () => {
       await plantBinding(db.sql, g, {
         id: strayId,
         projectId: host.id,
-        provider: 'sentry',
+        provider: 'coolify',
         environment: 'prod',
         label: 'the-evidence-row',
       });
@@ -179,6 +152,10 @@ describe('0253 forward — a row it cannot map stops the deploy', () => {
     }
   });
 
+  // cm:guard the provider is a DEPLOY-CAPABLE one on purpose. `role` on a coolify binding is a
+  // judgement — 'staging' meant `{preview}` on seven projects and `{live}` on getcontent — so this
+  // is a row the migration must refuse. Written against sentry it would prove the opposite thing:
+  // section 4·0 forces `service` there, and the case would pass while asserting nothing.
   it('aborts on an INACTIVE binding it does not cover, not only an active one', async () => {
     const { db, g, projects } = await fleet();
     try {
@@ -186,8 +163,8 @@ describe('0253 forward — a row it cannot map stops the deploy', () => {
       await plantBinding(db.sql, g, {
         id: strayId,
         projectId: anyProject(projects).id,
-        provider: 'sentry',
-        environment: 'prod',
+        provider: 'coolify',
+        environment: 'staging',
         label: 'retired-but-still-a-row',
         active: false,
       });

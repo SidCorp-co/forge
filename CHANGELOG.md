@@ -2856,6 +2856,24 @@
 
 ### Fixed
 
+- **The assistant no longer files a memory note for every sentence you say.** Each note is read
+  against rules before it is written; one that fails is refused with the rule and an example
+  of what would pass.
+
+- **The assistant benchmark no longer passes a reply that recites the product's whole issue
+  lifecycle when asked for this project's pipeline states, and no longer counts a dropped
+  connection as the assistant's failure.** The pipeline-states task held every configured state to
+  its place but never asked whether anything else was named, so a reply listing ten states passed
+  when the project had three. It now fails a reply naming any state outside the project's list,
+  naming the state. A request that got no response at all used to end the trial with the two words
+  `fetch failed`; a read is now re-sent once after a pause, a send never is, and a trial that still
+  dies says which request, what the cause was, and that a retry was spent. The judge is told what
+  served means for the task that asks the assistant to run tests it cannot reach, so a plain
+  refusal naming where they do run is no longer marked unserved. And a reading of what real people
+  asked no longer carries the benchmark's own rooms when their run file is not to hand: a session
+  that spoke nothing but the benchmark's messages, whose room is gone, is set aside and counted
+  apart, in the history command and in the weekly report alike.
+
 - **A machine whose Claude account has run out now says so, instead of being asked for work it
   cannot do.** Each project a machine serves keeps a Claude session running, waiting to be told
   there is something to look at. When the account behind those sessions hit its usage limit, every

@@ -10,6 +10,7 @@ import type { Capability } from './task.js';
 
 const trial = (pass: boolean, served?: 'yes' | 'no') => ({
   at: 'x',
+  retried: 0,
   pass,
   error: null,
   seconds: 1,

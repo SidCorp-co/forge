@@ -46,6 +46,8 @@ export interface FakeOptions {
   prefs?: { answerStyle: string; assistantInstructions: string | null };
   /** Return a status to refuse a request with, or null to let it through. */
   refuse?: (method: string, path: string, count: number) => number | null;
+  /** Return an error to throw from fetch itself (no response), as a dropped connection would, or null. */
+  throwOn?: (method: string, path: string, count: number) => Error | null;
   pageSize?: number;
   /** Rows the window already holds before any room is opened, for the history verb's tests. */
   rows?: FakeState['chatLogs'];
@@ -427,6 +429,8 @@ export function createFakeDeployment(opts: FakeOptions): { fetch: FetchLike; sta
     const path = url.pathname;
     state.requests.push({ method, path, auth });
     count += 1;
+    const thrown = opts.throwOn?.(method, path, count);
+    if (thrown) throw thrown;
     const refused = opts.refuse?.(method, path, count);
     if (refused) return json(refused, { error: `refused ${method} ${path}` });
     const body = init?.body ? (JSON.parse(String(init.body)) as Record<string, unknown>) : {};

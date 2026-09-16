@@ -48,6 +48,8 @@ const file = (rows: JudgedRow[], judge = true): HistoryResult =>
     maxIterations: 8,
     resolved: false,
     excludedSessions: [],
+    excludedSessionsByTask: [],
+    excludedRowsByTask: 0,
     excludedRows: 0,
     groups: [],
     flagged: [],

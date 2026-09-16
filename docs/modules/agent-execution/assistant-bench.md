@@ -37,11 +37,30 @@ or a model judge:
 - **Issue lookups** — one `GET /api/issues/:id` per issue link the reply carries; 200 resolves,
   404 is `dead_link`, anything else stops the trial rather than being read as either.
 
+A request whose fetch threw, so that no response reached the client at all, is re-sent once after
+five seconds (`client.ts:ClientOptions.retryDelayMs`) when it is a `GET` or a `DELETE`; a `POST` is
+never re-sent, since the send may have reached the room before the connection dropped and a second
+copy would be answered twice and graded as one turn. A second failure ends the trial with an error
+naming the method, the path, the cause and the first attempt (`client.ts:FetchFailure`), so a dead
+trial reads `fetch failed (cause: ECONNRESET) on GET /api/chat-logs ...` rather than `fetch failed`.
+Every trial records `retried`, the retries the client spent in it; a file written before the retry
+existed reads as `0`.
+
 Every failure is a mode named from a fact a reader can point at (`grade.ts:FAILURE_MODES`):
 `wrong_link_shape`, `dead_link`, `unanswered`, `language_mismatch`, `fallback_sent`, `over_budget`,
 `forbidden_tool`, `missing_tool`, `help_roundtrip`, `placeholder_argument`, `repeated_call`,
 `screen_repair`, `noop_trail_row`, `preference_not_moved`. The result file carries the fact beside
 the mode.
+
+The fixture-bound checks (`task.ts:CHECK_KINDS`) read a value the deployment supplied: `listInOrder`
+holds every member of a filled list to its place; `onlyFrom` fails a reply naming a registry status
+(`pipeline-registry.ts:REGISTRY_ISSUE_STATUSES`, whole words, `in_progress` one token) outside that
+list, so a reply reciting the product's whole lifecycle no longer passes the pipeline-states task
+because the three configured states happen to stand in order among ten; `labeled` reads the number
+beside a label in its clause; `linkTo` needs a link whose segment is the filled issue id;
+`maxNotesKept` reads the notes the trial kept, as the cleanup counted them (`cleanup.memories.found`),
+and fails the turn under `repeated_call` when more were kept than the task allows, or when the
+listing was refused and the count is unknown (ISS-1064).
 
 ## The tasks
 
@@ -107,8 +126,16 @@ window, budgets, rows). There is no total line.
 
 The benchmark's own rows are traffic too. `--exclude <run.json>` reads a `bench:assistant run`
 file and drops every row whose `session_id` is a room that run opened (`cleanup.rooms[].id`), naming
-the sessions and the count dropped in the file. The verb writes result files and nothing else:
-`chat_logs.quality_signals` stays untouched.
+the sessions and the count dropped in the file. A bench room whose run file is not to hand is
+dropped too, by the one mark its rows keep: every row of the session is a shipped task's turn message
+(`history/bench-sessions.ts:benchSessions`, placeholders read as wildcards) AND the room answers 404
+(`client.ts:roomGone`; the bench deletes every room with a read-back, while a person's room still
+answers 200, or 403 to someone outside it). A session that sent one task-shaped question beside
+anything else stays, and so does one whose room is standing. Those sessions and rows are counted
+apart, `excludedSessionsByTask` and `excludedRowsByTask`, and the closing line prints both counts.
+The weekly report (`weekly/read-rows.ts:readWeekRows`) applies the same two marks in-process, since
+its title lookup against `conversations` finds nothing once the rooms are gone. The verb writes
+result files and nothing else: `chat_logs.quality_signals` stays untouched.
 
 ## Judge: a second model asked one question, never the last word
 
@@ -120,6 +147,9 @@ object, `{ intent, served: yes | partial | no, reason, quote }`, where `quote` i
 from the reply that the reason rests on. The endpoint is named by `FORGE_BENCH_JUDGE_URL` and
 `FORGE_BENCH_JUDGE_KEY`, environment only, spoken on the OpenAI wire through
 `providers/openai.ts:createOpenAIProvider`, at temperature 0, one request per judged turn or row.
+A task may carry a one-line `judgeRubric` that tells the judge what served means for it;
+`out-of-reach-tests` carries one that reads a plain refusal naming where the tests run as served,
+after the judge called such a refusal unserved on 2026-09-16.
 
 The verdict is a sidecar. It is stored under `judge` on the turn record or on the history file's
 `judge.rows`, beside `modes`, and nothing reads it back: `pass`, pass^k, pass@k, every mode count
@@ -411,6 +441,16 @@ memory tasks: the notes the assistant kept for "remember my deploy window" outli
 run until this. `remaining > 0` fails the trial, and a listing or deletion the deployment refuses is
 counted as remaining rather than read as clean; `null` means no room was opened. `memory-correction`
 requires the fresh room to return the second token and refuses the first by `mustNotMatch`.
+
+The assistant is held to what it keeps before the benchmark counts it. `forge_memory_note` meets a
+gate in the turn loop (`assistant/tools/memory-note-gate.ts:judgeNote`, bound through
+`run-turn-core.ts:TurnCoreArgs.preCall` by both chat doors): a note that is the person's message
+copied back, a second note in a turn that stated one thing, one under 12 characters or over the
+tool's cap, one the project already holds at the store's near-duplicate threshold, or one about the
+conversation itself is refused as a tool error naming the rule and one note that would pass, and the
+row it leaves in `chat_logs.tool_calls` carries `isError: true`, so a trail and a history reading
+count the refusal. `long-context-thread` carries `maxNotesKept 2`: the release code name and the
+deploy window are the two facts the person asks to keep, and the ISS-1061 runs kept 8 to 9.
 
 **Long context** plants one fact in about 1,800 words of generated release notes
 (`tasks/long-context-needle.ts`) and asks for it, capped at two tool calls and three iterations

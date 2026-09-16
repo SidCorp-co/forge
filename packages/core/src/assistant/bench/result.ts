@@ -55,6 +55,8 @@ export interface CleanupRecord {
 
 export interface TrialResult {
   at: string;
+  /** Retries the client spent during this trial (one per GET or DELETE whose fetch threw); ISS-1065. */
+  retried: number;
   pass: boolean;
   error: string | null;
   seconds: number;
@@ -119,6 +121,9 @@ export function readResult(text: string, where = 'result'): BenchResult {
       }
       if (cleanup.memories === undefined) cleanup.memories = null;
     }
+    // cm:why a file written before ISS-1065 carries no `retried`: no retry existed, so zero is the truth of that run
+    for (const trial of row.trials as Array<Record<string, unknown>>)
+      if (trial.retried === undefined) trial.retried = 0;
     row.trials.forEach((trial: unknown, i) => {
       for (const key of TRIAL_KEYS) {
         if (!(key in (trial as Record<string, unknown>)))

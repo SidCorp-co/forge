@@ -53,6 +53,7 @@ const facts = (over: Partial<TurnFacts> = {}): TurnFacts => ({
   values: {},
   lookups: {},
   preferenceRows: [],
+  notesKept: null,
   ...over,
 });
 

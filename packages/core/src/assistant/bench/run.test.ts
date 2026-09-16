@@ -198,9 +198,9 @@ const task = (id: string): Task => {
   return found;
 };
 
-function trialOn(t: Task, over: Partial<FakeOptions> = {}) {
+function trialOn(t: Task, over: Partial<FakeOptions> = {}, opts: { retryDelayMs?: number } = {}) {
   const fake = createFakeDeployment({ script: good, ...over });
-  const client = createClient({ api: 'https://api.test', fetch: fake.fetch });
+  const client = createClient({ api: 'https://api.test', fetch: fake.fetch, ...opts });
   client.useToken(FAKE_TOKEN);
   return { fake, run: () => runTrial({ client, task: t, project: FAKE_PROJECT, runId: 'r1' }) };
 }
@@ -329,6 +329,44 @@ describe('what a trial records', () => {
     expect(result.pass).toBe(false);
   });
 
+  it('a GET that throws once and answers on the retry is not an error, and the trial counts the retry (ISS-1065)', async () => {
+    let trailReads = 0;
+    const throwOn: FakeOptions['throwOn'] = (method, path) => {
+      if (method !== 'GET' || !path.startsWith('/api/chat-logs')) return null;
+      trailReads += 1;
+      return trailReads === 1
+        ? Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } })
+        : null;
+    };
+    const { result } = await trialOn(
+      task('filing-guidance'),
+      { throwOn },
+      { retryDelayMs: 1 },
+    ).run();
+    expect(result.error).toBeNull();
+    expect(result.pass).toBe(true);
+    expect(result.retried).toBe(1);
+  });
+
+  it('a GET that throws on both attempts ends the trial with an error naming the request and the cause, still deleting the room', async () => {
+    const throwOn: FakeOptions['throwOn'] = (method, path) =>
+      method === 'GET' && path.startsWith('/api/chat-logs')
+        ? Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } })
+        : null;
+    const { result } = await trialOn(
+      task('filing-guidance'),
+      { throwOn },
+      { retryDelayMs: 1 },
+    ).run();
+    expect(result.pass).toBe(false);
+    expect(result.error).toMatch(/^fetch failed \(cause: ECONNRESET\) on GET \/api\/chat-logs/);
+    expect(result.error).toContain(
+      'first attempt: fetch failed (cause: ECONNRESET) on GET /api/chat-logs',
+    );
+    expect(result.retried).toBe(1);
+    expect(result.cleanup.rooms[0]?.observed).toBe('404');
+  });
+
   it('a non-default baseline comes back equal', async () => {
     const prefs = { answerStyle: 'concise', assistantInstructions: 'Always cite the issue key.' };
     // cm:why 2 rows for summary-in-style (setup, restore) and 4 for preference-restore (setup, the move, the undo, restore): every real move is one row through the one writer
@@ -378,6 +416,24 @@ describe('the result file', () => {
       expected: 'deleted',
       observed: '404',
     });
+  });
+
+  it('reads a trial written before the retry existed as retried 0 (ISS-1065)', async () => {
+    const { result } = await trialOn(task('filing-guidance')).run();
+    const file = JSON.parse(
+      serializeResult({
+        at: 'x',
+        api: 'https://api.test',
+        commit: null,
+        version: '0.3.0',
+        model: 'm',
+        runId: 'r',
+        k: 1,
+        tasks: [{ id: 'filing-guidance', capability: 'method', trials: [result] }],
+      }),
+    ) as { tasks: Array<{ trials: Array<Record<string, unknown>> }> };
+    delete file.tasks[0]?.trials[0]?.retried;
+    expect(readResult(JSON.stringify(file)).tasks[0]?.trials[0]?.retried).toBe(0);
   });
 
   it('refuses a file missing a key, by name', () => {

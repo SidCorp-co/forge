@@ -118,7 +118,7 @@ describe('fixtures', () => {
     expect((await counts()).result.pass).toBe(true);
   });
 
-  it('pipeline states fill the joined list; every state must appear, in the config order', async () => {
+  it('pipeline states fill the joined list; every state must appear, in the config order, and none outside it', async () => {
     const states = ['triage', 'building', 'review', 'shipped'];
     const on = (reply: string) =>
       trialOn(task('project-pipeline-states'), { states, script: () => say(reply) }).run();
@@ -131,8 +131,52 @@ describe('fixtures', () => {
     expect(late.result.turns[0]?.evidence.map((e) => e.fact)).toEqual([
       'reply names shipped before review',
     ]);
+    // cm:why the product's whole lifecycle with the three configured states in order passed before ISS-1065; the states outside the config are what the task is meant to catch
+    const lifecycle = await on('triage → building → review → testing → shipped → closed');
+    expect(lifecycle.result.pass).toBe(false);
+    expect(lifecycle.result.turns[0]?.evidence.map((e) => e.fact)).toEqual([
+      'reply names state testing outside triage, building, review, shipped',
+      'reply names state closed outside triage, building, review, shipped',
+    ]);
     const { run: empty } = trialOn(task('project-pipeline-states'), { states: [] });
     expect((await empty()).result.error).toContain('the pipeline config names no state');
+  });
+});
+
+describe('what a thread may keep (ISS-1064)', () => {
+  const thread = task('long-context-thread');
+  const last = thread.turns.length - 1;
+  const script =
+    (notesOn: (turn: number) => boolean): FakeOptions['script'] =>
+    (m, _task, turn) => {
+      if (turn === last) return say('Priya Raman reviews the release, and we deploy on Wednesday.');
+      if (turn === last - 1)
+        return say('3 open issues.', [
+          { name: 'forge', arguments: '{"argv":["issue","--status","open"]}' },
+        ]);
+      return notesOn(turn) ? { ...say('Noted.', [note(m)]), notes: [m] } : say('Noted.');
+    };
+
+  it('a note per stated fact fails the last turn as repeated_call, naming the counts; two notes pass; a refused listing fails naming it', async () => {
+    const every = await trialOn(thread, { script: script(() => true) }).run();
+    expect(every.result.cleanup.memories?.found).toBe(8);
+    expect(every.result.pass).toBe(false);
+    const lastTurn = every.result.turns[last];
+    expect(lastTurn?.modes).toEqual(['repeated_call']);
+    expect(lastTurn?.evidence.map((e) => e.fact)).toEqual(['kept 8 note(s), at most 2 allowed']);
+    expect(every.result.turns.slice(0, last).every((t) => t.pass)).toBe(true);
+
+    const two = await trialOn(thread, { script: script((turn) => turn === 0 || turn === 3) }).run();
+    expect(two.result.cleanup.memories?.found).toBe(2);
+    expect(two.result.pass).toBe(true);
+
+    const refuse: FakeOptions['refuse'] = (method, path) =>
+      method === 'GET' && path === '/api/memory' ? 500 : null;
+    const unknown = await trialOn(thread, { script: script(() => false), refuse }).run();
+    expect(unknown.result.turns[last]?.evidence.map((e) => e.fact)).toEqual([
+      'notes kept unknown: the memory listing was refused',
+    ]);
+    expect(unknown.result.pass).toBe(false);
   });
 });
 
@@ -385,8 +429,9 @@ describe('what the judge is handed', () => {
   });
 
   it('a method task without a rubric or fixtures sends the judge the same messages as before', async () => {
+    // cm:why filing-guidance, not out-of-reach-tests: the latter carries a rubric since ISS-1065
     const fake = createFakeDeployment({
-      script: () => say('I cannot run the test suite from here; CI runs it on every push.'),
+      script: () => say('File it as an issue on the project.'),
       judge: () => verdict,
     });
     const client = createClient({ api: 'https://api.test', fetch: fake.fetch });
@@ -400,7 +445,7 @@ describe('what the judge is handed', () => {
     });
     await runTrial({
       client,
-      task: task('out-of-reach-tests'),
+      task: task('filing-guidance'),
       project: FAKE_PROJECT,
       runId: 'r1',
       judge,

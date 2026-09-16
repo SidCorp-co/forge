@@ -48,6 +48,9 @@ export interface HistoryResult extends Summary {
   /** Whether UUID links were looked up (`--resolve`). */
   resolved: boolean;
   excludedSessions: string[];
+  /** Sessions dropped because a row of theirs sent a shipped task's message (ISS-1065 D2), apart from the run-file ones. */
+  excludedSessionsByTask: string[];
+  excludedRowsByTask: number;
   judge?: HistoryJudge;
 }
 
@@ -81,6 +84,9 @@ export function readHistoryResult(text: string, where = 'history'): HistoryResul
   for (const key of KEYS) {
     if (!(key in obj)) throw new HistoryShapeError(`${where} lacks ${key}`);
   }
+  // cm:why a file written before ISS-1065 excluded by run file only: no session was dropped by task message, so the empty list and zero are that file's truth
+  if (obj.excludedSessionsByTask === undefined) obj.excludedSessionsByTask = [];
+  if (obj.excludedRowsByTask === undefined) obj.excludedRowsByTask = 0;
   if (!Array.isArray(obj.groups) || !Array.isArray(obj.flagged))
     throw new HistoryShapeError(`${where}.groups and .flagged must be lists`);
   return obj as unknown as HistoryResult;

@@ -29,6 +29,8 @@ export const CHECK_KINDS = [
   'listInOrder',
   'labeled',
   'linkTo',
+  'onlyFrom',
+  'maxNotesKept',
 ] as const;
 export type CheckKind = (typeof CHECK_KINDS)[number];
 
@@ -70,7 +72,11 @@ export type Check =
   /** The filled value stands as a whole number in the same clause as the label, nearest to it, in either order (codex F2). */
   | { kind: 'labeled'; label: RegExp; value: string }
   /** Some issue link in the reply targets the filled issue id (codex F3). */
-  | { kind: 'linkTo'; issueId: string };
+  | { kind: 'linkTo'; issueId: string }
+  /** The reply names no pipeline state outside the `, `-joined fixture list (ISS-1065). */
+  | { kind: 'onlyFrom'; list: string }
+  /** The trial kept at most `max` memory notes, read from the cleanup's count (ISS-1064). */
+  | { kind: 'maxNotesKept'; max: number };
 
 /** What a fixture reads from the deployment before the first turn, and the placeholders it fills. */
 export type FixtureName =
@@ -147,6 +153,7 @@ function literalPatterns(check: Check): string[] {
   if (check.kind === 'listInOrder') return [check.list];
   if (check.kind === 'labeled') return [check.value];
   if (check.kind === 'linkTo') return [check.issueId];
+  if (check.kind === 'onlyFrom') return [check.list];
   if (check.kind !== 'mustMatch' && check.kind !== 'mustNotMatch' && check.kind !== 'inOrder')
     return [];
   return check.patterns.filter((p): p is string => typeof p === 'string');
