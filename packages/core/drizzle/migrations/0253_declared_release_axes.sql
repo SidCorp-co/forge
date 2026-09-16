@@ -435,6 +435,71 @@ ALTER TABLE "projects" ALTER COLUMN "release_model" SET DEFAULT 'none';--> state
 ALTER TABLE "projects" ALTER COLUMN "release_model" SET NOT NULL;--> statement-breakpoint
 ALTER TABLE "integration_bindings" ALTER COLUMN "role" SET NOT NULL;--> statement-breakpoint
 
+-- === 6b. the service rows `environment` was keeping apart =================
+--
+-- `integration_bindings_service_uq` admits one service row per (project, provider,
+-- label). Until now `environment` was doing that separating work, and dropping it in
+-- step 7 collides every pair that differed only there — a row the new schema cannot
+-- represent, which is refused rather than deleted.
+--
+-- It is not refused outright, because ISS-558 already gave these rows a home: `label`
+-- is '' for the default binding and a kebab slug for a named extra one. A staging
+-- postman binding beside a prod one IS a named extra binding; moving it there keeps
+-- the row, keeps it reachable, and leaves the default where every lookup expects it.
+-- `prod` keeps '' because that is what the default has always meant here.
+--
+-- Derived when this runs, never transcribed. The two hand-written rosters above each
+-- missed rows created after they were measured; a rule that reads the database at
+-- migration time cannot.
+DO $$
+DECLARE moved text;
+BEGIN
+  WITH dup AS (
+    SELECT b.id, b.environment
+      FROM integration_bindings b
+      JOIN integration_bindings o
+        ON o.project_id = b.project_id AND o.provider = b.provider
+       AND o.label = b.label AND o.id <> b.id AND o.role = 'service'
+     WHERE b.role = 'service' AND b.label = '' AND b.environment <> 'prod'
+  ), upd AS (
+    UPDATE integration_bindings b SET label = dup.environment
+      FROM dup WHERE b.id = dup.id
+    RETURNING b.id, b.project_id, b.provider, b.label
+  )
+  SELECT string_agg(format('%s (project %s, provider %s) -> label %L',
+                           u.id, p.slug, u.provider, u.label), ', ' ORDER BY u.id)
+    INTO moved
+    FROM upd u JOIN projects p ON p.id = u.project_id;
+  IF moved IS NOT NULL THEN
+    RAISE NOTICE 'ISS-1046: service binding(s) kept their row by taking a label, because '
+      '`environment` was the only thing separating them from the default binding and this '
+      'migration retires it: %', moved;
+  END IF;
+END $$;--> statement-breakpoint
+
+-- Whatever the rule above could not separate, the index would refuse as a bare 23505
+-- naming one key and no row. Every other assertion in this file names its rows; this
+-- one owes the same.
+DO $$
+DECLARE clash text;
+BEGIN
+  SELECT string_agg(format('%s/%s/%L x%s', g.slug, g.provider, g.label, g.n), ', '
+                    ORDER BY g.slug, g.provider, g.label)
+    INTO clash
+    FROM (SELECT p.slug, b.provider, b.label, count(*) AS n
+            FROM integration_bindings b
+            JOIN projects p ON p.id = b.project_id
+           WHERE b.role = 'service'
+           GROUP BY p.slug, b.provider, b.label
+          HAVING count(*) > 1) g;
+  IF clash IS NOT NULL THEN
+    RAISE EXCEPTION 'ISS-1046: service bindings still share (project, provider, label) after '
+      'labelling: %. A provider with no deploy adapter can only be `service`, so these rows '
+      'cannot both be the default binding and cannot be declared apart. Give one of each pair '
+      'a distinct `label`, or retire it — never delete it to make the index build.', clash;
+  END IF;
+END $$;--> statement-breakpoint
+
 -- === 7. retire the column and its index ===================================
 DROP INDEX IF EXISTS "integration_bindings_project_provider_env_label_uq";--> statement-breakpoint
 ALTER TABLE "integration_bindings" DROP COLUMN "environment";--> statement-breakpoint
