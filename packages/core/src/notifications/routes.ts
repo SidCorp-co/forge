@@ -9,6 +9,7 @@ import { notifications, userPreferences } from '../db/schema.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { hooks } from '../pipeline/hooks.js';
+import { emissionAllowed, noteSuppressed } from './emission-switch.js';
 
 const idParamSchema = z.object({ id: z.uuid() });
 
@@ -204,6 +205,16 @@ export async function createNotification(input: {
   // opted-in, so an absent preferences row notifies as before. Only `mention`
   // is gated — it is the only user-initiated type; system/escalation types are
   // always delivered.
+  // cm:guard ISS-1063 — the emission switch is checked BEFORE the mention
+  // preference and before the insert, because this is the one seam where a row
+  // stops existing. The contract's channel matrix cannot do it (`@forge/contracts`
+  // is type-only in core's runtime image — see emit.ts) and the web delivery
+  // bridge only suppresses toast/browser while the bell still counts the row.
+  if (!emissionAllowed(input.type)) {
+    noteSuppressed(input.type, input.title);
+    return null;
+  }
+
   if (input.type === 'mention') {
     const [prefs] = await db
       .select({ notifyOnMention: userPreferences.notifyOnMention })
