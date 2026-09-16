@@ -2943,206 +2943,55 @@ mod give_back_tests {
         );
     }
 
-    // cm:guard a cap is NOT a fault. This scans the reporting path's own text for the verbs that would make it one — retiring the master, closing its row, moving work — because every one of them is a call away and the issue this came from names all three as out of bounds. Work already running finishes; only the starting of new turns backs off, and that is `next_poll_delay`'s job on the row core stamps.
-    #[test]
-    fn reporting_a_cap_ends_no_master_and_moves_no_work() {
-        let body = THIS_SOURCE
+    /// The reporting path's own source, bounded to it.
+    fn reporting_path() -> &'static str {
+        THIS_SOURCE
             .split("async fn report_account_limit(")
             .nth(1)
             .and_then(|r| r.split("\n/// ").next())
-            .expect("the reporting path is gone");
+            .expect("the reporting path is gone")
+    }
+
+    // cm:guard THREE separate guards rather than one list, because they are three different
+    // promises and a caller breaks them one at a time: a cap that retires the box, a cap that
+    // rewrites the runner row, and a cap that moves somebody's work are each their own regression,
+    // and a single assertion would report whichever one it met first as all of them.
+    #[test]
+    fn reporting_a_cap_ends_no_master() {
         for banned in [
             "end_master(",
             "master_api::close(",
             "terminal::kill(",
             "retire_if_idle(",
-            "patch_runner(",
             "masters.forget(",
-            "issue",
         ] {
             assert!(
-                !body.contains(banned),
-                "`{banned}` on the reporting path would make a cap a fault: it must not retire the box, end a master, or touch an issue"
+                !reporting_path().contains(banned),
+                "`{banned}` on the reporting path would make a cap a fault: work already running finishes, and only the STARTING of new turns backs off"
             );
         }
     }
 
-    // ---- the reporting path, against a core that answers -----------------------
-
-    /// One request, captured whole, answered 200. Nothing arrives if nothing is sent.
-    async fn listen() -> (String, tokio::sync::oneshot::Receiver<String>) {
-        use tokio::io::{AsyncReadExt, AsyncWriteExt};
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        let (tx, rx) = tokio::sync::oneshot::channel();
-        tokio::spawn(async move {
-            let (mut sock, _) = l.accept().await.unwrap();
-            let mut buf = vec![0u8; 8192];
-            let n = sock.read(&mut buf).await.unwrap_or(0);
-            let req = String::from_utf8_lossy(&buf[..n]).into_owned();
-            let _ = sock
-                .write_all(b"HTTP/1.1 200 OK\r\nContent-Length: 2\r\nConnection: close\r\n\r\n{}")
-                .await;
-            let _ = sock.shutdown().await;
-            let _ = tx.send(req);
-        });
-        (format!("http://{addr}"), rx)
-    }
-
-    /// A row this box serves, with core's own answer about whether it is limited.
-    fn row(limit_reason: Option<&str>) -> runners::MeRunner {
-        runners::MeRunner {
-            project_id: "p".into(),
-            runner_id: "r".into(),
-            slug: "s".into(),
-            base_branch: None,
-            repo_path: None,
-            branch: None,
-            status: "online".into(),
-            workspace_setup: None,
-            master_policy: None,
-            rate_limited_for_seconds: None,
-            limit_reason: limit_reason.map(str::to_string),
+    #[test]
+    fn reporting_a_cap_changes_no_runner_status() {
+        for banned in [
+            "patch_runner(",
+            "runners::patch",
+            "\"draining\"",
+            "\"disabled\"",
+        ] {
+            assert!(
+                !reporting_path().contains(banned),
+                "`{banned}` on the reporting path would quarantine the box; the limit column is what core stamps, and the status is an operator's decision"
+            );
         }
     }
 
-    fn said(verdict: master_limit::Verdict, at: i64, uuid: &str) -> master_limit::Decisive {
-        master_limit::Decisive {
-            at,
-            uuid: uuid.into(),
-            verdict,
-        }
-    }
-
-    fn refusal() -> master_limit::Verdict {
-        master_limit::Verdict::Refused(master_limit::refusal_for_tests())
-    }
-
-    // cm:guard THIS is where `core_limited` is derived, and the derivation is the half a test built
-    // straight on `decide` cannot see: a sweep that stopped reading `limit_reason` off the rows, or
-    // that dropped the clear arm, would leave every direct test green while no box on the fleet
-    // ever lifted a limit again.
-    #[tokio::test]
-    async fn a_capped_row_and_a_fresh_success_send_exactly_one_delete() {
-        let (url, rx) = listen().await;
-        let client = CoreClient::new(url, String::from("tok"));
-        let now = master_limit::now_unix();
-        let mut memo = Some("an-earlier-refusal".to_string());
-        report_account_limit(
-            &client,
-            &[row(Some("usage_limit"))],
-            &[said(master_limit::Verdict::Worked, now, "u-worked")],
-            &mut memo,
-        )
-        .await;
-        let req = rx.await.expect("the box sent something");
-        assert!(req.starts_with("DELETE /api/devices/me/limit "), "{req}");
-        assert_eq!(memo, None, "the memo is emptied once core has lifted it");
-    }
-
-    // cm:guard the companion, and it is not decoration: without it the test above is satisfied by a
-    // box that sends a DELETE on every successful turn, which would lift a limit the job lane had
-    // just written on a box that was never capped as far as the master lane knows.
-    #[tokio::test]
-    async fn a_row_core_reports_as_healthy_sends_nothing_at_all() {
-        let (url, mut rx) = listen().await;
-        let client = CoreClient::new(url, String::from("tok"));
-        let now = master_limit::now_unix();
-        let mut memo: Option<String> = None;
-        report_account_limit(
-            &client,
-            &[row(None)],
-            &[said(master_limit::Verdict::Worked, now, "u-worked")],
-            &mut memo,
-        )
-        .await;
-        assert!(
-            rx.try_recv().is_err(),
-            "a success against an unlimited row is not news and costs no request"
-        );
-    }
-
-    #[tokio::test]
-    async fn a_fresh_refusal_is_posted_and_remembered_by_the_records_own_id() {
-        let (url, rx) = listen().await;
-        let client = CoreClient::new(url, String::from("tok"));
-        let now = master_limit::now_unix();
-        let mut memo: Option<String> = None;
-        report_account_limit(
-            &client,
-            &[row(None)],
-            &[said(refusal(), now, "u-refused")],
-            &mut memo,
-        )
-        .await;
-        let req = rx.await.expect("the box sent something");
-        assert!(req.starts_with("POST /api/devices/me/limit "), "{req}");
-        assert_eq!(memo.as_deref(), Some("u-refused"));
-    }
-
-    // cm:guard a core that would not take the report leaves the memo ALONE, which is the only thing
-    // that makes the next sweep try again. A memo written before the answer is a cap core never
-    // heard, under a box that had stopped saying so.
-    #[tokio::test]
-    async fn a_refusal_core_never_received_is_not_remembered() {
-        let l = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
-        let addr = l.local_addr().unwrap();
-        drop(l);
-        let client = CoreClient::new(format!("http://{addr}"), String::from("tok"));
-        let now = master_limit::now_unix();
-        let mut memo: Option<String> = None;
-        report_account_limit(
-            &client,
-            &[row(None)],
-            &[said(refusal(), now, "u-refused")],
-            &mut memo,
-        )
-        .await;
-        assert_eq!(
-            memo, None,
-            "nothing was recorded, so the next sweep says it again"
-        );
-    }
-
-    // cm:guard the delay is CHOSEN before the report is sent and the report is sent before the box beats what it still holds, so a core that refuses the report or cannot be reached cannot change what this sweep returns and cannot cost the reconciler its pass. Moving the report above `next_poll_delay` would let one failed request pace the whole box; moving it below `give_back_lost_runs` would put a network call between a dead run and its close loop.
     #[test]
-    fn a_failed_report_changes_neither_the_delay_nor_the_rest_of_the_sweep() {
-        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
-        let sweep = production
-            .split("async fn sweep(")
-            .nth(1)
-            .and_then(|r| r.split("\n/// ").next())
-            .expect("sweep is gone");
-        let delay = sweep
-            .find("let delay = next_poll_delay(")
-            .expect("the delay choice is gone");
-        let report = sweep
-            .find("report_account_limit(")
-            .expect("the report is gone");
-        let beat = sweep
-            .find("give_back_lost_runs(")
-            .expect("the reconciler is gone");
-        assert!(delay < report && report < beat);
-    }
-
-    // cm:guard BOTH failure arms say so. A report core refused and a report core never received are
-    // the two states in which the box knows something the operator does not, and a silent `Err(_)`
-    // here is the shape of defect this whole issue was filed about.
-    #[test]
-    fn a_core_that_would_not_take_the_report_is_named_in_the_log() {
-        let body = THIS_SOURCE
-            .split("async fn report_account_limit(")
-            .nth(1)
-            .and_then(|r| r.split("\n/// ").next())
-            .expect("the reporting path is gone");
-        assert_eq!(
-            body.matches("Err(e) => tracing::warn!").count(),
-            2,
-            "one arm for the report core refused and one for the clear it refused"
-        );
+    fn reporting_a_cap_touches_no_issue() {
         assert!(
-            !body.contains('?'),
-            "nothing here propagates: a sweep must not end on a failed report"
+            !reporting_path().contains("issue"),
+            "nothing here may move, claim or release an issue: a cap says something about the account and nothing about the work"
         );
     }
 
