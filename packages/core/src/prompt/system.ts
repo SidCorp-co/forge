@@ -6,7 +6,7 @@
  * hits across jobs of the same project:
  *   1. PIPELINE_RULES        — process discipline (status LAST, branch, etc.)
  *   2. TOOL_REFERENCE        — MCP tool catalogue
- *   3. Project Config block  — baseBranch / productionBranch
+ *   3. Project Config block  — baseBranch, and liveBranch under `promote`
  *   4. Project Context block — projectId + hint to call forge_projects.get
  *
  * Per-state extras (operator-defined in `appConfig.pipeline.states[state].systemPrompt`):
@@ -27,6 +27,7 @@ import {
   memberLenses,
   organizationMembers,
   projects,
+  type ReleaseModel,
 } from '../db/schema.js';
 import { estimateTokens } from '../lib/token-estimator.js';
 import { logger } from '../logger.js';
@@ -179,18 +180,29 @@ ${fetch} Do NOT echo passwords in commits, PR descriptions, or tool output beyon
 }
 
 // cm:guard the park this line names must be one the reader's lane can actually write. It said `waiting` unconditionally until 2026-09-02, and `issues/autonomous-park.ts` rewrites `waiting` to `needs_info` for a device actor on every write — so the stop signal instructed the driver into the exact move a net exists to catch, on the only job type that runs unattended.
-function formatProjectConfig(
+// cm:guard the live-branch line is printed ONLY under `releaseModel: 'promote'`, and this is half of
+// one change with the column rename (ISS-1046) — the other half is that `liveBranch` is no longer
+// defaulted at create. Printing `- liveBranch: <not configured>` for the 25 `none` projects would
+// have fired the branch-detection paragraph below, which ends in an abort-and-ask instruction, into
+// 25 projects' drive prompts at once. Under `publish` and `none` there is no such branch to state,
+// so the honest render is silence rather than a sentinel.
+// cm:edge contract -> packages/core/src/release-batch/gate.ts — the same `releaseModel` decides the
+// gate; a prompt that states a promotion the gate does not make is Forge telling an agent one thing
+// and the tracker another
+export function formatProjectConfig(
   baseBranch: string | null,
-  productionBranch: string | null,
+  liveBranch: string | null,
+  releaseModel: ReleaseModel,
   noProgressRounds: number = DEFAULT_NO_PROGRESS_ROUNDS,
   step: JobType | null = null,
 ): string {
+  const promotes = releaseModel === 'promote';
   const b = baseBranch ?? BRANCH_SENTINEL;
-  const p = productionBranch ?? BRANCH_SENTINEL;
   // cm:guard the "no movement" qualifier is the whole line (RFC 0002 INV-8) — printing the bare number teaches the deleted cap back, and an agent that reads it as a cap stops at round 5 on work that is progressing fine
   const park = step === 'drive' ? 'needs_info' : 'waiting';
-  let out = `## Project Config\n- baseBranch: ${b}\n- productionBranch: ${p}\n- noProgressRounds: ${noProgressRounds} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
-  if (!baseBranch || !productionBranch) {
+  const liveLine = promotes ? `\n- liveBranch: ${liveBranch ?? BRANCH_SENTINEL}` : '';
+  let out = `## Project Config\n- baseBranch: ${b}${liveLine}\n- noProgressRounds: ${noProgressRounds} — a stop signal, NOT a cap. Nothing limits how many times an issue may be reopened. If you have fixed the same problem this many times and NOTHING changed (same failure, same symptom, no new information), stop and set \`${park}\` with what you tried and what you need. Rounds that each move something forward are normal work.`;
+  if (!baseBranch || (promotes && !liveBranch)) {
     const ask =
       step === 'drive'
         ? 'abort and say so in a comment'
@@ -203,14 +215,16 @@ function formatProjectConfig(
 // cm:why orgId rides along on the row the chat preamble already reads — the integration block needs it to resolve that org's runtime guides, and a second projects SELECT for one column would double this path's cheapest query
 async function loadProjectBranches(projectId: string): Promise<{
   baseBranch: string | null;
-  productionBranch: string | null;
+  liveBranch: string | null;
+  releaseModel: ReleaseModel;
   orgId: string | null;
 } | null> {
   try {
     const [project] = await db
       .select({
         baseBranch: projects.baseBranch,
-        productionBranch: projects.productionBranch,
+        liveBranch: projects.liveBranch,
+        releaseModel: projects.releaseModel,
         orgId: projects.orgId,
       })
       .from(projects)
@@ -258,7 +272,7 @@ export async function buildChatPreamble(
     : await resolveMemberLenses(projectId, userId ?? null);
   const sections: string[] = [
     buildChatNudge(lenses),
-    formatProjectConfig(project.baseBranch, project.productionBranch),
+    formatProjectConfig(project.baseBranch, project.liveBranch, project.releaseModel),
   ];
   // cm:why chat drives connected integrations (an MCP-only project has no code to read), so the tool-routing hint must reach it too — renderStageFactsText gates the whole facts block behind a JobType, which chat has none of
   const integrations = await renderChatIntegrations(projectId, project.orgId);
@@ -375,7 +389,8 @@ export async function buildPipelinePreambleStructured(
       id: 'project-config',
       body: formatProjectConfig(
         project.baseBranch,
-        project.productionBranch,
+        project.liveBranch,
+        project.releaseModel,
         factInputs?.noProgressRounds ?? DEFAULT_NO_PROGRESS_ROUNDS,
         step,
       ),

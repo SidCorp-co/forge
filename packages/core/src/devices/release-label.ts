@@ -20,20 +20,25 @@ import { db } from '../db/client.js';
  * The project's declared release label, as SQL, for a query that has `j` in
  * scope as the job row.
  */
-// cm:edge lockstep -> packages/core/src/release-batch/channel.ts — this must read the SAME binding and the SAME key as `resolveReleaseChannel`, which takes the OLDEST active prod binding whose connection is also active and overlays the connection's config with the binding's. The `?` test rather than COALESCE is that overlay exactly: a binding that sets the key to null or empty hides the connection's value, which `{...connection, ...binding}` does and a COALESCE does not. Two readings of "which box releases" is how a job gets offered to a box the release itself would have refused.
-// cm:why `NULLIF(…, '')` is `resolveReleaseChannel`'s own `length > 0` test — an empty label is not a label, and matching on it would put every unlabelled runner in the pool.
+// cm:edge lockstep -> packages/core/src/release-batch/channel.ts — this must read the SAME bindings and the SAME key as `releaseRunnerLabelOf`, which takes every ACTIVE deploy binding carrying the `live` stage whose connection is also active and overlays the connection's config with the binding's. The `?` test rather than COALESCE is that overlay exactly: a binding that sets the key to null or empty hides the connection's value, which `{...connection, ...binding}` does and a COALESCE does not. Two readings of "which box releases" is how a job gets offered to a box the release itself would have refused.
+// cm:guard RAW SQL, so `role`/`stages` here is type-checked by NOTHING — this line said `b.environment = 'prod'` until ISS-1046 renamed the column out from under it, and a stale predicate here fails by matching no row, which presents as "no runner in the pool" rather than as a schema break. `scripts/check-retired-model.mjs` is what catches it now.
+// cm:why `NULLIF(…, '')` is `releaseRunnerLabelOf`'s own `length > 0` test — an empty label is not a label, and matching on it would put every unlabelled runner in the pool.
+// cm:why the NULLs are dropped BEFORE the `LIMIT 1` and there is no `ORDER BY created_at`: `releaseRunnerLabelOf` filters nulls out and then refuses two surviving values (`RELEASE_RUNNER_AMBIGUOUS`), so a live set is either all-unlabelled or carries exactly one label beside any number of unlabelled bindings. Ordering by age instead would let an older unlabelled binding hide a younger one's label — a silent pick the other reader does not make, and the shape `bindings[0]` had.
 export const RELEASE_LABEL_FOR_JOB = sql`(
-  SELECT NULLIF(
-    CASE WHEN b.config ? 'releaseRunnerLabel'
-         THEN b.config ->> 'releaseRunnerLabel'
-         ELSE c.config ->> 'releaseRunnerLabel' END, '')
-  FROM integration_bindings b
-  JOIN integration_connections c ON c.id = b.connection_id
-  WHERE b.project_id = j.project_id
-    AND b.environment = 'prod'
-    AND b.active
-    AND c.active
-  ORDER BY b.created_at ASC
+  SELECT label FROM (
+    SELECT DISTINCT NULLIF(
+      CASE WHEN b.config ? 'releaseRunnerLabel'
+           THEN b.config ->> 'releaseRunnerLabel'
+           ELSE c.config ->> 'releaseRunnerLabel' END, '') AS label
+    FROM integration_bindings b
+    JOIN integration_connections c ON c.id = b.connection_id
+    WHERE b.project_id = j.project_id
+      AND b.role = 'deploy'
+      AND 'live' = ANY(b.stages)
+      AND b.active
+      AND c.active
+  ) labels
+  WHERE label IS NOT NULL
   LIMIT 1
 )`;
 

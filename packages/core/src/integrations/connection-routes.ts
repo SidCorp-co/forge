@@ -27,7 +27,10 @@ import {
   connectionConfigSchemaForProvider,
   connectionCreateSchema,
   connectionUpdateSchema,
-  environmentSchema,
+  cannotDeployMessage,
+  checkRoleStagesPairing,
+  roleSchema,
+  stagesSchema,
   splitProviderConfig,
 } from './provider-schemas.js';
 import { getAdapter } from './registry.js';
@@ -60,7 +63,7 @@ import {
   softDeleteConnection,
   updateConnection,
 } from './store.js';
-import type { IntegrationProvider } from './types.js';
+import { type IntegrationProvider, providerCanDeploy } from './types.js';
 
 async function loadManageableConnection(
   id: string,
@@ -142,18 +145,26 @@ integrationConnectionsRoutes.post(
   },
 );
 
-// Bind an EXISTING connection to a project+env — no secrets (the connection
+// Bind an EXISTING connection to a project — no secrets (the connection
 // already holds the credential). Owner-only on the connection + admin on the
 // TARGET project. Contrast the create path (POST /:projectId/integrations) which
 // always mints a NEW connection from the request body's secrets.
-const bindExistingSchema = z.object({
-  projectId: z.string().min(1),
-  environment: environmentSchema,
-  // Binding-tier overrides (coolify resourceUuid/branch) so a shared connection
-  // can target a different Coolify resource per project. Connection-tier keys
-  // are validated then dropped — a bind must not shadow the shared baseUrl.
-  config: z.record(z.string(), z.unknown()).optional(),
-});
+const bindExistingSchema = z
+  .object({
+    projectId: z.string().min(1),
+    role: roleSchema,
+    stages: stagesSchema.optional(),
+    // Binding-tier overrides (coolify resourceUuid/branch) so a shared connection
+    // can target a different Coolify resource per project. Connection-tier keys
+    // are validated then dropped — a bind must not shadow the shared baseUrl.
+    config: z.record(z.string(), z.unknown()).optional(),
+  })
+  // cm:guard the SAME three refusals the create path makes, from the same function — this is the
+  // second door onto `integration_bindings`, and a caller who reaches a wrong role/stages pair
+  // through it deserves the same sentence rather than a Postgres CHECK violation as a 500.
+  .superRefine((body, ctx) => {
+    checkRoleStagesPairing(body, ctx);
+  });
 
 integrationConnectionsRoutes.post(
   '/:id/bindings',
@@ -185,8 +196,13 @@ integrationConnectionsRoutes.post(
     }
 
     const provider = connection.provider as IntegrationProvider;
-    // One active binding per (project, provider, env).
-    await assertNoActiveBindingClash(body.projectId, provider, body.environment);
+    // The body is validated before the connection is loaded, so the provider-capability half of
+    // `checkBindingShape` could not run there — the provider comes from the connection, not the body.
+    if (body.role === 'deploy' && !providerCanDeploy(provider)) {
+      throw badRequest(cannotDeployMessage(provider));
+    }
+    // One active SERVICE binding per (project, provider); deploy bindings are unconstrained.
+    await assertNoActiveBindingClash(body.projectId, provider, body.role);
 
     // Optional per-project deploy-target overrides, validated against the
     // provider's partial schema then reduced to binding-tier keys only.
@@ -207,7 +223,8 @@ integrationConnectionsRoutes.post(
         connectionId: id,
         projectId: body.projectId,
         provider,
-        environment: body.environment,
+        role: body.role,
+        ...(body.role === 'deploy' && body.stages ? { stages: body.stages } : {}),
         config: bindingConfig,
         integrationSecret,
       });
@@ -221,7 +238,7 @@ integrationConnectionsRoutes.post(
       provider === 'github'
         ? await syncRepoUrlFromGitHubBinding({
             projectId: body.projectId,
-            environment: body.environment,
+            role: body.role,
             config: bindingConfig as GitHubConfig,
           })
         : { kind: 'unchanged' as const };

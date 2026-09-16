@@ -1,4 +1,3 @@
-import type { IntegrationEnvironment } from '../../db/schema.js';
 
 /**
  * ISS-387 — Epodsystem integration types.
@@ -41,8 +40,6 @@ export interface EpodsystemConfig extends Record<string, unknown> {
   commerceEnabled?: boolean;
   /** Primary published domain; resolved (best-effort) via `storeDomains`. Draft preview = this domain + `?preview_token=<token>`. */
   domain?: string;
-  /** Mirror of the binding's `environment`; convenience for adapter logic. */
-  environment: IntegrationEnvironment;
 }
 
 /** Secret material — encrypted into the connection's `secretsEnc`. */

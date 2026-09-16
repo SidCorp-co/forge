@@ -98,7 +98,7 @@ export const forgeStepStartTool: ContextScopedMcpToolFactory = (ctx) => ({
       { metadata: { branchConfig: branchOverride } },
       {
         baseBranch: projectRow?.baseBranch ?? null,
-        productionBranch: projectRow?.productionBranch ?? null,
+        liveBranch: projectRow?.liveBranch ?? null,
       },
     );
 

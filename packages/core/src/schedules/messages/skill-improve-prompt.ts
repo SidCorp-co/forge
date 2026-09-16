@@ -107,7 +107,7 @@ ${
     ? `The condition that must hold for this improvement to be relevant is:
 > "${msg.appliesWhen}"
 
-Read the project configuration (baseBranch, productionBranch, mergeStates, pipelineConfig, projectFacts) via forge_config.
+Read the project configuration (baseBranch, liveBranch, releaseModel, releaseStrategy, mergeStates, pipelineConfig, projectFacts) via forge_config. releaseModel is what says whether the project has a release step at all and what it means: 'none', 'promote' (code moves baseBranch to liveBranch) or 'publish' (no ref moves; the release is an act on a live deploy binding). Do NOT infer it from the branch names — 25 of 32 projects carry a liveBranch nothing promotes to.
 Make a judgment: does this condition hold for this project?
 
 - If NOT met → write a one-sentence reason, then go directly to Step 5 and report status="skipped" with that reason. Do not propose or apply.

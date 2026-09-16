@@ -88,7 +88,8 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
       return c.json({
         accepted: true,
         handler: map.provider,
-        environment: pair.binding.environment,
+        role: pair.binding.role,
+        stages: pair.binding.stages,
         deliveryId: result.deliveryId,
         actions: result.actions,
       });

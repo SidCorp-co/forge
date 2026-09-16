@@ -18,13 +18,18 @@
 export interface BranchConfig {
   baseBranch: string | null;
   targetBranch: string | null;
-  prodBranch: string | null;
+  /**
+   * Where a `promote` release lands. It carries NO claim that this project promotes: 25 of 32 fleet
+   * projects hold a value here from the era when the column had a `'main'` default, six of them a
+   * branch genuinely distinct from their base. `releaseModel` is what says whether it means anything.
+   */
+  liveBranch: string | null;
 }
 
 export interface IssueBranchOverride {
   baseBranch?: string | null;
   targetBranch?: string | null;
-  prodBranch?: string | null;
+  liveBranch?: string | null;
 }
 
 export interface IssueLike {
@@ -33,7 +38,7 @@ export interface IssueLike {
 
 export interface ProjectLike {
   baseBranch: string | null;
-  productionBranch: string | null;
+  liveBranch: string | null;
 }
 
 function pick(value: string | null | undefined): string | null {
@@ -46,10 +51,10 @@ export function resolveIssueBranches(issue: IssueLike, project: ProjectLike): Br
   const override = issue.metadata?.branchConfig ?? null;
 
   const baseBranch = pick(override?.baseBranch) ?? pick(project.baseBranch);
-  const prodBranch = pick(override?.prodBranch) ?? pick(project.productionBranch);
+  const liveBranch = pick(override?.liveBranch) ?? pick(project.liveBranch);
   const targetBranch = pick(override?.targetBranch) ?? baseBranch;
 
-  return { baseBranch, targetBranch, prodBranch };
+  return { baseBranch, targetBranch, liveBranch };
 }
 
 /**

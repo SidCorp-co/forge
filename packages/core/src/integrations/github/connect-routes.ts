@@ -101,7 +101,6 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
 
   const url = new URL(c.req.url);
   const org = url.searchParams.get('org');
-  const environment = url.searchParams.get('environment') ?? 'prod';
   const orgId = url.searchParams.get('orgId') ?? undefined;
 
   // cm:edge contract -> packages/core/src/integrations/connection-routes.ts — the same org-admin gate the generic connection create applies; an App shared by every project in an org may not be created by a member who could not create the connection directly.
@@ -119,7 +118,6 @@ githubConnectRoutes.post('/:projectId/integrations/github/connect', async (c) =>
     state: signConnectState(stateSecret(), {
       projectId,
       userId,
-      environment,
       ...(orgId ? { orgId } : {}),
     }),
     manifest: buildAppManifest({
@@ -190,7 +188,12 @@ githubCallbackRoutes.get('/integrations/github/manifest-callback', async (c) => 
     connectionId: connection.id,
     projectId: state.projectId,
     provider: 'github',
-    environment: state.environment === 'staging' ? 'staging' : 'prod',
+    // cm:guard `service` and never a stage: `providerCanDeploy('github')` is false, so a github
+    // binding cannot be `role: 'deploy'` at all. This used to read an `environment` query parameter
+    // and coerce anything that was not the literal `staging` to `prod` — a coercion that made the
+    // caller's answer unrecoverable and which had nothing to decide, since GitHub is a repo host on
+    // every project and is somewhere Forge deploys to on none.
+    role: 'service',
     config: {},
     integrationSecret: app.webhookSecret,
   });

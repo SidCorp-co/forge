@@ -14,7 +14,7 @@
 // ── appliesWhen contract ─────────────────────────────────────────────────────
 // `appliesWhen` is a NATURAL-LANGUAGE condition string, NOT a TS predicate.
 // The skill-improve agent (child 4/5) loads the project's config
-// (mergeStates, baseBranch, productionBranch, stack, roles) plus codebase
+// (mergeStates, baseBranch, liveBranch, releaseModel, stack, roles) plus codebase
 // context and JUDGES whether the condition holds, recording its reasoning in
 // the run report. This design is intentional: conditions like "project has a
 // FE/UI surface" or "base-merge state is a manual gate" require judgment over
@@ -105,19 +105,26 @@ export const RETIRED_STRATEGY_INPUTS = {
       'When forge-release encounters a merge conflict on the base branch: ' +
       '(1) git merge --abort to restore a clean base-branch worktree. ' +
       '(2) Check out the ISS-* branch and attempt ' +
-      'git rebase origin/<productionBranch> — this resolves straightforward ' +
-      'divergence when the branch was cut before recent production merges. ' +
+      'git rebase origin/<liveBranch> — this resolves straightforward ' +
+      'divergence when the branch was cut before recent release merges. ' +
       '(3) If rebase succeeds without conflict, push the rebased ISS-* ' +
       'branch then retry the base-branch merge. ' +
       '(4) If rebase itself conflicts or the retry merge conflicts, ' +
       'transition awaiting_release → reopen and post the standard conflict comment ' +
       'so forge-fix can resolve it. Never leave the issue at awaiting_release after ' +
       'a conflict — silent waiting blocks the release indefinitely.',
+    // cm:guard the condition is `releaseModel: 'promote'` and NOT a branch comparison. It read "the
+    // two branches differ" until ISS-1046, which is the same inference `release-batch/gate.ts`
+    // dropped: 25 of 32 fleet projects carry a `live_branch` left over from a column default and six
+    // of them a branch genuinely distinct from their base, so the old test handed rebase-onto-
+    // production advice to six projects that promote nothing, and withheld it from a `publish`
+    // storefront where it would be wrong for the opposite reason.
     appliesWhen:
-      'The project is 2-branch: baseBranch and productionBranch are ' +
-      'different values in the project config (e.g. baseBranch="main" and ' +
-      'productionBranch="release" or "production"), meaning ISS-* branches ' +
-      'must track production to avoid divergence at merge time.',
+      "The project declares releaseModel='promote' in its project config, meaning the release " +
+      'moves code from baseBranch to liveBranch and ISS-* branches must track liveBranch to ' +
+      'avoid divergence at merge time. It does NOT apply under releaseModel `publish` (the ' +
+      'release is an act on a live binding and no ref moves) or `none` (there is no release step), ' +
+      'whatever branches those projects happen to have stored.',
     appliesToSkills: ['forge-release'],
   },
   QA_QUALITY_BAR: {

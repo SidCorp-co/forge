@@ -94,7 +94,7 @@ describe('buildChatPreamble — lens override (ISS-674)', () => {
 
   it('forceLenses=["product"] pins the product voice and skips the member-lens DB lookup', async () => {
     queueSelects(
-      [{ baseBranch: 'main', productionBranch: 'main' }], // loadProjectBranches
+      [{ baseBranch: 'main', liveBranch: 'main' }], // loadProjectBranches
       [],
     );
 
@@ -109,7 +109,7 @@ describe('buildChatPreamble — lens override (ISS-674)', () => {
 
   it('no forceLenses (normal chat) still resolves the principal member lens', async () => {
     queueSelects(
-      [{ baseBranch: 'main', productionBranch: 'main' }], // loadProjectBranches
+      [{ baseBranch: 'main', liveBranch: 'main' }], // loadProjectBranches
       [{ orgId: 'org1' }], // resolveMemberLenses: project → orgId
       [{ lenses: ['technical'] }], // resolveMemberLenses: member row
       [],
@@ -128,7 +128,7 @@ describe('buildChatPreamble — integrations + MCP diagnostics', () => {
     vi.clearAllMocks();
   });
 
-  const BRANCHES = [{ baseBranch: 'main', productionBranch: 'main' }];
+  const BRANCHES = [{ baseBranch: 'main', liveBranch: 'main' }];
   const ACTIVE_EPODSYSTEM = [
     {
       binding: { provider: 'epodsystem', environment: 'prod', active: true },

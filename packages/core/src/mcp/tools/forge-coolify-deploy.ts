@@ -95,7 +95,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
   description:
     'Coolify deploy controls for the pipeline skills. Actions: list | deploy | status | logs | ' +
     'runtime-logs | cancel | rollback-images | rollback | applications | targets. ' +
-    'MODEL: one integration = one project+ENVIRONMENT binding (staging vs prod are SEPARATE ' +
+    'MODEL: one integration = one project+STAGE binding (preview vs live are SEPARATE ' +
     'integrations). Each integration deploys ONE OR MORE targets[] — each target is its own Coolify ' +
     'application (e.g. a split backend + frontend, or a worker), deployed TOGETHER. A single deploy ' +
     'FANS OUT to every target of the integration (one Coolify build per target); the pipeline run is ' +
@@ -103,7 +103,7 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'failure. So if an app (e.g. the backend) is not deploying, check it is CONFIGURED as a target on ' +
     'that integration (project settings → Integrations) — Forge only deploys the targets the ' +
     'integration holds. ' +
-    'list: active Coolify integrations for the project (id, environment, targets[]={id,label,' +
+    'list: active Coolify integrations for the project (id, stages, targets[]={id,label,' +
     'resourceUuid}, lastHealthStatus, breakerOpen); empty array => project is local-only (no Coolify). ' +
     'Inspect targets[] to confirm every app you expect (BE+FE) is present. ' +
     'deploy: issueId is OPTIONAL; dispatches ALL targets of the resolved integration. With issueId — ' +
@@ -111,9 +111,9 @@ export const forgeCoolifyDeployTool: ContextScopedMcpToolFactory = (ctx) => ({
     'the release auto-subscriber (each target webhook then advances that run; run completes when all ' +
     'targets succeed). When issueId is combined with integrationId, integrationId is a HARD scope ' +
     'filter — ONLY that binding dispatches, even if other bindings (e.g. prod) exist on the run. ' +
-    'When issueId is given WITHOUT integrationId, prod-environment bindings are dispatched ONLY when ' +
+    'When issueId is given WITHOUT integrationId, bindings carrying the `live` stage are dispatched ONLY when ' +
     'the issue has reached the release stage (status awaiting_release/closed) — every pre-release call ' +
-    '(code/fix/testing) is staging-only and NEVER touches a prod binding, regardless of ' +
+    '(code/fix/testing) is preview-only and NEVER touches a live binding, regardless of ' +
     'pipelineConfig.autoProdDeploy (that flag only bypasses the gate for the release-triggered ' +
     'auto-subscriber, not for this tool pre-release). With pipelineRunId (no issueId) — ISS-764 ' +
     'batch release path: the run is already open (kind=system); dispatches ALL targets prod-allowed ' +

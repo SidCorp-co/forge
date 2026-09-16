@@ -78,7 +78,7 @@ const HUMAN = { type: 'user', id: '33333333-3333-4333-8333-333333333333' } as co
 
 /** A project WITH production: a prod binding, and a production branch that is not the base. */
 function gated() {
-  projectSelectLimit.mockResolvedValueOnce([{ baseBranch: 'dev', productionBranch: 'master' }]);
+  projectSelectLimit.mockResolvedValueOnce([{ baseBranch: 'dev', liveBranch: 'master' }]);
   listBindings.mockResolvedValueOnce([{ binding: { provider: 'coolify' }, connection: {} }]);
 }
 
@@ -86,8 +86,8 @@ function gated() {
 function ungated(over: { branches?: boolean } = {}) {
   projectSelectLimit.mockResolvedValueOnce(
     over.branches
-      ? [{ baseBranch: 'dev', productionBranch: 'master' }]
-      : [{ baseBranch: 'main', productionBranch: 'main' }],
+      ? [{ baseBranch: 'dev', liveBranch: 'master' }]
+      : [{ baseBranch: 'main', liveBranch: 'main' }],
   );
   listBindings.mockResolvedValueOnce(
     over.branches ? [] : [{ binding: { provider: 'sentry' }, connection: {} }],

@@ -61,7 +61,7 @@ export async function collectWorkEvidence(
       .select({
         sessionContext: issues.sessionContext,
         baseBranch: projects.baseBranch,
-        productionBranch: projects.productionBranch,
+        liveBranch: projects.liveBranch,
       })
       .from(issues)
       .innerJoin(projects, eq(projects.id, issues.projectId))
@@ -95,7 +95,7 @@ export async function collectWorkEvidence(
   // cm:guard the project's OWN base or production branch is not evidence of work on THIS issue — it names where work lands, not that any happened, and it is the one string an agent can write truthfully while having done nothing. Measured on forge-dev 2026-09-02: 2 issues carried `branch: 'main'` (base AND production) with zero `code`/`fix`/`drive` jobs, satisfying the gate ISS-786 built to stop exactly that claim. 17 of the 112 issues holding a branch fleet-wide named their base or production branch.
   // cm:guard the base/production exclusion applies to whichever spelling won, unchanged: the point of ISS-786's rule is that naming where work LANDS is not evidence that work happened, and that holds identically for a branch read out of the worklog.
   const branch =
-    named && named !== issueRows[0]?.baseBranch && named !== issueRows[0]?.productionBranch
+    named && named !== issueRows[0]?.baseBranch && named !== issueRows[0]?.liveBranch
       ? named
       : null;
 

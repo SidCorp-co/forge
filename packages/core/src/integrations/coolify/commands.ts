@@ -11,6 +11,7 @@
  * Nothing here checks membership.
  */
 
+import type { DeployStage } from '../../db/schema.js';
 import { effectiveConfig, listActiveBindingsForProjectProvider } from '../../integrations/store.js';
 import {
   type DispatchOutcome,
@@ -41,7 +42,7 @@ export async function activeCoolifyIntegrations(projectId: string) {
   const pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
   return pairs.map((pair) => ({
     id: pair.binding.id,
-    environment: pair.binding.environment,
+    stages: (pair.binding.stages ?? []) as DeployStage[],
     config: effectiveConfig<CoolifyConfig>(pair),
     lastHealthStatus: pair.connection.lastHealthStatus,
     breakerOpenedAt: pair.connection.breakerOpenedAt,
@@ -79,7 +80,7 @@ export async function listCoolifyIntegrations(projectId: string) {
   return {
     integrations: rows.map((row) => ({
       id: row.id,
-      environment: row.environment,
+      stages: row.stages,
       targets: ((row.config as CoolifyConfig | null)?.targets ?? []).map((t) => ({
         id: t.id,
         label: t.label,
@@ -98,7 +99,7 @@ const shape = (outcome: DispatchOutcome) => ({
   ...(outcome.reason ? { reason: outcome.reason } : {}),
 });
 
-// cm:guard the three branches decide whether PROD may dispatch, and each earns its `allowProd` differently: a bare `pipelineRunId` is trusted ONLY after `isOpenReleaseBatchRun` proves it is this project's own open release-batch run, an `issueId` earns it only by having reached the release stage, and the run-less branch never asks for it at all (`dispatchCoolifyDeployDirect` refuses prod on its own unless the project opted into autoProdDeploy). Never widen the first branch to an arbitrary run id — that is a prod deploy dispatched on a caller-supplied uuid.
+// cm:guard the three branches decide whether PROD may dispatch, and each earns its `allowLive` differently: a bare `pipelineRunId` is trusted ONLY after `isOpenReleaseBatchRun` proves it is this project's own open release-batch run, an `issueId` earns it only by having reached the release stage, and the run-less branch never asks for it at all (`dispatchCoolifyDeployDirect` refuses prod on its own unless the project opted into autoProdDeploy). Never widen the first branch to an arbitrary run id — that is a prod deploy dispatched on a caller-supplied uuid.
 export async function runCoolifyDeploy(input: {
   projectId: string;
   issueId?: string | undefined;
@@ -119,7 +120,7 @@ export async function runCoolifyDeploy(input: {
         issueId: null,
         runId: input.pipelineRunId,
         integrationId: input.integrationId ?? null,
-        allowProd: true,
+        allowLive: true,
       }),
     );
   }
@@ -140,7 +141,7 @@ export async function runCoolifyDeploy(input: {
         issueId: input.issueId,
         runId,
         integrationId: input.integrationId ?? null,
-        allowProd: await isIssueAtReleaseStage(input.issueId),
+        allowLive: await isIssueAtReleaseStage(input.issueId),
       }),
     );
   }
@@ -172,7 +173,7 @@ export async function coolifyDeliveryStatus(input: {
     await Promise.all(
       scoped.map(async (row) => {
         const targets = (row.config as CoolifyConfig | null)?.targets ?? [];
-        const base = { integrationId: row.id, environment: row.environment };
+        const base = { integrationId: row.id, stages: row.stages };
         const breakerOpen = row.breakerOpenedAt !== null;
         if (targets.length === 0) {
           const last = await findLastOutbound(row.id);

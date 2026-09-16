@@ -18,7 +18,7 @@ import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { pipelineRuns } from '../db/schema.js';
 import { type BoundsReading, readBounds } from './bounds.js';
-import { resolveReleaseChannel } from './channel.js';
+import { resolveReleaseChannels } from './channel.js';
 import { listAttempts, type ReleaseAttemptRow } from './ledger.js';
 import { type ReleaseMethod, readMethod } from './method.js';
 import { loadReleaseRoster, type ReleaseRoster } from './queries.js';
@@ -59,11 +59,12 @@ export async function readReleaseRunState(runId: string): Promise<ReleaseRunStat
   const meta = (run.metadata ?? {}) as Record<string, unknown>;
   if (meta.source !== 'release-batch') return null;
 
-  const channel = await resolveReleaseChannel(run.projectId);
+  const channels = await resolveReleaseChannels(run.projectId);
+  const verify = channels[0]?.verify ?? null;
   const [roster, attempts, live] = await Promise.all([
     loadReleaseRoster(run.projectId),
     listAttempts(runId),
-    channel.verify ? readLiveState(channel.verify) : Promise.resolve(null),
+    verify ? readLiveState(verify) : Promise.resolve(null),
   ]);
   const method = readMethod(meta);
 

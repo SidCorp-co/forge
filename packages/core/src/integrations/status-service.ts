@@ -76,10 +76,29 @@ function providerCapabilities(provider: IntegrationProvider) {
   return capabilitiesFor(getAdapter(provider));
 }
 
+/**
+ * The card-key suffix for a binding, which web-v2 parses back out of `key`.
+ *
+ * A `service` binding has no stage, so it keys on its role — `sentry:service` rather than the
+ * `sentry:prod` it used to key on, where `prod` was the filler the old column forced it to carry.
+ */
+// cm:edge contract -> packages/web-v2/src/features/integrations/derive.ts — `envSortKey` and the
+// drawer both split this key on `:` and read the suffix back as a stage; a suffix invented here that
+// is not a stage name or `service` sorts to the end and renders as an unlabelled card
+function stageKey(row: { role: string; stages: string[] }): string {
+  return row.role === 'service' ? 'service' : (row.stages.join('+') || 'deploy');
+}
+
+function stageLabel(row: { role: string; stages: string[] }): string {
+  if (row.role === 'service') return 'service';
+  return row.stages.map((s) => (s === 'live' ? 'Live' : 'Preview')).join(' + ') || 'deploy';
+}
+
 /** Flattened binding+connection row the status cards render from. */
 interface ProviderRow {
   provider: string;
-  environment: string;
+  role: string;
+  stages: string[];
   config: Record<string, unknown>;
   active: boolean;
   lastHealthStatus: string | null;
@@ -119,8 +138,8 @@ function buildProviderCards(opts: {
   }
   const envKeyed = opts.alwaysEnvKeyed || opts.rows.length > 1;
   return opts.rows.map((row) => ({
-    key: envKeyed ? `${opts.provider}:${row.environment}` : opts.provider,
-    label: envKeyed ? `${opts.label} (${row.environment})` : opts.label,
+    key: envKeyed ? `${opts.provider}:${stageKey(row)}` : opts.provider,
+    label: envKeyed ? `${opts.label} (${stageLabel(row)})` : opts.label,
     status: healthToStatus(row.lastHealthStatus, row.active),
     detail: !row.active
       ? 'integration disabled'
@@ -130,7 +149,8 @@ function buildProviderCards(opts: {
     lastSyncAt: toIso(row.lastHealthAt),
     configured: true,
     meta: {
-      environment: row.environment,
+      role: row.role,
+      stages: row.stages,
       breakerOpen: row.breakerOpenedAt !== null,
       lastHealthStatus: row.lastHealthStatus,
       capabilities: caps,
@@ -153,7 +173,8 @@ export async function buildIntegrationsStatusCards(projectId: string): Promise<S
   const pairs = await listBindingsForProject(projectId);
   const integrationRows = pairs.map((pair) => ({
     provider: pair.binding.provider,
-    environment: pair.binding.environment,
+    role: pair.binding.role,
+    stages: (pair.binding.stages ?? []) as string[],
     config: effectiveConfig(pair),
     active: pair.binding.active && pair.connection.active,
     lastHealthStatus: pair.connection.lastHealthStatus,

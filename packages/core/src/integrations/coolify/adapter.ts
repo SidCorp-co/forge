@@ -18,6 +18,7 @@ import { breakerAllowsDispatch, maybeResetBreaker, maybeTripBreaker } from './ci
 import { CoolifyApiError, coolifyAbilityForRoute, describeCoolifyForbidden } from './client.js';
 import { enqueueCoolifyConfirm } from './confirm.js';
 import { buildClient } from './log-fetch.js';
+import type { DeployStage } from '../../db/schema.js';
 import type { CoolifyConfig, CoolifySecrets } from './types.js';
 
 const BREADCRUMB_OUT = 'integration.coolify.dispatch';
@@ -26,7 +27,7 @@ interface DeployPayload extends Record<string, unknown> {
   /** `null` for a run-less resource redeploy (no pipeline run to advance). */
   runId: string | null;
   issueId: string | null;
-  environment: 'staging' | 'prod';
+  stages: DeployStage[];
   /** The specific target deployed by this delivery (one delivery per target). */
   targetId: string;
   targetLabel: string;
@@ -197,7 +198,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
         payload: {
           ...payload,
           runId,
-          environment: ctx.environment,
+          stages: ctx.stages,
           targetId: target.id,
           targetLabel: target.label,
           resourceUuid: target.resourceUuid,
@@ -215,7 +216,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
           data: {
             connectionId: ctx.connectionId,
             bindingId: ctx.bindingId,
-            environment: ctx.environment,
+            stages: ctx.stages,
             deliveryId,
             runId,
             targetId: target.id,
@@ -324,7 +325,7 @@ export const coolifyAdapter: IntegrationAdapter<CoolifyConfig, CoolifySecrets> =
           {
             connectionId: ctx.connectionId,
             bindingId: ctx.bindingId,
-            environment: ctx.environment,
+            stages: ctx.stages,
           },
           'coolify: circuit breaker tripped — ops follow-up required',
         );

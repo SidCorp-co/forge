@@ -211,7 +211,7 @@ describe('POST /api/projects', () => {
         // ISS-274 — branch columns are defaulted at create time so the
         // resolver never surfaces a null-base misconfig for new projects.
         baseBranch: 'main',
-        productionBranch: 'main',
+        liveBranch: 'main',
       }),
     );
     expect(txInsertMembersValues).toHaveBeenCalledWith({
@@ -350,7 +350,7 @@ describe('GET /api/projects/:id', () => {
         description: 'desc',
         repoPath: '/repo',
         baseBranch: 'main',
-        productionBranch: 'master',
+        liveBranch: 'master',
         defaultDeviceId: null,
         agentConfig: null,
         webhookSecret: null,
@@ -412,7 +412,7 @@ describe('GET /api/projects/:id', () => {
         description: null,
         repoPath: null,
         baseBranch: null,
-        productionBranch: null,
+        liveBranch: null,
         defaultDeviceId: null,
         agentConfig: null,
         webhookSecret: null,
@@ -534,7 +534,7 @@ describe('PATCH /api/projects/:id', () => {
         description: 'a project',
         repoPath: '/home/user/repo',
         baseBranch: 'staging',
-        productionBranch: 'main',
+        liveBranch: 'main',
         defaultDeviceId: '22222222-2222-4222-8222-222222222222',
         agentConfig: null,
         webhookSecret: null,
@@ -547,7 +547,7 @@ describe('PATCH /api/projects/:id', () => {
         description: 'a project',
         repoPath: '/home/user/repo',
         baseBranch: 'staging',
-        productionBranch: 'main',
+        liveBranch: 'main',
         defaultDeviceId: '22222222-2222-4222-8222-222222222222',
       }),
       token,
@@ -557,7 +557,7 @@ describe('PATCH /api/projects/:id', () => {
       description: 'a project',
       repoPath: '/home/user/repo',
       baseBranch: 'staging',
-      productionBranch: 'main',
+      liveBranch: 'main',
       defaultDeviceId: '22222222-2222-4222-8222-222222222222',
     });
   });
@@ -607,7 +607,7 @@ describe('PATCH /api/projects/:id', () => {
         description: null,
         repoPath: null,
         baseBranch: null,
-        productionBranch: null,
+        liveBranch: null,
         defaultDeviceId: null,
         agentConfig: null,
         webhookSecret: null,
@@ -644,7 +644,7 @@ describe('PATCH /api/projects/:id', () => {
         description: null,
         repoPath: null,
         baseBranch: null,
-        productionBranch: null,
+        liveBranch: null,
         defaultDeviceId: null,
         agentConfig: null,
         previewDeploy: {
@@ -678,7 +678,7 @@ describe('PATCH /api/projects/:id', () => {
         description: null,
         repoPath: null,
         baseBranch: null,
-        productionBranch: null,
+        liveBranch: null,
         defaultDeviceId: null,
         agentConfig: null,
         previewDeploy: { stagingUrl: 'https://stg.example.com', testingUrls: [] },
@@ -709,7 +709,7 @@ describe('PATCH /api/projects/:id', () => {
         description: null,
         repoPath: null,
         baseBranch: null,
-        productionBranch: null,
+        liveBranch: null,
         defaultDeviceId: null,
         agentConfig: null,
         previewDeploy: null,
@@ -934,7 +934,7 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
+      .mockResolvedValueOnce([{ baseBranch: 'develop', liveBranch: 'release' }])
       .mockResolvedValueOnce([]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -948,7 +948,7 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
+      .mockResolvedValueOnce([{ baseBranch: 'develop', liveBranch: 'release' }])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -956,12 +956,12 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     const body = (await res.json()) as {
       baseBranch: string;
       targetBranch: string;
-      prodBranch: string;
+      liveBranch: string;
     };
     expect(body).toEqual({
       baseBranch: 'develop',
       targetBranch: 'develop',
-      prodBranch: 'release',
+      liveBranch: 'release',
     });
   });
 
@@ -970,11 +970,11 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: 'develop', productionBranch: 'release' }])
+      .mockResolvedValueOnce([{ baseBranch: 'develop', liveBranch: 'release' }])
       .mockResolvedValueOnce([
         {
           id: IID,
-          sessionContext: { branchConfig: { baseBranch: 'feat/x', prodBranch: 'hotfix' } },
+          sessionContext: { branchConfig: { baseBranch: 'feat/x', liveBranch: 'hotfix' } },
         },
       ]);
 
@@ -983,12 +983,12 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     const body = (await res.json()) as {
       baseBranch: string;
       targetBranch: string;
-      prodBranch: string;
+      liveBranch: string;
     };
     expect(body).toEqual({
       baseBranch: 'feat/x',
       targetBranch: 'feat/x', // follows the overridden base
-      prodBranch: 'hotfix',
+      liveBranch: 'hotfix',
     });
   });
 
@@ -997,7 +997,7 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     projectAccess.mockResolvedValueOnce(access('member'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ baseBranch: null, productionBranch: null }])
+      .mockResolvedValueOnce([{ baseBranch: null, liveBranch: null }])
       .mockResolvedValueOnce([{ id: IID, sessionContext: null }]);
 
     const res = await req(`/${PID}/issues/${IID}/branch-config`, { token });
@@ -1005,9 +1005,9 @@ describe('GET /api/projects/:id/issues/:issueId/branch-config (ISS-135 PR-A)', (
     const body = (await res.json()) as {
       baseBranch: string | null;
       targetBranch: string | null;
-      prodBranch: string | null;
+      liveBranch: string | null;
     };
-    expect(body).toEqual({ baseBranch: null, targetBranch: null, prodBranch: null });
+    expect(body).toEqual({ baseBranch: null, targetBranch: null, liveBranch: null });
   });
 });
 

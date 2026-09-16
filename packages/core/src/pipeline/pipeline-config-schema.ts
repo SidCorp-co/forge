@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { issueStatuses } from '../db/schema.js';
+import { QA_JUDGEMENT_KEY, QA_JUDGEMENT_MODES } from './qa-judgement.js';
 import { ENTRY_CRITERION_KEYS } from '../issues/entry-criteria-keys.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -302,6 +303,18 @@ export const pipelineConfigSchema = z
     lockedSkills: z.union([z.boolean(), z.array(z.string())]).optional(),
     // cm:guard the LAST survivor of ISS-873's two config keys — `sessionMode` was deleted by phase 6 and this one is not its replacement. `resolve_residency` (claude_code.rs) reads it and treats absent and `0` alike as the default, and core sends it only when a project set a positive number, so the knob's own default cannot silently disable the feature it configures. Raising it trades a held session slot for the park fast path, so it is a capacity decision, never a latency tweak.
     sessionResidencySeconds: z.number().int().min(0).max(3600).optional(),
+    // cm:guard the key name and both spellings come from ONE constant, and `qa-key.test.ts` holds
+    // every reader in this repository to it. Until ISS-1046 this key did not exist here at all and
+    // this schema strips what it does not declare — so `PATCH /pipeline-config` carrying `qa` answered
+    // 200 and wrote nothing, and the forge-plugin CLI's `independent judgement` row read `not stated`
+    // on all 32 projects BY CONSTRUCTION, for four weeks, with nobody able to tell that from a project
+    // that had simply not answered.
+    // cm:guard CROSS-REPO coupling, so no `cm:edge` can hold it: the reader is `judgementOf()` in
+    // `plugin/src/tracker/project-config.mjs` (github.com/SidCorp-co/forge-plugin), matching against
+    // its own `QA_MODES = ["independent","builder"]`. Nothing in this repo can gate that one — a
+    // rename on the plugin side is invisible to every test here and stays invisible, which is why the
+    // reciprocal check is that project's own row and not a claim made here.
+    [QA_JUDGEMENT_KEY]: z.enum(QA_JUDGEMENT_MODES).optional(),
     // cm:guard ISS-959 — the ONE gate in this schema that refuses a write from a HUMAN client too. Every other entry rule core has short-circuits on `agency !== 'agent'`, which left a status set from the tracker's own screens neither earned nor refused; this is declared, so a project that sets nothing is unchanged, and a project that sets something is held to it from every door.
     // cm:edge contract -> packages/core/src/issues/entry-criteria-keys.ts — the key union IS that module's registry, and `entry-criteria.ts` reads this field to enforce it; a criterion this schema accepts and that module cannot evaluate would be a declaration that silently does nothing
     // cm:guard `partialRecord`, never `record` — zod 4's `z.record(z.enum(...))` is EXHAUSTIVE and refuses a document that names some statuses and not others, which is every real declaration

@@ -78,7 +78,7 @@ export function releaseBatchFixture(
     // case here is about the poll loop's patience.
     const verify = { probes: [{ url: await probeUrl() }], timeoutSeconds: 20, stableReads: 1 };
     await harness().db.execute(sql`
-      UPDATE projects SET base_branch = 'main', production_branch = 'production'
+      UPDATE projects SET base_branch = 'main', live_branch = 'production'
       WHERE id = ${projectId}
     `);
     await harness().db.execute(sql`

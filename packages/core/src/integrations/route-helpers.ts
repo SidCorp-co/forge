@@ -7,7 +7,7 @@
  */
 
 import { HTTPException } from 'hono/http-exception';
-import type { IntegrationEnvironment } from '../db/schema.js';
+import type { BindingRole, DeployStage } from '../db/schema.js';
 import { effectiveProjectRole } from '../lib/authz.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
@@ -52,16 +52,22 @@ export const alreadyExists = (
 ) => new HTTPException(409, { message, cause: { code: 'ALREADY_EXISTS' } });
 
 /**
- * Shared pre-check of the two binding-creating endpoints: one active binding
- * per (project, provider, environment) — 409 ALREADY_EXISTS on a clash.
- * (Epodsystem creates check by label instead — see the create route.)
+ * Shared pre-check of the two binding-creating endpoints: one active SERVICE binding per
+ * (project, provider) — 409 ALREADY_EXISTS on a clash. (Epodsystem creates check by label
+ * instead — see the create route.)
  */
+// cm:edge contract -> packages/core/src/db/schema.ts — this is `integration_bindings_service_uq` read
+// in application code so the caller gets a 409 rather than a 500 from Postgres, and the two must admit
+// the same rows. A DEPLOY binding is deliberately unchecked: a stage may hold more than one and core
+// never picks among them (ISS-1046 rule 3), so refusing a second here would re-impose the uniqueness
+// the index dropped and eight fleet projects already violate with two coolify bindings apiece.
 export async function assertNoActiveBindingClash(
   projectId: string,
   provider: IntegrationProvider,
-  environment: IntegrationEnvironment,
+  role: BindingRole,
 ): Promise<void> {
-  const clash = await findActiveBinding(projectId, provider, environment);
+  if (role !== 'service') return;
+  const clash = await findActiveBinding(projectId, provider);
   if (clash) throw alreadyExists();
 }
 
@@ -105,7 +111,8 @@ export function summarizeBinding(pair: BindingWithConnection) {
     connectionId: connection.id,
     projectId: binding.projectId,
     provider: binding.provider as IntegrationProvider,
-    environment: binding.environment as IntegrationEnvironment,
+    role: binding.role as BindingRole,
+    stages: (binding.stages ?? []) as DeployStage[],
     config: effectiveConfig(pair),
     bindingConfig: (binding.config ?? {}) as Record<string, unknown>,
     label: binding.label ?? '',
@@ -159,7 +166,8 @@ export function summarizeConnectionWithUsage(
       bindings: bindings.map((b) => ({
         id: b.id,
         projectId: b.projectId,
-        environment: b.environment,
+        role: b.role as BindingRole,
+        stages: (b.stages ?? []) as DeployStage[],
         label: b.label,
         active: b.active,
       })),

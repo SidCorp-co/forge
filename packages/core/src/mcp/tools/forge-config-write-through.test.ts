@@ -48,7 +48,7 @@ vi.mock('../../projects/service.js', () => ({
     name: 'P',
     repoPath: null,
     baseBranch: 'main',
-    productionBranch: 'main',
+    liveBranch: 'main',
     agentConfig: {},
   }),
   readIssueBranchInputs: async () => null,

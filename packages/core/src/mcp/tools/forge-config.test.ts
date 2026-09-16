@@ -71,7 +71,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           name: 'My Project',
           repoPath: '/repo',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
           agentConfig: { categories: ['bug', 'feature'] },
         },
       ]);
@@ -85,7 +85,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     expect(result.config).not.toHaveProperty('branchConfig');
     expect(result.config.repoPath).toBe('/repo');
     expect(result.config.baseBranch).toBe('develop');
-    expect(result.config.productionBranch).toBe('release');
+    expect(result.config.liveBranch).toBe('release');
     expect(result.config.categories).toEqual(['bug', 'feature']);
   });
 
@@ -102,7 +102,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
         name: 'My Project',
         repoPath: null,
         baseBranch: null,
-        productionBranch: null,
+        liveBranch: null,
         agentConfig: null,
       },
     ]);
@@ -110,14 +110,14 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
     const result = (await tool.handler({ action: 'get', projectId: PROJECT_ID })) as {
       config: {
         baseBranch: string | null;
-        productionBranch: string | null;
+        liveBranch: string | null;
         repoPath: string | null;
       };
     };
 
     expect(result.config.repoPath).toBeNull();
     expect(result.config.baseBranch).toBeNull();
-    expect(result.config.productionBranch).toBeNull();
+    expect(result.config.liveBranch).toBeNull();
   });
 
   it('includes resolved branchConfig (project defaults) when issueId is supplied and the issue has no override', async () => {
@@ -134,7 +134,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           slug: 'my-proj',
           name: 'My Project',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
           agentConfig: null,
         },
       ])
@@ -145,13 +145,13 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
     })) as {
-      config: { branchConfig: { baseBranch: string; targetBranch: string; prodBranch: string } };
+      config: { branchConfig: { baseBranch: string; targetBranch: string; liveBranch: string } };
     };
 
     expect(result.config.branchConfig).toEqual({
       baseBranch: 'develop',
       targetBranch: 'develop',
-      prodBranch: 'release',
+      liveBranch: 'release',
     });
   });
 
@@ -169,7 +169,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           slug: 'my-proj',
           name: 'My Project',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
           agentConfig: null,
         },
       ])
@@ -185,13 +185,13 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       projectId: PROJECT_ID,
       issueId: ISSUE_ID,
     })) as {
-      config: { branchConfig: { baseBranch: string; targetBranch: string; prodBranch: string } };
+      config: { branchConfig: { baseBranch: string; targetBranch: string; liveBranch: string } };
     };
 
     expect(result.config.branchConfig).toEqual({
       baseBranch: 'feat/x',
       targetBranch: 'feat/x',
-      prodBranch: 'release',
+      liveBranch: 'release',
     });
   });
 
@@ -208,7 +208,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
         slug: 'my-proj',
         name: 'My Project',
         baseBranch: 'develop',
-        productionBranch: 'release',
+        liveBranch: 'release',
         agentConfig: { stateContext: { code: { modelOverride: 'opus' } } },
       },
     ]);
@@ -249,7 +249,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           slug: 'my-proj',
           name: 'My Project',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
           agentConfig: { projectFacts: { 'build-commands': 'keep', 'done-means': 'new' } },
         },
       ]);
@@ -295,7 +295,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
           slug: 'my-proj',
           name: 'My Project',
           baseBranch: 'develop',
-          productionBranch: 'release',
+          liveBranch: 'release',
           agentConfig: null,
         },
       ])

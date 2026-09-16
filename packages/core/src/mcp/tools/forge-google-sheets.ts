@@ -64,7 +64,7 @@ export const forgeGoogleSheetsTool: ContextScopedMcpToolFactory = (ctx) => ({
     "it resolves to the spreadsheet this project's binding declares as its default. Naming one " +
     'overrides that default for the call. If neither is present the call is REFUSED — no sheet is ' +
     'guessed. ' +
-    "list: the project's Google bindings — { id, environment, active, clientEmail, " +
+    "list: the project's Google bindings — { id, role, stages, active, clientEmail, " +
     'defaultSpreadsheetId, lastHealthStatus }. An empty array means this project has no Google ' +
     'connection; that is the answer, not an error. ' +
     'info: { spreadsheetId, title, sheetTitles[] } — read this BEFORE a range, because a range ' +

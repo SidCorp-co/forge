@@ -18,7 +18,7 @@ import { RELEASE_ATTEMPT_STAGES } from '../db/schema-release-ledger.js';
 import { RELEASE_RECORD_REMEDY } from '../issues/release-record-required.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
-import { resolveReleaseChannel } from './channel.js';
+import { resolveReleaseChannels } from './channel.js';
 import { openAttempt, readAttempt, recordAccount, settleAttempt } from './ledger.js';
 import { announceMethod, MethodMismatchError, MethodNotAnnouncedError } from './method.js';
 import { RELEASE_BATCH_SKILL } from './plan.js';
@@ -437,8 +437,12 @@ releaseBatchRoutes.post(
     // cm:guard core's reading is taken HERE, at the moment the account lands, and from the project's
     // own probes. It is what makes the two halves an account and its backing rather than one claim
     // written twice: they are about the same act, taken at the same moment, by two parties.
-    const channel = await resolveReleaseChannel(projectId);
-    const live = channel.verify ? await readLiveState(channel.verify) : null;
+    // cm:why the FIRST channel's probes: an attempt is one reading at one moment, and the run carries
+    // one `commitBefore` to compare it against. A set whose members verify separately is its own issue
+    // — ISS-1046 widened what core RETURNS, not what an attempt records.
+    const channels = await resolveReleaseChannels(projectId);
+    const verify = channels[0]?.verify ?? null;
+    const live = verify ? await readLiveState(verify) : null;
     const settled = await settleAttempt({
       runId,
       idempotencyKey: key,

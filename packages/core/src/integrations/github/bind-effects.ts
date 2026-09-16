@@ -7,6 +7,7 @@
  * cloning another.
  */
 
+import type { BindingRole } from '../../db/schema.js';
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
@@ -50,14 +51,14 @@ export type RepoUrlOutcome =
  * in the picker rather than retyped in project settings.
  */
 // cm:guard FILL an empty repo URL, never overwrite one — the stored URL is what every runner already clones and may carry a transport and a host this binding knows nothing about (a GitLab mirror, an SSH remote with a deploy key). Report the disagreement to the caller instead; a bind is about webhooks and must not be able to repoint a project's git.
-// cm:guard only a `prod` binding may drive it — a staging binding legitimately names a fork, and `projects.repo_url` is project-tier with nowhere to put a second one.
+// cm:guard only a `service` github binding may drive it, which is every github binding: `providerCanDeploy('github')` is false, so a github binding cannot be `role: 'deploy'` at all. The rule this replaced was `environment !== 'prod'`, and it was doing the same job for a different reason — a `staging` github binding legitimately named a fork, and `projects.repo_url` is project-tier with nowhere to put a second one. The role test is kept rather than dropped as always-true, because it says WHICH binding may repoint a project's git if the capability list ever widens.
 export async function syncRepoUrlFromGitHubBinding(args: {
   projectId: string;
-  environment: string;
+  role: BindingRole;
   config: GitHubConfig;
 }): Promise<RepoUrlOutcome> {
   const { owner, repo } = args.config;
-  if (args.environment !== 'prod' || !owner || !repo) return { kind: 'unchanged' };
+  if (args.role !== 'service' || !owner || !repo) return { kind: 'unchanged' };
 
   const bound = githubHttpsRepoUrl(owner, repo);
   const [row] = await db

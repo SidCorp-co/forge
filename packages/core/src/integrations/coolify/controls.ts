@@ -14,7 +14,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { DEPLOY_CONFIRM_WINDOW_MS } from '../../pipeline/deploy-confirmations.js';
-import { prodActionNeedsHumanConfirm } from '../../pipeline/release-coolify.js';
+import { liveActionNeedsHumanConfirm } from '../../pipeline/release-coolify.js';
 import { findLastOutbound, recordDelivery, updateDelivery } from '../deliveries.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { buildContextFromBinding } from '../store.js';
@@ -251,7 +251,7 @@ export async function runCoolifyRollback(input: {
 }): Promise<CoolifyControlOutcome> {
   const row = await requireIntegration(input);
   const target = requireTarget(row, input.resourceUuid);
-  if (await prodActionNeedsHumanConfirm(input.projectId, row.environment)) {
+  if (await liveActionNeedsHumanConfirm(input.projectId, row.stages)) {
     return pendingProd(row.id, 'rollback');
   }
 
@@ -295,7 +295,7 @@ export async function runCoolifyCancel(input: {
   deploymentUuid?: string | undefined;
 }): Promise<CoolifyControlOutcome> {
   const row = await requireIntegration(input);
-  if (await prodActionNeedsHumanConfirm(input.projectId, row.environment)) {
+  if (await liveActionNeedsHumanConfirm(input.projectId, row.stages)) {
     return pendingProd(row.id, 'cancel');
   }
 
@@ -352,7 +352,7 @@ async function performControl(args: {
     bindingId: row.id,
     direction: 'outbound',
     eventName: args.eventName,
-    payload: { ...args.payload, runId: null, environment: row.environment },
+    payload: { ...args.payload, runId: null, stages: row.stages },
     requestId: `control:${row.id}:${Date.now()}-${randomUUID().slice(0, 8)}`,
     status: 'pending',
   });

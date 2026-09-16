@@ -15,7 +15,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { z } from 'zod';
-import { integrationEnvironments } from '../db/schema.js';
+import { type BindingRole, bindingRoles, type DeployStage, deployStages } from '../db/schema.js';
 import {
   googleConfigBase,
   googleConnectionConfigSchema,
@@ -24,8 +24,75 @@ import {
 import { RELEASE_CHANNEL_KEYS, releaseChannelFields } from './release-channel-schema.js';
 import { isRotatingProvider, mergeRotatedSecrets, type RotatingProvider } from './rotation.js';
 import { assertVaultConfigured, badRequest } from './route-helpers.js';
+import { DEPLOY_CAPABLE_PROVIDERS, providerCanDeploy } from './types.js';
 
-export const environmentSchema = z.enum(integrationEnvironments);
+export const roleSchema = z.enum(bindingRoles);
+export const stagesSchema = z.array(z.enum(deployStages)).min(1).max(2);
+
+/**
+ * What a binding is for, and — for a `deploy` one — which stages it serves.
+ *
+ * There is no default. The column it replaced had one on seven of eight providers precisely because
+ * it demanded a value they had no meaning for, and a `role` that defaults is the same defect wearing
+ * a better name: a storefront binding that silently became `service` would take its project's release
+ * gate away without a word.
+ */
+// cm:guard `stages` is REFUSED on a `service` binding rather than ignored, and required on a `deploy`
+// one rather than defaulted — `integration_bindings_role_stages_chk` holds the same rule in Postgres,
+// and a schema that merely stripped the extra key would let a caller believe it had declared a stage.
+const bindingShapeFields = {
+  role: roleSchema,
+  stages: stagesSchema.optional(),
+} as const;
+
+/**
+ * The three ways a `role`/`stages` pair can be wrong, each refused by name rather than normalised.
+ *
+ * Shared by the create body and the bind-existing body, because a caller who reaches the same wrong
+ * shape through the second door deserves the same sentence.
+ */
+export function checkRoleStagesPairing(
+  value: { role: BindingRole; stages?: DeployStage[] | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  if (value.role === 'service' && value.stages !== undefined) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['stages'],
+      message:
+        'a `service` binding serves no stage, so it takes no `stages` — it is a project-wide facility (an error tracker, a chat room, a repo host). Send `role: "deploy"` with `stages` if this binding is somewhere Forge deploys to.',
+    });
+    return;
+  }
+  if (value.role !== 'deploy') return;
+  if (!value.stages || value.stages.length === 0) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['stages'],
+      message:
+        'a `deploy` binding must declare at least one stage: `["preview"]`, `["live"]`, or `["preview","live"]` for one endpoint that serves both (an epodsystem store, whose preview is the draft theme and whose live is the published one).',
+    });
+  }
+}
+
+/** The sentence a caller gets for `role: 'deploy'` on a provider Forge cannot deploy to. */
+export function cannotDeployMessage(provider: string): string {
+  return `Forge cannot deploy to \`${provider}\` — it has no deploy adapter, so this binding can only be \`role: "service"\`. Deploy-capable providers: ${DEPLOY_CAPABLE_PROVIDERS.join(', ')}.`;
+}
+
+/**
+ * The pairing check plus the provider-capability one, for the door that carries a provider in its
+ * body. The bind-existing door reads its provider off the connection, so it runs the two separately.
+ */
+export function checkBindingShape(
+  value: { provider: string; role: BindingRole; stages?: DeployStage[] | undefined },
+  ctx: z.RefinementCtx,
+): void {
+  checkRoleStagesPairing(value, ctx);
+  if (value.role === 'deploy' && !providerCanDeploy(value.provider)) {
+    ctx.addIssue({ code: 'custom', path: ['role'], message: cannotDeployMessage(value.provider) });
+  }
+}
 
 // cm:why `id` is server-assigned when omitted so it stays STABLE across config edits — it is the key mapping an outbound deploy to the target it was for, so regenerating it would orphan deliveries already recorded against the old one
 const coolifyTargetSchema = z
@@ -243,10 +310,10 @@ const githubSecretsSchema = z.object({
 const agentReleaseConfigSchema = z.object(releaseChannelFields);
 
 // cm:why `environment` defaults to 'prod' on postman because that provider has no staging/prod split, while the binding column and its unique index still require a value
-export const createSchema = z.discriminatedUnion('provider', [
+const createVariants = z.discriminatedUnion('provider', [
   z.object({
     provider: z.literal('coolify'),
-    environment: environmentSchema,
+    ...bindingShapeFields,
     config: coolifyConfigSchema,
     secrets: coolifySecretsSchema,
     // Present = mint the credential as ORG-owned (shared across the org's
@@ -256,14 +323,14 @@ export const createSchema = z.discriminatedUnion('provider', [
   }),
   z.object({
     provider: z.literal('postman'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: postmanConfigSchema,
     secrets: postmanSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('epodsystem'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: epodsystemConfigBase,
     secrets: epodsystemSecretsSchema,
     orgId: z.uuid().optional(),
@@ -277,41 +344,43 @@ export const createSchema = z.discriminatedUnion('provider', [
   }),
   z.object({
     provider: z.literal('sentry'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: sentryConfigBase,
     secrets: sentrySecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('rocketchat'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: rocketchatConfigBase,
     secrets: rocketchatSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('github'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: githubConfigBase,
     secrets: githubSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('google'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: googleConfigBase,
     secrets: googleSecretsSchema,
     orgId: z.uuid().optional(),
   }),
   z.object({
     provider: z.literal('agent'),
-    environment: environmentSchema.default('prod'),
+    ...bindingShapeFields,
     config: agentReleaseConfigSchema,
     // cm:guard NO secrets, ever. The whole point of this channel is that the production credential stays on the runner box: a deploy key in Forge would put every project's production behind one decryption path, which is the blast radius the release gate was designed to refuse.
     secrets: z.object({}).strict().default({}),
     orgId: z.uuid().optional(),
   }),
 ]);
+
+export const createSchema = createVariants.superRefine(checkBindingShape);
 
 // cm:guard this shape is loose ON PURPOSE — a PATCH carries no provider, so `config`/`secrets` are re-validated against the EXISTING binding's provider inside the handler; tightening it here would validate against a provider nobody named
 export const updateSchema = z.object({

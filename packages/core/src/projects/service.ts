@@ -19,6 +19,8 @@ import {
   type ProjectMemberRole,
   projectMembers,
   projects,
+  type ReleaseModel,
+  type ReleaseStrategy,
 } from '../db/schema.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.js';
@@ -43,12 +45,22 @@ export async function findProjectOrgId(projectId: string): Promise<string | null
   return row?.orgId ?? null;
 }
 
-export type ProjectBranches = { baseBranch: string | null; productionBranch: string | null };
+export type ProjectBranches = {
+  baseBranch: string | null;
+  liveBranch: string | null;
+  releaseModel: ReleaseModel;
+  releaseStrategy: ReleaseStrategy | null;
+};
 
 /** The branches a project's pipeline works against, or `null` when it is gone. */
 export async function readProjectBranches(projectId: string): Promise<ProjectBranches | null> {
   const [row] = await db
-    .select({ baseBranch: projects.baseBranch, productionBranch: projects.productionBranch })
+    .select({
+      baseBranch: projects.baseBranch,
+      liveBranch: projects.liveBranch,
+      releaseModel: projects.releaseModel,
+      releaseStrategy: projects.releaseStrategy,
+    })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
@@ -72,7 +84,9 @@ export type NewProject = {
   kind?: (typeof projects.$inferInsert)['kind'] | undefined;
   repoPath?: string | undefined;
   baseBranch?: string | undefined;
-  productionBranch?: string | undefined;
+  liveBranch?: string | undefined;
+  releaseModel?: ReleaseModel | undefined;
+  releaseStrategy?: ReleaseStrategy | undefined;
 };
 
 /** A freshly generated project API key: `fk_` + 192 bits, the shape every validator accepts. */
@@ -81,7 +95,8 @@ export function generateApiKey(): string {
 }
 
 // cm:guard the project row and the creator's `admin` membership land in ONE transaction. A project whose creator is not a member is invisible to its own owner — `loadVisibleProjectIds` reads membership — so a failure between the two would strand a slug nobody can reach or reclaim.
-// cm:guard ISS-274 — `baseBranch`/`productionBranch` default to 'main' HERE, at create. `resolveIssueBranches` deliberately has no 'main' fallback (branches/resolve.ts), so a null column does not surface until pipeline time, on an issue, as a failure nobody connects to project creation.
+// cm:guard ISS-274 — `baseBranch` defaults to 'main' HERE, at create. `resolveIssueBranches` deliberately has no 'main' fallback (branches/resolve.ts), so a null column does not surface until pipeline time, on an issue, as a failure nobody connects to project creation.
+// cm:guard `liveBranch` does NOT get that default, and the asymmetry is the point (ISS-1046). `baseBranch` has a second job outside release — it is the ref every ISS-* branch is cut from, so every project needs one. `liveBranch` is read only under `releaseModel: 'promote'`, and a new project declares `none`: defaulting it to 'main' is how 25 fleet projects came to carry a production branch they never promote to, including projects with no repository at all.
 export async function createProject(input: NewProject) {
   try {
     return await db.transaction(async (tx) => {
@@ -94,7 +109,11 @@ export async function createProject(input: NewProject) {
           createdBy: input.createdBy,
           apiKey: generateApiKey(),
           baseBranch: input.baseBranch ?? 'main',
-          productionBranch: input.productionBranch ?? 'main',
+          releaseModel: input.releaseModel ?? 'none',
+          ...(input.liveBranch !== undefined ? { liveBranch: input.liveBranch } : {}),
+          ...(input.releaseStrategy !== undefined
+            ? { releaseStrategy: input.releaseStrategy }
+            : {}),
           ...(input.description !== undefined ? { description: input.description } : {}),
           ...(input.kind !== undefined ? { kind: input.kind } : {}),
           ...(input.repoPath !== undefined ? { repoPath: input.repoPath } : {}),
@@ -195,7 +214,9 @@ export async function readProjectSummary(projectId: string) {
       repoPath: projects.repoPath,
       workspaceSetup: projects.workspaceSetup,
       baseBranch: projects.baseBranch,
-      productionBranch: projects.productionBranch,
+      liveBranch: projects.liveBranch,
+        releaseModel: projects.releaseModel,
+        releaseStrategy: projects.releaseStrategy,
       defaultDeviceId: projects.defaultDeviceId,
       previewDeploy: projects.previewDeploy,
       createdAt: projects.createdAt,
@@ -225,7 +246,9 @@ export async function updateProject(projectId: string, updates: Record<string, u
     repoPath: projects.repoPath,
     workspaceSetup: projects.workspaceSetup,
     baseBranch: projects.baseBranch,
-    productionBranch: projects.productionBranch,
+    liveBranch: projects.liveBranch,
+        releaseModel: projects.releaseModel,
+        releaseStrategy: projects.releaseStrategy,
     kind: projects.kind,
   });
   return row ?? null;
@@ -254,7 +277,9 @@ export async function readProjectWithConfig(projectId: string) {
       name: projects.name,
       repoPath: projects.repoPath,
       baseBranch: projects.baseBranch,
-      productionBranch: projects.productionBranch,
+      liveBranch: projects.liveBranch,
+        releaseModel: projects.releaseModel,
+        releaseStrategy: projects.releaseStrategy,
       agentConfig: projects.agentConfig,
     })
     .from(projects)

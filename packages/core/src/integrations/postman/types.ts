@@ -1,4 +1,3 @@
-import type { IntegrationEnvironment } from '../../db/schema.js';
 
 /** Postman data-residency region. EU swaps both the REST and MCP hosts. */
 export type PostmanRegion = 'us' | 'eu';
@@ -27,8 +26,6 @@ export interface PostmanConfig extends Record<string, unknown> {
   region: PostmanRegion;
   /** MCP server mode injected into the runner. */
   mode: PostmanMode;
-  /** Mirror of project_integrations.environment; convenience for adapter logic. */
-  environment: IntegrationEnvironment;
 }
 
 /** Secret material — encrypted into `project_integrations.secretsEnc`. */

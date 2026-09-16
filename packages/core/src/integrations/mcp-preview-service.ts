@@ -17,7 +17,7 @@
 
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { type IntegrationEnvironment, projects } from '../db/schema.js';
+import { type BindingRole, type DeployStage, projects } from '../db/schema.js';
 import { collectDeclaredMcpNames } from '../pipeline/mcp-catalog.js';
 import { buildEpodsystemMcpEntry } from './epodsystem/resolver.js';
 import { buildPostmanMcpEntry } from './postman/resolver.js';
@@ -37,7 +37,8 @@ export interface McpServerPreviewEntry {
   serverName: string;
   /** Binding id backing this entry — null for the synthetic not_configured row. */
   bindingId: string | null;
-  environment: IntegrationEnvironment | null;
+  role: BindingRole | null;
+  stages: DeployStage[];
   configured: boolean;
   active: boolean;
   willInject: boolean;
@@ -110,7 +111,8 @@ export async function buildMcpPreview(projectId: string): Promise<McpServerPrevi
         provider,
         serverName: provider,
         bindingId: null,
-        environment: null,
+        role: null,
+        stages: [],
         configured: false,
         active: false,
         willInject: false,
@@ -151,7 +153,8 @@ export async function buildMcpPreview(projectId: string): Promise<McpServerPrevi
         provider,
         serverName,
         bindingId: pair.binding.id,
-        environment: pair.binding.environment as IntegrationEnvironment,
+        role: pair.binding.role as BindingRole,
+        stages: (pair.binding.stages ?? []) as DeployStage[],
         configured: true,
         active,
         willInject,

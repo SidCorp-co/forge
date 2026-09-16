@@ -57,7 +57,7 @@ describe('release record required E2E', () => {
   async function declareProduction(): Promise<void> {
     const connectionId = randomUUID();
     await harness.db.execute(sql`
-      UPDATE projects SET base_branch = 'main', production_branch = 'production' WHERE id = ${projectId}
+      UPDATE projects SET base_branch = 'main', live_branch = 'production' WHERE id = ${projectId}
     `);
     await harness.db.execute(sql`
       INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)

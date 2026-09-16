@@ -99,25 +99,18 @@ integrationsRoutes.post(
       body.provider === 'epodsystem' && 'label' in body && body.label ? body.label : '';
 
     if (body.provider === 'epodsystem') {
-      const clash = await findActiveBindingByLabel(
-        projectId,
-        body.provider,
-        body.environment,
-        bindingLabel,
-      );
+      const clash = await findActiveBindingByLabel(projectId, body.provider, bindingLabel);
       if (clash) {
         const labelSuffix = bindingLabel ? ` (label "${bindingLabel}")` : '';
-        throw alreadyExists(
-          `integration already exists for this provider+environment${labelSuffix}`,
-        );
+        throw alreadyExists(`integration already exists for this provider${labelSuffix}`);
       }
     } else {
-      await assertNoActiveBindingClash(projectId, body.provider, body.environment);
+      await assertNoActiveBindingClash(projectId, body.provider, body.role);
     }
 
     const integrationSecret = `whsec_${randomBytes(24).toString('hex')}`;
 
-    // Create the credential (connection) then bind it into this project+env.
+    // Create the credential (connection) then bind it into this project.
     // Connection-tier config (e.g. coolify baseUrl) lives on the connection;
     // binding-tier deploy-target fields (coolify resourceUuid/branch) live on
     // the binding so a later share to another project can override them.
@@ -141,7 +134,10 @@ integrationsRoutes.post(
       provider: body.provider,
       // cm:edge contract -> packages/core/src/integrations/connection-routes.ts — BOTH create paths must name the connection; this is the one an operator actually walks (project settings → Integrations), and naming only the other one leaves the anonymous rows still arriving
       displayName: defaultConnectionDisplayName(body.provider, tiers.connection),
-      config: { ...tiers.connection, environment: body.environment },
+      // cm:guard the binding's role/stages are NOT mirrored into `connection.config` — the old code
+      // wrote `environment` here as well, a second copy `effectiveConfig` then overlaid, so one
+      // connection shared across projects carried whichever binding was created last (ISS-1046).
+      config: tiers.connection,
       secrets: body.secrets,
     });
     let binding: Awaited<ReturnType<typeof createBinding>>;
@@ -150,7 +146,8 @@ integrationsRoutes.post(
         connectionId: connection.id,
         projectId,
         provider: body.provider,
-        environment: body.environment,
+        role: body.role,
+        ...(body.role === 'deploy' && body.stages ? { stages: body.stages } : {}),
         config: tiers.binding,
         integrationSecret,
         label: bindingLabel,

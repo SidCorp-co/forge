@@ -1,4 +1,4 @@
-import type { IntegrationEnvironment } from '../db/schema.js';
+import type { BindingRole, DeployStage } from '../db/schema.js';
 
 export type IntegrationProvider =
   | 'coolify'
@@ -23,6 +23,27 @@ export const INTEGRATION_PROVIDERS = [
   'agent',
 ] as const satisfies readonly IntegrationProvider[];
 
+/**
+ * The providers Forge can push code or content TO, and therefore the only ones a binding may take
+ * `role: 'deploy'` on.
+ */
+// cm:guard this is a CAPABILITY list and NOT a release-gate discriminator, and the direction is what
+// keeps it on the right side of `release-batch/gate.ts`'s prohibition: that guard forbids provider
+// identity from making a binding a release target, and this list only refuses one that could never be.
+// A sentry binding is not a place code goes on ANY project, so `role: 'deploy'` on it is a caller
+// error to be named rather than a declaration to store. What it must never grow into is a rule saying
+// an epodsystem binding IS a deploy — that is the project owner's declaration, and forge-dev carries
+// one purely to hand agents the storefront MCP.
+export const DEPLOY_CAPABLE_PROVIDERS = [
+  'coolify',
+  'epodsystem',
+  'agent',
+] as const satisfies readonly IntegrationProvider[];
+
+export function providerCanDeploy(provider: string): boolean {
+  return (DEPLOY_CAPABLE_PROVIDERS as readonly string[]).includes(provider);
+}
+
 // cm:guard adding a provider to the union above without adding it here fails this line — keep both in lockstep rather than letting the runtime list silently lag the type
 const _providersExhaustive: IntegrationProvider =
   null as unknown as (typeof INTEGRATION_PROVIDERS)[number];
@@ -34,11 +55,13 @@ export interface AdapterContext<
 > {
   /** Owning connection (credential). Health/breaker mutations target this. */
   connectionId: string;
-  /** Project+env binding. Deliveries + inbound HMAC are scoped to this. */
+  /** Per-project binding. Deliveries + inbound HMAC are scoped to this. */
   bindingId: string;
   projectId: string;
   provider: IntegrationProvider;
-  environment: IntegrationEnvironment;
+  role: BindingRole;
+  /** Empty for a `service` binding; one or both stages for a `deploy` one. */
+  stages: DeployStage[];
   config: TConfig;
   /** Decrypted secrets, lazily decrypted by the dispatch path. */
   secrets: TSecrets;

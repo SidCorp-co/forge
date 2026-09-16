@@ -143,7 +143,8 @@ function patch(token: string, id: string, body: unknown) {
 
 const VALID_BODY = {
   provider: 'coolify',
-  environment: 'staging',
+  role: 'deploy' as const,
+  stages: ['preview'] as const,
   config: {
     baseUrl: 'https://coolify.example.com',
     targets: [{ label: 'Backend', resourceUuid: 'res-abc-123' }],
@@ -191,7 +192,7 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
     createConnection.mockResolvedValueOnce({
       id: 'conn-1',
       provider: 'coolify',
-      config: { ...VALID_BODY.config, environment: 'staging' },
+      config: { ...VALID_BODY.config },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -204,7 +205,8 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
       id: 'int-1',
       projectId: PROJECT_ID,
       provider: 'coolify',
-      environment: 'staging',
+      role: 'deploy',
+      stages: ['preview'],
       config: {},
       integrationSecret: 'whsec_xxx',
       active: true,
@@ -232,7 +234,7 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
     createConnection.mockResolvedValueOnce({
       id: 'conn-rollback',
       provider: 'coolify',
-      config: { ...VALID_BODY.config, environment: 'staging' },
+      config: { ...VALID_BODY.config },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -262,7 +264,7 @@ describe('POST /api/projects/:projectId/integrations — vault guard', () => {
 describe('POST /api/projects/:projectId/integrations — postman provider schema', () => {
   const POSTMAN_BODY = {
     provider: 'postman',
-    environment: 'prod',
+    role: 'service',
     config: {
       workspaceName: 'Forge Integration',
       collectionId: 'col-123',
@@ -280,7 +282,7 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
     createConnection.mockResolvedValueOnce({
       id: 'conn-pm',
       provider: 'postman',
-      config: { ...POSTMAN_BODY.config, workspaceName: 'Forge Integration', environment: 'prod' },
+      config: { ...POSTMAN_BODY.config, workspaceName: 'Forge Integration' },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -293,7 +295,7 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
       id: 'int-pm',
       projectId: PROJECT_ID,
       provider: 'postman',
-      environment: 'prod',
+      role: 'service',
       config: {},
       integrationSecret: 'whsec_pm',
       active: true,
@@ -348,7 +350,7 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
         id: 'int-pm',
         projectId: PROJECT_ID,
         provider: 'postman',
-        environment: 'prod',
+        role: 'service',
         config: {},
         integrationSecret: null,
         active: true,
@@ -362,7 +364,7 @@ describe('POST /api/projects/:projectId/integrations — postman provider schema
           workspaceName: 'Forge Integration',
           region: 'eu',
           mode: 'full',
-          environment: 'prod',
+          role: 'service',
         },
         secretsEnc: Buffer.from('enc'),
         active: true,
@@ -399,7 +401,7 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
         id: 'int-pm',
         projectId: PROJECT_ID,
         provider: 'postman',
-        environment: 'prod',
+        role: 'service',
         config: {},
         integrationSecret: null,
         active: true,
@@ -409,7 +411,7 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
       connection: {
         id: 'conn-pm',
         provider: 'postman',
-        config: { workspaceName: 'W', region: 'us', mode: 'minimal', environment: 'prod' },
+        config: { workspaceName: 'W', region: 'us', mode: 'minimal' },
         secretsEnc,
         active: true,
         lastHealthStatus: null,
@@ -428,7 +430,7 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
       ownerType: 'user',
       ownerId: USER_ID,
       displayName: 'Store',
-      config: { environment: 'prod' },
+      config: {},
       secretsEnc,
       active: true,
       lastHealthStatus: null,
@@ -492,7 +494,7 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
       id: 'conn-ep',
       provider: 'epodsystem',
       displayName: 'Store',
-      config: { environment: 'prod' },
+      config: {},
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -533,7 +535,8 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
         id: 'int-cl',
         projectId: PROJECT_ID,
         provider: 'coolify',
-        environment: 'staging',
+        role: 'deploy',
+        stages: ['preview'],
         config: {},
         integrationSecret: null,
         active: true,
@@ -547,7 +550,8 @@ describe('PATCH — apiKey-provider rotation persists previousApiKey + expiry (I
           baseUrl: 'https://coolify.example',
           resourceUuid: 'res-1',
           branch: 'main',
-          environment: 'staging',
+          role: 'deploy',
+          stages: ['preview'],
         },
         secretsEnc: encryptJson({ apiToken: 'tok-old' }),
         active: true,
@@ -584,7 +588,8 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
         id: 'int-cl',
         projectId: PROJECT_ID,
         provider: 'coolify',
-        environment: 'staging',
+        role: 'deploy',
+        stages: ['preview'],
         config: {},
         integrationSecret: null,
         active: true,
@@ -598,7 +603,8 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
         provider: 'coolify',
         config: {
           baseUrl: 'https://coolify.example',
-          environment: 'staging',
+          role: 'deploy',
+          stages: ['preview'],
         },
         secretsEnc: Buffer.from('enc'),
         active: true,
@@ -709,7 +715,7 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
     createConnection.mockResolvedValueOnce({
       id: 'conn-1',
       provider: 'coolify',
-      config: { baseUrl: VALID_BODY.config.baseUrl, environment: 'staging' },
+      config: { baseUrl: VALID_BODY.config.baseUrl },
       active: true,
       lastHealthStatus: null,
       lastHealthAt: null,
@@ -722,7 +728,8 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
       id: 'int-1',
       projectId: PROJECT_ID,
       provider: 'coolify',
-      environment: 'staging',
+      role: 'deploy',
+      stages: ['preview'],
       config: { targets: [{ id: 't-1', label: 'Backend', resourceUuid: 'res-abc-123' }] },
       integrationSecret: 'whsec_xxx',
       active: true,
@@ -736,7 +743,8 @@ describe('coolify config tier split (binding-scoped deploy target)', () => {
     const connArg = createConnection.mock.calls[0]?.[0] as { config: Record<string, unknown> };
     expect(connArg.config).toEqual({
       baseUrl: VALID_BODY.config.baseUrl,
-      environment: 'staging',
+      role: 'deploy',
+      stages: ['preview'],
     });
     const bindArg = createBinding.mock.calls[0]?.[0] as {
       config: { targets: Array<{ id: string; label: string; resourceUuid: string }> };
@@ -797,7 +805,8 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
       connectionId: CONN_ID,
       projectId: PROJECT_ID,
       provider: 'coolify',
-      environment: 'staging',
+      role: 'deploy',
+      stages: ['preview'],
       config: {},
       integrationSecret: 'whsec_x',
       active: true,
@@ -810,7 +819,7 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     // clearAllMocks resets calls, not implementations.)
     findBindingWithConnectionById.mockResolvedValueOnce(undefined);
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
     expect(res.status).toBe(201);
     const body = (await res.json()) as {
       integration: { id: string; connectionId: string };
@@ -836,7 +845,8 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
       connectionId: CONN_ID,
       projectId: PROJECT_ID,
       provider: 'coolify',
-      environment: 'staging',
+      role: 'deploy',
+      stages: ['preview'],
       config: { targets: [{ id: 't-b', label: 'App', resourceUuid: 'res-b' }] },
       integrationSecret: 'whsec_x',
       active: true,
@@ -847,7 +857,8 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
 
     const res = await bindReq(token, CONN_ID, {
       projectId: PROJECT_ID,
-      environment: 'staging',
+      role: 'deploy',
+      stages: ['preview'],
       config: {
         baseUrl: 'https://other.example.com',
         targets: [{ label: 'App', resourceUuid: 'res-b' }],
@@ -870,7 +881,7 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     findConnectionById.mockResolvedValueOnce(ownedConnection());
     findActiveBinding.mockResolvedValueOnce({ binding: { id: 'existing' }, connection: {} });
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('ALREADY_EXISTS');
@@ -890,7 +901,7 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     );
     createBinding.mockRejectedValueOnce(drizzleWrapped);
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('ALREADY_EXISTS');
@@ -902,7 +913,7 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
     findConnectionById.mockResolvedValueOnce(ownedConnection({ ownerId: OTHER_USER }));
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
     expect(res.status).toBe(404);
     expect(createBinding).not.toHaveBeenCalled();
   });
@@ -919,7 +930,7 @@ describe('POST /api/integration-connections/:id/bindings — bind existing conne
     });
     findConnectionById.mockResolvedValueOnce(ownedConnection());
 
-    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, environment: 'staging' });
+    const res = await bindReq(token, CONN_ID, { projectId: PROJECT_ID, role: 'deploy', stages: ['preview'] });
     expect(res.status).toBe(403);
     expect(createBinding).not.toHaveBeenCalled();
   });
@@ -936,7 +947,8 @@ describe('GET /api/integration-connections/:id/bindings — bindings for a conne
           id: 'bind-a',
           projectId: PROJECT_ID,
           provider: 'coolify',
-          environment: 'staging',
+          role: 'deploy',
+          stages: ['preview'],
           config: {},
           integrationSecret: 'whsec_a',
           active: true,
@@ -950,7 +962,7 @@ describe('GET /api/integration-connections/:id/bindings — bindings for a conne
           id: 'bind-b',
           projectId: '44444444-4444-4444-8444-444444444444',
           provider: 'coolify',
-          environment: 'prod',
+          role: 'service',
           config: {},
           integrationSecret: 'whsec_b',
           active: true,
@@ -989,7 +1001,7 @@ describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/
   }
 
   const binding = {
-    binding: { id: 'bind-1', projectId: PROJECT_ID, provider: 'coolify', environment: 'staging' },
+    binding: { id: 'bind-1', projectId: PROJECT_ID, provider: 'coolify' },
     connection: ownedConnection(),
   };
 
@@ -1100,7 +1112,7 @@ describe('GET /api/projects/:projectId/integrations/mcp-preview', () => {
         connectionId: CONN_ID,
         projectId: PROJECT_ID,
         provider: 'postman',
-        environment: 'prod',
+        role: 'service',
         config: {},
         integrationSecret: null,
         active: over.bindingActive ?? true,
@@ -1240,7 +1252,7 @@ function makeEpodsystemConn(overrides?: { secretsEnc?: Buffer | null }) {
     ownerId: USER_ID,
     provider: 'epodsystem',
     displayName: null,
-    config: { environment: 'prod' },
+    config: {},
     active: true,
     lastHealthStatus: null,
     lastHealthAt: null,
@@ -1257,7 +1269,7 @@ function makeEpodsystemBinding(label: string, active = true) {
     connectionId: 'conn-epod',
     projectId: PROJECT_ID,
     provider: 'epodsystem',
-    environment: 'prod',
+    role: 'service',
     config: {},
     integrationSecret: null,
     label,

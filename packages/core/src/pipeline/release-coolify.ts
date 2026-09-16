@@ -57,11 +57,16 @@ export async function projectAutoProdDeploy(projectId: string): Promise<boolean>
  * project can opt out wholesale with `pipelineConfig.autoProdDeploy`.
  */
 // cm:edge contract -> packages/core/src/integrations/coolify/controls.ts — cancel and rollback change production exactly as a deploy does (ISS-925), so they ask THIS function rather than restating the branch; a second copy is how one of the three ends up with a weaker gate than the other two.
-export async function prodActionNeedsHumanConfirm(
+export async function liveActionNeedsHumanConfirm(
   projectId: string,
-  environment: string,
+  stages: readonly string[],
 ): Promise<boolean> {
-  if (environment !== 'prod') return false;
+  // cm:guard the `live` STAGE, not a `prod` environment: this gate is "is a real user about to see
+  // the result", and until ISS-1046 it asked a column that seven of eight providers filled with
+  // `'prod'` because they had to write something. A preview-only binding is dispatched unasked; a
+  // binding serving BOTH stages (one epodsystem store, whose live theme is its published one) is
+  // gated, because publishing it reaches the live audience whatever else it also reaches.
+  if (!stages.includes('live')) return false;
   return !(await projectAutoProdDeploy(projectId));
 }
 
@@ -106,19 +111,19 @@ export async function tryDispatchCoolifyRelease(args: {
   /** Hard filter — when set, dispatch ONLY this binding. */
   integrationId?: string | null;
   /**
-   * Whether prod-environment bindings are eligible at all. Defaults to `true`
+   * Whether bindings carrying the `live` stage are eligible at all. Defaults to `true`
    * so the release auto-subscriber (which passes neither new arg) keeps its
    * existing behavior byte-for-byte. Callers outside the release path (the
-   * `forge_coolify_deploy` MCP tool) pass `false` pre-release to exclude prod
+   * `forge_coolify_deploy` MCP tool) pass `false` pre-release to exclude live
    * entirely rather than relying on the human-confirm gate.
    */
-  allowProd?: boolean;
+  allowLive?: boolean;
 }): Promise<DispatchOutcome> {
-  const { projectId, issueId, runId, integrationId, allowProd = true } = args;
+  const { projectId, issueId, runId, integrationId, allowLive = true } = args;
   await warnIfRunAlreadyTerminal(runId, issueId);
   let pairs = await listActiveBindingsForProjectProvider(projectId, 'coolify');
   if (integrationId) pairs = pairs.filter((p) => p.binding.id === integrationId);
-  if (!allowProd) pairs = pairs.filter((p) => p.binding.environment !== 'prod');
+  if (!allowLive) pairs = pairs.filter((p) => !(p.binding.stages ?? []).includes('live'));
   if (pairs.length === 0) {
     await setCurrentStep(runId, RELEASE_DEPLOY_SKIPPED);
     return {
@@ -134,7 +139,7 @@ export async function tryDispatchCoolifyRelease(args: {
   const autoProd = await projectAutoProdDeploy(projectId);
 
   for (const { binding } of pairs) {
-    if (binding.environment === 'prod' && !autoProd) {
+    if ((binding.stages ?? []).includes('live') && !autoProd) {
       // Manual approval gate — never auto-dispatch prod. The UI sticky
       // banner calls /integrations/:id/confirm-prod-deploy to release the gate.
       // Skipped entirely when the project opted into autoProdDeploy.
@@ -160,7 +165,7 @@ export async function tryDispatchCoolifyRelease(args: {
       runId,
       bindingId: binding.id,
       requestId,
-      targetLabel: `${binding.environment} deploy`,
+      targetLabel: `${(binding.stages ?? []).join('+') || binding.role} deploy`,
     });
     if (!held) reportUnwitnessedDeploy(runId, issueId, binding.id);
     await enqueueCoolifyDispatch({
@@ -178,7 +183,7 @@ export async function tryDispatchCoolifyRelease(args: {
         category: 'integration.coolify.dispatch',
         level: 'info',
         message: 'enqueued coolify dispatch',
-        data: { bindingId: binding.id, environment: binding.environment, runId },
+        data: { bindingId: binding.id, stages: binding.stages, runId },
       });
     }
   }
@@ -188,7 +193,7 @@ export async function tryDispatchCoolifyRelease(args: {
       dispatched: false,
       pendingHumanConfirm: true,
       integrationIds: pairs
-        .filter((p) => p.binding.environment === 'prod')
+        .filter((p) => (p.binding.stages ?? []).includes('live'))
         .map((p) => p.binding.id),
       reason: 'awaiting-prod-confirm',
     };
@@ -231,7 +236,7 @@ export async function dispatchCoolifyDeployDirect(args: {
   }
   const { binding } = pair;
 
-  if (await prodActionNeedsHumanConfirm(projectId, binding.environment)) {
+  if (await liveActionNeedsHumanConfirm(projectId, binding.stages ?? [])) {
     // Prod is never auto-dispatched run-less (unless the project opted into
     // autoProdDeploy). Confirming a prod deploy is run-keyed (confirm-prod-
     // deploy endpoint), so it still requires the issueId path — return the gate
@@ -259,7 +264,7 @@ export async function dispatchCoolifyDeployDirect(args: {
       category: 'integration.coolify.dispatch',
       level: 'info',
       message: 'enqueued run-less coolify dispatch',
-      data: { bindingId: binding.id, environment: binding.environment, runId: null },
+      data: { bindingId: binding.id, stages: binding.stages, runId: null },
     });
   }
 

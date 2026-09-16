@@ -68,7 +68,7 @@ describe('pipelineConfigPatchSchema', () => {
       autoFix: true,
       autoRelease: true,
       sessionGroups: { build: ['open'] },
-      mergeStates: { baseBranch: 'awaiting_release', productionBranch: 'awaiting_release' },
+      mergeStates: { baseBranch: 'awaiting_release', liveBranch: 'awaiting_release' },
       mode: 'staged',
       states: { open: { enabled: true, sessionGroup: 'build', skipComplexities: ['xs'] } },
     };

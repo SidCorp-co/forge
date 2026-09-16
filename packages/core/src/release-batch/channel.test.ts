@@ -17,11 +17,17 @@ vi.mock('../db/client.js', () => ({
 
 vi.mock('../integrations/store.js', async (importActual) => {
   const actual = await importActual<typeof import('../integrations/store.js')>();
-  return { ...actual, listActiveBindingsForEnvironment: () => listBindings() };
+  return { ...actual, listActiveDeployBindingsForStage: () => listBindings() };
 });
 
-const { classifyRollback, resolveReleaseChannel, resolveReleaseDeviceIds, resolveReleasePlan } =
-  await import('./channel.js');
+const {
+  classifyRollback,
+  ReleaseRunnerAmbiguousError,
+  releaseRunnerLabelOf,
+  resolveReleaseChannels,
+  resolveReleaseDeviceIds,
+  resolveReleasePlan,
+} = await import('./channel.js');
 
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 
@@ -34,10 +40,13 @@ function binding(over: {
 }) {
   return {
     binding: {
+      id: over.provider === 'epodsystem' ? 'b-epod' : 'b-coolify',
       provider: over.provider ?? 'coolify',
       instructions: over.instructions ?? null,
       config: over.bindingConfig ?? {},
       label: over.label ?? '',
+      role: 'deploy' as const,
+      stages: ['live'] as const,
     },
     connection: { config: over.connectionConfig ?? {} },
   };
@@ -50,15 +59,9 @@ beforeEach(() => {
   dbExecute.mockResolvedValue([]);
 });
 
-describe('resolveReleaseChannel', () => {
-  it('reports no channel when the project declares no production binding', async () => {
-    expect(await resolveReleaseChannel(PROJECT_ID)).toEqual({
-      provider: null,
-      instructions: null,
-      releaseRunnerLabel: null,
-      verify: null,
-      rollback: null,
-    });
+describe('resolveReleaseChannels', () => {
+  it('reports an empty set when the project declares no live deploy binding', async () => {
+    expect(await resolveReleaseChannels(PROJECT_ID)).toEqual([]);
   });
 
   it('carries the operator text through verbatim', async () => {
@@ -66,17 +69,35 @@ describe('resolveReleaseChannel', () => {
       binding({ provider: 'coolify', instructions: 'ship the frontend WITH varnish' }),
     ]);
 
-    const channel = await resolveReleaseChannel(PROJECT_ID);
+    const channels = await resolveReleaseChannels(PROJECT_ID);
 
-    expect(channel.provider).toBe('coolify');
-    expect(channel.instructions).toBe('ship the frontend WITH varnish');
+    expect(channels).toHaveLength(1);
+    expect(channels[0]?.provider).toBe('coolify');
+    expect(channels[0]?.instructions).toBe('ship the frontend WITH varnish');
+  });
+
+  // cm:guard the SET, not its first member. This is the defect the whole change is named for: the
+  // previous shape took `bindings[0]` off a query ordered `created_at ASC`, so on getcontent the
+  // release agent was handed the Rocket.Chat room because it was created before the storefront, and
+  // on the archived dodgeprint-api it was handed a Sentry project. A uniqueness constraint would not
+  // have fixed that — the fault was core choosing at all.
+  it('returns every live deploy binding with its own instructions, in order', async () => {
+    listBindings.mockResolvedValue([
+      binding({ provider: 'coolify', instructions: 'deploy the app' }),
+      binding({ provider: 'epodsystem', instructions: 'publish the theme' }),
+    ]);
+
+    const channels = await resolveReleaseChannels(PROJECT_ID);
+
+    expect(channels.map((c) => c.provider)).toEqual(['coolify', 'epodsystem']);
+    expect(channels.map((c) => c.instructions)).toEqual(['deploy the app', 'publish the theme']);
   });
 
   // cm:guard `integration_bindings.label` is the ISS-558 multi-store slug and sits inside a unique index; reading the pool out of it would make "which box releases" and "which store is this" the same field, and a second store would silently repoint the release
   it('never reads the pool out of the multi-store label column', async () => {
     listBindings.mockResolvedValue([binding({ label: 'aurelle' })]);
 
-    expect((await resolveReleaseChannel(PROJECT_ID)).releaseRunnerLabel).toBeNull();
+    expect((await resolveReleaseChannels(PROJECT_ID))[0]?.releaseRunnerLabel).toBeNull();
   });
 
   it('takes the pool label from config, with the binding overriding the connection', async () => {
@@ -87,13 +108,59 @@ describe('resolveReleaseChannel', () => {
       }),
     ]);
 
-    expect((await resolveReleaseChannel(PROJECT_ID)).releaseRunnerLabel).toBe('epod-prod');
+    expect((await resolveReleaseChannels(PROJECT_ID))[0]?.releaseRunnerLabel).toBe('epod-prod');
   });
 
   it('treats an empty label as no pool rather than as a pool nothing is in', async () => {
     listBindings.mockResolvedValue([binding({ bindingConfig: { releaseRunnerLabel: '' } })]);
 
-    expect((await resolveReleaseChannel(PROJECT_ID)).releaseRunnerLabel).toBeNull();
+    expect((await resolveReleaseChannels(PROJECT_ID))[0]?.releaseRunnerLabel).toBeNull();
+  });
+});
+
+describe('releaseRunnerLabelOf', () => {
+  // cm:guard the ONE axis on which the set still collapses to a single answer, because it names a
+  // MACHINE. Returning the set here and letting a caller take `[0]` would put back the silent pick
+  // `resolveReleaseChannels` exists to remove, one layer up.
+  it('refuses by name when two live bindings declare different labels', () => {
+    const channels = [
+      { releaseRunnerLabel: 'release' },
+      { releaseRunnerLabel: 'epod-prod' },
+    ] as Parameters<typeof releaseRunnerLabelOf>[1];
+    expect(() => releaseRunnerLabelOf(PROJECT_ID, channels)).toThrow(ReleaseRunnerAmbiguousError);
+    expect(() => releaseRunnerLabelOf(PROJECT_ID, channels)).toThrow(/RELEASE_RUNNER_AMBIGUOUS/);
+  });
+
+  it('names both labels in the message, so an operator can see which two disagree', () => {
+    const channels = [
+      { releaseRunnerLabel: 'release' },
+      { releaseRunnerLabel: 'epod-prod' },
+    ] as Parameters<typeof releaseRunnerLabelOf>[1];
+    expect(() => releaseRunnerLabelOf(PROJECT_ID, channels)).toThrow(/release[\s\S]*epod-prod/);
+  });
+
+  // cm:guard an UNLABELLED binding beside a labelled one is not a disagreement: home-kieutrung
+  // carries a coolify binding and an epodsystem one at live, and only one of them has any reason to
+  // name the box. Refusing this pair would make a two-endpoint project undeclarable.
+  it('accepts one label beside any number of unlabelled bindings', () => {
+    const channels = [
+      { releaseRunnerLabel: null },
+      { releaseRunnerLabel: 'release' },
+      { releaseRunnerLabel: null },
+    ] as Parameters<typeof releaseRunnerLabelOf>[1];
+    expect(releaseRunnerLabelOf(PROJECT_ID, channels)).toBe('release');
+  });
+
+  it('answers null where nothing declares a label', () => {
+    expect(releaseRunnerLabelOf(PROJECT_ID, [])).toBeNull();
+  });
+
+  it('accepts the same label declared twice', () => {
+    const channels = [
+      { releaseRunnerLabel: 'release' },
+      { releaseRunnerLabel: 'release' },
+    ] as Parameters<typeof releaseRunnerLabelOf>[1];
+    expect(releaseRunnerLabelOf(PROJECT_ID, channels)).toBe('release');
   });
 });
 
@@ -155,11 +222,11 @@ describe('classifyRollback', () => {
     expect(classifyRollback('coolify', undefined)).toBeNull();
   });
 
-  it('is what resolveReleaseChannel returns for the prod binding', async () => {
+  it('is what resolveReleaseChannels returns for each live binding', async () => {
     listBindings.mockResolvedValue([
       binding({ provider: 'coolify', bindingConfig: { rollback: 'redeploy by hand' } }),
     ]);
-    expect((await resolveReleaseChannel(PROJECT_ID)).rollback).toEqual({
+    expect((await resolveReleaseChannels(PROJECT_ID))[0]?.rollback).toEqual({
       kind: 'unrepresentable',
       text: 'redeploy by hand',
     });

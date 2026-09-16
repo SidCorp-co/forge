@@ -69,7 +69,7 @@ describe('POST /api/prompts/preview', () => {
   it('returns systemPrompt + userPrompt for a state with no issue', async () => {
     queueAuth();
     // buildPipelinePreambleStructured loads project branches
-    limitResults.push([{ baseBranch: 'main', productionBranch: 'release' }]);
+    limitResults.push([{ baseBranch: 'main', liveBranch: 'release' }]);
 
     const app = buildApp();
     const res = await app.request('/api/prompts/preview', {
@@ -97,7 +97,7 @@ describe('POST /api/prompts/preview', () => {
 
   it('replace mode overrides the static prefix entirely', async () => {
     queueAuth();
-    limitResults.push([{ baseBranch: 'main', productionBranch: 'release' }]);
+    limitResults.push([{ baseBranch: 'main', liveBranch: 'release' }]);
 
     const app = buildApp();
     const res = await app.request('/api/prompts/preview', {
@@ -123,7 +123,7 @@ describe('POST /api/prompts/preview', () => {
 
   it('append mode adds extras after the static prefix', async () => {
     queueAuth();
-    limitResults.push([{ baseBranch: 'main', productionBranch: 'release' }]);
+    limitResults.push([{ baseBranch: 'main', liveBranch: 'release' }]);
 
     const app = buildApp();
     const res = await app.request('/api/prompts/preview', {
@@ -182,7 +182,7 @@ describe('POST /api/prompts/preview', () => {
     queueAuth();
     // One projects read on the step path: loadProjectFactInputs supplies both
     // the Project Config branches and the facts block.
-    limitResults.push([{ baseBranch: 'main', productionBranch: 'release' }]);
+    limitResults.push([{ baseBranch: 'main', liveBranch: 'release' }]);
     limitResults.push([]); // loadIssueSnapshot — no row
 
     const app = buildApp();
@@ -200,7 +200,7 @@ describe('POST /api/prompts/preview', () => {
   it('includes issueSnapshot in userPrompt when issueId provided + issue exists', async () => {
     queueAuth();
     // One projects read on the step path (loadProjectFactInputs), then the issue.
-    limitResults.push([{ baseBranch: 'main', productionBranch: 'release' }]);
+    limitResults.push([{ baseBranch: 'main', liveBranch: 'release' }]);
     limitResults.push([
       {
         title: 'Rate-limit /api/agents',

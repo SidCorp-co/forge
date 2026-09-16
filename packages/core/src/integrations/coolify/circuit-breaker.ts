@@ -78,7 +78,7 @@ export async function maybeTripBreaker(args: {
       connectionId: args.connectionId,
       bindingId: args.bindingId,
       provider: connection.provider,
-      environment: binding?.environment ?? null,
+      stages: binding?.stages ?? null,
       consecutiveFailures: evaluation.consecutiveFailures,
     },
     'integration: circuit breaker tripped',
@@ -89,7 +89,7 @@ export async function maybeTripBreaker(args: {
       level: 'error',
       tags: {
         provider: connection.provider,
-        environment: binding?.environment ?? 'unknown',
+        stages: (binding?.stages ?? []).join(',') || 'none',
         projectId: binding?.projectId ?? 'unknown',
       },
       extra: {

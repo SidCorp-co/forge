@@ -104,7 +104,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
     }
   });
 
-  // cm:guard `member`, matching the MCP tool's `assertPrincipalIsWriter` — NOT admin. The prod decision is not made here: `runCoolifyDeploy` earns `allowProd` per branch and `dispatchCoolifyDeployDirect` refuses a prod binding on its own, so raising the floor here would only block staging deploys while changing nothing about prod.
+  // cm:guard `member`, matching the MCP tool's `assertPrincipalIsWriter` — NOT admin. The prod decision is not made here: `runCoolifyDeploy` earns `allowLive` per branch and `dispatchCoolifyDeployDirect` refuses a prod binding on its own, so raising the floor here would only block staging deploys while changing nothing about prod.
   routes.post('/:projectId/integrations/coolify/deploy', async (c) => {
     const projectId = c.req.param('projectId');
     await assertProjectMember(projectId, c.get('userId'));
@@ -125,7 +125,7 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
     }
   });
 
-  // cm:guard `member`, matching the deploy route above and NOT admin: cancel and rollback answer to the SAME prod gate a deploy does — `prodActionNeedsHumanConfirm` inside the commands — so raising the floor here would only block staging while changing nothing about prod (ISS-925).
+  // cm:guard `member`, matching the deploy route above and NOT admin: cancel and rollback answer to the SAME prod gate a deploy does — `liveActionNeedsHumanConfirm` inside the commands — so raising the floor here would only block staging while changing nothing about prod (ISS-925).
   routes.post('/:projectId/integrations/coolify/cancel', async (c) => {
     const projectId = c.req.param('projectId');
     await assertProjectMember(projectId, c.get('userId'));
@@ -241,10 +241,15 @@ export function registerCoolifyDeployRoutes(routes: Hono<{ Variables: AuthVars }
 
     const existing = await findBindingWithConnectionById(id);
     if (!existing || existing.binding.projectId !== projectId) throw notFound();
-    if (existing.binding.environment !== 'prod') {
+    // cm:guard the gate is the `live` STAGE and not a provider or a branch: this endpoint is the human
+    // "yes, deploy to the box real users are on", so it must refuse a preview-only binding and a
+    // `service` one alike. It read `environment !== 'prod'` until ISS-1046, which admitted a binding
+    // whose `prod` was the filler seven of eight providers were forced to write.
+    if (!(existing.binding.stages ?? []).includes('live')) {
       throw new HTTPException(400, {
-        message: 'confirm-prod-deploy is only valid on prod-environment integrations',
-        cause: { code: 'NOT_PROD_ENV' },
+        message:
+          'confirm-prod-deploy is only valid on a deploy binding carrying the `live` stage — this binding serves no live environment, so there is no production deploy for a human to confirm',
+        cause: { code: 'NOT_LIVE_BINDING' },
       });
     }
     // cm:guard keep this import lazy — `release-coolify` imports the Coolify adapter, which transitively imports this module, so a top-level import closes the cycle. The commands module above can import it eagerly because nothing imports the commands module back.

@@ -106,7 +106,7 @@ function makeIssue(overrides: Record<string, unknown> = {}) {
 /** Queue: membership assert → (handler) comments rows → projects row. */
 function queueHappyPath(opts?: { comments?: unknown[]; project?: unknown }) {
   queue.push([{ orgId: 'org-1', memberRole: 'member', orgRole: null }], opts?.comments ?? [], [
-    opts?.project ?? { baseBranch: 'main', productionBranch: 'main' },
+    opts?.project ?? { baseBranch: 'main', liveBranch: 'main' },
   ]);
 }
 
@@ -188,7 +188,7 @@ describe('forge_step_start', () => {
         sessionContext: { branchConfig: { baseBranch: 'iss-99-integration' } },
       }),
     );
-    queueHappyPath({ project: { baseBranch: 'develop', productionBranch: 'main' } });
+    queueHappyPath({ project: { baseBranch: 'develop', liveBranch: 'main' } });
 
     const result = (await tool.handler({
       projectId: PROJECT_ID,

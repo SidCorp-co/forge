@@ -9,7 +9,7 @@ import {
 
 const SECRET = 'state-signing-secret-at-least-32-chars';
 const NOW = 1_800_000_000_000;
-const STATE = { projectId: 'p-1', userId: 'u-1', environment: 'prod' };
+const STATE = { projectId: 'p-1', userId: 'u-1' };
 
 describe('connect state', () => {
   it('round-trips a state it signed', () => {

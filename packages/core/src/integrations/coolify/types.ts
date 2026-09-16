@@ -1,4 +1,3 @@
-import type { IntegrationEnvironment } from '../../db/schema.js';
 
 /**
  * One Coolify application this project+environment deploys. A single binding
@@ -25,10 +24,8 @@ export interface CoolifyTarget {
 export interface CoolifyConfig extends Record<string, unknown> {
   /** Base URL of the Coolify API, e.g. https://coolify.example.com (connection-tier). */
   baseUrl: string;
-  /** Deploy targets for this project+environment (binding-tier). One per Coolify app. */
+  /** Deploy targets for this project+stage (binding-tier). One per Coolify app. */
   targets: CoolifyTarget[];
-  /** Mirror of the binding environment; convenience for adapter logic. */
-  environment: IntegrationEnvironment;
 }
 
 export interface CoolifySecrets extends Record<string, unknown> {

@@ -120,7 +120,7 @@ async function runCoolifyDispatch(data: CoolifyDispatchJob): Promise<void> {
   const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>({ binding, connection });
   await coolifyAdapter.dispatchOutbound(ctx, {
     eventName: data.eventName,
-    payload: { runId: data.runId, issueId: data.issueId, environment: ctx.environment },
+    payload: { runId: data.runId, issueId: data.issueId, stages: ctx.stages },
     ...(data.requestId ? { requestId: data.requestId } : {}),
     runId: data.runId,
   });

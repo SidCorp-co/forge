@@ -1,7 +1,8 @@
 import { and, asc, desc, eq, inArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import {
-  type IntegrationEnvironment,
+  type BindingRole,
+  type DeployStage,
   type IntegrationOwnerType,
   integrationBindings,
   integrationConnections,
@@ -49,7 +50,6 @@ export async function findBindingById(id: string): Promise<IntegrationBindingRow
 export async function findActiveBindingByLabel(
   projectId: string,
   provider: IntegrationProvider,
-  environment: IntegrationEnvironment,
   label: string,
 ): Promise<BindingWithConnection | null> {
   const rows = await db
@@ -63,7 +63,6 @@ export async function findActiveBindingByLabel(
       and(
         eq(integrationBindings.projectId, projectId),
         eq(integrationBindings.provider, provider),
-        eq(integrationBindings.environment, environment),
         eq(integrationBindings.label, label),
         eq(integrationBindings.active, true),
         eq(integrationConnections.active, true),
@@ -73,11 +72,10 @@ export async function findActiveBindingByLabel(
   return rows[0] ?? null;
 }
 
-/** Active binding (+ its connection) for a project + provider + environment. */
+/** Active binding (+ its connection) for a project + provider. */
 export async function findActiveBinding(
   projectId: string,
   provider: IntegrationProvider,
-  environment: IntegrationEnvironment,
 ): Promise<BindingWithConnection | null> {
   const rows = await db
     .select({ binding: integrationBindings, connection: integrationConnections })
@@ -90,7 +88,6 @@ export async function findActiveBinding(
       and(
         eq(integrationBindings.projectId, projectId),
         eq(integrationBindings.provider, provider),
-        eq(integrationBindings.environment, environment),
         eq(integrationBindings.active, true),
         eq(integrationConnections.active, true),
       ),
@@ -101,8 +98,8 @@ export async function findActiveBinding(
 
 /**
  * All active bindings (+ connections) for a project + provider, across
- * environments. Used by the inbound webhook router to find the right binding
- * when the payload carries the environment hint.
+ * stages and roles. Used by the inbound webhook router to find the right binding
+ * when the payload carries a provider hint.
  */
 export async function listActiveBindingsForProjectProvider(
   projectId: string,
@@ -130,13 +127,19 @@ export async function listActiveBindingsForProjectProvider(
 }
 
 /**
- * Every active binding for a project in one environment, across ALL providers.
- * The release path asks "what ships this project", which is a question about
- * the environment rather than about any one provider.
+ * Every active DEPLOY binding a project has at one stage, across all providers.
+ *
+ * The release path asks "what ships this project", which is a question about the stage rather than
+ * about any one provider — and the answer is the whole SET, never its first row. Core hands the set
+ * to the release agent with each binding's own `instructions`; it does not choose among them.
  */
-export async function listActiveBindingsForEnvironment(
+// cm:guard `role = 'deploy'` is not decoration on top of the stage test: a `service` binding carries
+// no stage at all, so a stage predicate alone would already exclude it — the role is asserted anyway
+// because this is the query the release gate rests on, and a reader has to see that a chat room and
+// an error tracker are not candidates here whatever their stages column happens to hold.
+export async function listActiveDeployBindingsForStage(
   projectId: string,
-  environment: IntegrationEnvironment,
+  stage: DeployStage,
 ): Promise<BindingWithConnection[]> {
   return (
     db
@@ -149,12 +152,13 @@ export async function listActiveBindingsForEnvironment(
       .where(
         and(
           eq(integrationBindings.projectId, projectId),
-          eq(integrationBindings.environment, environment),
+          eq(integrationBindings.role, 'deploy'),
+          sql`${stage} = ANY(${integrationBindings.stages})`,
           eq(integrationBindings.active, true),
           eq(integrationConnections.active, true),
         ),
       )
-      // cm:edge protocol -> packages/core/src/integrations/store.ts — same oldest-first rule as listActiveBindingsForProjectProvider, and for the same reason: a caller that injects row [0] must not have its pick flipped by adding a second binding
+      // cm:edge protocol -> packages/core/src/integrations/store.ts — same oldest-first rule as listActiveBindingsForProjectProvider. It is no longer a TIE-BREAK here, since the release path takes the whole set; it stays so the set's order is stable across calls and a prompt listing three channels lists them the same way twice.
       .orderBy(asc(integrationBindings.createdAt))
   );
 }
@@ -195,7 +199,8 @@ export function buildContextFromBinding<
     bindingId: pair.binding.id,
     projectId: pair.binding.projectId,
     provider: pair.binding.provider as IntegrationProvider,
-    environment: pair.binding.environment as IntegrationEnvironment,
+    role: pair.binding.role as BindingRole,
+    stages: (pair.binding.stages ?? []) as DeployStage[],
     config: effectiveConfig<TConfig>(pair),
     secrets: decryptConnectionSecrets<TSecrets>(pair.connection),
     integrationSecret: pair.binding.integrationSecret,
@@ -266,7 +271,9 @@ export interface CreateBindingInput {
   connectionId: string;
   projectId: string;
   provider: IntegrationProvider;
-  environment: IntegrationEnvironment;
+  role: BindingRole;
+  /** Empty for `service`; one or both stages for `deploy`. */
+  stages?: DeployStage[];
   config?: Record<string, unknown>;
   integrationSecret?: string | null;
   /** ISS-558 — empty string (default) = unlabeled/default binding;
@@ -281,7 +288,8 @@ export async function createBinding(input: CreateBindingInput): Promise<Integrat
       connectionId: input.connectionId,
       projectId: input.projectId,
       provider: input.provider,
-      environment: input.environment,
+      role: input.role,
+      stages: input.role === 'deploy' ? (input.stages ?? []) : [],
       config: input.config ?? {},
       integrationSecret: input.integrationSecret ?? null,
       label: input.label ?? '',

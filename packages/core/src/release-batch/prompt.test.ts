@@ -4,23 +4,37 @@
 // is always told which of the two it got.
 
 import { describe, expect, it } from 'vitest';
-import { DEFAULT_RELEASE_PROCEDURE, RELEASE_BATCH_SKILL, type ReleasePlan } from './plan.js';
+import {
+  defaultReleaseProcedure,
+  RELEASE_BATCH_SKILL,
+  type ReleaseChannel,
+  type ReleasePlan,
+} from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 
 const BASE = {
   runId: 'run-1',
   projectId: 'proj-1',
   baseBranch: 'dev',
-  productionBranch: 'master',
+  liveBranch: 'master',
+  releaseModel: 'promote' as const,
   issues: [{ id: 'i1', displayId: 'ISS-9', title: 'checkout 500s' }],
 };
 
-const plan = (over: Partial<ReleasePlan> = {}): ReleasePlan => ({
-  provider: null,
+const channel = (over: Partial<ReleaseChannel> = {}): ReleaseChannel => ({
+  bindingId: 'b-1',
+  provider: 'coolify',
+  label: '',
   instructions: null,
   releaseRunnerLabel: null,
   verify: null,
   rollback: null,
+  ...over,
+});
+
+const plan = (over: Partial<ReleasePlan> = {}): ReleasePlan => ({
+  channels: [],
+  releaseRunnerLabel: null,
   procedure: null,
   ...over,
 });
@@ -36,7 +50,10 @@ describe('buildReleaseBatchPrompt', () => {
       { kind: 'coolify-image' as const },
       { kind: 'unrepresentable' as const, text: 'ssh in and docker compose up -d' },
     ]) {
-      const out = buildReleaseBatchPrompt({ ...BASE, plan: plan({ rollback }) });
+      const out = buildReleaseBatchPrompt({
+        ...BASE,
+        plan: plan({ channels: [channel({ rollback })] }),
+      });
 
       expect(out).toContain('REPAIR FORWARD, and never roll back');
       expect(out).toContain('Rolling back is a human decision');
@@ -51,7 +68,9 @@ describe('buildReleaseBatchPrompt', () => {
   it("quotes the declared way back as the human's, not as a step", () => {
     const out = buildReleaseBatchPrompt({
       ...BASE,
-      plan: plan({ rollback: { kind: 'manual', text: 'promote the previous theme revision' } }),
+      plan: plan({
+        channels: [channel({ rollback: { kind: 'manual', text: 'promote the previous theme revision' } })],
+      }),
     });
 
     expect(out).toContain('quoted for the human and NOT for you');
@@ -82,7 +101,7 @@ describe('buildReleaseBatchPrompt', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
     expect(out).toContain('Forge default');
-    expect(out).toContain(DEFAULT_RELEASE_PROCEDURE);
+    expect(out).toContain(defaultReleaseProcedure('promote'));
   });
 
   it("prefers the project's own procedure and labels it as theirs", () => {
@@ -93,24 +112,62 @@ describe('buildReleaseBatchPrompt', () => {
 
     expect(out).toContain("This project's release procedure");
     expect(out).toContain('run ./release.sh — no squash, then tag');
-    expect(out).not.toContain(DEFAULT_RELEASE_PROCEDURE);
+    expect(out).not.toContain(defaultReleaseProcedure('promote'));
   });
 
   it('adds the channel notes under the name of the channel they belong to', () => {
     const out = buildReleaseBatchPrompt({
       ...BASE,
-      plan: plan({ provider: 'coolify', instructions: 'frontend ships WITH varnish' }),
+      plan: plan({ channels: [channel({ instructions: 'frontend ships WITH varnish' })] }),
     });
 
     expect(out).toContain('Deploy channel notes (coolify)');
     expect(out).toContain('frontend ships WITH varnish');
   });
 
+  // cm:guard ONE block per channel, each naming its own binding. home-kieutrung releases onto a
+  // coolify app AND an epodsystem store; folding the set into one block is how an agent handed two
+  // endpoints reads one set of instructions and deploys half the project.
+  it('renders one notes block per live binding rather than folding them together', () => {
+    const out = buildReleaseBatchPrompt({
+      ...BASE,
+      plan: plan({
+        channels: [
+          channel({ provider: 'coolify', instructions: 'deploy the app' }),
+          channel({ provider: 'epodsystem', label: 'aurelle', instructions: 'publish the theme' }),
+        ],
+      }),
+    });
+
+    expect(out).toContain('Deploy channel notes (coolify)');
+    expect(out).toContain('deploy the app');
+    expect(out).toContain('Deploy channel notes (epodsystem [aurelle])');
+    expect(out).toContain('publish the theme');
+    expect(out).toMatch(/deploy channels \(2, work ALL of them\)/);
+  });
+
   // cm:guard a project with no channel must be TOLD there is none. Left blank, the agent fills the gap with the deploy it has seen in every other prompt, and a release lands somewhere nobody configured.
   it('says out loud when nothing deploys, rather than leaving it blank', () => {
     const out = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
 
-    expect(out).toMatch(/deploy channel: none/);
+    expect(out).toMatch(/deploy channels: none/);
+  });
+
+  // cm:guard the live-branch line follows the MODEL and not the value. pixelight's release publishes
+  // a theme, so naming a branch for it states a promotion that is not going to happen — and the
+  // agent has no other source for what a release means on this project.
+  it('names the live branch under promote and not under publish', () => {
+    const promoteOut = buildReleaseBatchPrompt({ ...BASE, plan: plan() });
+    expect(promoteOut).toContain('liveBranch: master');
+    expect(promoteOut).toContain('releaseModel: promote');
+
+    const publishOut = buildReleaseBatchPrompt({
+      ...BASE,
+      releaseModel: 'publish',
+      plan: plan(),
+    });
+    expect(publishOut).not.toContain('liveBranch');
+    expect(publishOut).toContain('releaseModel: publish');
   });
 
   it('still frames the issue title as untrusted data', () => {

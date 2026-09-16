@@ -17,7 +17,7 @@ import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { readProjectBranches } from '../projects/service.js';
 import { nextRunFor } from '../schedules/cron.js';
-import { resolveReleaseChannel } from './channel.js';
+import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { RELEASE_GATE_STATUS, resolveReleaseGate } from './gate.js';
 import { releaseBranches } from './plan.js';
 
@@ -35,7 +35,8 @@ export interface ReleaseRosterEntry {
 export interface ReleaseRoster {
   /** `null` when the project has no gate — the UI hides the whole surface. */
   gateStatus: IssueStatus | null;
-  channel: string | null;
+  /** Every live deploy binding's provider. Core hands the SET to the release agent. */
+  channels: string[];
   releaseRunnerLabel: string | null;
   /** The branch these issues merged into — what "merged" means to a reader. */
   baseBranch: string | null;
@@ -74,12 +75,12 @@ async function nextScheduledCutAt(projectId: string): Promise<string | null> {
  */
 export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoster> {
   const gateStatus = await resolveReleaseGate(projectId);
-  const channel = await resolveReleaseChannel(projectId);
+  const channels = await resolveReleaseChannels(projectId);
   if (!gateStatus) {
     return {
       gateStatus: null,
-      channel: channel.provider,
-      releaseRunnerLabel: channel.releaseRunnerLabel,
+      channels: [],
+      releaseRunnerLabel: null,
       baseBranch: null,
       nextCutAt: null,
       issues: [],
@@ -105,8 +106,8 @@ export async function loadReleaseRoster(projectId: string): Promise<ReleaseRoste
   const prefix = await activeIssuePrefix(projectId);
   return {
     gateStatus,
-    channel: channel.provider,
-    releaseRunnerLabel: channel.releaseRunnerLabel,
+    channels: channels.map((c) => c.provider),
+    releaseRunnerLabel: releaseRunnerLabelOf(projectId, channels),
     baseBranch: branches?.baseBranch ?? null,
     nextCutAt,
     issues: rows.map((r) => ({
@@ -207,9 +208,10 @@ export interface ReleaseBatchContext {
   projectId: string;
   gateStatus: IssueStatus;
   baseBranch: string;
-  productionBranch: string;
+  /** Where a `promote` release lands; equals `baseBranch` under every other model. */
+  liveBranch: string;
   deployPlanned: boolean;
-  productionMergePlanned: boolean;
+  promotePlanned: boolean;
   issues: ReleaseBatchIssue[];
 }
 
@@ -231,11 +233,15 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
   // cm:guard the fallback is the CURRENT gate status. It read `'tested'` until ISS-897 — a rung of the deleted staged ladder that no issue is at any more and no project declares — so a run whose metadata predates `gateStatus` would have been reconstructed against a status the batch could never match.
   const gateStatus = (meta.gateStatus as IssueStatus | undefined) ?? RELEASE_GATE_STATUS;
   const deployPlanned = (meta.deployPlanned as boolean | undefined) ?? false;
-  const productionMergePlanned = (meta.productionMergePlanned as boolean | undefined) ?? false;
+  const promotePlanned = (meta.promotePlanned as boolean | undefined) ?? false;
 
-  const { baseBranch, productionBranch } = releaseBranches(
-    (await readProjectBranches(run.projectId)) ?? { baseBranch: null, productionBranch: null },
-  );
+  const project = (await readProjectBranches(run.projectId)) ?? {
+    baseBranch: null,
+    liveBranch: null,
+    releaseModel: 'none' as const,
+    releaseStrategy: null,
+  };
+  const { baseBranch, liveBranch } = releaseBranches(project, project.releaseModel);
 
   const claimedIssues = await db
     .select({
@@ -254,9 +260,9 @@ export async function loadReleaseBatchContext(runId: string): Promise<ReleaseBat
     projectId: run.projectId,
     gateStatus,
     baseBranch,
-    productionBranch,
+    liveBranch,
     deployPlanned,
-    productionMergePlanned,
+    promotePlanned,
     issues: claimedIssues.map((r) => ({
       id: r.id,
       displayId: r.issSeq != null ? formatIssueRef(claimedPrefix, r.issSeq) : r.id,
