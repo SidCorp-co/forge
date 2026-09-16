@@ -202,7 +202,7 @@ describe("IntegrationsScreen", () => {
       .getAllByRole("button", { name: /^Manage connection Coolify deploy/ })
       .map((b) => b.getAttribute("aria-label"));
     expect(names).toEqual([
-      "Manage connection Coolify deploy — used by forge-dev",
+      "Manage connection Coolify deploy — used by forge-dev Production",
       "Manage connection Coolify deploy",
     ]);
   });
@@ -221,8 +221,30 @@ describe("IntegrationsScreen", () => {
       .getAllByRole("button", { name: /^Manage connection Coolify deploy/ })
       .map((b) => b.getAttribute("aria-label"));
     expect(names).toEqual([
-      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev",
-      "Manage connection Coolify deploy — deploy.example.com — used by forge-plugin",
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Production",
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-plugin Production",
+    ]);
+  });
+
+  it("carries a binding's environment and its off marker into the name", () => {
+    // One project, one endpoint, two tokens: the chips read "forge-dev
+    // Production" and "forge-dev Staging · off", and that word is the whole of
+    // what tells the two rows apart.
+    const sameProject = (environment: "prod" | "staging", active: boolean) => ({
+      bindings: [{ id: `b-${environment}`, projectId: "proj-a", environment, label: "", active }],
+    });
+    connectionItems.mockReturnValue([
+      conn({ id: "c1", config: { baseUrl: "https://deploy.example.com" }, usage: sameProject("prod", true) }),
+      conn({ id: "c2", config: { baseUrl: "https://deploy.example.com" }, usage: sameProject("staging", false) }),
+    ]);
+    render(<IntegrationsScreen />);
+    openApp("Coolify deploy");
+    const names = screen
+      .getAllByRole("button", { name: /^Manage connection Coolify deploy/ })
+      .map((b) => b.getAttribute("aria-label"));
+    expect(names).toEqual([
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Production",
+      "Manage connection Coolify deploy — deploy.example.com — used by forge-dev Staging (off)",
     ]);
   });
 

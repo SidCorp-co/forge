@@ -58,12 +58,24 @@ function UsageLine({
  * row's drawer. `aria-label` overrides every descendant, so a bare "Manage
  * connection <title>" announces the four unnamed Coolify credentials of one
  * org identically — the very wall this issue set out to remove, rebuilt in the
- * accessibility tree where nobody looks at it. The discriminators are the
- * row's OWN visible ones, in the order `connection-identity.ts` sets: the name
- * its owner gave it, then the target its config points at, then the projects
- * using it. Where the row shows nothing that tells two apart, neither does
- * this: suffixing an id would name the rows by something no one can see, and
- * two rows that read the same are then honestly the same.
+ * accessibility tree where nobody looks at it.
+ *
+ * What goes in is the row's IDENTITY, which is `connection-identity.ts`'s three
+ * things in its order: the name its owner gave it, the target its config points
+ * at, and the projects using it — each binding carried with the environment and
+ * the off marker its chip shows, because two tokens for one project in two
+ * environments are told apart on screen by that word alone. Each clause is
+ * independent of the others: a name carries every discriminator the row shows,
+ * never the first one it finds.
+ *
+ * What stays out is the row's STATE — the health line and the status pill.
+ * Those move under the credential rather than distinguishing it, they are read
+ * from the row's own text and its pill, and putting them in the name would make
+ * a control rename itself when a health check landed.
+ *
+ * Where the row shows nothing that tells two apart, neither does this:
+ * suffixing an id would name the rows by something no one can see, and two rows
+ * that read the same are then honestly the same.
  */
 export function connectionRowLabel(
   connection: ConnectionDirectoryItem,
@@ -76,8 +88,13 @@ export function connectionRowLabel(
   // against ONE endpoint, told apart on screen by the projects bound to them,
   // would otherwise reach the same name through the branch that already found
   // a target.
-  if (connection.usage.bindings.length > 0)
-    parts.push(`used by ${connection.usage.bindings.map((b) => projectName(b.projectId)).join(", ")}`);
+  if (connection.usage.bindings.length > 0) {
+    const used = connection.usage.bindings.map((b) => {
+      const env = ENV_LABEL[b.environment] ?? b.environment;
+      return `${projectName(b.projectId)} ${env}${b.active ? "" : " (off)"}`;
+    });
+    parts.push(`used by ${used.join(", ")}`);
+  }
   return parts.join(" — ");
 }
 
