@@ -14,9 +14,11 @@ Every gate that drifted did so while documented and non-blocking — biome to 36
 to 84, the two length rules to 143 — and each stopped drifting the day it was baselined and gated.
 
 **An axis measures at its weakest gate.** Reporting the strongest would let one locked checker hide
-a sibling that stopped blocking, which is the whole failure mode here. `form` is gated four times
+a sibling that stopped blocking, which is the whole failure mode here. `form` is gated six times
 (biome for `core`'s rules · `check-size-budget` for the length baseline biome cannot hold ·
-`check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves),
+`check-lint-budget` for `web-v2` and `core` · a bare `biome check scripts` for the checkers themselves ·
+`check-provider-literals` for where an integration provider may be named · `check-integration-declarations`
+for whether each provider declares the fields the generic paths read),
 `behaviour` three times (reachability · signal · flow coverage) and `knowledge` three (honest
 costs · the mode-qualification of injected docs · the PAT permission surface).
 
@@ -31,6 +33,8 @@ passed, because the external record of what shipped belonged to none of them.
 | size | `check-size-budget` — `conformance` | file & function length, frozen per file | which rules exist — biome declares them |
 | lint debt | `check-lint-budget` — `conformance` | per (file, rule) biome violations in `web-v2` and `core`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
+| provider literals | `check-provider-literals` — `conformance` | whether a provider's name (`coolify`, `postman`, …) is written outside the locations `.forge/conformance.json` allows WITH a reason: that provider's own directory, the registry, the schema and contracts vocabularies | whether a name allowed there is USED correctly; and `agent`, which this repo also spells as an actor, an author and a principal — excluded by name, with its reason and its retirement condition printed on every run |
+| declarations | `check-integration-declarations` — `conformance` | whether every provider in the live registry carries the capability, schema and agent-path fields the generic paths read — including a non-empty `justification` on a `direct-mcp` arm, since that arm puts a project's credential on a runner box | which archetype a provider SHOULD be — that is the declaration's author's, and review's |
 | injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own knowledge entries, which live in the DB |
 | PAT surface | `check-pat-surface` — `injected-docs` | whether every route a project-scoped token can reach is covered by the permission menu that claims to fence it | whether a given fence is correct — that is review's |
 | costs | `check-honest-costs` — `lang-check` | whether `docs/VISION.md` and every `docs/proposals/*.md` price what adopting them costs | whether the price stated is honest — that is review's |

@@ -2872,6 +2872,16 @@
   against rules before it is written; one that fails is refused with the rule and an example
   of what would pass.
 
+- **A connected integration now says whether agents may use it, beside the integration itself.**
+  That switch used to be a key in a map on another settings tab. No project's access changed.
+
+- **An agent is now told when an integration is off-limits to it.** It used to be handed no tools
+  and no reason, and read their absence as a broken credential worth retrying.
+
+- **A pipeline stage that turns a tool off no longer has it turned back on.** The stage's answer was
+  merged in a way that could only add servers, never remove one the project had on by default.
+
+
 - **The assistant benchmark no longer passes a reply that recites the product's whole issue
   lifecycle when asked for this project's pipeline states, and no longer counts a dropped
   connection as the assistant's failure.** The pipeline-states task held every configured state to
