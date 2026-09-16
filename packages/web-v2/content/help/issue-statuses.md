@@ -84,10 +84,21 @@ against it are different outcomes and should not read the same.
 
 ## While an agent is working
 
-An issue being worked right now is read-only in the places where an edit would be
-lost: whatever you set, the running agent may write over it moments later. The
-exception is **Needs info** — that stays editable however busy the issue is,
-because answering is the whole point of it.
+While an agent is running an issue, the fields it writes are read-only: status,
+priority, complexity and the description — on the issue page, on the Issues list,
+and in the bulk actions for any selection holding one. Each of them says so where
+the control was, rather than quietly disappearing. Whatever you set there, the
+running agent would write over moments later, and the click would look like it
+never landed.
+
+The exception is **Needs info**. An issue there stays editable however busy it is:
+answering is the whole point of it, and it is the one pause your answer restarts
+by itself.
+
+An issue whose agent is only *queued*, or whose last run *failed*, locks nothing —
+nothing is writing it, so there is nothing to lose. A description you had already
+opened for editing also keeps its **Save**, so work you have typed is never
+discarded out from under you.
 
 ## Verify it worked
 
@@ -103,7 +114,7 @@ because answering is the whole point of it.
 | An issue sits still and asks nothing | It is probably *On hold* — resume it. On-hold issues never restart on their own. |
 | You answered a question and nothing happened | Check the status moved off *Needs info*. If it did not, the answer did not land — answer it again from the issue page. |
 | An issue looks finished but never shipped | It is at *Awaiting release*, waiting for someone to approve the release. |
-| You cannot edit a field | An agent is working the issue. Wait for it to park or finish. |
+| You cannot edit a field | An agent is running the issue and would overwrite what you set. Wait for it to pause or finish — or answer it, if it is at *Needs info*. |
 | A dropped issue needs doing after all | File a new issue. Dropped is terminal by design. |
 
 See also [Configure the pipeline & approvals](?path=configure-the-pipeline).
