@@ -36,6 +36,10 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  // ISS-1071 — what src/index.ts does at boot. This file builds the app from its own
+  // modules rather than from that file, and a registry-backed path reads the registry
+  // EMPTY, which throws rather than answering "no providers are declared".
+  (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
 }, 60_000);
 
 afterAll(async () => {

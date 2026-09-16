@@ -17,8 +17,6 @@ export default defineConfig({
     environment: 'node',
     // cm:edge contract -> packages/core/tests/helpers/db.ts — global-setup builds the migrated template ONCE; db.ts clones it per file. Dropping this line silently restores a container boot + full migration replay per test file (~8.6s each).
     globalSetup: ['./tests/helpers/global-setup.ts'],
-    // cm:edge contract -> packages/core/vitest.integration.setup.ts — fills the integration registry per worker, which is what src/index.ts does at boot; without it every registry-backed path throws.
-    setupFiles: ['./vitest.integration.setup.ts'],
     hookTimeout: 60_000,
     testTimeout: 30_000,
     pool: 'forks',

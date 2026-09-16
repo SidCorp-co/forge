@@ -31,6 +31,11 @@ describe('ISS-941 — the settings object on a prepared job', () => {
     process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
     process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
     process.env.NODE_ENV ??= 'test';
+    // ISS-1071 — what src/index.ts does at boot. This file builds the app from its own
+    // modules rather than from that file, and a registry-backed path reads the registry
+    // EMPTY, which throws rather than answering "no providers are declared".
+    (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
+  
     const prepareMod = await import('../../src/jobs/prepare-claimed-job.js');
     prepareClaimedJob = prepareMod.prepareClaimedJob;
   }, 120_000);

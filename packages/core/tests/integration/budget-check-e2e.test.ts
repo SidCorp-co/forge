@@ -65,6 +65,11 @@ describe('W2.3.2 monthly budget gate E2E', () => {
     process.env.APP_BASE_URL ??= 'http://localhost:3000';
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
+    // ISS-1071 — what src/index.ts does at boot. This file builds the app from its own
+    // modules rather than from that file, and a registry-backed path reads the registry
+    // EMPTY, which throws rather than answering "no providers are declared".
+    (await import('../../src/integrations/register-all.js')).registerAllIntegrations();
+  
 
     const claimMod = await import('../../src/devices/claim.js');
     const hooksMod = await import('../../src/pipeline/hooks.js');
