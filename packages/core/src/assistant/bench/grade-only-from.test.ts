@@ -3,8 +3,9 @@
  * state and the list; prose and arrows pass; `in_progress` is one token and `progress` none.
  */
 
+import { REGISTRY_ISSUE_STATUSES } from '@forge/contracts';
 import { describe, expect, it } from 'vitest';
-import { gradeTurn, type TurnFacts } from './grade.js';
+import { gradeTurn, ONLY_FROM_STATUSES, type TurnFacts } from './grade.js';
 import type { Check } from './task.js';
 
 const facts = (delivered: string | null): TurnFacts => ({
@@ -20,6 +21,10 @@ const grade = (check: Check, delivered: string | null) =>
   gradeTurn({ message: 'm', checks: [check] }, facts(delivered)).evidence;
 
 describe('onlyFrom', () => {
+  it("grades against the registry's own status names, member for member (core cannot value-import the contract)", () => {
+    expect([...ONLY_FROM_STATUSES]).toEqual([...REGISTRY_ISSUE_STATUSES]);
+  });
+
   it('onlyFrom fails a reply naming a registry state outside the list, and reads in_progress as one token (ISS-1065)', () => {
     const check: Check = { kind: 'onlyFrom', list: '{stateList}' };
     expect(grade(check, 'open → in_progress → awaiting_release')).toEqual([]);
