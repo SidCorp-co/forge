@@ -637,11 +637,14 @@ impl Ledger {
     /// Answers whether this call is the one that bound it, so a repeated hook
     /// event — which the harness makes no promise against — writes once.
     // cm:guard `agent_id IS NULL` in the WHERE is what makes this idempotent AND what stops a second child stealing a bound row. A bind keyed on the run id alone would let a later `SubagentStart` repoint a row whose subagent is still running, and the close would then return the wrong issues (ISS-1050 criterion 1).
+    // cm:guard the `NOT EXISTS` is the other half and it looks at EVERY run, ended ones included. The harness makes no promise that a `SubagentStart` is delivered once, and a child whose start is replayed after its master has declared the next run would otherwise bind that next row to itself: its later `SubagentStop` would then end a run belonging to a subagent still working, and the real child of that row would find nothing pending to bind. Both halves are in the one statement so the check and the write cannot be interleaved by the other connection this process holds.
     pub fn bind_agent(&self, run_id: &str, agent_id: &str) -> Result<bool> {
         let n = self
             .conn
             .execute(
-                "UPDATE runs SET agent_id = ?2 WHERE run_id = ?1 AND agent_id IS NULL",
+                "UPDATE runs SET agent_id = ?2
+                  WHERE run_id = ?1 AND agent_id IS NULL
+                    AND NOT EXISTS (SELECT 1 FROM runs o WHERE o.agent_id = ?2)",
                 params![run_id, agent_id],
             )
             .map_err(sql_err)?;

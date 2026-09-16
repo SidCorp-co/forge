@@ -49,7 +49,7 @@ pub struct DeclareArgs {
 
 #[derive(ClapArgs)]
 pub struct CloseArgs {
-    /// The run id `run open` answered.
+    /// The run id `run declare` answered.
     pub run_id: String,
     /// Why it is over — kept on the row for whoever reads it next.
     #[arg(long)]

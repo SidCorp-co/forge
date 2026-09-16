@@ -2849,11 +2849,12 @@
   broke while everything ran, but if the thing handing out the work stopped — killed, crashed, out
   of memory, machine restarted — the work it had handed out stayed marked as being worked on, with
   nobody working on it, and there was nothing to read that could put it back. The note is kept
-  again, and it now also records which helper each piece of work went to and, for each project, the
-  conversation its dispatcher is having, so a dispatcher that is restarted can pick up where it
-  left off instead of starting from nothing. Registries that were written before this change are
-  read and added to as they are, so a machine that has been running for weeks loses nothing and
-  nothing about its existing notes is rewritten or invented.
+  again: the dispatcher says what it is handing out before it hands it out, the note records which
+  helper took it, and work that finishes closes its own note. Each machine also keeps, per project,
+  the conversation its dispatcher is having — kept now so that a dispatcher rebuilt later can be
+  handed it, which is a separate change and is not yet in. Registries that were written before this
+  change are read and added to as they are, so a machine that has been running for weeks loses
+  nothing, and nothing about its existing notes is rewritten or invented.
 
 - **A conversation you archive from the all-projects Conversations page can now be found and
   brought back there.** Every room in that page's sidebar offered to archive it, and archiving

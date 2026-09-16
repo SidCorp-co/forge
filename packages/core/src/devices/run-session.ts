@@ -77,6 +77,31 @@ async function canonicaliseIssueKeys(
  * Open the core-side record of a run session the box is about to spawn.
  */
 // cm:guard `issueId` on the run stays NULL and the group goes to metadata. Naming the first of the group there records one issue for a run carrying several, and the partial unique index does not apply at `kind:'system'`, so nothing downstream would ever catch the substitution.
+/**
+ * The session a device already has open for this box run, if it has one.
+ */
+// cm:guard scoped by DEVICE as well as by the box run id. A run id is minted on the box, so two boxes could in principle answer with the same one; unscoped, one box's retry would be handed the other box's session and would then beat, close and release issues it never held.
+// cm:guard non-terminal ONLY. A retry of a declaration whose session has already been closed or reaped is a genuinely new run of the same work, and handing it the dead session would give it one nothing beats — reaped again ten minutes later, returning issues from under a run that is working.
+async function openSessionForBoxRun(args: {
+  deviceId: string;
+  boxRunId: string;
+}): Promise<RunSession | null> {
+  const [row] = await db
+    .select({ sessionId: agentSessions.id, runId: pipelineRuns.id })
+    .from(agentSessions)
+    .innerJoin(pipelineRuns, eq(pipelineRuns.id, agentSessions.pipelineRunId))
+    .where(
+      and(
+        eq(agentSessions.deviceId, args.deviceId),
+        sql`${agentSessions.metadata}->>'type' = ${RUN_SESSION_TYPE}`,
+        notInArray(agentSessions.status, [...terminalAgentSessionStatuses]),
+        sql`${pipelineRuns.metadata}->>${BOX_RUN_ID_METADATA_KEY} = ${args.boxRunId}`,
+      ),
+    )
+    .limit(1);
+  return row ? { sessionId: row.sessionId, runId: row.runId } : null;
+}
+
 export async function openRunSession(args: {
   deviceId: string;
   projectId: string;
@@ -86,6 +111,26 @@ export async function openRunSession(args: {
 }): Promise<RunSession> {
   if (args.issueKeys.length === 0) {
     throw new Error('openRunSession: a run session must carry at least one issue');
+  }
+  // cm:guard the box run id is an IDEMPOTENCY key and not only a join key. The box writes its row
+  // first and then calls this; if core commits and the answer is lost — a timeout, a dropped
+  // connection, a write-back that failed on the box — the box still has no session id and its next
+  // sweep sends the same declaration again. Minting a second session there leaves the first with
+  // nothing beating it, so core reaps it after ten minutes and `returnIssuesForRun` pulls those
+  // issues back from under the live duplicate: the exact failure this issue exists to end, arriving
+  // from inside the fix (ISS-1050).
+  if (args.boxRunId) {
+    const existing = await openSessionForBoxRun({
+      deviceId: args.deviceId,
+      boxRunId: args.boxRunId,
+    });
+    if (existing) {
+      logger.info(
+        { ...existing, boxRunId: args.boxRunId, deviceId: args.deviceId },
+        'run-session: this box run already has a session, answering with it rather than opening a second',
+      );
+      return existing;
+    }
   }
   const canonical = await canonicaliseIssueKeys(args.projectId, args.issueKeys);
   // cm:guard read the statuses BEFORE the run exists, because the agent this run is about to spawn starts moving them immediately — a read taken afterwards records `in_progress` as the status to return to, and returning an issue to `in_progress` gives it back to nobody.

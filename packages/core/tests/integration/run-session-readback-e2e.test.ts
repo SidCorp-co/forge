@@ -67,6 +67,91 @@ async function anotherBox() {
   return createTestDevice(harness.db, user.id);
 }
 
+describe('a declaration retried after a lost answer', () => {
+  // cm:guard this is the failure this whole issue is about, arriving from inside the fix. The box
+  // writes its ledger row and then calls core; if core commits and the answer never gets back — a
+  // timeout, a dropped connection, a write-back that failed on the box — the box still has no
+  // session id and its next sweep sends the same declaration again. A second session there leaves
+  // the first with nothing beating it, so core reaps it after ten minutes and `returnIssuesForRun`
+  // pulls those issues back from under the live duplicate (ISS-1050).
+  it('is answered with the session core already has, rather than a second one', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const device = await createTestDevice(harness.db, user.id);
+    const declaration = {
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-1', 'ISS-2'],
+      name: 'run-a',
+      boxRunId: '11111111-1111-4111-8111-111111111111',
+    };
+
+    const first = await mods.openRunSession(declaration);
+    const retry = await mods.openRunSession(declaration);
+
+    expect(retry).toEqual(first);
+    const counted = (await harness.db.execute(
+      sql`SELECT count(*)::int AS n FROM agent_sessions WHERE device_id = ${device.id}`,
+    )) as unknown as { n: number }[];
+    expect(
+      counted[0]?.n,
+      'a retried declaration must leave exactly one session, not one per attempt',
+    ).toBe(1);
+  });
+
+  // cm:guard scoped by DEVICE as well, because a run id is minted on the box: unscoped, one box's
+  // retry would be handed another box's session and would then beat, close and release issues it
+  // never held.
+  it('does not hand one box the session another box opened under the same run id', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const deviceA = await createTestDevice(harness.db, user.id);
+    const deviceB = await createTestDevice(harness.db, user.id);
+    const boxRunId = '22222222-2222-4222-8222-222222222222';
+
+    const a = await mods.openRunSession({
+      deviceId: deviceA.id,
+      projectId: project.id,
+      issueKeys: ['ISS-1'],
+      name: 'run-a',
+      boxRunId,
+    });
+    const b = await mods.openRunSession({
+      deviceId: deviceB.id,
+      projectId: project.id,
+      issueKeys: ['ISS-2'],
+      name: 'run-b',
+      boxRunId,
+    });
+
+    expect(b.sessionId).not.toBe(a.sessionId);
+  });
+
+  // cm:guard a retry whose earlier session has already been closed or reaped is a genuinely NEW run
+  // of the same work. Handing it the dead session would give it one nothing beats — reaped again
+  // ten minutes later, returning issues from under a run that is working.
+  it('opens a fresh session when the one that box run had is already terminal', async () => {
+    const user = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, user.id);
+    const device = await createTestDevice(harness.db, user.id);
+    const declaration = {
+      deviceId: device.id,
+      projectId: project.id,
+      issueKeys: ['ISS-1'],
+      name: 'run-a',
+      boxRunId: '33333333-3333-4333-8333-333333333333',
+    };
+
+    const first = await mods.openRunSession(declaration);
+    await harness.db.execute(
+      sql`UPDATE agent_sessions SET status = 'failed' WHERE id = ${first.sessionId}`,
+    );
+    const second = await mods.openRunSession(declaration);
+
+    expect(second.sessionId).not.toBe(first.sessionId);
+  });
+});
+
 describe('the session-terminal read-back', () => {
   it('answers false while the row says running, and true once it does not', async () => {
     const { device, session } = await aBoxWithARun(['ISS-1', 'ISS-2']);

@@ -804,6 +804,70 @@ mod tests {
     // cm:guard a master dispatches subagents this box knows nothing about — a search, a review,
     // anything it did not declare — and every one of them reaches this path. None may bind a row
     // and none may end one, and none may fail the hook that carried it.
+    // cm:guard the harness makes no promise that a `SubagentStart` is delivered once, and this is
+    // what a replay costs if nothing refuses it: the replayed child binds the row its master
+    // declared for the NEXT subagent, its own `SubagentStop` then ends a run whose subagent is
+    // still working, and the real child of that row finds nothing pending to bind (ISS-1050
+    // criterion 1).
+    #[test]
+    fn a_replayed_start_from_a_child_already_bound_never_takes_the_next_row() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+            .job_id
+            .unwrap();
+        let start = crate::daemon::agent_activity::Event::SubagentStarted;
+        bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+        let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
+            .job_id
+            .unwrap();
+        bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+        let held = ctl.ledger.lock().unwrap();
+        let led = held.as_ref().unwrap();
+        assert_eq!(
+            led.run(&run_a).unwrap().unwrap().agent_id.as_deref(),
+            Some("child-a")
+        );
+        assert!(
+            led.run(&run_b).unwrap().unwrap().agent_id.is_none(),
+            "the row declared for the next subagent must still be waiting for it"
+        );
+        assert_eq!(led.run_for_agent("child-a").unwrap().unwrap().run_id, run_a);
+    }
+
+    // cm:guard an ENDED run still holds its child's name, so a start replayed after that run closed
+    // must not reach into the next row either. The `NOT EXISTS` looks at every run for this reason.
+    #[test]
+    fn a_start_replayed_after_its_own_run_ended_takes_no_other_row() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let run_a = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-a")
+            .job_id
+            .unwrap();
+        let start = crate::daemon::agent_activity::Event::SubagentStarted;
+        bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+        bind_or_release(
+            &ctl,
+            crate::daemon::agent_activity::Event::SubagentStopped,
+            Some("child-a"),
+            "sess-a",
+        );
+        let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
+            .job_id
+            .unwrap();
+        bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+        let held = ctl.ledger.lock().unwrap();
+        assert!(
+            held.as_ref()
+                .unwrap()
+                .run(&run_b)
+                .unwrap()
+                .unwrap()
+                .agent_id
+                .is_none(),
+            "a name already spent on a closed run cannot claim a new one"
+        );
+        let _ = run_a;
+    }
+
     #[test]
     fn a_subagent_answering_to_no_declared_run_binds_nothing_and_ends_nothing() {
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
