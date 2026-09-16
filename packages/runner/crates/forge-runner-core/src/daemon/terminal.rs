@@ -57,6 +57,37 @@ pub fn session_name(prefix: &str, raw: &str) -> String {
     name
 }
 
+/// The config dir this box's session server is keyed on.
+///
+/// One reading, because the socket and the unit are two halves of one identity
+/// and a caller that resolved them separately could temp one and not the other.
+// cm:guard the SINGLE source for both `socket_path` and `session_unit`. Before ISS-1044 the socket was derived here and the unit was a literal, so a test's temp config dir moved the socket and left `systemctl --user stop forge-sessions.service` naming the one real unit hosting every pane on the box: 38 evictions in 12h, measured forge-vm 2026-09-15, each killing every master and agent pane across every project on it.
+fn session_config_dir() -> Option<std::path::PathBuf> {
+    crate::config::Config::path()
+        .ok()
+        .and_then(|p| p.parent().map(std::path::Path::to_path_buf))
+}
+
+/// The config dir with no override in the environment — this box's own.
+///
+/// `Config::path()` answers with whatever `XDG_CONFIG_HOME` points at, so
+/// telling "the box's own" from "a temp one" needs the unoverridden value, and
+/// there is no way to ask `dirs_next` for it without unsetting a process-wide
+/// variable under every other thread.
+// cm:guard this DUPLICATES `dirs_next`'s rule for the platform, which is why `the_unoverridden_dir_is_what_the_box_resolves_with_no_override` pins the two together: the day `dirs_next` changes where it puts a Linux config dir, that test goes red rather than this silently classifying the box's own dir as an override and renaming the live unit out from under the panes.
+fn unoverridden_config_dir() -> Option<std::path::PathBuf> {
+    #[cfg(target_os = "linux")]
+    {
+        dirs_next::home_dir().map(|h| h.join(".config").join("forge-runner"))
+    }
+    // Only Linux has the user manager this unit is placed in, and `dirs_next`
+    // consults no XDG variable elsewhere, so the resolved dir IS the box's own.
+    #[cfg(not(target_os = "linux"))]
+    {
+        dirs_next::config_dir().map(|d| d.join("forge-runner"))
+    }
+}
+
 /// The socket this box's agent sessions live on.
 ///
 /// Derived from `Config::path()` and nothing else, exactly as the control
@@ -65,9 +96,8 @@ pub fn session_name(prefix: &str, raw: &str) -> String {
 /// another's panes.
 // cm:guard a socket of OUR OWN is not tidiness, it is the survival property: on the default socket the runner shares a server with whatever tmux the operator is running, so one `tmux kill-server`, or their last personal session ending, takes every agent on the box with it. Measured forge-vm 2026-09-11: `-L`/`-S` appeared zero times in this crate and 47 agent panes were sitting on the operator's own server.
 pub fn socket_path() -> Option<std::path::PathBuf> {
-    crate::config::Config::path()
-        .ok()
-        .map(|p| p.with_file_name("tmux.sock"))
+    session_config_dir()
+        .map(|d| d.join("tmux.sock"))
         .filter(|p| fits_a_unix_socket(&p.to_string_lossy()))
 }
 
@@ -143,6 +173,27 @@ pub async fn alive(name: &str) -> bool {
 // cm:edge naming -> packages/runner/crates/forge-runner/src/cmd/service.rs — the runner's own unit is `forge-runner*`; this one must NOT share that prefix, or an operator's `systemctl --user stop forge-runner*` takes the sessions this exists to spare.
 const SESSION_UNIT: &str = "forge-sessions";
 
+/// The unit name for the config dir in force, which is what every systemd call
+/// in this module names.
+///
+/// The box's own config dir keeps the bare `SESSION_UNIT`, so nothing about a
+/// real runner changes. Any OTHER config dir — a test's temp dir, a leaked
+/// `/tmp/forge-cred-*` inherited by a stray subprocess — gets a unit of its
+/// own, and can no longer reach the one this box's panes run under.
+// cm:guard no systemd call may name `SESSION_UNIT` directly; `no_systemd_command_names_a_literal_unit` is the gate. That is the whole of ISS-1044: the cold-start test interpolated the const into `systemctl --user stop`, so `cargo test` on a box hosting live sessions stopped the unit every pane was in, then re-placed it bound to the test's temp socket — leaving the live unit holding a socket nothing used and the panes outside its cgroup.
+// cm:guard the SUFFIX is keyed on the config dir and not on the pid, the hostname or a random value: a daemon that restarts must resolve the same unit it placed, or `ensure_server` places a second one beside the first and neither owns the panes.
+fn session_unit() -> String {
+    let (Some(dir), Some(own)) = (session_config_dir(), unoverridden_config_dir()) else {
+        return SESSION_UNIT.to_string();
+    };
+    if dir == own {
+        return SESSION_UNIT.to_string();
+    }
+    use sha2::Digest as _;
+    let digest = sha2::Sha256::digest(dir.to_string_lossy().as_bytes());
+    format!("{SESSION_UNIT}-{}", &hex::encode(digest)[..8])
+}
+
 /// The session the server is started with, so it has one and does not exit.
 // cm:guard named OUTSIDE both `MASTER_PREFIX` and `RUN_PREFIX`, because every reader on this box classifies a session by that prefix and would otherwise adopt the keep-alive as a master with no project.
 const KEEPALIVE: &str = "forge-session-host";
@@ -174,7 +225,8 @@ async fn ensure_server() -> bool {
     match ask_systemd_for_the_server(&sock.to_string_lossy()).await {
         Placement::Accepted if server_answers_within(SERVER_READY_WITHIN).await => {
             tracing::info!(
-                "[terminal] session server running as {SESSION_UNIT}.service — agent panes now outlive a restart of this one"
+                "[terminal] session server running as {}.service — agent panes now outlive a restart of this one",
+                session_unit()
             );
             true
         }
@@ -229,7 +281,7 @@ async fn ask_systemd_for_the_server(sock: &str) -> Placement {
         .args([
             "--user",
             "--unit",
-            SESSION_UNIT,
+            &session_unit(),
             "--service-type=forking",
             "--collect",
             "--quiet",
@@ -264,7 +316,7 @@ async fn ask_systemd_for_the_server(sock: &str) -> Placement {
 // cm:guard `is-active`, never a substring of `systemd-run`'s stderr: losing the race prints `Unit forge-sessions.service already exists`, which is a translated, version-specific sentence — and the thing the caller actually needs to know is whether the unit is coming up, which systemd will answer directly.
 async fn unit_is_running() -> bool {
     Command::new("systemctl")
-        .args(["--user", "is-active", &format!("{SESSION_UNIT}.service")])
+        .args(["--user", "is-active", &format!("{}.service", session_unit())])
         .stdin(Stdio::null())
         .output()
         .await
@@ -494,6 +546,37 @@ mod tests {
     /// Every test below drives ONE server on one socket, so they run one at a time.
     // cm:guard serialised because a cold-start test has to kill that shared server, and `cargo test` runs this module's tests concurrently by default — without the lock it takes the panes the other two tests are mid-assertion on.
     static ONE_AT_A_TIME: tokio::sync::Mutex<()> = tokio::sync::Mutex::const_new(());
+
+    /// Puts `XDG_CONFIG_HOME` back however the test ends, panic included.
+    // cm:guard RAII and never a line at the end of the body. A test that leaves this variable set hands every LATER test in the process a config dir that is not the box's — which is exactly how the 90 `/tmp/forge-cred-*` dirs on forge-vm came to hold `skills-cache`, `mcp` and `master/`, and how `ensure_server` came to place the LIVE unit on a temp socket (ISS-1044). `cred_store`'s own test still restores nothing; that is its bug to fix, and this one refuses to add a second.
+    struct ConfigHome(Option<std::ffi::OsString>);
+
+    impl ConfigHome {
+        fn at(dir: &std::path::Path) -> Self {
+            let before = std::env::var_os("XDG_CONFIG_HOME");
+            std::env::set_var("XDG_CONFIG_HOME", dir);
+            Self(before)
+        }
+
+        fn unset() -> Self {
+            let before = std::env::var_os("XDG_CONFIG_HOME");
+            std::env::remove_var("XDG_CONFIG_HOME");
+            Self(before)
+        }
+
+        fn move_to(&self, dir: &std::path::Path) {
+            std::env::set_var("XDG_CONFIG_HOME", dir);
+        }
+    }
+
+    impl Drop for ConfigHome {
+        fn drop(&mut self) {
+            match self.0.take() {
+                Some(v) => std::env::set_var("XDG_CONFIG_HOME", v),
+                None => std::env::remove_var("XDG_CONFIG_HOME"),
+            }
+        }
+    }
 
     /// Whether this box can place a unit at all; where it cannot, the property does not exist.
     async fn can_place_a_unit() -> bool {

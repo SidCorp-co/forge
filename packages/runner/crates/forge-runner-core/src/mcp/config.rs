@@ -692,4 +692,134 @@ mod tests {
         std::env::remove_var("XDG_CONFIG_HOME");
         std::env::remove_var("FORGE_RUNNER_CRED_STORE");
     }
+
+    fn servers(pairs: &[(&str, &str)]) -> serde_json::Map<String, Value> {
+        pairs
+            .iter()
+            .map(|(name, command)| {
+                (
+                    (*name).to_string(),
+                    serde_json::json!({ "type": "stdio", "command": command }),
+                )
+            })
+            .collect()
+    }
+
+    /// Criterion 9. The file carries rendered integration credentials, so the
+    /// mode and the location are the whole of what keeps them off a shared box.
+    // cm:guard assert the MODE, not just that a file exists. `restrict_perms` is best-effort and silent — a `set_permissions` that failed would leave a world-readable file holding a live epodsystem key, and every other assertion in this module would still pass.
+    #[test]
+    fn the_session_file_is_owner_only_and_lands_only_in_the_directory_it_was_given() {
+        let dir = tmp_mcp_dir("session-perms");
+        let path = write_session_in(&dir, "mowment", &servers(&[("playwright", "npx")]))
+            .unwrap()
+            .expect("servers were declared, so a path is owed");
+
+        assert_eq!(
+            path.file_name().unwrap().to_str().unwrap(),
+            "forge-master-mcp-mowment.json"
+        );
+        assert_eq!(path.parent().unwrap(), dir.as_path());
+
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = std::fs::metadata(&path).unwrap().permissions().mode() & 0o777;
+            assert_eq!(mode, 0o600, "the file carries credentials: {mode:o}");
+        }
+
+        // and to nowhere else: the rename leaves no `.tmp.<pid>` behind either.
+        let left: Vec<String> = std::fs::read_dir(&dir)
+            .unwrap()
+            .flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .collect();
+        assert_eq!(left, vec!["forge-master-mcp-mowment.json".to_string()]);
+
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Criterion 10, first half. The write is unconditional, which is what keeps
+    /// the mtime ahead of `sweep_stale` for a master that runs for days.
+    // cm:guard corrupt the file and call again with the SAME servers. An mtime assertion would need a sleep to beat filesystem granularity and would pass against a version that skipped the write; restoring clobbered bytes cannot.
+    #[test]
+    fn an_unchanged_declaration_still_rewrites_the_file_at_each_start() {
+        let dir = tmp_mcp_dir("session-rewrite");
+        let decl = servers(&[("playwright", "npx")]);
+        let path = write_session_in(&dir, "mowment", &decl).unwrap().unwrap();
+
+        std::fs::write(&path, "{ not json at all").unwrap();
+        let again = write_session_in(&dir, "mowment", &decl).unwrap().unwrap();
+
+        assert_eq!(again, path, "one file per project, at a stable name");
+        let doc: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(doc["mcpServers"]["playwright"]["command"], "npx");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Criterion 10, second half. A project that stops declaring servers must
+    /// not keep configuring its master from a file nothing rewrites.
+    // cm:guard the REMOVAL is the assertion. Returning `None` while leaving the file is the silent half: `pane_argv` would drop the flag, the next `session_matches` would read the stale file, find no match and report every such project as a mis-configured pane forever.
+    #[test]
+    fn a_project_that_resolves_no_servers_has_its_file_removed_and_owed_no_path() {
+        let dir = tmp_mcp_dir("session-empty");
+        let path = write_session_in(&dir, "mowment", &servers(&[("playwright", "npx")]))
+            .unwrap()
+            .unwrap();
+        assert!(path.exists());
+
+        let gone = write_session_in(&dir, "mowment", &serde_json::Map::new()).unwrap();
+        assert!(gone.is_none(), "no servers means no `--mcp-config` flag");
+        assert!(!path.exists(), "the file it would have named must be gone");
+
+        // and removing one that was never there is not an error.
+        assert!(write_session_in(&dir, "never", &serde_json::Map::new())
+            .unwrap()
+            .is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// The comparison a sweep makes against a live pane, in all four shapes.
+    // cm:guard the (no file, nothing declared) corner must read as a MATCH. A pane started with no `--mcp-config` for a project that declares nothing is correctly configured; reading it as a mismatch would print the `tmux kill-session` remedy for every project on the fleet that never wanted a server.
+    #[test]
+    fn a_pane_matches_only_when_the_file_says_what_core_says_now() {
+        let dir = tmp_mcp_dir("session-match");
+        let decl = servers(&[("playwright", "npx")]);
+        let none = serde_json::Map::new();
+
+        assert!(session_matches_in(&dir, "mowment", &none));
+        assert!(!session_matches_in(&dir, "mowment", &decl));
+
+        write_session_in(&dir, "mowment", &decl).unwrap();
+        assert!(session_matches_in(&dir, "mowment", &decl));
+        assert!(!session_matches_in(&dir, "mowment", &none));
+        assert!(!session_matches_in(
+            &dir,
+            "mowment",
+            &servers(&[("playwright", "npx"), ("epodsystem", "node")])
+        ));
+        assert!(!session_matches_in(
+            &dir,
+            "mowment",
+            &servers(&[("playwright", "bunx")])
+        ));
+
+        // a different project is a different file and is unaffected
+        assert!(session_matches_in(&dir, "forge-dev", &none));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// A pane whose file was swept out from under it reads as stale rather than
+    /// as matching, which is what turns criterion 5's report on.
+    #[test]
+    fn a_file_swept_off_disk_leaves_a_declaring_project_reading_as_stale() {
+        let dir = tmp_mcp_dir("session-swept");
+        let decl = servers(&[("playwright", "npx")]);
+        let path = write_session_in(&dir, "mowment", &decl).unwrap().unwrap();
+        std::fs::remove_file(&path).unwrap();
+        assert!(!session_matches_in(&dir, "mowment", &decl));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

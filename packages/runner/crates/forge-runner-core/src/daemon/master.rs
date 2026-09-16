@@ -1188,6 +1188,50 @@ mod tests {
         assert!(masters.get("p1").is_none());
     }
 
+    /// Criterion 5, the half that decides how often it is said. The comparison
+    /// itself lives in `mcp::config::session_matches` and is tested there; this
+    /// is the gate that keeps a true report from becoming a line every sweep.
+    // cm:guard a pane this process did NOT start must report. `ensure_master` adopts panes across a daemon restart, and those are exactly the panes most likely to predate their project's declaration — a version reading an absent registry entry as "already said" would go permanently silent on the only case the criterion is about.
+    #[test]
+    fn a_stale_pane_is_reported_once_per_process_and_an_adopted_one_is_always_reported() {
+        let masters = Arc::new(Masters::new());
+
+        // Never registered here: an adopted pane, and nothing has spoken for it.
+        assert!(masters.claim_mcp_stale("p-adopted"));
+        assert!(masters.claim_mcp_stale("p-adopted"));
+
+        remember(
+            &masters,
+            "p1",
+            &master_api::MasterSession {
+                session_id: "s1".into(),
+                name: "forge-master-p1".into(),
+                created: true,
+            },
+        );
+        assert!(masters.claim_mcp_stale("p1"), "the first mismatch is news");
+        assert!(
+            !masters.claim_mcp_stale("p1"),
+            "every sweep after is the same news"
+        );
+
+        // One project's silence is not another's.
+        remember(
+            &masters,
+            "p2",
+            &master_api::MasterSession {
+                session_id: "s2".into(),
+                name: "forge-master-p2".into(),
+                created: true,
+            },
+        );
+        assert!(masters.claim_mcp_stale("p2"));
+
+        // The pane matches again, so the NEXT mismatch is worth saying.
+        masters.clear_mcp_stale("p1");
+        assert!(masters.claim_mcp_stale("p1"));
+    }
+
     // cm:guard the policy must arrive VERBATIM and this asserts exactly that. A master briefed with a summary of the owner's instruction is a master following the summariser, and the whole failure ISS-929 fixes is an instruction that reached the pane wrong or not at all.
     // cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — `forge record decision` is the plugin's verb, not this binary's, and the skill is the only place a master is told it exists: dispatch names no recording verb, so dropping it here leaves the decided/asked ratio with a denominator of zero (ISS-964 criteria 1, 2).
     #[test]

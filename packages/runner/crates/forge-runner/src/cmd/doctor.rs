@@ -4,7 +4,7 @@ use clap::Args as ClapArgs;
 use forge_runner_core::auth::cred_store;
 use forge_runner_core::config::Config;
 use forge_runner_core::error::Error;
-use forge_runner_core::transport::{heartbeat, runners, CoreClient};
+use forge_runner_core::transport::{heartbeat, mcp_servers, runners, CoreClient};
 use forge_runner_core::update;
 
 use super::Ctx;
@@ -228,6 +228,8 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
                         }
                     }
                 }
+
+                failed |= mcp_servers_row(&client, &r.project_id, &r.slug).await;
             }
         }
         Ok(Err(Error::Unauthorized)) => {
@@ -247,6 +249,68 @@ async fn online_checks(ctx: &Ctx, cfg: &Config) -> bool {
     failed
 }
 
+/// What this box can actually give a master for one project, as a doctor row.
+///
+/// ISS-1043 rule 5: a declared server must not read as `ok` on the strength of
+/// the declaration. Core is the only party that can say whether a sentinel has
+/// an active integration behind it, so the row asks core and reports what came
+/// back rather than what the project config says.
+///
+/// Returns `true` when the row is a problem.
+// cm:edge contract -> packages/core/src/devices/mcp-servers-routes.ts — `droppedNames` is what makes this row possible; a response folding the dropped names into the map would leave this printing `ok` for exactly the project ISS-1043 was filed from.
+async fn mcp_servers_row(client: &CoreClient, project_id: &str, slug: &str) -> bool {
+    let found = match tokio::time::timeout(ONLINE_TIMEOUT, mcp_servers::fetch(client, project_id))
+        .await
+    {
+        Ok(Ok(found)) => found,
+        Ok(Err(e)) => {
+            println!("✖ mcp          {slug}: could not read the declared MCP servers: {e}");
+            return true;
+        }
+        Err(_) => {
+            println!(
+                "✖ mcp          {slug}: timeout after {}s reading the declared MCP servers",
+                ONLINE_TIMEOUT.as_secs()
+            );
+            return true;
+        }
+    };
+    match mcp_verdict(&found) {
+        None => false,
+        Some((ok, line)) => {
+            println!("{} mcp          {slug}: {line}", if ok { "✔" } else { "✖" });
+            !ok
+        }
+    }
+}
+
+/// The row's text and whether it is a pass, separated from the printing so the
+/// three shapes are testable.
+///
+/// `None` is the SILENT case: a project that declares nothing has nothing to
+/// say, and every project on the fleet but a handful is that one.
+// cm:guard a project with servers this box cannot supply is `✖` even though nothing is broken on the box. The operator reading this is deciding whether work on that project can run here, and ISS-1043 exists because the answer was printed as `ok` for days while every run on `mowment` reached none of its tools.
+fn mcp_verdict(found: &mcp_servers::ProjectMcpServers) -> Option<(bool, String)> {
+    if found.is_empty() {
+        return None;
+    }
+    if !found.dropped_names.is_empty() {
+        return Some((
+            false,
+            format!(
+                "declared but NOT available here: {} — a run on this project gets none of their tools{}",
+                found.dropped_names.join(", "),
+                if found.resolved_names.is_empty() {
+                    String::new()
+                } else {
+                    format!(" (available: {})", found.resolved_names.join(", "))
+                }
+            ),
+        ));
+    }
+    Some((true, format!("{} available", found.resolved_names.join(", "))))
+}
+
 /// Returns `true` when the binary is on PATH.
 fn check_bin(bin: &str, label: &str) -> bool {
     match which::which(bin) {
@@ -258,5 +322,54 @@ fn check_bin(bin: &str, label: &str) -> bool {
             println!("✖ {label:<12} `{bin}` not found on PATH");
             false
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn found(resolved: &[&str], dropped: &[&str]) -> mcp_servers::ProjectMcpServers {
+        mcp_servers::ProjectMcpServers {
+            mcp_servers: resolved
+                .iter()
+                .map(|n| ((*n).to_string(), serde_json::json!({ "type": "stdio" })))
+                .collect(),
+            resolved_names: resolved.iter().map(|n| (*n).to_string()).collect(),
+            dropped_names: dropped.iter().map(|n| (*n).to_string()).collect(),
+        }
+    }
+
+    // cm:guard this is criterion 12 and the whole of ISS-1043's rule 5. A version returning `Some((true, ..))` here reads as `✔ mcp` for the project the issue was filed from, which is the state that went unnoticed for days.
+    #[test]
+    fn a_declared_server_this_box_cannot_supply_is_a_problem_and_is_named() {
+        let (ok, line) = mcp_verdict(&found(&[], &["epodsystem"])).expect("a row is owed");
+        assert!(!ok, "a server that cannot be supplied is not a pass: {line}");
+        assert!(line.contains("epodsystem"), "{line}");
+        assert!(line.contains("NOT available"), "{line}");
+    }
+
+    /// Partly-supplied is still a problem, and the row says both halves so the
+    /// operator can tell which work is possible here.
+    #[test]
+    fn a_project_with_one_server_supplied_and_one_not_reports_the_problem_and_both_names() {
+        let (ok, line) =
+            mcp_verdict(&found(&["playwright"], &["epodsystem"])).expect("a row is owed");
+        assert!(!ok, "{line}");
+        assert!(line.contains("epodsystem"), "{line}");
+        assert!(line.contains("playwright"), "{line}");
+    }
+
+    #[test]
+    fn a_project_whose_declarations_all_resolved_reads_as_a_pass_naming_them() {
+        let (ok, line) = mcp_verdict(&found(&["playwright"], &[])).expect("a row is owed");
+        assert!(ok, "{line}");
+        assert!(line.contains("playwright"), "{line}");
+    }
+
+    // cm:guard the absent case prints NOTHING. Every project on this fleet but a handful declares no servers, and a reassuring `✔ mcp  none declared` row per project is noise an operator learns to skip past — including on the project where it later matters.
+    #[test]
+    fn a_project_that_declares_nothing_gets_no_row_at_all() {
+        assert!(mcp_verdict(&mcp_servers::ProjectMcpServers::default()).is_none());
     }
 }
