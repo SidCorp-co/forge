@@ -1,7 +1,6 @@
 import { INTEGRATIONS_QUEUE_NAME } from '../jobs/queue-name.js';
 import { logger } from '../logger.js';
 import { boss } from '../queue/boss.js';
-import { coolifyAdapter } from './coolify/adapter.js';
 import {
   applyDeploySettlement,
   type CoolifyConfirmJob,
@@ -12,10 +11,17 @@ import {
   probeHealth,
   runCoolifyHealthGate,
 } from './coolify/health-gate.js';
-import type { CoolifyConfig, CoolifySecrets } from './coolify/types.js';
+import { dispatchThrough } from './registry.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
 
-export interface CoolifyDispatchJob {
+/**
+ * One outbound dispatch, on whichever provider the binding names.
+ *
+ * `jobKind` keeps Coolify's name although the job is no longer Coolify's alone (ISS-1085): the
+ * string is a pg-boss payload field, and renaming it would strand every job already in flight when
+ * the change deploys. It is renamed in a later change, once no `coolify.dispatch` job is queued.
+ */
+export interface OutboundDispatchJob {
   jobKind: 'coolify.dispatch';
   /** Active binding to dispatch on (== old project_integration id for backfilled rows). */
   bindingId: string;
@@ -24,6 +30,16 @@ export interface CoolifyDispatchJob {
   issueId: string | null;
   eventName: string;
   requestId?: string;
+  /**
+   * The exact request to dispatch, where the caller has one to replay.
+   *
+   * A RETRY sets this from the failed delivery's own recorded payload, which is what makes the
+   * retry a replay: a Sentry status update names a target label and a status that
+   * `{ runId, issueId, stages }` cannot carry, so rebuilding the payload would re-dispatch a
+   * different request under the same button. Absent — every release-path enqueue, and every job
+   * queued before this landed — the payload is built the way it always was.
+   */
+  payload?: Record<string, unknown>;
 }
 
 let workerId: string | null = null;
@@ -44,14 +60,14 @@ export async function registerIntegrationsWorker(): Promise<void> {
       const entries = Array.isArray(arg) ? arg : [arg];
       for (const entry of entries) {
         const data = entry?.data as
-          | CoolifyDispatchJob
+          | OutboundDispatchJob
           | CoolifyConfirmJob
           | CoolifyHealthGateJob
           | undefined;
         if (!data) continue;
         try {
           if (data.jobKind === 'coolify.dispatch') {
-            await runCoolifyDispatch(data);
+            await runOutboundDispatch(data);
           } else if (data.jobKind === 'coolify.confirm') {
             const outcome = await runCoolifyConfirm(data);
             if (outcome.settled) {
@@ -100,12 +116,21 @@ function healthGateDeps(data: CoolifyHealthGateJob) {
   };
 }
 
-async function runCoolifyDispatch(data: CoolifyDispatchJob): Promise<void> {
+/**
+ * Dispatch one outbound job through the binding's OWN provider.
+ *
+ * It called `coolifyAdapter.dispatchOutbound` directly until ISS-1085, which was right only while
+ * Coolify was the one provider that dispatched: with Sentry dispatching too, the delivery log's
+ * Retry button on a failed Sentry delivery would have handed that delivery to Coolify's client and
+ * called it a deploy.
+ */
+// cm:edge lockstep -> packages/core/src/integrations/registry.ts — `dispatchThrough` is the one place the refusal for a provider implementing no outbound call is worded, and asking it is what stops this worker naming a provider
+async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
   const binding = await findBindingById(data.bindingId);
   if (!binding?.active) {
     logger.warn(
       { bindingId: data.bindingId },
-      'coolify dispatch worker: binding missing or inactive — dropping job',
+      'integrations dispatch worker: binding missing or inactive — dropping job',
     );
     return;
   }
@@ -113,14 +138,14 @@ async function runCoolifyDispatch(data: CoolifyDispatchJob): Promise<void> {
   if (!connection?.active) {
     logger.warn(
       { bindingId: data.bindingId, connectionId: binding.connectionId },
-      'coolify dispatch worker: connection missing or inactive (breaker open?) — dropping job',
+      'integrations dispatch worker: connection missing or inactive (breaker open?) — dropping job',
     );
     return;
   }
-  const ctx = buildContextFromBinding<CoolifyConfig, CoolifySecrets>({ binding, connection });
-  await coolifyAdapter.dispatchOutbound(ctx, {
+  const ctx = buildContextFromBinding({ binding, connection });
+  await dispatchThrough(binding.provider, ctx, {
     eventName: data.eventName,
-    payload: { runId: data.runId, issueId: data.issueId, stages: ctx.stages },
+    payload: data.payload ?? { runId: data.runId, issueId: data.issueId, stages: ctx.stages },
     ...(data.requestId ? { requestId: data.requestId } : {}),
     runId: data.runId,
   });
@@ -133,8 +158,8 @@ export interface EnqueueOptions {
   retryDelay?: number;
 }
 
-export async function enqueueCoolifyDispatch(
-  job: CoolifyDispatchJob,
+export async function enqueueOutboundDispatch(
+  job: OutboundDispatchJob,
   opts: EnqueueOptions = {},
 ): Promise<string> {
   // biome-ignore lint/suspicious/noExplicitAny: pg-boss send signature varies

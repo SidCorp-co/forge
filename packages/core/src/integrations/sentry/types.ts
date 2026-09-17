@@ -44,3 +44,47 @@ export interface SentrySecrets extends Record<string, unknown> {
   /** ISO-8601 timestamp; if past, `previousAuthToken` is ignored. */
   previousTokenExpiresAt?: string;
 }
+
+/**
+ * The four values Sentry's issue-update endpoint accepts for `status`.
+ *
+ * `resolvedInNextRelease` is the one this loop leans on and it is NOT a synonym for `resolved`
+ * (ISS-1085): a Forge issue closes carrying `mergedCommitSha`, which says the fix is merged and
+ * says nothing about it serving. Marking such an issue `resolved` would be contradicted by the very
+ * next event off the still-running release and read as a false regression.
+ */
+export const SENTRY_ISSUE_STATUSES = [
+  'resolved',
+  'resolvedInNextRelease',
+  'ignored',
+  'unresolved',
+] as const;
+export type SentryIssueStatus = (typeof SENTRY_ISSUE_STATUSES)[number];
+
+/**
+ * What core keeps of one Sentry issue.
+ *
+ * Split on purpose: everything above `title` is structural — an id, a count, a timestamp, an
+ * enum — and is safe to render or compare. The last three are text a Sentry EVENT carried, which
+ * is usually text some user typed into the app that crashed.
+ */
+// cm:guard the three free-text fields are already char-stripped by `sanitizeUntrusted` on the way in, which removes invisible/bidi smuggling and unwraps HTML comments — it does NOT frame them as data. The projection that renders them to an agent is a Forge issue filed by `sentry/intake.ts` (slice 3), and the frame is applied THERE-ward rather than at the write: `prompt/user.ts` frames `issue.title` and `issue.description` for the pipeline prompt and `mcp/tools/forge-issues.ts:serialize` frames both for the MCP single-issue projection. Do NOT store a frame with the text — `markUntrusted` runs `stripFrameTokens` over its own input, so a stored frame is destroyed by the projection frame and the text ends up bare. The one agent-facing projection that does not frame is `serializeListRow`, by the priced decision in its own `cm:why` (the token cap), recorded at `docs/proposals/an-mcp-list-title-is-char-stripped-and-not-framed.md`.
+export interface SentryIssueDetail {
+  id: string;
+  shortId: string | null;
+  status: string | null;
+  substatus: string | null;
+  level: string | null;
+  count: number | null;
+  userCount: number | null;
+  firstSeen: string | null;
+  lastSeen: string | null;
+  permalink: string | null;
+  projectSlug: string | null;
+  /** Free text from the event. */
+  title: string | null;
+  /** Free text from the event. */
+  culprit: string | null;
+  /** Free text from the event — `metadata.value`, typically the exception message. */
+  metadataValue: string | null;
+}

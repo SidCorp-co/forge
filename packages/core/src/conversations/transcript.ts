@@ -59,7 +59,7 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       ...(reply.messageId ? { id: reply.messageId } : {}),
       ...(reply.blocks && reply.blocks.length > 0 ? { blocks: reply.blocks } : {}),
       authorUserId: await handleForProject(reply.conversationId, reply.projectId),
-      // cm:guard the transport's id for the REPLY goes on the row as `externalId`, and not only inside the proof: a person who later quotes or replies to this message names it by that id, and the address check reads it back through an index the proof's jsonb cannot carry. Rows written before ISS-1087 are backfilled from the proof by migration 0265.
+      // cm:guard the transport's id for the REPLY goes on the row as `externalId`, and not only inside the proof: a person who later quotes or replies to this message names it by that id, and the address check reads it back through an index the proof's jsonb cannot carry. Rows written before ISS-1087 are backfilled from the proof by migration 0272.
       externalId: reply.receipt.messageId,
       deliveryProof: reply.deliveryKey
         ? {

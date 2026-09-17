@@ -163,7 +163,7 @@ describe('the reply column and the handle’s own ids', () => {
       ],
     });
     const migration = readFileSync(
-      new URL('../../drizzle/migrations/0265_room_presence_and_reply_to.sql', import.meta.url),
+      new URL('../../drizzle/migrations/0272_room_presence_and_reply_to.sql', import.meta.url),
       'utf8',
     );
     const backfill = migration
