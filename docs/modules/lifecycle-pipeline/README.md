@@ -31,6 +31,7 @@ flowchart LR
 | The run session a box opens over a group of issues | `core/src/devices/run-session.ts`, `core/src/devices/run-session-reaper.ts` |
 | What that box says it is running, read by anyone off it | `core/src/devices/run-ledger.ts`, `packages/runner/crates/forge-runner-core/src/transport/session_ledger.rs` |
 | Release gate and batches | `core/src/release-batch/`, `core/src/issues/release-gate-hold.ts` |
+| A batch nobody opened, and the roster it gives back | `core/src/release-batch/unstarted-recovery.ts`, driven from the sweeper tick |
 | Branch resolution | `core/src/branches/`, `core/src/git/` |
 | Cron-fired work | `core/src/schedules/`, `schema.ts:scheduleKinds` |
 | UI | web `features/pipeline/`, `automation/`, `schedules/` |
@@ -85,6 +86,17 @@ so the figure has one home and this points at it (ISS-976).
   group of issues, and closes on three marks it read back — the session went terminal, the worktree
   left disk, and each issue's lease came back. A declaration by an agent sets none of them.
   Drawn in [`../../flows/lifecycle-pipeline.html`](../../flows/lifecycle-pipeline.html).
+- **A batch nobody opens gives its roster back, and says so.** A `release_batch` job is minted into
+  the pool with a whole roster of issues moved to `releasing` behind it. Until ISS-1080 nothing on
+  any box read that pool, so the job sat `queued` with `gateReason: null` and the roster waited at
+  `releasing` for ever — the shape `VISION: state-never-lies` exists to forbid. Two halves answer it
+  and both are needed: `queued-gates.ts` names `release_label_missing` so a job no box can take
+  stops reading as healthy, and `release-batch/unstarted-recovery.ts` bounds the wait — past the
+  deadline the job is cancelled, every issue the run recorded no promotion for goes back to the
+  project's release gate status with `release_batch_run_id` cleared, and a pipeline wedge names the
+  batch. The wedge is not decoration: `recoverStrandedReleasing` writes a comment only when given an
+  `actorUserId` and a sweep has none, so without it the roster moves in silence. A batch already
+  `dispatched`, `held`, or whose run recorded a promotion is never touched.
 - **A park no master picks up is not representable.**
   `core/src/issues/autonomous-park.ts` rewrites at write time to the only two statuses the driver
   reads: `reopen` → `open` for **any** actor, and `waiting` → `needs_info` for an **agent** only. A
