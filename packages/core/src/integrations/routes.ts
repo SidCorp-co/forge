@@ -447,14 +447,10 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
   return c.json({ items: rows });
 });
 
-// Re-dispatch a failed outbound delivery. Async by design: we re-enqueue the
-// SAME outbound path the original used (enqueueOutboundDispatch → worker →
-// coolifyAdapter.dispatchOutbound) with a FRESH requestId, so the worker/adapter
-// records the new delivery row. The route must NOT pre-record it — the
-// (binding_id, request_id) partial unique index would collide. Outbound
-// deliveries are Coolify-only today (postman/epodsystem are MCP-injection with
-// no outbound), so the `direction==='outbound'` guard scopes retry correctly
-// without per-provider branching.
+// Re-dispatch a failed outbound delivery. Async by design: we re-enqueue the SAME outbound path
+// the original used (enqueueOutboundDispatch → worker → dispatchThrough → that binding's own
+// adapter) with a FRESH requestId, so the worker/adapter records the new delivery row. The route
+// must NOT pre-record it — the (binding_id, request_id) partial unique index would collide.
 integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/retry', async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');

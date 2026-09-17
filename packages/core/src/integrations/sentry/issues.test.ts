@@ -133,10 +133,11 @@ describe('setSentryIssueStatus — criteria 5 and 6', () => {
       status: 'resolvedInNextRelease',
     });
 
-    expect(calls).toHaveLength(1);
-    expect(calls[0]?.url).toBe(ISSUE_URL);
-    expect(calls[0]?.init.method).toBe('PUT');
-    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ status: 'resolvedInNextRelease' });
+    // A read confines the write to the named target before the write happens; the PUT is the
+    // second call and the only one carrying a body.
+    expect(calls.map((c) => c.init.method)).toEqual(['GET', 'PUT']);
+    expect(calls[1]?.url).toBe(ISSUE_URL);
+    expect(JSON.parse(String(calls[1]?.init.body))).toEqual({ status: 'resolvedInNextRelease' });
     expect(issue.status).toBe('resolvedInNextRelease');
   });
 
@@ -206,6 +207,51 @@ describe('target refusals — criteria 7, 8 and 9', () => {
     await expect(
       readSentryIssue(buildCtx({ authToken: 'sntryu_current' }, []), { issueId: '4411' }),
     ).rejects.toThrow('sentry: this binding declares no targets');
+  });
+});
+
+describe('the target must actually hold the issue — criterion 17', () => {
+  // forge-core and forge-web both sit under the `canawan` org on forge-dev, so BOTH labels build
+  // the identical issue URL. Without this check the label would be decorative and a status set
+  // under the wrong label would resolve the other project's issue, silently.
+  it('refuses a read whose issue belongs to another target of the same organization', async () => {
+    answerOnce(sentryBody({ project: { slug: 'forge-web' } }));
+    await expect(
+      readSentryIssue(buildCtx(), { issueId: '4411', targetLabel: 'forge-core' }),
+    ).rejects.toThrow(
+      'sentry: issue 4411 belongs to project forge-web, and target "forge-core" is scoped to forge-core',
+    );
+  });
+
+  it('refuses the status set BEFORE the write, so no wrong-project issue is resolved', async () => {
+    const calls = answerOnce(sentryBody({ project: { slug: 'forge-web' } }));
+    await expect(
+      setSentryIssueStatus(buildCtx(), {
+        issueId: '4411',
+        targetLabel: 'forge-core',
+        status: 'resolvedInNextRelease',
+      }),
+    ).rejects.toThrow('belongs to project forge-web');
+    expect(calls.map((c) => c.init.method)).toEqual(['GET']);
+    expect(deliveryPatch().status).toBe('failed');
+  });
+
+  it('refuses when Sentry names no project at all, rather than assuming the target', async () => {
+    answerOnce(sentryBody({ project: {} }));
+    await expect(
+      readSentryIssue(buildCtx(), { issueId: '4411', targetLabel: 'forge-core' }),
+    ).rejects.toThrow(/names no project — this call cannot be confined to that target/);
+  });
+
+  it('checks nothing where the target declares no projectSlug, which is org-wide by declaration', async () => {
+    answerOnce(sentryBody({ project: { slug: 'anything-at-all' } }));
+    const { issue } = await readSentryIssue(
+      buildCtx({ authToken: 'sntryu_current' }, [
+        { label: 'org-wide', organizationSlug: 'canawan' },
+      ]),
+      { issueId: '4411' },
+    );
+    expect(issue.projectSlug).toBe('anything-at-all');
   });
 });
 
@@ -309,6 +355,39 @@ describe('the credential and the health it earns — criteria 11, 12 and 13', ()
     );
   });
 
+  it('leaves error when the call never produced an HTTP status at all', async () => {
+    globalThis.fetch = vi.fn(async () => {
+      throw new TypeError('fetch failed: ENOTFOUND logs.canawan.com');
+    }) as unknown as typeof fetch;
+
+    await expect(
+      readSentryIssue(buildCtx(), { issueId: '4411', targetLabel: 'forge-core' }),
+    ).rejects.toThrow(/ENOTFOUND/);
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'error' }),
+    );
+    expect(deliveryPatch().status).toBe('failed');
+  });
+
+  it('leaves error when a 200 carries a body that is not JSON', async () => {
+    globalThis.fetch = vi.fn(
+      async () =>
+        new Response('<html>a proxy error page</html>', {
+          status: 200,
+          headers: { 'content-type': 'application/json' },
+        }),
+    ) as unknown as typeof fetch;
+
+    await expect(
+      readSentryIssue(buildCtx(), { issueId: '4411', targetLabel: 'forge-core' }),
+    ).rejects.toThrow(/^sentry: GET /);
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'error' }),
+    );
+  });
+
   it('refuses before any call when the connection holds no auth token', async () => {
     const calls = answerOnce(sentryBody());
     await expect(
@@ -369,8 +448,8 @@ describe('dispatchSentryOutbound — criterion 3', () => {
       eventName: 'sentry.issue.set-status',
       payload: { issueId: '4411', targetLabel: 'forge-core', status: 'ignored' },
     });
-    expect(calls[0]?.init.method).toBe('PUT');
-    expect(JSON.parse(String(calls[0]?.init.body))).toEqual({ status: 'ignored' });
+    expect(calls.map((c) => c.init.method)).toEqual(['GET', 'PUT']);
+    expect(JSON.parse(String(calls[1]?.init.body))).toEqual({ status: 'ignored' });
   });
 
   it('refuses an event it does not implement, naming it and the two it does', async () => {

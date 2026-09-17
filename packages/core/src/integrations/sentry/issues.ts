@@ -25,7 +25,7 @@ import type {
   OutboundDispatchResult,
 } from '../types.js';
 import { sentryIssueUrl } from './endpoints.js';
-import { resolveSentryTarget } from './targets.js';
+import { type ResolvedSentryTarget, resolveSentryTarget } from './targets.js';
 import {
   SENTRY_ISSUE_STATUSES,
   type SentryConfig,
@@ -131,14 +131,27 @@ async function callSentry(
   if (!authToken) {
     throw new Error('sentry: this connection holds no auth token, so no call can be made');
   }
-  let res = await attempt(url, authToken, method, body);
-  if (
-    res.kind === 'refused' &&
-    res.status === 401 &&
-    ctx.secrets.previousAuthToken &&
-    isPreviousCredentialValid(ctx.secrets)
-  ) {
-    res = await attempt(url, ctx.secrets.previousAuthToken, method, body);
+  let res: Attempt;
+  try {
+    res = await attempt(url, authToken, method, body);
+    if (
+      res.kind === 'refused' &&
+      res.status === 401 &&
+      ctx.secrets.previousAuthToken &&
+      isPreviousCredentialValid(ctx.secrets)
+    ) {
+      res = await attempt(url, ctx.secrets.previousAuthToken, method, body);
+    }
+  } catch (err) {
+    // A timeout, a DNS failure or a body that is not JSON never produced an HTTP status, so it
+    // never reached the verdict below — and a connection left green through a call that could not
+    // be made is the contradiction this function exists to prevent.
+    await updateConnection(ctx.connectionId, {
+      lastHealthStatus: 'error',
+      lastHealthAt: new Date(),
+    });
+    const reason = err instanceof Error ? err.message : 'unknown error';
+    throw new Error(`sentry: ${method} ${url} — ${reason}`);
   }
   await updateConnection(ctx.connectionId, {
     lastHealthStatus: res.kind === 'ok' ? 'ok' : res.health,
@@ -232,6 +245,36 @@ function assertIssueId(issueId: unknown): string {
   );
 }
 
+/**
+ * The issue Sentry answered with belongs to the target that was named, or the call is refused.
+ *
+ * A Sentry issue is addressed under its ORGANIZATION and nothing narrower, so two targets sharing
+ * one org — which is exactly what forge-dev has, `forge-core` and `forge-web` both under `canawan`
+ * — build the identical URL. Without this the label would be decorative: naming `forge-core` while
+ * addressing a web issue would resolve, read, and on the write path RESOLVE THE WRONG PROJECT'S
+ * issue, silently (ISS-1085).
+ *
+ * A target declaring no `projectSlug` is org-wide by the operator's own declaration, so there is
+ * nothing to confine it to and nothing to check.
+ */
+function assertTargetHoldsIssue(
+  issue: SentryIssueDetail,
+  target: ResolvedSentryTarget,
+  issueId: string,
+): void {
+  if (!target.projectSlug) return;
+  if (issue.projectSlug === null) {
+    throw new Error(
+      `sentry: target "${target.label}" is scoped to project ${target.projectSlug}, and Sentry's answer for issue ${issueId} names no project — this call cannot be confined to that target`,
+    );
+  }
+  if (issue.projectSlug !== target.projectSlug) {
+    throw new Error(
+      `sentry: issue ${issueId} belongs to project ${issue.projectSlug}, and target "${target.label}" is scoped to ${target.projectSlug}`,
+    );
+  }
+}
+
 function assertStatus(status: unknown): SentryIssueStatus {
   if (typeof status === 'string' && (SENTRY_ISSUE_STATUSES as readonly string[]).includes(status)) {
     return status as SentryIssueStatus;
@@ -257,6 +300,7 @@ export async function readSentryIssue(
       const target = resolveSentryTarget(ctx.config, input.targetLabel);
       const url = sentryIssueUrl(ctx.config.host, target.organizationSlug, issueId);
       const issue = projectIssue(await callSentry(ctx, url, 'GET'), issueId);
+      assertTargetHoldsIssue(issue, target, issueId);
       return {
         value: issue,
         response: issue,
@@ -283,6 +327,13 @@ export async function setSentryIssueStatus(
       const status = assertStatus(input.status);
       const target = resolveSentryTarget(ctx.config, input.targetLabel);
       const url = sentryIssueUrl(ctx.config.host, target.organizationSlug, issueId);
+      // Read BEFORE writing: the confinement check needs the issue's project, and a wrong-project
+      // write cannot be taken back by discovering it afterwards.
+      assertTargetHoldsIssue(
+        projectIssue(await callSentry(ctx, url, 'GET'), issueId),
+        target,
+        issueId,
+      );
       const issue = projectIssue(await callSentry(ctx, url, 'PUT', { status }), issueId);
       return {
         value: issue,

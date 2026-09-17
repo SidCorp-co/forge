@@ -112,7 +112,10 @@ describe('resolveSentryTarget (ISS-1085)', () => {
 
   it('carries the environment through when the target declares one', () => {
     expect(
-      resolveSentryTarget({ host: 'h', targets: [{ ...targets[0], environment: 'prod' }] }),
+      resolveSentryTarget({
+        host: 'h',
+        targets: [{ label: 'forge-core', organizationSlug: 'canawan', environment: 'prod' }],
+      }),
     ).toMatchObject({ environment: 'prod' });
   });
 
