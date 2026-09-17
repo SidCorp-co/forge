@@ -131,17 +131,27 @@ export function providerImplementsDispatch(provider: string): boolean {
  * THE one place the refusal is worded. Six of seven adapters used to carry their own throwing stub
  * for the same sentence, which is what made `dispatchOutbound` look implemented to the type system
  * on every provider that did not implement it (ISS-1062).
+ *
+ * `provider` is a bare string because the callers that most need this door read it off a database
+ * row — `integration_bindings.provider` is `text` — and a cast at the call site would turn an
+ * unknown value into a silently wrong lookup. Here it is refused by name, against the set this
+ * deployment declares (ISS-1085).
  */
 export async function dispatchThrough(
-  provider: IntegrationProvider,
+  provider: string,
   ctx: AdapterContext,
   input: OutboundDispatchInput,
 ): Promise<OutboundDispatchResult> {
   const decl = getIntegration(provider);
-  const dispatch = decl?.adapter?.dispatchOutbound;
-  if (!decl || !dispatch) {
+  if (!decl) {
     throw new Error(
-      `${provider} implements no outbound dispatch — it declares canDispatch: ${decl?.capabilities.canDispatch === true}, and nothing in core can make an API call on its behalf`,
+      `${provider} is not a provider this deployment declares — declared: ${providerNames().join(', ')}`,
+    );
+  }
+  const dispatch = decl.adapter?.dispatchOutbound;
+  if (!dispatch) {
+    throw new Error(
+      `${provider} implements no outbound dispatch — it declares canDispatch: ${decl.capabilities.canDispatch === true}, and nothing in core can make an API call on its behalf`,
     );
   }
   return dispatch(ctx, input);
