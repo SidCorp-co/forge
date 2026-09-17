@@ -8,12 +8,13 @@
 // each, and every other `forge-*` draws the same block, so a build meeting a
 // component it has never heard of is ordinary rather than broken (ISS-967).
 
-import type { BodyNode } from "@forge/contracts";
+import type { BodyNode, ForgeRecordView, RecordLens } from "@forge/contracts";
 import { createElement, type ReactNode } from "react";
 import { cn } from "@/lib/utils/cn";
 import { BodyImage, BodyLink } from "./body-link";
 import { CODE_BLOCK_CLASS, CODE_INLINE_CLASS, COMPACT_TAG_CLASS } from "./body-tags";
 import { Markdown } from "./markdown";
+import { RecordCard } from "./record-card";
 import { MermaidDiagram } from "./mermaid";
 
 const VOID_TAGS = new Set(["br", "hr", "img"]);
@@ -56,6 +57,15 @@ export interface BodyViewProps {
   /** The stored bytes. Rendered as markdown whenever `nodes` is absent. */
   body: string;
   format?: string | null;
+  /**
+   * The `forge-record` block core parsed out of this body, where it carries one.
+   */
+  // cm:guard this arrives PARSED and is never derived from `body` here: the same parse screened the
+  // comment at the write door, and a second one in the browser could draw a record the door judged
+  // differently. `at` and `to` are where the block sat, so the prose around it keeps its place.
+  record?: ForgeRecordView | null;
+  /** Which reading this project is drawn under; `product` where unknown. */
+  recordLens?: RecordLens;
   /** The tree core parsed, from `descriptionNodes` or a comment's `nodes`. */
   nodes?: BodyNode[] | null;
   /**
@@ -140,13 +150,48 @@ function ComponentNode({ node, ctx }: { node: BodyNode; ctx: RenderCtx }) {
   );
 }
 
+/**
+ * A markdown body split at the record's own extent: prose, card, prose.
+ */
+// cm:guard the prose either side is drawn by `<Markdown>` in its own place rather than concatenated
+// around the card, and the card sits exactly where the fence sat. Moving it to the end would
+// silently reorder what the writer wrote, which is the same rule `ComponentNode` states for slots.
+function BodyWithRecord({
+  body,
+  record,
+  lens,
+  className,
+}: {
+  body: string;
+  record: ForgeRecordView;
+  lens: RecordLens;
+  className?: string;
+}): ReactNode {
+  const before = body.slice(0, record.at);
+  const after = body.slice(record.to);
+  return (
+    <div className={cn("min-w-0 max-w-full", className)}>
+      {before.trim() ? <Markdown>{before}</Markdown> : null}
+      <RecordCard record={record} lens={lens} />
+      {after.trim() ? <Markdown>{after}</Markdown> : null}
+    </div>
+  );
+}
+
 export function BodyView({
   body,
   format,
   nodes,
+  record,
+  recordLens = "product",
   renderArtifact,
   className,
 }: BodyViewProps): ReactNode {
+  if (format !== "html" && record) {
+    return (
+      <BodyWithRecord body={body} record={record} lens={recordLens} className={className} />
+    );
+  }
   if (format !== "html") return <Markdown className={className}>{body}</Markdown>;
   if (!nodes) {
     // cm:guard a component body with no tree is a row THIS build's scanner could not read, and it must never fall through to `<Markdown>` — react-markdown escapes the tags and the screen shows literal `<forge-…>`, which is the exact defect ISS-967 exists to remove.

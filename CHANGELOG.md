@@ -112,6 +112,21 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+
+- **An agent's report on an issue is now read as the fields it is made of, not as one block of
+  text.** When an agent records what it found, it writes a structured block — a finding, the
+  evidence behind it, where it looked. Until now that block reached you exactly as it was typed:
+  one grey slab in the middle of the comment, with the sentence that mattered as likely to be in
+  the last third as the first. Three separate findings could sit inside a single field and nothing
+  would tell you there was more than one. The report is now drawn as a card: a headline you read
+  first, then one labelled row per field, and a field that has run long folded away with a note
+  saying how far over it ran — never shortened, so nothing you might have wanted is gone. Whether
+  those long rows start open or closed follows the way your organisation reads: a team with someone
+  technical on it sees them open, a team without sees the short version first and opens what it
+  wants. Agents are also held to a length per field now, and one that overruns is told which field
+  and by how much, so what gets shortened is the part that outgrew its job rather than whatever was
+  easiest to cut.
+
 - **Six tables that only ever grew now have a retention rule and a nightly sweep.** The operator
   sets each window, and the sweep reports what it removed and kept. The runner Activity
   panel says how long that history lasts.

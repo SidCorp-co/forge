@@ -80,6 +80,7 @@ export { Menu, type MenuProps, type MenuItem } from "./patterns/menu";
 export { RouteProgress } from "./patterns/route-progress";
 export { Markdown, type MarkdownProps } from "./patterns/markdown";
 export { BodyView, type BodyViewProps } from "./patterns/body-view";
+export { RecordCard, type RecordCardProps } from "./patterns/record-card";
 export { PreviewPane, type PreviewPaneProps } from "./patterns/preview-pane";
 export { HtmlArtifact, type HtmlArtifactProps } from "./patterns/html-artifact";
 export { MermaidDiagram } from "./patterns/mermaid";
