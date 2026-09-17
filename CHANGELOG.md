@@ -113,6 +113,9 @@
 
 
 ### Added
+- **You can see the assistant think.** A turn now shows how long the model paused before answering,
+  and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
+
 - **The assistant's replies now stream.** Your question is confirmed as soon as it is filed, the
   answer appears as it is written, and each tool call shows as its own card — kept when the room is
   reopened.

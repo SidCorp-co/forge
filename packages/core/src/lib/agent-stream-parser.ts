@@ -38,10 +38,14 @@ export interface AgentTodo {
 }
 
 export interface ContentBlock {
-  type: 'text' | 'tool' | 'todos';
+  type: 'text' | 'tool' | 'todos' | 'thinking';
   text?: string | undefined;
   toolCall?: ToolCall | undefined;
   todos?: AgentTodo[] | undefined;
+  /** A `thinking` block's reasoning text, where the wire carried any (ISS-1079). */
+  thinking?: string | undefined;
+  /** How long a `thinking` block was open: its first delta to the event that closed it. */
+  durationMs?: number | undefined;
 }
 
 export interface AgentMessage {
@@ -62,10 +66,15 @@ export interface AgentMessage {
   /** Set by `buildSessionFromEvents` on a tool_result message before merging;
    *  mergeMessages moves it onto the toolCall. */
   durationMs?: number | undefined;
-  /** Assistant `thinking` blocks in this message. Count only: measured on
-   *  forge-beta 2026-08-23, all 12,899 thinking blocks in 3 days carry an EMPTY
-   *  `thinking` string (signature only), so there is no text to render — only
-   *  the fact that the model paused here. */
+  /** Pauses in this message that carry no readable text — only the fact that
+   *  the model paused. Written by the Claude Code derive below and by nothing
+   *  else: measured on forge-beta 2026-08-23, all 12,899 thinking blocks in 3
+   *  days carried an EMPTY `thinking` string (signature only), so it counts them
+   *  and emits no block. The assistant providers do not write this field: a
+   *  pause of theirs is a `thinking` block in `blocks`, with the reasoning text
+   *  where there was any and no text where the provider encrypted it. That is
+   *  because a count has no column on the durable row and a block does
+   *  (ISS-1079). */
   thinkingCount?: number | undefined;
   /** Present on the `result` message only. */
   totals?: RunTotals | undefined;
@@ -141,7 +150,11 @@ function parseAssistantMessage(
   let thinkingCount = 0;
 
   for (const c of content) {
-    if (c.type === 'thinking') {
+    // cm:guard `redacted_thinking` counts too, and did not until ISS-1079: it fell through every
+    // branch here and was counted as nothing, so a turn the model spent entirely on encrypted
+    // reasoning read as a turn it spent on nothing. Both shapes are a pause with no readable text,
+    // which is exactly what this counter means.
+    if (c.type === 'thinking' || c.type === 'redacted_thinking') {
       thinkingCount += 1;
     } else if (c.type === 'text') {
       const text = c.text ?? '';

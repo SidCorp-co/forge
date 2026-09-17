@@ -75,10 +75,61 @@ export function createTranscriptAccumulator(
   let entry: AgentMessage | null = null;
   /** Index of the text block still being appended to, or -1 when a tool closed it. */
   let openText = -1;
+  /** Index of the thinking block still being appended to, or -1 when anything else closed it. */
+  let openThinking = -1;
+  /** When the open thinking block took its first delta, for the duration stamped on the close. */
+  let thinkingOpenedAt = 0;
 
   const ensure = (): AgentMessage => {
     entry ??= { id, type: 'assistant', timestamp: now(), blocks: [], toolCalls: [] };
     return entry;
+  };
+
+  // cm:why the close STAMPS a duration rather than leaving the block bare: the collapsed line a
+  // reader sees says how long the model thought, and the only clock that knows is this one. A block
+  // no event ever closed keeps no duration, and the line then reads "Thought" — which is also what
+  // the count-only form reads, so the renderer needs no third case.
+  const closeThinking = (): void => {
+    if (openThinking < 0 || !entry) return;
+    const b = (entry.blocks as ContentBlock[])[openThinking] as ContentBlock;
+    b.durationMs = now() - thinkingOpenedAt;
+    openThinking = -1;
+  };
+
+  const applyReasoning = (ev: { text: string; redacted?: true }): void => {
+    const e = ensure();
+    // cm:guard an ENCRYPTED block becomes a thinking block with NO text, and is never opened for
+    // appending. The thing a reader must not be given is an expander onto nothing, and what opens
+    // onto nothing is a block holding the EMPTY STRING — a block holding no text at all is exactly
+    // what "the model paused and left nothing readable" means, and the renderer draws it as a line
+    // with no control. It is stored this way rather than counted on the entry because the durable
+    // row holds `content` and `blocks` and has no column for a count: the count form was true while
+    // the socket carried the live entry and gone the moment the stored row replaced it
+    // (ISS-1079, whole-set read F1).
+    if (ev.redacted === true) {
+      closeThinking();
+      (e.blocks as ContentBlock[]).push({ type: 'thinking' });
+      openText = -1;
+      return;
+    }
+    if (ev.text.length === 0) return;
+    const blocks = e.blocks as ContentBlock[];
+    // cm:why reasoning COALESCES exactly as prose does, and for the same reason the chunk guard
+    // below states: this wire streams reasoning token by token, and a block per delta would put a
+    // block per token in the column.
+    if (openThinking >= 0) {
+      const b = blocks[openThinking] as ContentBlock;
+      b.thinking = (b.thinking ?? '') + ev.text;
+      return;
+    }
+    blocks.push({ type: 'thinking', thinking: ev.text });
+    openThinking = blocks.length - 1;
+    thinkingOpenedAt = now();
+    // cm:why the open TEXT block is closed here, exactly as `applyToolCall` closes it: a model that
+    // says something, thinks, then says more has three blocks in that order, and leaving the text
+    // block open would join the two halves of the prose into one block sitting BEFORE the thinking
+    // — the same order loss that guard names, one block type along.
+    openText = -1;
   };
 
   const applyChunk = (text: string): void => {
@@ -156,6 +207,14 @@ export function createTranscriptAccumulator(
 
   return {
     apply(event: ChatStreamEvent): void {
+      if (event.type === 'reasoning') {
+        applyReasoning(event);
+        return;
+      }
+      // cm:guard the open thinking block is closed by the first event of ANY other kind — `done`
+      // and `usage` included — rather than by prose alone: a turn that thought and then said
+      // nothing still owes its duration, and the close is what stamps it.
+      closeThinking();
       if (event.type === 'chunk') applyChunk(event.text);
       else if (event.type === 'tool_call') applyToolCall(event);
       else if (event.type === 'tool_result') applyToolResult(event);

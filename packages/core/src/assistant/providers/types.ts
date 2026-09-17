@@ -1,5 +1,5 @@
 /**
- * v1 EPIC 1 (ISS-270) — Chat provider adapter contract. The registry holds factories keyed by short id; `app_config.chat_provider_id` selects one and env supplies its credentials. Keep this file dependency-free — adapter modules import the types, never the reverse. ISS-604 — the contract IS the OpenAI Chat Completions wire, so an adapter for any compatible endpoint maps 1:1 and does no translation; tool calling is a live path, where a request carries `tools`, the stream emits `tool_call`, and the caller feeds `role:'tool'` results back for the next round.
+ * v1 EPIC 1 (ISS-270) — Chat provider adapter contract. The registry holds factories keyed by short id; `app_config.chat_provider_id` selects one and env supplies its credentials. Keep this file dependency-free — adapter modules import the types, never the reverse. ISS-604 — the contract is the OpenAI Chat Completions wire, so an adapter for any compatible endpoint maps 1:1 and does no translation; tool calling is a live path, where a request carries `tools`, the stream emits `tool_call`, and the caller feeds `role:'tool'` results back for the next round. TWO members of the event union are not events any endpoint's own wire defines, and each says so where it is declared: `tool_result`, which the loop yields after executing the call itself, and `reasoning` (ISS-1079), which both wires carry under different names — `thinking_delta` on the Messages wire, `delta.reasoning_content` on a Completions-compatible one. Neither is a translation: an adapter still maps what its endpoint sent, and what it sends for reasoning simply has no name in the base Completions schema.
  */
 
 export type ChatRole = 'system' | 'user' | 'assistant' | 'tool';
@@ -50,6 +50,12 @@ export type ChatStreamEvent =
   // so the 1:1 OpenAI-compat claim above still holds. Grep `providers/` before adding a third
   // field here — if an adapter ever emits this event, these two become a contract it must fill.
   | { type: 'tool_result'; id: string; result: unknown; isError?: boolean; durationMs?: number }
+  // cm:guard `reasoning` is the second member no endpoint's own wire names as an event (see the
+  // header). `text` is what the model actually thought; `redacted` marks a block the provider
+  // encrypted, which carries NO readable text — the accumulator records it as a thinking block with
+  // no text rather than one holding the empty string, so a reader gets the fact of the pause and
+  // never an expander that opens onto nothing (ISS-1079).
+  | { type: 'reasoning'; text: string; redacted?: true }
   | { type: 'usage'; usage: ChatStreamUsage }
   | { type: 'done' }
   | { type: 'error'; message: string };
