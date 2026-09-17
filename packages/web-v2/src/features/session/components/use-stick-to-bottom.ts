@@ -52,11 +52,25 @@ export function useStickToBottom({
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [conversationKey, ready]);
 
+  const lastStreamedRef = useRef(streamedChars);
+
   // Growth / stream: keep pinned to latest only when already near the bottom.
   useEffect(() => {
-    if (atBottomRef.current) {
-      bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
-    }
+    const streamed = streamedChars !== lastStreamedRef.current;
+    lastStreamedRef.current = streamedChars;
+    if (!atBottomRef.current) return;
+    // cm:guard a STREAM step scrolls instantly and a new item still scrolls smoothly, because a
+    // smooth scroll feeds back into the guard above it. `scrollIntoView({behavior:"smooth"})`
+    // animates through every position between here and the bottom, and each one fires `onScroll`;
+    // the moment one of them reads more than 80px short, `atBottomRef` goes false with nobody
+    // having touched the page, and the next frame is ignored. It recovers only if the animation
+    // reaches its target, and a turn that keeps growing moves the target out from under it — so a
+    // reader following a reply that grows by more than the threshold in one frame, a tall tool card
+    // most of all, stops being followed for the rest of the turn and never asked to. An instant
+    // scroll fires one event, at the destination, which re-affirms the guard instead of tripping
+    // it. A new item keeps the animation it has had since ISS-728: it happens once per row, not
+    // eight times a second (ISS-1078 review F6, whole-set consult).
+    bottomRef.current?.scrollIntoView(streamed ? { block: "end" } : { behavior: "smooth", block: "end" });
   }, [itemCount, live, streamedChars]);
 
   return { scrollRef, bottomRef, onScroll };

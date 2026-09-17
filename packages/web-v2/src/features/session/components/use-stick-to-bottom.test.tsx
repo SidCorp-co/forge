@@ -58,7 +58,31 @@ describe("a thread following a turn that is still being written", () => {
     });
 
     expect(scrolls.length).toBeGreaterThan(before);
-    expect(scrolls.at(-1)).toMatchObject({ behavior: "smooth", block: "end" });
+    expect(scrolls.at(-1)).toEqual({ block: "end" });
+  });
+
+  // cm:guard a stream step asks for NO animation, and this assertion is the whole of what jsdom can
+  // hold of the reason. A smooth scroll animates through every position on the way down and each
+  // one fires `onScroll`; one reading more than 80px short sets `atBottomRef` false with nobody
+  // having touched the page, and a turn that keeps growing moves the animation's target out from
+  // under it, so the recovery never comes and the reader is dropped mid-turn. The feedback itself
+  // is not reproducible here — `scrollIntoView` is a mock and jsdom animates nothing — so what goes
+  // red is the request: this line fails the moment the stream path asks for `behavior: "smooth"`
+  // again. The property it stands in for needs a real browser: start pinned, append a card taller
+  // than the threshold, then append text every 120ms during the scroll, and assert the viewport is
+  // still at the latest content once it settles (ISS-1078 review F6, whole-set consult).
+  it("asks for no animation on a stream step, and keeps one for a new item", () => {
+    const { rerender } = render(<Harness itemCount={3} live streamedChars={10} />);
+
+    act(() => {
+      rerender(<Harness itemCount={3} live streamedChars={48} />);
+    });
+    expect(scrolls.at(-1)).toEqual({ block: "end" });
+
+    act(() => {
+      rerender(<Harness itemCount={4} live streamedChars={48} />);
+    });
+    expect(scrolls.at(-1)).toEqual({ behavior: "smooth", block: "end" });
   });
 
   // cm:guard the growth dependency must not defeat the near-bottom guard: a reader who scrolled up
