@@ -17,6 +17,7 @@ const { MANAGED_META_SKILLS } = await import('../skills/effective.js');
 
 import { registeredCells } from './cells.js';
 import { DOORS } from './doors.js';
+import { RECORD_RULE_IDS } from './record-screen.js';
 
 const SKILL_NAME = 'forge-message-shape';
 const DOC = readFileSync(
@@ -24,7 +25,17 @@ const DOC = readFileSync(
   'utf8',
 );
 
-const ruleIds = [...new Set(registeredCells().flatMap((c) => c.rules.map((r) => r.id)))].sort();
+// cm:guard the record rules are pinned here beside the cell rules and for the identical reason: a
+// rule the document does not name is one an agent meets for the first time in a refusal, and
+// `field-budget` is read at the same door as the four cell rules above it without belonging to a
+// cell — being reached by the parse rather than by a segment is no reason to be undocumented
+// (ISS-1089).
+const ruleIds = [
+  ...new Set([
+    ...registeredCells().flatMap((c) => c.rules.map((r) => r.id)),
+    ...RECORD_RULE_IDS,
+  ]),
+].sort();
 
 describe('the shape document', () => {
   // cm:guard the assertion is on MANAGED_META_SKILLS and not on a route, because that constant IS the delivery decision: it is what `resolveManagedMetaPrompts` reads and what keeps the document off the device disk sync. A copy on disk would be the version an agent reads while core refuses it by a newer one.

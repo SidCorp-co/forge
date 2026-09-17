@@ -12,6 +12,12 @@ import { db, type Tx } from '../db/client.js';
 import { organizationMembers, projects, users } from '../db/schema.js';
 import { ROLE_PRODUCT, ROLE_TECHNICAL } from './audiences.js';
 import type { Audience, MessageRefusal, MessageVerdict } from './contract.js';
+
+/** Which reading a project's own members are screened and drawn under. */
+// cm:edge contract -> packages/contracts/src/forge-record.ts — `RecordLens` is declared there too,
+// for the browser, and re-declared here because core may not value-import that package
+// (`contracts-runtime-boundary.test.ts`). `forge-record-wire.test.ts` holds the two level.
+export type RecordLens = 'product' | 'technical';
 import {
   FORGE_RECORD_FIELD_BUDGET,
   type ForgeRecord,
@@ -59,7 +65,7 @@ export function budgetRefusals(record: ForgeRecord | null): MessageRefusal[] {
 // everywhere else it is read (`prompt/system.ts:buildChatRoleSection` folds no-lens and explicit
 // `product` into one branch), so a project with no lens set, no org, or a read that threw is read
 // by the stricter of the two cells rather than by the looser one.
-export async function projectLeadAudience(projectId: string, executor?: Tx): Promise<Audience> {
+export async function projectLens(projectId: string, executor?: Tx): Promise<RecordLens> {
   const handle = executor ?? db;
   try {
     const [project] = await handle
@@ -67,17 +73,31 @@ export async function projectLeadAudience(projectId: string, executor?: Tx): Pro
       .from(projects)
       .where(eq(projects.id, projectId))
       .limit(1);
-    if (!project?.orgId) return ROLE_PRODUCT;
+    if (!project?.orgId) return 'product';
     const rows = await handle
       .select({ lenses: organizationMembers.lenses })
       .from(organizationMembers)
       .innerJoin(users, eq(users.id, organizationMembers.userId))
       .where(and(eq(organizationMembers.orgId, project.orgId), eq(users.kind, 'human')));
     const technical = rows.some((r) => ((r.lenses ?? []) as string[]).includes('technical'));
-    return technical ? ROLE_TECHNICAL : ROLE_PRODUCT;
+    return technical ? 'technical' : 'product';
   } catch {
-    return ROLE_PRODUCT;
+    return 'product';
   }
+}
+
+/** The cell a lens names. The one place the two vocabularies meet. */
+export const audienceForLens = (lens: RecordLens): Audience =>
+  lens === 'technical' ? ROLE_TECHNICAL : ROLE_PRODUCT;
+
+/**
+ * The same resolution the card is drawn under, as the audience a lead is read at.
+ */
+// cm:guard the screen and the card resolve the lens ONCE each from `projectLens` and never from
+// two different questions: a project whose lead is screened as product while its records are drawn
+// as technical is the screen and the reader disagreeing about who is reading (ISS-1089).
+export async function projectLeadAudience(projectId: string, executor?: Tx): Promise<Audience> {
+  return audienceForLens(await projectLens(projectId, executor));
 }
 
 /**
