@@ -80,7 +80,6 @@ const rocketChatAdapterMethods: IntegrationAdapterMethods<RocketChatConfig, Rock
     }
   },
 
-  dispatchOutbound: () => unsupported('dispatchOutbound'),
   handleInbound: () => unsupported('handleInbound'),
 };
 

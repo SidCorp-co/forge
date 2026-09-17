@@ -103,6 +103,7 @@ for (const decl of listIntegrations()) {
     capabilities: !caps ? undefined : {
       types: Object.fromEntries(BOOLEANS.map((k) => [k, typeOf(caps[k])])),
       canDeploy: caps.canDeploy,
+      canDispatch: caps.canDispatch,
       agentPath: {
         present: path !== undefined && path !== null,
         kind: path && path.kind,
@@ -111,6 +112,10 @@ for (const decl of listIntegrations()) {
         justification: path && path.justification,
         buildEntryType: path && typeOf(path.buildEntry),
       },
+    },
+    adapter: {
+      present: Boolean(decl && decl.adapter),
+      dispatchOutboundType: typeOf(decl && decl.adapter && decl.adapter.dispatchOutbound),
     },
     schemas: !decl || !decl.schemas ? { present: false } : {
       present: true,

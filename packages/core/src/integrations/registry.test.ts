@@ -22,16 +22,22 @@ import {
   __resetRegistry,
   deployCapableProviders,
   directMcpIntegrations,
+  dispatchThrough,
   getAdapter,
   getIntegration,
   isRegistered,
   listIntegrations,
   mcpServerNameFor,
   providerCanDeploy,
+  providerImplementsDispatch,
   providerNames,
   registerIntegration,
 } from './registry.js';
-import { INTEGRATION_PROVIDERS, type IntegrationDeclaration } from './types.js';
+import {
+  INTEGRATION_PROVIDERS,
+  type IntegrationDeclaration,
+  type IntegrationProvider,
+} from './types.js';
 
 beforeEach(() => {
   __resetRegistry();
@@ -120,6 +126,37 @@ describe('derived questions, asked instead of naming a provider', () => {
     for (const decl of listIntegrations()) {
       if (decl.capabilities.agentPath.kind === 'direct-mcp') continue;
       expect(direct).not.toContain(decl);
+    }
+  });
+});
+
+describe('dispatchThrough — the one place an unimplemented dispatch is refused', () => {
+  // cm:guard ISS-1062's rule is that a capability is DECLARED or it is ABSENT, never declared and
+  // unimplemented. Six of seven adapters used to carry a throwing stub for this sentence, which made
+  // `dispatchOutbound` look implemented to the type system on every provider that implements none —
+  // so the refusal moved here and this is the only assertion that it still happens, and still names
+  // the provider a caller has to act on.
+  const ctx = () => ({}) as unknown as Parameters<typeof dispatchThrough>[1];
+  const input = () => ({}) as unknown as Parameters<typeof dispatchThrough>[2];
+
+  it('refuses a provider that implements none, naming it and what it declares', async () => {
+    expect(providerImplementsDispatch('google')).toBe(false);
+    await expect(dispatchThrough('google', ctx(), input())).rejects.toThrow(
+      /google implements no outbound dispatch.*canDispatch: false/s,
+    );
+  });
+
+  it('refuses a name no declaration carries rather than answering undefined', async () => {
+    await expect(
+      dispatchThrough('not-a-provider' as IntegrationProvider, ctx(), input()),
+    ).rejects.toThrow(/not-a-provider implements no outbound dispatch/);
+  });
+
+  it('reports dispatch as implemented exactly where the adapter carries the method', () => {
+    for (const decl of listIntegrations()) {
+      expect(providerImplementsDispatch(decl.provider), decl.provider).toBe(
+        typeof decl.adapter?.dispatchOutbound === 'function',
+      );
     }
   });
 });

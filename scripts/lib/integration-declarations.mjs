@@ -17,6 +17,15 @@
 //     runner box is a decision that gets written down. A `direct-mcp` arm with
 //     an empty justification fails NAMING the provider, because the whole value
 //     of the field is that somebody had to type a sentence.
+//   · `canDispatch` must agree with whether the adapter implements
+//     `dispatchOutbound`. ISS-1062's rule is that a capability is declared or it
+//     is absent, never declared and unimplemented — and until it landed nothing
+//     defended that: `canDispatch` had no reader anywhere in core, six of seven
+//     adapters satisfied a required `dispatchOutbound` with a stub that threw by
+//     name, and github could have declared `true` beside its throwing stub with
+//     all 22 verify checks still green. Both directions fail, because a provider
+//     that implements a dispatch it does not declare is a capability no generic
+//     path will ever reach for.
 //   · `canDeploy` must agree with `@forge/contracts/deploy-capability`. Core's
 //     production image does not carry contracts and a browser build cannot
 //     resolve core, so the deploy capability is written on both sides of the
@@ -115,6 +124,27 @@ function agentPathReasons(path) {
   return reasons;
 }
 
+// cm:guard BOTH directions, and the second one is not pedantry: a provider whose adapter implements
+// `dispatchOutbound` while declaring `canDispatch: false` has a capability every generic path is told
+// it does not have, which is how a face ships and reaches nobody.
+function dispatchReasons(decl) {
+  const declared = decl.capabilities?.canDispatch;
+  if (typeof declared !== 'boolean') return [];
+  const implemented = decl.adapter?.dispatchOutboundType === 'function';
+  if (declared === implemented) return [];
+  return declared
+    ? [
+        'capabilities.canDispatch is true and the adapter implements no `dispatchOutbound`. A ' +
+          'capability is declared or it is absent, never declared and unimplemented — implement it, ' +
+          'or declare canDispatch: false until the change that does',
+      ]
+    : [
+        'capabilities.canDispatch is false and the adapter implements `dispatchOutbound`. Every ' +
+          'generic path is being told this provider cannot dispatch while it can, so the method is ' +
+          'reachable by nothing — declare canDispatch: true, or delete the method',
+      ];
+}
+
 function schemaReasons(schemas) {
   if (!schemas?.present) return ['declares no `schemas` object'];
   const reasons = [];
@@ -171,6 +201,7 @@ export function declarationFaults(report) {
     }
     reasons.push(
       ...capabilityReasons(decl.capabilities),
+      ...dispatchReasons(decl),
       ...schemaReasons(decl.schemas),
       ...deployReasons(decl, contractCanDeploy),
     );

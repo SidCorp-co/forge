@@ -140,10 +140,6 @@ const postmanAdapterMethods: IntegrationAdapterMethods<PostmanConfig, PostmanSec
     }
   },
 
-  async dispatchOutbound() {
-    return notSupported('dispatchOutbound');
-  },
-
   async handleInbound() {
     return notSupported('handleInbound');
   },

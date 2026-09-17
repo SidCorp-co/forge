@@ -11,6 +11,7 @@ import * as journalSchema from './schema-journal.js';
 import * as memoryChunksSchema from './schema-memory-chunks.js';
 import * as memoryRevisionsSchema from './schema-memory-revisions.js';
 import * as questionsSchema from './schema-questions.js';
+import * as repoProjectionSchema from './schema-repo-projection.js';
 import * as rocketchatSchema from './schema-rocketchat.js';
 import * as runLedgerSchema from './schema-run-ledger.js';
 import * as sessionInboxSchema from './schema-session-inbox.js';
@@ -32,6 +33,7 @@ const schema = {
   ...runLedgerSchema,
   ...speakerLinksSchema,
   ...unauditedTransitionsSchema,
+  ...repoProjectionSchema,
 };
 
 let queryCount = 0;

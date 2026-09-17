@@ -8,9 +8,12 @@
  */
 
 import type {
+  AdapterContext,
   IntegrationAdapterMethods,
   IntegrationDeclaration,
   IntegrationProvider,
+  OutboundDispatchInput,
+  OutboundDispatchResult,
 } from './types.js';
 
 const registry = new Map<IntegrationProvider, IntegrationDeclaration>();
@@ -90,13 +93,7 @@ export function deployCapableProviders(): IntegrationProvider[] {
     .map((d) => d.provider);
 }
 
-// cm:guard this reads a DECLARED capability and is NOT a release-gate discriminator — the direction
-// is what keeps it on the right side of `release-batch/gate.ts`'s prohibition: that guard forbids
-// provider identity from making a binding a release target, and this only refuses one that could
-// never be. A sentry binding is not a place code goes on ANY project, so `role: 'deploy'` on it is a
-// caller error to be named rather than a declaration to store. What it must never become is a rule
-// saying an epodsystem binding IS a deploy — that is the project owner's declaration, and forge-dev
-// carries one purely to hand agents the storefront MCP.
+// cm:guard this reads a DECLARED capability and is NOT a release-gate discriminator — the direction is what keeps it on the right side of `release-batch/gate.ts`'s prohibition: that guard forbids provider identity from making a binding a release target, and this only refuses one that could never be. A sentry binding is not a place code goes on ANY project, so `role: 'deploy'` on it is a caller error to be named rather than a declaration to store. What it must never become is a rule saying an epodsystem binding IS a deploy — that is the project owner's declaration, and forge-dev carries one purely to hand agents the storefront MCP.
 export function providerCanDeploy(provider: string): boolean {
   return getIntegration(provider)?.capabilities.canDeploy === true;
 }
@@ -120,6 +117,34 @@ export function mcpServerNameFor(decl: IntegrationDeclaration, label: string): s
   if (path.kind !== 'direct-mcp') return null;
   if (!decl.capabilities.multiBinding || label === '') return path.serverName;
   return `${path.serverName}_${label.replace(/-/g, '_')}`;
+}
+
+/** Whether this provider's adapter implements core's outbound call. */
+// cm:edge lockstep -> scripts/lib/integration-declarations.mjs — the checker refuses a declaration where this and `capabilities.canDispatch` disagree, so the pair is a gate rather than a promise (ISS-1062)
+export function providerImplementsDispatch(provider: string): boolean {
+  return typeof getIntegration(provider)?.adapter?.dispatchOutbound === 'function';
+}
+
+/**
+ * Dispatch through whichever provider this is, or refuse naming it.
+ *
+ * THE one place the refusal is worded. Six of seven adapters used to carry their own throwing stub
+ * for the same sentence, which is what made `dispatchOutbound` look implemented to the type system
+ * on every provider that did not implement it (ISS-1062).
+ */
+export async function dispatchThrough(
+  provider: IntegrationProvider,
+  ctx: AdapterContext,
+  input: OutboundDispatchInput,
+): Promise<OutboundDispatchResult> {
+  const decl = getIntegration(provider);
+  const dispatch = decl?.adapter?.dispatchOutbound;
+  if (!decl || !dispatch) {
+    throw new Error(
+      `${provider} implements no outbound dispatch — it declares canDispatch: ${decl?.capabilities.canDispatch === true}, and nothing in core can make an API call on its behalf`,
+    );
+  }
+  return dispatch(ctx, input);
 }
 
 /** Test-only — drops every declaration so tests can re-register cleanly. */

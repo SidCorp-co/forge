@@ -1,6 +1,11 @@
 import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, projects } from '../db/schema.js';
+import {
+  applyProjectedEvent,
+  type DeliveryContext,
+  isProjectedEvent,
+} from '../integrations/github/projection-events.js';
 import { applyIntakeGate, finalizeIntake } from '../issues/intake-gate.js';
 import { logger } from '../logger.js';
 
@@ -12,6 +17,16 @@ interface GitHubIssuePayload {
   action?: string;
   issue?: { id?: number; title?: string; body?: string | null };
 }
+
+/**
+ * What one delivery carries, whichever of the five events it is.
+ *
+ * Open on purpose: five event types reach this door and only `issues` has a
+ * shape this file reads. The four the projection owns are typed where they are
+ * read (`integrations/github/projection.ts`), which is the only place that can
+ * say what a `check_run` looks like without this file learning what one is.
+ */
+export type GitHubEventPayload = GitHubIssuePayload & Record<string, unknown>;
 
 async function projectCreatedById(projectId: string): Promise<string | null> {
   const [row] = await db
@@ -89,12 +104,18 @@ async function closeExternalIssue(
 }
 
 export async function handleGitHubEvent(
-  projectId: string,
+  ctx: DeliveryContext,
   eventType: string,
-  payload: GitHubIssuePayload,
+  payload: GitHubEventPayload,
 ): Promise<GitHubAdapterResult> {
+  const projectId = ctx.projectId;
   const action = payload.action ?? 'unknown';
   const key = `${eventType}.${action}`;
+
+  // cm:guard the projection is reached FIRST and returns, so no pull-request, check-run, review or push delivery can fall into the issues mirror below. The two halves answer different questions about different objects and there is no event both should see.
+  if (isProjectedEvent(eventType)) {
+    return { actions: await applyProjectedEvent(ctx, eventType, payload) };
+  }
 
   // System user: fall back to the project creator (`projects.createdBy`,
   // audit-only — see risks in F4 plan).
@@ -121,7 +142,7 @@ export async function handleGitHubEvent(
     }
   }
 
-  // cm:guard a `pull_request` event must NEVER create a Forge issue. It did until 2026-09-06, filing one per opened PR: a PR is a change under review, not a unit of work with a deliverable and an owner, so it fails every admission gate in the `what-is-an-issue` guide and arrives in the backlog owned by nobody. What a PR event is FOR is advancing the issue its branch already belongs to — that mapping lands with the pull-request verbs, and until then falling through to here is the honest answer.
+  // cm:guard a `pull_request` event must NEVER create a Forge issue. It did until 2026-09-06, filing one per opened PR: a PR is a change under review, not a unit of work with a deliverable and an owner, so it fails every admission gate in the `what-is-an-issue` guide and arrives in the backlog owned by nobody. Since ISS-1062 it does not even reach this line — `isProjectedEvent` returns it above into the projection, which writes `repo_pull_requests` and touches no issue at all.
   logger.info({ key, projectId }, 'github-adapter: unhandled event');
   return { actions: 0 };
 }

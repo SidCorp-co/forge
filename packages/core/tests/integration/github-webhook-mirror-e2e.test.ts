@@ -8,6 +8,7 @@
  * they are made against the column.
  */
 
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -27,6 +28,7 @@ describe('handleGitHubEvent E2E', () => {
   let harness: TestDatabase;
   let mods: Mods;
   let projectId: string;
+  let bindingId: string;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -54,7 +56,32 @@ describe('handleGitHubEvent E2E', () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);
     projectId = project.id;
+
+    const connectionId = randomUUID();
+    bindingId = randomUUID();
+    await harness.db.execute(sql`
+      INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
+      VALUES (${connectionId}, 'user', ${owner.id}, 'github', true)
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, active, config)
+      VALUES (${bindingId}, ${connectionId}, ${projectId}, 'github', 'service', ARRAY[]::text[], true, '{}'::jsonb)
+    `);
   });
+
+  // ISS-1062 — the handler takes the delivery's own binding rather than a project id, because the
+  // projection half needs to know WHICH repository the delivery was about and whose credential may
+  // re-read it. The binding here carries an empty config, which is what the forge-dev binding
+  // actually held when this was measured: no owner, no repo, no installation. So the projection
+  // stores what the payload said and re-reads nothing, which is the case below.
+  function evCtx() {
+    return {
+      projectId,
+      bindingId,
+      config: {},
+      secrets: {},
+    };
+  }
 
   async function rows() {
     return (await harness.db.execute(sql`
@@ -68,7 +95,7 @@ describe('handleGitHubEvent E2E', () => {
   }
 
   it('mirrors an opened GitHub issue', async () => {
-    const r = await mods.handleGitHubEvent(projectId, 'issues', {
+    const r = await mods.handleGitHubEvent(evCtx(), 'issues', {
       action: 'opened',
       issue: { id: 7001, title: 'upstream bug', body: 'from GitHub' },
     });
@@ -80,11 +107,11 @@ describe('handleGitHubEvent E2E', () => {
   });
 
   it('closing a mirrored issue leaves merged_at NULL', async () => {
-    await mods.handleGitHubEvent(projectId, 'issues', {
+    await mods.handleGitHubEvent(evCtx(), 'issues', {
       action: 'opened',
       issue: { id: 7002, title: 'wontfix upstream', body: null },
     });
-    const r = await mods.handleGitHubEvent(projectId, 'issues', {
+    const r = await mods.handleGitHubEvent(evCtx(), 'issues', {
       action: 'closed',
       issue: { id: 7002 },
     });
@@ -96,8 +123,35 @@ describe('handleGitHubEvent E2E', () => {
   });
 
   it('an opened pull request creates no issue', async () => {
-    const r = await mods.handleGitHubEvent(projectId, 'pull_request', { action: 'opened' });
+    const r = await mods.handleGitHubEvent(evCtx(), 'pull_request', { action: 'opened' });
     expect(r.actions).toBe(0);
     expect(await rows()).toHaveLength(0);
+  });
+
+  // ISS-1062 — the payload that USED to file an issue per opened PR now carries a head, a base and a
+  // number, so it reaches the projection instead. This asserts the ISSUES table stays empty on the
+  // shape that is no longer inert: the projection writes a row of its own, and a write that leaked
+  // back into the mirror would show up here and nowhere else.
+  it('a full pull_request payload writes a projection row and still no issue', async () => {
+    const r = await mods.handleGitHubEvent(evCtx(), 'pull_request', {
+      action: 'opened',
+      pull_request: {
+        number: 41,
+        title: 'a change under review',
+        state: 'open',
+        updated_at: '2026-09-17T01:00:00Z',
+        head: { ref: 'ISS-9999-nothing', sha: 'a'.repeat(40) },
+        base: { ref: 'main', sha: 'b'.repeat(40) },
+      },
+      repository: { full_name: 'SidCorp-co/forge' },
+    });
+    expect(r.actions).toBe(1);
+    expect(await rows()).toHaveLength(0);
+    const projected = (await harness.db.execute(sql`
+      SELECT number, head_ref, issue_id FROM repo_pull_requests WHERE binding_id = ${bindingId}
+    `)) as unknown as Array<{ number: number; head_ref: string; issue_id: string | null }>;
+    expect(projected).toHaveLength(1);
+    expect(projected[0]?.number).toBe(41);
+    expect(projected[0]?.issue_id).toBeNull();
   });
 });
