@@ -26,7 +26,10 @@ import {
   useConversation,
   useDraftAgentMode,
   useOpenConversation,
+  useAcceptedMessages,
+  useConversationProgress,
   useSendMessage,
+  useWithdrawnDrafts,
 } from "../hooks";
 import { composerRefusal } from "../membership";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
@@ -73,6 +76,11 @@ export function ConversationChat({
   const canWrite = projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
 
   const roomQ = useConversation(resolvedId);
+  // cm:guard both are WRITTEN by `lib/ws/event-router.ts` and fetched by nothing — they are what the
+  // socket puts where this component can read it (ISS-1078).
+  const accepted = useAcceptedMessages(resolvedId);
+  const progress = useConversationProgress(resolvedId);
+  const withdrawn = useWithdrawnDrafts(resolvedId);
   const open = useOpenConversation();
   const send = useSendMessage();
 
@@ -89,6 +97,31 @@ export function ConversationChat({
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
+
+  // cm:guard TWO steps and not one, which is consult F4: the accepted frame carries ids and not the
+  // message, and an already-open room's cache predates the send — so a row dropped on acceptance
+  // leaves the question nowhere until a later delivery, settlement or the POST's own return. It is
+  // marked `sent` here, which costs it its label, and let go of only once the durable row it names is
+  // actually in the room.
+  useEffect(() => {
+    const seen = new Set(messages.map((m) => m.id));
+    setOutbox((o) => {
+      let moved = false;
+      const next = o.flatMap((m) => {
+        const ack = accepted[m.id];
+        if (ack && seen.has(ack.messageId)) {
+          moved = true;
+          return [];
+        }
+        if (ack && m.state !== "sent") {
+          moved = true;
+          return [{ ...m, state: "sent" as const, messageId: ack.messageId }];
+        }
+        return [m];
+      });
+      return moved ? next : o;
+    });
+  }, [accepted, messages]);
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
   const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
   const busy = send.isPending || open.isPending;
@@ -163,7 +196,14 @@ export function ConversationChat({
           conversationId: id,
           content: next.content,
           ...(fresh ? { mode: pick } : {}),
+          // cm:guard the row's OWN id is the token, so `conversation.accepted` comes back naming the
+          // row it belongs to and another tab's acceptance cannot clear this one (ISS-1078).
+          clientToken: next.id,
         });
+        // cm:guard the row is dropped HERE only as a backstop for a socket that never delivered the
+        // accepted frame — by the time this resolves the turn is over, and in the ordinary case the
+        // frame cleared its label a whole model turn ago. The effect below is what usually lets go of
+        // it, once the durable message is in the room's own read (ISS-1078).
         setOutbox((o) => o.filter((m) => m.id !== next.id));
       } catch (err) {
         setOutbox((o) =>
@@ -273,11 +313,18 @@ export function ConversationChat({
               messages={messages}
               windows={windows}
               outbox={outbox}
+              progress={progress}
+              withdrawn={withdrawn}
               agentTurns={agentTurns}
               onRetry={retry}
             />
           )}
-          {busy && (
+          {/* cm:guard silenced while frames are arriving, because this placeholder is the thing they
+              replace: a spinner reading "Agent is working…" under a reply being typed says the turn
+              has produced nothing, directly beneath the words it has produced. It stays for the gap
+              between the send and the first frame, and for an Agent-mode turn, which streams nothing
+              here at all (ISS-1078). */}
+          {busy && !progress && (
             <div className="mt-6">
               <AgentWorking label="Agent is working…" />
             </div>

@@ -10,10 +10,21 @@ import { AttachmentList } from "@/features/issues/components/attachment-list";
 import type { AgentTodo, ConversationItem } from "../types";
 import { ToolCard } from "./tool-card";
 
+/**
+ * The per-turn verbs, all three optional.
+ */
+// cm:guard optional because a conversation has none of them and never will: a run's turns can be
+// edited, regenerated and forked, and an append-only conversation's cannot — `conversation-chat.tsx`
+// states why ISS-1004 left all six run-shaped verbs on the session surface. Before ISS-1078 these
+// were required, so the one other caller would have had to pass three no-op functions to render a
+// thread, and a no-op handler behind a visible button is a control that silently does nothing. The
+// row they live in is rendered only where a handler exists (ISS-1078).
 export interface ConversationActions {
-  onRegenerate: (turnId: string) => void;
-  onFork: (turnId: string) => void;
-  onEditTurn: (turnId: string, content: string, expectedEditedAt: string | null) => void;
+  onRegenerate?: ((turnId: string) => void) | undefined;
+  onFork?: ((turnId: string) => void) | undefined;
+  onEditTurn?:
+    | ((turnId: string, content: string, expectedEditedAt: string | null) => void)
+    | undefined;
 }
 
 interface ConversationProps extends ConversationActions {
@@ -64,12 +75,16 @@ function TodoList({ todos }: { todos: AgentTodo[] }) {
 function TurnActions({ item, busy, onRegenerate, onFork }: { item: ConversationItem; busy?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
   return (
     <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-      <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
-        Regenerate
-      </Button>
-      <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
-        Fork
-      </Button>
+      {onRegenerate && (
+        <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
+          Regenerate
+        </Button>
+      )}
+      {onFork && (
+        <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
+          Fork
+        </Button>
+      )}
     </div>
   );
 }
@@ -98,7 +113,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
                 size="sm"
                 className="min-h-11"
                 disabled={busy || !draft.trim() || draft === item.text}
-                onClick={() => { onEditTurn(item.turnId, draft.trim(), item.editedAt); setEditing(false); }}
+                onClick={() => { onEditTurn?.(item.turnId, draft.trim(), item.editedAt); setEditing(false); }}
               >
                 Save
               </Button>
@@ -113,17 +128,23 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
           <AttachmentList rows={item.attachments} />
         </div>
       )}
-      {!editing && !readOnly && (
+      {!editing && !readOnly && (onEditTurn || onRegenerate || onFork) && (
         <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setDraft(item.text); setEditing(true); }} className="min-h-11">
-            Edit
-          </Button>
-          <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
-            Regenerate
-          </Button>
-          <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
-            Fork
-          </Button>
+          {onEditTurn && (
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setDraft(item.text); setEditing(true); }} className="min-h-11">
+              Edit
+            </Button>
+          )}
+          {onRegenerate && (
+            <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
+              Regenerate
+            </Button>
+          )}
+          {onFork && (
+            <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
+              Fork
+            </Button>
+          )}
         </div>
       )}
     </div>

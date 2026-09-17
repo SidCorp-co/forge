@@ -6,6 +6,11 @@
 // can be truncated and re-dispatched. A conversation is what was said, in order,
 // with a decision beside each thing that was not.
 
+// cm:guard the canonical entry's shape is IMPORTED from `features/session` rather than restated here,
+// which is the whole of ISS-1029's result: one shape, one reader. A local copy of `CanonicalBlock` is
+// the third spelling that issue exists to prevent (ISS-1078).
+import type { CanonicalBlock, MessageEntry } from "@/features/session/types";
+
 export type ConversationAdapter = "web" | "widget" | "rocketchat" | "telegram";
 export type ConversationShape = "direct" | "group";
 export type ConversationMessageRole = "user" | "assistant" | "system";
@@ -75,9 +80,42 @@ export interface ConversationMessage {
   authorUserId: string | null;
   authorLabel: string | null;
   content: string;
+  /**
+   * The ordered canonical blocks of this turn, where it has them.
+   */
+  // cm:guard `GET /api/conversations/:id` has returned these since ISS-1029 — `conversation-routes.ts`
+  // serves the store's rows unprojected — and this type not naming them is what discarded them at the
+  // boundary before any renderer could reach them. `null` is a row written through the text-only door:
+  // every row before ISS-1029, and every reply whose turn produced no blocks. Those render from
+  // `content`, and must keep doing so (ISS-1078).
+  // cm:edge contract -> packages/core/src/conversations/store.ts — the same ordered blocks that module
+  // types as `ContentBlock[] | null`.
+  blocks?: CanonicalBlock[] | null;
   /** Set INSTEAD of text: this turn ran and chose to say nothing. */
   silenceReason: string | null;
   createdAt: string;
+}
+
+/**
+ * A turn in flight, as the socket carries it.
+ */
+// cm:edge contract -> packages/core/src/assistant/conversation-progress.ts — `ConversationProgressFrame`
+// is the other half; `rev` and `replaced` are settled there, and a rename on either side leaves a turn
+// that streams to nowhere.
+export interface ConversationProgressEntry {
+  conversationId: string;
+  /** Monotonic per turn. A frame below the highest already drawn is ignored. */
+  rev: number;
+  /** The growing canonical entry, under the id the settled row will carry. */
+  entry: MessageEntry;
+  /**
+   * Set when the text that went out is NOT the prose these frames streamed.
+   */
+  // cm:guard the draft is DRAWN, marked as withdrawn, rather than swapped out from under the reader:
+  // the door screen judges a whole reply after the turn ends, so streamed prose is unscreened prose and
+  // a refusal replaces it. Showing that silently is the substitution this issue refused; the price and
+  // the condition that ends it are on the `web-chat-reply` row in core's `messaging/doors.ts`.
+  replaced?: { draft: string };
 }
 
 export interface ConversationWindow {
@@ -167,13 +205,29 @@ export interface ConversationDetail extends ConversationRow, ConversationMembers
 // Without a row of its own, pressing send left the text in the box and the thread unchanged for the
 // whole turn, and the question then appeared stamped at the moment the answer did (ISS-1031).
 export interface OutboxMessage {
-  /** Client-minted; never a server id, and never written anywhere. */
+  /**
+   * Client-minted; never a server id, and never written anywhere.
+   */
+  // cm:guard this id is ALSO the `clientToken` the send carries, so `conversation.accepted` comes back
+  // naming the row it belongs to. One id rather than two, because a second one would have to be
+  // matched to this one anyway (ISS-1078).
   id: string;
   content: string;
-  /** `queued` is waiting its turn, `sending` is the request in flight, `failed` kept its words. */
-  state: "queued" | "sending" | "failed";
+  /**
+   * `queued` is waiting its turn, `sending` is the request in flight, `sent` is a durable row the
+   * room's own read has not caught up with yet, `failed` kept its words.
+   */
+  // cm:guard `sent` exists because the send does not RETURN until the agent's turn is over, so between
+  // the server filing the message and the answer arriving there was no state to be in and the row read
+  // "Sending…" for the length of a model turn. It is entered on the accepted frame and left when the
+  // durable message appears in the room — not on the frame, because the frame carries ids and not the
+  // message, and dropping the row there makes the question vanish from a cache that predates the send
+  // (ISS-1078, plan consult F4).
+  state: "queued" | "sending" | "sent" | "failed";
   /** Set on `failed` only — what the send was refused with. */
   error?: string;
+  /** Set on `sent` — the durable row this became, so the thread knows when to let go of it. */
+  messageId?: string;
 }
 
 /** What the thread renders, in the order it renders it. */
@@ -182,6 +236,7 @@ export type ThreadEntry =
   | { kind: "silence"; key: string; decision: SilenceDecision; detail: unknown }
   | { kind: "pending"; key: string }
   | { kind: "agent-turn"; key: string; turn: AgentTurn }
+  | { kind: "progress"; key: string; progress: ConversationProgressEntry }
   | { kind: "outbox"; key: string; item: OutboxMessage };
 
 /**
@@ -224,11 +279,30 @@ export function threadEntries(
   windows: ConversationWindow[],
   outbox: OutboxMessage[] = [],
   agentTurns: AgentTurn[] = [],
+  progress?: ConversationProgressEntry | null,
 ): ThreadEntry[] {
   // cm:guard a `handed-off` window is matched to its TURN by window id, and a window with no turn
   // behind it renders as `pending` rather than as nothing: the pair can be split for as long as the
   // read between them takes, and a gap there is the blank thread this rule exists to remove.
   const turnByWindow = new Map(agentTurns.map((t) => [t.windowId, t]));
+  // cm:guard the frames are dropped once a stored row carries the SAME ENTRY ID, which is the whole of
+  // criterion 11: `conversation.settled` clears the progress key, but `conversation.message` may land
+  // first and write the durable row while the frames are still cached — and the two drawn together are
+  // one answer on the screen twice. Reduced by id and never by text, because two turns that happen to
+  // say the same thing are two turns (ISS-1078).
+  // cm:guard this is also what ends a live turn whose settle frame was never delivered (criterion 16):
+  // the progress key is written by the socket and fetched by nothing, so no refetch can clear it — the
+  // stored row arriving is the only thing that says the turn is over, and this is where it says it.
+  const live =
+    progress && !messages.some((m) => m.id === progress.entry.id) ? progress : null;
+  // cm:guard while a turn is arriving, its own window's "Nobody has answered this yet" is suppressed —
+  // the collector closes the window when the turn ENDS, so a room read mid-turn holds an open window
+  // and would print that line directly above the answer being typed (criterion 15). Only the LAST open
+  // window is silenced: an older one still open is a turn nothing is arriving for, and that line is
+  // exactly what it owes its reader.
+  const arriving = live
+    ? [...windows].filter((w) => !w.closedAt).sort((a, b) => a.lastSeq - b.lastSeq).at(-1)?.id
+    : undefined;
   const bySeq = new Map<number, ConversationWindow[]>();
   for (const w of windows) {
     const at = bySeq.get(w.lastSeq) ?? [];
@@ -240,7 +314,9 @@ export function threadEntries(
   for (const message of ordered) {
     out.push({ kind: "said", key: message.id, message });
     for (const w of bySeq.get(message.seq) ?? []) {
-      if (!w.closedAt) out.push({ kind: "pending", key: w.id });
+      if (!w.closedAt) {
+        if (w.id !== arriving) out.push({ kind: "pending", key: w.id });
+      }
       else if (w.decision === "handed-off") {
         const turn = turnByWindow.get(w.id);
         // cm:guard a DELIVERED turn contributes no entry, for the reason `answered` does not: its
@@ -252,7 +328,18 @@ export function threadEntries(
         out.push({ kind: "silence", key: w.id, decision: w.decision, detail: w.decisionDetail });
     }
   }
-  for (const item of outbox) out.push({ kind: "outbox", key: item.id, item });
+  // cm:guard the outbox SPLITS around the turn in flight, and the split is the whole of the order: a
+  // row the server has confirmed (`sent`) is the question being answered, so it belongs above the
+  // answer, while a row still queued or sending was typed ahead and has not been asked yet. Without
+  // the split, a fresh room — whose stored read has not landed yet — drew the streaming answer ABOVE
+  // the question it was answering. Watched on a local walk in Chrome, 2026-09-17 (ISS-1078).
+  // cm:guard placed HERE rather than appended by the renderer, so this function stays the one
+  // authority on what the thread's order is — the same reason the outbox is not interleaved by time.
+  const asked = outbox.filter((m) => m.state === "sent");
+  const unasked = outbox.filter((m) => m.state !== "sent");
+  for (const item of asked) out.push({ kind: "outbox", key: item.id, item });
+  if (live) out.push({ kind: "progress", key: `progress-${live.entry.id}`, progress: live });
+  for (const item of unasked) out.push({ kind: "outbox", key: item.id, item });
   return out;
 }
 

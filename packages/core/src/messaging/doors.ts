@@ -43,6 +43,15 @@ export const DOORS: readonly DoorPolicy[] = [
     cell: 'role:chat',
     ending: 'fallback',
     repairs: 1,
+    // cm:hack ISS-1078 until:an incremental reply screen exists that can judge a partial message —
+    // this door's reply is screened HERE, whole, after the turn completes, and since ISS-1078 the
+    // draft prose of the first attempt is published to the room's readers as it streams. So a reader
+    // of this one door sees model text before this screen has admitted it, which reverses ISS-978's
+    // boundary. What bounds the reversal: the socket only. `conversations/transcript.ts` still stores
+    // solely the text that went out, and `conversation-progress.ts` marks a replaced draft as a
+    // correction rather than swapping it silently. The price is that a reader can watch a sentence be
+    // withdrawn; the alternative priced against it was withholding prose until this screen passes,
+    // which costs the streaming this door exists to serve. Owner's decision, 2026-09-17.
     why: "the browser is the one venue whose reader is known to hold a role before a word is written — `conversation-routes.ts` lets nobody send without `assertProjectRole` member, `assertConversationWritable` and `assertInTheRoom`, and every later reader is re-checked by `assertConversationReadable` at the push and at the read. So this reply is screened as a report to somebody who can open the tracker and check it, and NOT at `chat-sync`, whose `public:report` cell is written for a reader who holds no role: that cell's `no-developer-detail` refuses a file path, a fenced block and a raw status word, which are three of the things a person asks the Forge UI for. One repair, for the same reason `chat-sync` declares one — it is a full model turn inside HANDLE_TIMEOUT_MS and somebody pressed enter and is waiting on it (ISS-1005)",
   },
   {

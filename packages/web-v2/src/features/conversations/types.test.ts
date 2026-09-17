@@ -41,6 +41,41 @@ const window = (over: Partial<ConversationWindow> = {}): ConversationWindow => (
 });
 
 describe("threadEntries", () => {
+  // cm:guard ISS-1078 — the order a turn in flight takes in the thread. Watched wrong in Chrome on a
+  // local walk, 2026-09-17: a FRESH room has no stored read yet, so the question lives only in the
+  // outbox, and a progress entry placed before the whole outbox drew the answer above the question.
+  describe("a turn in flight", () => {
+    const live = {
+      conversationId: "c1",
+      rev: 3,
+      entry: { id: "a1", type: "assistant" as const, timestamp: 1, content: "Sure —" },
+    };
+    const queued = (id: string, state: "queued" | "sending" | "sent") => ({
+      id,
+      content: `typed ${id}`,
+      state,
+    });
+
+    it("comes after the question the server has confirmed, and before one not yet asked", () => {
+      const entries = threadEntries([], [], [queued("o1", "sent"), queued("o2", "queued")], [], live);
+      expect(entries.map((e) => e.kind)).toEqual(["outbox", "progress", "outbox"]);
+      expect(entries[0]).toMatchObject({ item: { id: "o1" } });
+      expect(entries[2]).toMatchObject({ item: { id: "o2" } });
+    });
+
+    // cm:guard `sending` sits BELOW it with `queued`: that row is a question the server has not
+    // confirmed, so nothing above it is an answer to it.
+    it("comes before a question still in flight", () => {
+      const entries = threadEntries([], [], [queued("o1", "sending")], [], live);
+      expect(entries.map((e) => e.kind)).toEqual(["progress", "outbox"]);
+    });
+
+    it("comes after every stored row", () => {
+      const entries = threadEntries([said(0)], [], [queued("o1", "sent")], [], live);
+      expect(entries.map((e) => e.kind)).toEqual(["said", "outbox", "progress"]);
+    });
+  });
+
   it("renders a closed window that said nothing as a silence, in the place it happened", () => {
     const entries = threadEntries([said(0), said(1)], [window({ lastSeq: 0 })]);
     expect(entries.map((e) => e.kind)).toEqual(["said", "silence", "said"]);

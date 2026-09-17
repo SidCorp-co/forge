@@ -25,8 +25,20 @@ vi.mock('./tools/principal.js', () => ({ buildChatToolContext: (a: unknown) => a
 import { doorCell, doorPolicy } from '../messaging/doors.js';
 import { NO_FACTS } from '../messaging/facts.js';
 import { screenMessage } from '../messaging/screen.js';
+import { startConversationProgress } from './conversation-progress.js';
 import { webConversationTurn } from './conversation-send.js';
 import { webConversationPersona } from './door-persona.js';
+
+// cm:guard a REAL watcher with its publish discarded, rather than `progress` being made optional on
+// `webConversationTurn`: a caller that may omit it is a caller that can lose a turn's streaming
+// silently, and these files are about the door's persona rather than about the socket (ISS-1078).
+function discardedProgress() {
+  return startConversationProgress({
+    conversationId: 'conversation-1',
+    entryId: 'entry-1',
+    publish: async () => 0,
+  });
+}
 
 /** The door the code picks, not a door this file picked. */
 const webDoor = (): string =>
@@ -44,6 +56,7 @@ const webDoor = (): string =>
       conversationContext: async () => null,
       reserve: async () => true,
     },
+    progress: discardedProgress(),
   }).door;
 
 /**
