@@ -14,11 +14,22 @@ export function useStickToBottom({
   ready,
   itemCount,
   live,
+  streamedChars = 0,
 }: {
   conversationKey: string | undefined;
   ready: boolean;
   itemCount: number;
   live: boolean;
+  /**
+   * How much the turn currently streaming has grown.
+   */
+  // cm:guard a THIRD dependency, because neither of the other two moves while a turn streams into
+  // the thread: one in-flight entry is one item however long it gets, and `live` is a boolean that
+  // was already true when the turn began. So the effect below ran once, on the first frame, and a
+  // reader pinned to the bottom then watched the reply grow off the end of the viewport — on the
+  // screen ISS-1078 shipped to make that reply watchable. The near-bottom guard is untouched, so
+  // somebody reading history is still never moved (ISS-1078 review F6).
+  streamedChars?: number;
 }) {
   const scrollRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -46,7 +57,7 @@ export function useStickToBottom({
     if (atBottomRef.current) {
       bottomRef.current?.scrollIntoView({ behavior: "smooth", block: "end" });
     }
-  }, [itemCount, live]);
+  }, [itemCount, live, streamedChars]);
 
   return { scrollRef, bottomRef, onScroll };
 }

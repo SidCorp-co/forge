@@ -100,6 +100,17 @@ export function startConversationProgress(args: {
   // second defence, for the frames that cross a reconnect rather than each other.
   let tail: Promise<unknown> = Promise.resolve();
 
+  /** The entry as it stands right now, detached from the accumulator that keeps folding into it. */
+  const freeze = (entry: AgentMessage): AgentMessage => ({
+    ...entry,
+    blocks: (entry.blocks ?? []).map((b) => ({
+      ...b,
+      ...(b.toolCall ? { toolCall: { ...b.toolCall } } : {}),
+      ...(b.todos ? { todos: b.todos.map((t) => ({ ...t })) } : {}),
+    })),
+    ...(entry.toolCalls ? { toolCalls: entry.toolCalls.map((t) => ({ ...t })) } : {}),
+  });
+
   const send = (frame: Omit<ConversationProgressFrame, 'conversationId' | 'rev'>): void => {
     if (closed) return;
     rev += 1;
@@ -107,6 +118,16 @@ export function startConversationProgress(args: {
       conversationId: args.conversationId,
       rev,
       ...frame,
+      // cm:guard the entry is COPIED here, before the frame joins the chain, because `acc.entry()`
+      // hands back the same mutable object every time and folds each later chunk into it: the
+      // publish below runs a tick or more later, after `publishToConversationReaders` has resolved
+      // the room's participants, so a frame queued behind a slow one serializes the turn as it
+      // stands when the publish finally runs rather than at its own flush boundary. `rev` orders the
+      // frames and cannot fix this — every one of them would carry the same, latest text, which is
+      // the coalescing window buying nothing at all. Text is what mutates in place; a tool result
+      // goes through `mergeMessages`, which returns a new object, so this is invisible on the tool
+      // path and plain on the streaming one (ISS-1078 review F1).
+      entry: freeze(frame.entry),
     };
     // cm:guard a failure to publish is CAUGHT here and nowhere else, which is the whole reason this
     // catch is not in `external-chat.ts`: a socket that went away must not end a turn the room is
