@@ -2864,6 +2864,10 @@
 
 ### Fixed
 
+- **Per-job cost and tokens no longer read zero.** A job's history row and its prompt details
+  priced the job by the wrong id, so every job showed nothing spent. They now read the session
+  that ran it.
+
 - **An edit you make while an agent is running an issue no longer vanishes.** Status, priority,
   complexity and the description go read-only on the issue, in the list and in bulk, each saying
   why. *Needs info* stays open.
@@ -5335,6 +5339,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Cost figures on sessions, issues and pipeline runs load faster.** Each read scanned the whole
+  usage table; they now go straight to the rows for the session, and the run dashboards no longer
+  re-read costs once per step.
 - **Forge has gone quiet.** Every notification type except ops alerts stops arriving, on purpose,
   until the new model lands: two thirds of what the bell said could not be acted on.
 

@@ -5,7 +5,7 @@
 // group of stages to share a session across. What survives is the per-project
 // bound a retry-resume is still judged against.
 
-import { eq, sql } from 'drizzle-orm';
+import { eq, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -57,20 +57,26 @@ export async function loadResumeBounds(
 /**
  * ISS-580 — the peak single-request context any session of this issue has
  * reached (`MAX(input_tokens + cache_read_tokens)`), which mirrors the
- * `compact_boundary` pre-token value. Fail-safe: 0 on no rows or DB error, so
- * a broken estimate never blocks a dispatch.
+ * `compact_boundary` pre-token value.
+ *
+ * Exported so the index test can EXPLAIN the query `estimateIssueContextTokens`
+ * actually runs, rather than a copy of it that cannot observe a regression here.
  */
 // cm:guard scoped to the ISSUE since ISS-897 removed session groups, and that is deliberately BROADER than the resume it guards: a retry resumes one parent attempt, but every session of an issue shares the transcript that attempt would reload, so the widest peak is the honest bound. Narrowing it to one session id would let a chain of small attempts resume past a peak that has already forced a compaction.
+// cm:guard `usage_records.session_id` is an `agent_sessions.id` in a TEXT column, constrained since ISS-1015 to null or a canonical lowercase uuid, so this joins `ur.session_id = s.id::text` — the uuid column cast to text, never the text column cast to uuid. Casting the indexed side is what made every rollup sequentially scan the table (ISS-1015), and this join was missed by that issue's own call-site sweep because it builds raw SQL outside the `usageSessionMatch` helper.
+export function issueContextPeakQuery(issueId: string): SQL {
+  return sql`
+    SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak
+    FROM agent_sessions AS s
+    JOIN usage_records AS ur
+      ON ur.session_id = s.id::text
+    WHERE s.metadata->>'issueId' = ${issueId}`;
+}
+
+/** The peak above, or 0 on no rows or a DB error, so a broken estimate never blocks a dispatch. */
 export async function estimateIssueContextTokens(issueId: string): Promise<number> {
   try {
-    const rows = await db.execute<{ peak: string | null }>(sql`
-      SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak
-      FROM agent_sessions AS s
-      JOIN usage_records AS ur
-        ON ur.session_id ~ '^[0-9a-fA-F-]{36}$'
-       AND ur.session_id::uuid = s.id
-      WHERE s.metadata->>'issueId' = ${issueId}
-    `);
+    const rows = await db.execute<{ peak: string | null }>(issueContextPeakQuery(issueId));
     const peak = rows[0]?.peak;
     if (peak === null || peak === undefined) return 0;
     const n = Number(peak);
