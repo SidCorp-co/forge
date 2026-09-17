@@ -112,16 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
-- **A deployment's database can now say which queries cost it the most, and be sized for the
-  machine it runs on.** Until now the database ran on whatever the image shipped: nothing could
-  attribute a slow page to the query behind it, so anyone looking had to guess from table-level
-  counters, and there was nowhere at all to put a memory setting that would survive the next
-  deploy. Per-statement timing is now on by default, and the four sizing values an operator
-  normally tunes are set in one place beside it. Each keeps the value the database already had
-  until someone reads the machine's memory and storage and says otherwise, so upgrading changes
-  nothing about how the database is sized — the notes beside the settings say what to read and
-  what proportion each value takes. The timing collection starts at the next restart of the
-  database, not at the deploy.
+- **The database can now say which queries cost it the most, and its sizing settings live with
+  the deployment.** Per-statement timing starts at the next database restart. Sizing keeps
+  today's values until someone reads the machine.
 
 - **Sentry errors can become Forge issues on a schedule.** Forge files the ones clearing an
   admission bar you set on the Ops Console, as drafts. Everything it turns away is named in the
