@@ -169,7 +169,9 @@ describe('F6 — the baseline sighting goes in WITH the filed row', () => {
     selectRows.push([
       { id: 'iss-1', metadata: { sentry: { shortId: 'FORGE-CORE-9K', count: 17 } } },
     ]);
-    selectRows.push([{ id: 'iss-1', metadata: { sentry: { shortId: 'FORGE-CORE-9K', count: 17 } } }]); // the locked re-read inside the transaction
+    selectRows.push([
+      { id: 'iss-1', metadata: { sentry: { shortId: 'FORGE-CORE-9K', count: 17 } } },
+    ]); // the locked re-read inside the transaction
     answers([issue({ count: 17 })]);
 
     await runSentryPull({ projectId: PROJECT });
@@ -402,7 +404,9 @@ describe('F2 second round — a listing that failed part way keeps what it had d
     const outcome = await runSentryPull({ projectId: PROJECT });
 
     expect(outcome.status).toBe('failed');
-    expect(outcome.output).toMatch(/listing failed after 2 page\(s\), with 1 decision\(s\) already made/);
+    expect(outcome.output).toMatch(
+      /listing failed after 2 page\(s\), with 1 decision\(s\) already made/,
+    );
     expect(outcome.output).toMatch(/confined out B-2: belongs to forge-web/);
     // and the failure itself is still reported — the partial does not soften it
     expect(outcome.output).toMatch(/Sentry answered HTTP 500/);

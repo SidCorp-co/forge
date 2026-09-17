@@ -376,8 +376,8 @@ describe('listSentryIssues — a walk that fails part way keeps what it decided'
 
   it('carries a partial of zero where page ONE is the one that failed', async () => {
     answerThenFail([], 500);
-    globalThis.fetch = vi.fn(async () =>
-      new Response('{"detail":"boom"}', { status: 500 }),
+    globalThis.fetch = vi.fn(
+      async () => new Response('{"detail":"boom"}', { status: 500 }),
     ) as unknown as typeof fetch;
 
     const err = (await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' }).catch(

@@ -33,8 +33,8 @@ import {
   listQuery,
   nextSentryCursor,
   SENTRY_LIST_MAX_PAGES,
-  SentryListingFailed,
   type SentryIssueListing,
+  SentryListingFailed,
   type SentryListRefusal,
   type SentryListRequest,
 } from './listing.js';
@@ -58,8 +58,8 @@ export {
   SENTRY_LIST_DEFAULT_QUERY,
   SENTRY_LIST_MAX_LIMIT,
   SENTRY_LIST_MAX_PAGES,
-  SentryListingFailed,
   type SentryIssueListing,
+  SentryListingFailed,
   type SentryListRefusal,
   type SentryListRequest,
 } from './listing.js';
