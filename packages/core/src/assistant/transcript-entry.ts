@@ -22,6 +22,20 @@ import {
 } from '../lib/agent-stream-parser.js';
 import type { ChatStreamEvent } from './providers/types.js';
 
+/**
+ * How long a growing entry waits before it is re-sent while a turn streams.
+ */
+// cm:why a coalescing window rather than a frame per event: both streaming paths send the WHOLE
+// entry on every frame, so emitting per chunk re-sends every settled tool output on every token. A
+// tool call or its result flushes immediately regardless — those are the frames a reader is waiting
+// on, and there are few of them.
+// cm:guard the window lives HERE, beside the accumulator both paths drive, rather than in either
+// caller: the decision that fixed it at 120ms stated its undo as raising or lowering one shared
+// constant. It had a copy in `run-turn.ts` and a second in `conversation-progress.ts` for exactly
+// one commit (ISS-1078), which is how two surfaces start coalescing differently while a comment
+// says they cannot.
+export const ENTRY_FLUSH_MS = 120;
+
 export interface TranscriptAccumulator {
   /** Fold one loop event into the entry. */
   apply(event: ChatStreamEvent): void;

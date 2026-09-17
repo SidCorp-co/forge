@@ -1,7 +1,9 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ContentBlock, ToolCall } from '../lib/agent-stream-parser.js';
 import type { ChatStreamEvent } from './providers/types.js';
-import { createTranscriptAccumulator } from './transcript-entry.js';
+import { createTranscriptAccumulator, ENTRY_FLUSH_MS } from './transcript-entry.js';
 
 function fold(events: ChatStreamEvent[]) {
   const acc = createTranscriptAccumulator({ id: 'e1', now: () => 1_000 });
@@ -134,5 +136,30 @@ describe('the assistant turn accumulates one canonical entry', () => {
 
   it('reads an empty argument string as no arguments', () => {
     expect(toolOf(fold([call({ args: '' })]).blocks(), 0).input).toEqual({});
+  });
+});
+
+// cm:guard the coalescing window is ONE constant, and this test is the only thing that keeps it
+// one. It scans the directory rather than importing the two callers, because the failure it defends
+// against is a third caller nobody thought to import: `run-turn.ts` and `conversation-progress.ts`
+// each held their own `= 120` for one commit, with a comment on one of them saying to raise or
+// lower both or neither. A comment is not a constraint. The decision that fixed the window stated
+// its undo as raising or lowering a single shared constant, so a second declaration of one IS the
+// defect, whatever value it carries (ISS-1078).
+describe('the coalescing window is declared once', () => {
+  const dir = join(import.meta.dirname, '.');
+
+  it('is declared in transcript-entry.ts and nowhere else under assistant/', () => {
+    const declared = readdirSync(dir)
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+      .filter((f) =>
+        /^\s*(?:export\s+)?const\s+\w*FLUSH_MS\s*=/m.test(readFileSync(join(dir, f), 'utf8')),
+      );
+
+    expect(declared).toEqual(['transcript-entry.ts']);
+  });
+
+  it('is the window both streaming paths read', () => {
+    expect(ENTRY_FLUSH_MS).toBe(120);
   });
 });

@@ -22,15 +22,7 @@ import {
   WEB_CONVERSATION_PROGRESS_EVENT,
 } from './conversation-adapter.js';
 import type { ChatStreamEvent } from './providers/types.js';
-import { createTranscriptAccumulator } from './transcript-entry.js';
-
-/**
- * How long a growing entry waits before it is re-sent.
- */
-// cm:edge contract -> packages/core/src/assistant/run-turn.ts — the same window, for the same reason
-// that file states: every frame carries the WHOLE entry, so a frame per token re-sends every settled
-// tool output on every token. Raise or lower it in both places or not at all.
-const PROGRESS_FLUSH_MS = 120;
+import { createTranscriptAccumulator, ENTRY_FLUSH_MS } from './transcript-entry.js';
 
 /** What a watcher hands back to the turn that is being watched. */
 export interface ConversationProgress {
@@ -177,7 +169,7 @@ export function startConversationProgress(args: {
       // cm:guard a tool call and a tool result flush IMMEDIATELY and never wait out the window: those
       // are the two frames a reader is actually waiting on, and there are few of them per turn.
       const boundary = event.type === 'tool_call' || event.type === 'tool_result';
-      if (boundary || now() - lastFlush >= PROGRESS_FLUSH_MS) flush();
+      if (boundary || now() - lastFlush >= ENTRY_FLUSH_MS) flush();
     },
 
     // cm:guard the comparison is against the ACCUMULATED prose and not against the last frame sent,
