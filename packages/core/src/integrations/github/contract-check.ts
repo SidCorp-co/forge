@@ -193,6 +193,25 @@ export async function publishForStoredPullRequest(
   }
 }
 
+/**
+ * Record that a pull request was deliberately not published for, without asking
+ * GitHub anything.
+ *
+ * What the fan-out cap uses. The cap bounds the REQUESTS, and a pull request
+ * past it is in exactly the state of one nobody could publish for — so it gets
+ * the same row saying so, rather than being dropped on the floor. This is the
+ * shape `projection-events.ts` already keeps for a base push: reading the cap as
+ * permission to stop writing is what leaves rows stale with nothing on them.
+ */
+export async function noteNotPublished(
+  pullRequestId: string,
+  reason: string,
+): Promise<ContractCheckOutcome | null> {
+  const row = await storedRow(pullRequestId);
+  if (!row) return null;
+  return skip(await openDelivery(row), reason);
+}
+
 /** Every open pull request this issue has, oldest first. */
 export async function openPullRequestsForIssue(issueId: string): Promise<string[]> {
   const rows = await db

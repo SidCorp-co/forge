@@ -11,7 +11,12 @@
 import { generateKeyPairSync } from 'node:crypto';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { __resetInstallationTokenCache } from './app-auth.js';
-import { buildRepoClient, GitHubClientError, GitHubReadError } from './client.js';
+import {
+  buildRepoClient,
+  GitHubClientError,
+  GitHubPublishError,
+  GitHubReadError,
+} from './client.js';
 
 // cm:guard a REAL key, because the signing is real: `buildAppJwt` calls `createSign().sign()`, and a placeholder PEM fails inside node's decoder with `error:1E08010C` — an exception that is not the one under test and reads like the code being broken.
 const { privateKey: PRIVATE_KEY } = generateKeyPairSync('rsa', {
@@ -129,5 +134,163 @@ describe('a read as the installation', () => {
     const err = await client.get('/repos/x/y').catch((e: unknown) => e);
     expect(err).toBeInstanceOf(GitHubReadError);
     expect((err as GitHubReadError).status).toBe(401);
+  });
+});
+
+/**
+ * The publish helper, which is a different door from `get` for one reason: a
+ * publish refusal is worded from evidence `get` throws away. Every assertion
+ * below is about something that survives the helper and would not survive
+ * `get` — the operation, the mint-or-repository origin, the headers, the body.
+ */
+describe('one request on the publish path', () => {
+  const fetchMock = vi.fn();
+
+  beforeEach(() => {
+    __resetInstallationTokenCache();
+    vi.stubGlobal('fetch', fetchMock);
+    fetchMock.mockReset();
+  });
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  const mintOk = () =>
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 201,
+      json: async () => ({ token: 'ghs_installation', expires_at: '2099-01-01T00:00:00Z' }),
+    });
+
+  const publishErr = async (fn: () => Promise<unknown>): Promise<GitHubPublishError> => {
+    const err = await fn().then(
+      () => null,
+      (e: unknown) => e,
+    );
+    if (!(err instanceof GitHubPublishError)) {
+      throw new Error(`expected a GitHubPublishError, got ${String(err)}`);
+    }
+    return err;
+  };
+
+  // cm:guard the App JWT mints and NOTHING else: criterion 15 is that every repository request carries an installation token, and a JWT reaching a repository call is the identity rule ISS-1062 wrote failing silently — the call would still work, on the wrong identity.
+  it('mints with the App JWT and sends the installation token to the repository', async () => {
+    mintOk();
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 201, json: async () => ({ id: 9 }) });
+    const client = buildRepoClient(args());
+    await client.publish({ op: 'create', method: 'POST', path: '/repos/x/y/check-runs', body: {} });
+
+    const [mintUrl, mintInit] = fetchMock.mock.calls[0] as [string, RequestInit];
+    const [repoUrl, repoInit] = fetchMock.mock.calls[1] as [string, RequestInit];
+    expect(mintUrl).toContain('/app/installations/42/access_tokens');
+    expect((mintInit.headers as Record<string, string>).Authorization).toMatch(/^Bearer eyJ/);
+    expect(repoUrl).toBe('https://api.github.com/repos/x/y/check-runs');
+    expect((repoInit.headers as Record<string, string>).Authorization).toBe(
+      'Bearer ghs_installation',
+    );
+  });
+
+  it('sends the body as JSON on a write and sends none on a lookup', async () => {
+    mintOk();
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
+    const client = buildRepoClient(args());
+    await client.publish({ op: 'lookup', method: 'GET', path: '/repos/x/y/check-runs' });
+    const init = (fetchMock.mock.calls[1] as [string, RequestInit])[1];
+    expect(init.body).toBeUndefined();
+    expect((init.headers as Record<string, string>)['Content-Type']).toBeUndefined();
+
+    fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
+    await client.publish({
+      op: 'update',
+      method: 'PATCH',
+      path: '/repos/x/y/check-runs/1',
+      body: { conclusion: 'success' },
+    });
+    const write = (fetchMock.mock.calls[2] as [string, RequestInit])[1];
+    expect(write.body).toBe('{"conclusion":"success"}');
+    expect((write.headers as Record<string, string>)['Content-Type']).toBe('application/json');
+  });
+
+  // cm:guard this is the case `get` cannot report. It converts a GitHubAuthError into a GitHubReadError carrying a status and nothing else, so a mint-time 404 arrives looking exactly like a repository-time 404 — and those two mean different things to an operator (criterion 24).
+  it('keeps a mint failure labelled as the mint, with app-auth`s own words', async () => {
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 404,
+      headers: new Headers(),
+      json: async () => ({}),
+    });
+    const client = buildRepoClient(args());
+    const err = await publishErr(() =>
+      client.publish({ op: 'create', method: 'POST', path: '/repos/x/y/check-runs', body: {} }),
+    );
+    expect(err.op).toBe('mint');
+    expect(err.status).toBe(404);
+    expect(err.message).toContain('does not exist for this App');
+  });
+
+  it('carries the response headers a rate limit is told from a permission by', async () => {
+    mintOk();
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: new Headers({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1789000000' }),
+      text: async () => '{"message":"API rate limit exceeded"}',
+    });
+    const client = buildRepoClient(args());
+    const err = await publishErr(() =>
+      client.publish({ op: 'create', method: 'POST', path: '/repos/x/y/check-runs', body: {} }),
+    );
+    expect(err.op).toBe('create');
+    expect(err.headers?.get('x-ratelimit-remaining')).toBe('0');
+    expect(err.detail).toContain('rate limit exceeded');
+  });
+
+  it('labels a lookup failure as the lookup, not as the write that never happened', async () => {
+    mintOk();
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 403,
+      headers: new Headers(),
+      text: async () => '',
+    });
+    const client = buildRepoClient(args());
+    const err = await publishErr(() =>
+      client.publish({ op: 'lookup', method: 'GET', path: '/repos/x/y/check-runs' }),
+    );
+    expect(err.op).toBe('lookup');
+    expect(err.timedOut).toBe(false);
+  });
+
+  it('marks a timed-out request as timed out rather than as a status', async () => {
+    mintOk();
+    const abort = new Error('The operation was aborted due to timeout');
+    abort.name = 'TimeoutError';
+    fetchMock.mockRejectedValueOnce(abort);
+    const client = buildRepoClient(args());
+    const err = await publishErr(() =>
+      client.publish({ op: 'create', method: 'POST', path: '/repos/x/y/check-runs', body: {} }),
+    );
+    expect(err.timedOut).toBe(true);
+    expect(err.status).toBeNull();
+    expect(err.op).toBe('create');
+  });
+
+  it('survives a refusal whose body cannot be read, rather than throwing over it', async () => {
+    mintOk();
+    fetchMock.mockResolvedValueOnce({
+      ok: false,
+      status: 500,
+      headers: new Headers(),
+      text: async () => {
+        throw new Error('stream already consumed');
+      },
+    });
+    const client = buildRepoClient(args());
+    const err = await publishErr(() =>
+      client.publish({ op: 'update', method: 'PATCH', path: '/repos/x/y/check-runs/1', body: {} }),
+    );
+    expect(err.status).toBe(500);
+    expect(err.detail).toBeNull();
   });
 });

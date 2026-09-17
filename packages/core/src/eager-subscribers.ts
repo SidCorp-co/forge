@@ -5,6 +5,7 @@
 // budget refused the next one. Moved verbatim: the ORDER is part of the behaviour for
 // anything reacting to the same topic.
 
+import { registerContractCheckSubscribers } from './integrations/github/contract-check-subscribers.js';
 import { registerMemoryReconcileTrigger } from './memory/consolidation.js';
 import { registerMemoryExtraction } from './memory/extraction.js';
 import { registerMemoryIndexer } from './memory/indexer.js';
@@ -33,4 +34,6 @@ export function registerEagerSubscribers(bus: HooksBus): void {
   registerPmSubscribers(bus);
   registerReleaseBatchClaimSubscriber(bus);
   registerMasterWakeSubscribers(bus);
+  // cm:guard LAST, and the position is the behaviour: this one reaches GitHub over the network and every subscriber above it is a local write. Registered earlier, a slow or hung publish would delay the activity log, the WebSocket broadcast and the pipeline orchestrator's own delivery, because HooksBus runs subscribers in order and awaits each.
+  registerContractCheckSubscribers(bus);
 }
