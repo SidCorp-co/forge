@@ -28,7 +28,7 @@ vi.mock('./run-pause.js', () => ({
   pauseResumesItself: (_reason: string | null) => false,
 }));
 
-const gateReasons = vi.fn(async (_projectId: string) => new Map<string, string>());
+const gateReasons = vi.fn(async (_projectIds: readonly string[]) => new Map<string, string>());
 vi.mock('../jobs/queued-gates.js', () => ({
   gateReasonsForQueuedJobsIn: (projectIds: readonly string[]) => gateReasons(projectIds),
 }));

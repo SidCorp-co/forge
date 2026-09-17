@@ -211,10 +211,17 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
   // batch. The condition that would end it is a subscriber that stops being idempotent, which
   // `assertHookDelivered`'s owned set is what protects.
   if (delivered.length > 0) {
+    // cm:guard an explicit IN list, never `= ANY(<array>::uuid[])` — drizzle binds a JS array as a
+    // single scalar parameter, so the ANY form reaches Postgres as `ANY(($1)::uuid[])` with one
+    // uuid in $1 and fails at execution. The unit test's mocked `db.execute` accepted it happily;
+    // only a real database said otherwise. `BATCH_LIMIT` caps this at 50 parameters.
     await db.execute(sql`
       UPDATE pipeline_outbox
          SET processed_at = now(), claimed_at = NULL
-       WHERE id = ANY(${delivered}::uuid[])
+       WHERE id IN (${sql.join(
+         delivered.map((id) => sql`${id}`),
+         sql`, `,
+       )})
     `);
   }
   return { processed, failed };

@@ -237,7 +237,7 @@ describe('outbox-worker', () => {
     const rOk = row({ id: 'aaaaaaaa-2222-4aaa-8aaa-aaaaaaaaaaaa', issue_id: 'iss-ok' });
     const rBad = row({ id: 'bbbbbbbb-2222-4bbb-8bbb-bbbbbbbbbbbb', issue_id: 'iss-bad' });
     claimQueue.push([rOk, rBad]);
-    emitMock.mockImplementationOnce(async () => ({ results: [], failures: [] }));
+    emitMock.mockImplementationOnce(async () => ({ topic: 'transition', delivered: 1, failures: [] }));
     emitMock.mockImplementationOnce(async () => {
       throw new Error('subscriber exploded');
     });
