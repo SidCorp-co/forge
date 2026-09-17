@@ -1,17 +1,18 @@
-// Favicon + document-title unread indicator (ISS-523) — the always-visible
+// Favicon + document-title open-count indicator (ISS-523, ISS-1063) — the always-visible
 // analogue of the toast/browser channels.
 //
 // The native browser-notification channel (lib/notifications/browser) is gated
 // on the tab being BACKGROUNDED, so a user watching the page never sees a
 // native notification (by design — a focused tab gets the in-app toast). That
-// leaves no persistent "you have unread" signal on the tab itself. This module
-// fills that gap: it overlays a small dot on the favicon and prefixes the
-// document title with the unread count, both visible whether or not the tab is
-// focused.
+// leaves no persistent "something is still true" signal on the tab itself. This
+// module fills that gap: it overlays a small dot on the favicon and prefixes the
+// document title with the count, both visible whether or not the tab is focused.
 //
-// Driven by the same `useUnreadCount()` the header bell uses (see
-// features/notifications/use-unread-indicator), so the favicon and the bell can
-// never disagree. Everything is SSR-safe and degrades to a silent no-op when the
+// Driven by the same `useOpenCount()` the header bell uses (see
+// features/notifications/use-open-indicator), so the favicon and the bell can
+// never disagree. ISS-1063 changed WHAT that number is — records still true
+// rather than deliveries nobody opened — and this module carries the number it
+// is handed, which is why the rename reached its function names too. Everything is SSR-safe and degrades to a silent no-op when the
 // DOM / canvas is unavailable; callers never need to guard and nothing here ever
 // throws.
 
@@ -117,8 +118,8 @@ function buildVariants(): void {
 }
 
 /**
- * Show or hide the unread dot on the favicon. Idempotent and safe to call on
- * every unread-count change. SSR-safe; never throws. Degrades to a no-op when
+ * Show or hide the dot on the favicon. Idempotent and safe to call on
+ * every open-count change. SSR-safe; never throws. Degrades to a no-op when
  * there's no document, no canvas 2d context, or the base image can't load.
  */
 export function setFaviconBadge(show: boolean): void {
@@ -135,10 +136,10 @@ export function setFaviconBadge(show: boolean): void {
 }
 
 /**
- * Prefix the document title with the unread count, e.g. `(3) Forge`, capping at
+ * Prefix the document title with the open count, e.g. `(3) Forge`, capping at
  * `(99+)`. `count <= 0` restores the bare base title. SSR-safe; never throws.
  */
-export function setTitleUnread(count: number): void {
+export function setTitleOpenCount(count: number): void {
   if (typeof document === "undefined") return;
   try {
     document.title = count > 0 ? `(${count > 99 ? "99+" : count}) ${BASE_TITLE}` : BASE_TITLE;

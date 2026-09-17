@@ -336,7 +336,11 @@ describe('a project with no bound room', () => {
     const [row] = await deliveries(q.id);
     expect(row?.status).toBe('undeliverable');
     const notes = await harness.db.execute(
-      sql`SELECT user_id, type, title, body FROM notifications WHERE project_id = ${projectId}`,
+      sql`SELECT d.user_id, n.type, n.title, n.body
+            FROM notifications n
+            JOIN notification_delivery_members m ON m.notification_id = n.id
+            JOIN notification_deliveries d ON d.id = m.delivery_id
+           WHERE n.project_id = ${projectId}`,
     );
     expect(notes).toHaveLength(1);
     expect(notes[0]?.user_id).toBe(ownerId);

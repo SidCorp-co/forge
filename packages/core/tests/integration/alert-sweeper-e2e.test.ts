@@ -110,11 +110,22 @@ type OpsAlertRow = {
   body: string | null;
 };
 
-/** What an admin opening the bell does: read, but the condition is still live so `resolved_at` stays NULL. */
+/**
+ * What an admin opening the bell does: read, but the condition is still live so
+ * `resolved_at` stays NULL.
+ *
+ * ISS-1063 — this writes the DELIVERY's `read_at`. The record has no read state and no
+ * user: one ops alert is one record however many admins were told about it, and each
+ * admin's copy is a row in `notification_deliveries`. Every `user_id` and `read` below
+ * comes off that join, which is why the cases read almost unchanged.
+ */
 async function acknowledge(userId: string, resolutionKey: string) {
   await harness.db.execute(sql`
-    UPDATE notifications SET read = true
-    WHERE type = 'ops_alert' AND user_id = ${userId} AND resolution_key = ${resolutionKey}
+    UPDATE notification_deliveries d SET read_at = now()
+    FROM notification_delivery_members m, notifications n
+    WHERE m.delivery_id = d.id AND n.id = m.notification_id
+      AND n.type = 'ops_alert' AND n.resolution_key = ${resolutionKey}
+      AND d.user_id = ${userId} AND d.resolved_notice = false
   `);
 }
 
@@ -125,10 +136,15 @@ async function openedThenAcknowledgedA2(runSweep: Mods['runAlertSweep'], userId:
   await acknowledge(userId, 'ops-alert:A2');
 }
 
+/** One row per (record, recipient) — the shape the old single table used to hold directly. */
 async function opsAlertRows(resolutionKey = 'ops-alert:A1'): Promise<OpsAlertRow[]> {
   const rows = await harness.db.execute<OpsAlertRow>(sql`
-    SELECT id, user_id, severity, read, resolved_at, resolution_key, title, body FROM notifications
-    WHERE type = 'ops_alert' AND resolution_key = ${resolutionKey}
+    SELECT n.id, d.user_id, n.severity, (d.read_at IS NOT NULL) AS read, n.resolved_at,
+           n.resolution_key, n.title, n.body
+      FROM notifications n
+      JOIN notification_delivery_members m ON m.notification_id = n.id
+      JOIN notification_deliveries d ON d.id = m.delivery_id AND d.resolved_notice = false
+     WHERE n.type = 'ops_alert' AND n.resolution_key = ${resolutionKey}
   `);
   return rows as unknown as OpsAlertRow[];
 }
@@ -199,7 +215,9 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     const [created] = await opsAlertRows();
     expect(created).toBeDefined();
     await harness.db.execute(sql`
-      UPDATE notifications SET read = true WHERE id = ${created?.id}
+      UPDATE notification_deliveries SET read_at = now()
+       WHERE id IN (SELECT delivery_id FROM notification_delivery_members
+                     WHERE notification_id = ${created?.id})
     `);
 
     const repeated = await mods.runAlertSweep(nextNow());
@@ -219,7 +237,10 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     await mods.runAlertSweep(nextNow());
     const [created] = await opsAlertRows();
     expect(created).toBeDefined();
-    await harness.db.execute(sql`UPDATE notifications SET read = true WHERE id = ${created?.id}`);
+    await harness.db.execute(sql`
+      UPDATE notification_deliveries SET read_at = now()
+       WHERE id IN (SELECT delivery_id FROM notification_delivery_members
+                     WHERE notification_id = ${created?.id})`);
 
     // cm:why the healthy pass must stamp resolved_at on the acknowledged (read) row, not skip it
     await clearOrphan(jobId);
@@ -249,7 +270,10 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     await clearOrphan(jobId);
     const cleared = await mods.runAlertSweep(nextNow());
     expect(cleared.resolved).toBeGreaterThan(0);
-    expect((await opsAlertRows()).every((r) => r.read && r.resolved_at !== null)).toBe(true);
+    // ISS-1063 — the clear stamps the RECORD and leaves the read state where it was. It
+    // used to mark the row read, which is how "nobody has looked at this" and "this is over"
+    // became one boolean. The admin never opened it, so it is still unread and now resolved.
+    expect((await opsAlertRows()).every((r) => !r.read && r.resolved_at !== null)).toBe(true);
   });
 
   // cm:why no seedAdmin() call — ADMIN_EMAILS is non-empty (set in beforeAll) but no users row matches it, so platformAdminUserIds() is empty
@@ -261,8 +285,8 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     });
   });
 
-  // cm:guard dedupe/claim must be per (userId, resolutionKey), not a single global check — two distinct admins must each get their own unread row
-  it('writes a distinct row per admin, not a single global row', async () => {
+  // cm:guard every admin must be told, and ISS-1063 changed what that costs: ONE record with a delivery each, not a row each. The dedup is per `resolution_key` alone now — the partial unique index dropped `user_id` — so a second admin must not be swallowed by the first admin's claim.
+  it('tells every admin, from one record', async () => {
     const admin1 = await seedAdmin();
     const admin2 = await seedSecondAdmin();
     await seedOrphan();
@@ -271,8 +295,8 @@ describe('runAlertSweep E2E (ISS-652)', () => {
     expect(result.notified).toBe(2);
 
     const rows = await opsAlertRows();
-    const userIds = rows.map((r) => r.user_id).sort();
-    expect(userIds).toEqual([admin1.id, admin2.id].sort());
+    expect(rows.map((r) => r.user_id).sort()).toEqual([admin1.id, admin2.id].sort());
+    expect(new Set(rows.map((r) => r.id)).size).toBe(1);
   });
 
   // cm:guard escalation must stay in place on the ONE unread row (the unique index forbids a second) — a resolve-then-re-emit would leave a read row plus a new one for the same live condition

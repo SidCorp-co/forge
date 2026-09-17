@@ -9,7 +9,7 @@
  */
 
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestDevice,
   createTestProject,
@@ -18,18 +18,6 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-
-// cm:why ISS-1063 — this file is about what the DETECTOR writes, not about the emission
-// switch, and while the old notification surface is off the switch would suppress every
-// type this file asserts. Mocking it here rather than relaxing the assertions keeps the
-// detector's coverage intact for the whole of the silence; `src/notifications/emission-switch.test.ts`
-// is what covers the switch itself, including that ops_alert is the one exception.
-// cm:edge lockstep -> packages/core/src/notifications/emission-switch.ts — these mocks come out in the change that empties SUPPRESSED_TYPES; one left behind is a test asserting a surface nobody has turned back on
-vi.mock('../../src/notifications/emission-switch.js', () => ({
-  SUPPRESSED_TYPES: new Set<string>(),
-  emissionAllowed: () => true,
-  noteSuppressed: () => {},
-}));
 
 let harness: TestDatabase;
 let mods: {
@@ -105,6 +93,11 @@ describe('an issue asserting work with no live run behind it', () => {
     const first = await mods.detectOrphanedRunAssertions();
 
     expect(first.detected, 'the predicate must match an assertion nothing is behind').toBe(1);
+    // cm:guard ISS-1063 — `reported` counts the LOG LINE, not the deliveries, and that is
+    // deliberate: the log is the deliverable and is written whether or not any human is
+    // reachable. `issue_stranded` now waits one evaluation before anybody is told, so a
+    // `reported` wired to the delivery count would read 0 here on a project with admins and
+    // 0 on a project with none — the two cases this pass exists to tell apart.
     expect(first.reported, 'the first sweep is the one that names the episode').toBe(1);
     expect(
       await statusOf(issueId),

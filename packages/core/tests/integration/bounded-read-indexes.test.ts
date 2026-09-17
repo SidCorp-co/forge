@@ -92,9 +92,17 @@ describe('ISS-1022 · the 0250 indexes are the ones the planner picks', () => {
       FROM generate_series(1, ${OTHER_ROWS}) g
     `);
     await harness.db.execute(sql`
-      INSERT INTO notifications (id, user_id, type, title, created_at, read)
-      SELECT gen_random_uuid(), ${userId}, 'mention', 'n' || g, now() - ((${OTHER_ROWS} - g) * interval '1 hour'), g % 2 = 0
+      INSERT INTO notifications (id, type, kind, tier, state, title, created_at)
+      SELECT gen_random_uuid(), 'mention', 'signal', 'log', 'emitted', 'n' || g,
+             now() - ((${OTHER_ROWS} - g) * interval '1 hour')
       FROM generate_series(1, ${OTHER_ROWS}) g
+    `);
+    // ISS-1063 — the bell's page is over DELIVERIES now: one per record, for this user.
+    await harness.db.execute(sql`
+      INSERT INTO notification_deliveries (id, user_id, channel, title, read_at, created_at)
+      SELECT gen_random_uuid(), ${userId}, 'bell', n.title,
+             CASE WHEN n.title LIKE '%0' THEN now() ELSE NULL END, n.created_at
+      FROM notifications n
     `);
     await harness.db.execute(sql`
       INSERT INTO comments (id, issue_id, author_id, body, created_at)
@@ -230,11 +238,15 @@ describe('ISS-1022 · the 0250 indexes are the ones the planner picks', () => {
     expect(text).toContain('comments_issue_created_idx');
   });
 
-  it('serves the unfiltered notification list from notifications_user_created_idx', async () => {
+  // cm:why ISS-1063 moved this probe off `notifications_user_created_idx`: the bell's page is
+  // one row per DELIVERY, and the record table no longer carries a `user_id` to index. The
+  // bound the case exists to hold — that the first page of a person's bell is an index read
+  // and not a scan of everything anyone was ever told — is the same bound on the new table.
+  it('serves the unfiltered notification list from notification_deliveries_user_created_idx', async () => {
     const text = await plan(sql`
-      SELECT id, title FROM notifications WHERE user_id = ${userId}
+      SELECT id, title FROM notification_deliveries WHERE user_id = ${userId}
       ORDER BY created_at DESC LIMIT 25 OFFSET 0
     `);
-    expect(text).toContain('notifications_user_created_idx');
+    expect(text).toContain('notification_deliveries_user_created_idx');
   });
 });

@@ -174,9 +174,9 @@ describe('GET /api/projects/:id/metrics/interventions', () => {
       INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
       VALUES (${issueId}, ${projectId}, 2, 'intervention fixture', 'open', ${owner.id})`);
     await harness.db.execute(sql`
-      INSERT INTO notifications (id, user_id, project_id, issue_id, type, title)
-      VALUES (${randomUUID()}, ${owner.id}, ${projectId}, ${issueId}, 'pipeline_wedge',
-              'run wedged')`);
+      INSERT INTO notifications (id, project_id, issue_id, type, kind, tier, state, title)
+      VALUES (${randomUUID()}, ${projectId}, ${issueId}, 'pipeline_wedge',
+              'condition', 'ticket', 'firing', 'run wedged')`);
     const runId = randomUUID();
     await harness.db.execute(sql`
       INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)

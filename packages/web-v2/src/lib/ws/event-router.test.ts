@@ -109,7 +109,7 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
       ["integration-connections"],
       ["questions"],
       ["notifications"],
-      ["notifications-unread"],
+      ["notifications-open"],
       ["invitations-pending"],
     ]) {
       expect(c.has(key)).toBe(true);

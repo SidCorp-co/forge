@@ -2,7 +2,9 @@ import { and, eq, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { jobs, notifications, pmConfig, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
+import { deliverExisting } from '../notifications/deliver.js';
 import { emissionAllowed, noteSuppressed } from '../notifications/emission-switch.js';
+import { INITIAL_STATE, kindOf, tierOf } from '../notifications/kinds.js';
 import type { HookPayloads } from '../pipeline/hooks.js';
 
 const WINDOW_MS = 60 * 60 * 1000;
@@ -38,6 +40,8 @@ export async function handlePmJobFailedAutoDisable(
 
   if (count < FAILURE_LIMIT) return;
 
+  let recordId: string | null = null;
+  let recipient: string | null = null;
   await db.transaction(async (tx) => {
     await tx
       .update(pmConfig)
@@ -62,16 +66,29 @@ export async function handlePmJobFailedAutoDisable(
       return;
     }
 
-    await tx.insert(notifications).values({
-      userId: project.createdBy,
-      projectId: payload.projectId,
-      type: 'pm_escalation',
-      title: 'PM cadence auto-disabled',
-      body: `PM agent failed ${count} times in the last hour. Cadence and event triggers are off until you re-enable in project settings.`,
-      issueId: null,
-      agentSessionId: null,
-    });
+    // cm:why ISS-1063 — the record goes in this transaction and the DELIVERY does not,
+    // deliberately. The row and the cadence disable must land together or neither; who is
+    // told about it is a second fact, written after the commit by `deliverExisting`, and a
+    // delivery that fails must not roll back the disable it was announcing.
+    const [record] = await tx
+      .insert(notifications)
+      .values({
+        projectId: payload.projectId,
+        type: 'pm_escalation',
+        kind: kindOf('pm_escalation'),
+        tier: tierOf('pm_escalation'),
+        state: INITIAL_STATE[kindOf('pm_escalation')],
+        title: 'PM cadence auto-disabled',
+        body: `PM agent failed ${count} times in the last hour. Cadence and event triggers are off until you re-enable in project settings.`,
+        issueId: null,
+        agentSessionId: null,
+      })
+      .returning({ id: notifications.id });
+    recordId = record?.id ?? null;
+    recipient = project.createdBy;
   });
+
+  if (recordId && recipient) await deliverExisting(recordId, [recipient]);
 
   logger.warn({ projectId: payload.projectId, failures: count }, 'pm.auto-disable: cadence off');
 }

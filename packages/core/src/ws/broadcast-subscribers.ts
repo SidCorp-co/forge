@@ -95,6 +95,10 @@ export function registerWsBroadcastSubscribers(bus: HooksBus): void {
         projectId: p.projectId,
         type: p.type,
         title: p.title,
+        // ISS-1063 — false only for a record joining a grouped delivery somebody has
+        // already been interrupted by. Absent on the payload means yes, so every emitter
+        // that predates grouping keeps announcing.
+        announce: p.announce !== false,
         // ISS-510 — body + severity drive the realtime toast (description +
         // tone) and the browser-notification body without a follow-up fetch.
         body: p.body ?? null,

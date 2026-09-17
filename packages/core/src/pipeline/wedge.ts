@@ -10,27 +10,41 @@
  * interventions-per-issue metric (`issue_intervention_events`, migration
  * 0117).
  *
- * Spam guard: at most one UNRESOLVED wedge per entity per
- * {@link WEDGE_RENOTIFY_MS}, keyed on `resolution_key`; `resolvePipelineWedge`
- * clears it. A self-clearing condition should not reach here at all — the
- * caller knows (`holdResumesItself` in `jobs/hold.ts`).
+ * Spam guard: at most one UNRESOLVED wedge record per entity, keyed on
+ * `resolution_key`; `resolvePipelineWedge` clears it, and since ISS-1063 so does
+ * `pipeline/reevaluate-conditions.ts` when the entity it names is no longer wedged. A
+ * self-clearing condition should not reach here at all — the caller knows
+ * (`holdResumesItself` in `jobs/hold.ts`).
  *
  * ISS-619 — `title`/`summary`/`nextStep`/`secondaryIssueId` are optional
  * business-language fields; without them the technical template is used. Never throws.
  */
 
-import { and, eq, gt, isNull } from 'drizzle-orm';
+import { and, eq, isNull } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications, projects } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { resolveNotifications } from '../notifications/auto-resolve.js';
 import { createNotification } from '../notifications/routes.js';
 
-/**
- * Shortest gap between two wedge notifications about the SAME entity.
+/*
+ * ISS-1063 — `WEDGE_RENOTIFY_MS` was DELETED, and the reasoning it carried is worth
+ * keeping because both halves of it were right at the time.
+ *
+ * The floor existed because the dedupe once matched `read = false`: opening a wedge
+ * re-armed it and the next monitor pass wrote another — read, re-emit, read, a closed loop
+ * that put 721 unresolved rows in the owner's bell (measured forge-beta 2026-08-14). And
+ * keying on `resolved_at IS NULL` alone was rejected because a wedge would then be emitted
+ * once and never again, which is silence a caller cannot tell from "nothing is wrong".
+ *
+ * That second objection is what changed. A wedge is a CONDITION: it stays `firing` and
+ * stays in the open count for as long as it is true, so being emitted once is no longer
+ * being forgotten, and reading it no longer removes it from anything. A second record for
+ * a condition that never stopped being true would be the 2161-rows-for-2037-conditions
+ * shape this issue exists to end. The daily re-emission is now a re-derivation:
+ * `reevaluate-conditions.ts` resolves the ones whose entity is done, and the rest keep
+ * counting.
  */
-// cm:guard a re-notify FLOOR is required, and it must not be the read flag — the dedupe once matched `read = false`, so opening the notification re-armed it and the next monitor pass wrote another: read -> re-emit -> read, a closed loop that put 721 unresolved `pipeline_wedge` rows in the owner's bell (measured forge-beta 2026-08-14). Keying on `resolvedAt IS NULL` alone would swing the other way: with no resolve call for a key, the wedge would be emitted exactly once and never again.
-export const WEDGE_RENOTIFY_MS = 24 * 60 * 60_000;
 
 export function wedgeResolutionKey(entityId: string): string {
   return `wedge:${entityId}`;
@@ -113,7 +127,6 @@ export async function emitPipelineWedge(ev: PipelineWedgeEvent): Promise<void> {
           eq(notifications.type, 'pipeline_wedge'),
           eq(notifications.resolutionKey, resolutionKey),
           isNull(notifications.resolvedAt),
-          gt(notifications.createdAt, new Date(Date.now() - WEDGE_RENOTIFY_MS)),
         ),
       )
       .limit(1);

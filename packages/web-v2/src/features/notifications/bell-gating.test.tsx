@@ -5,7 +5,7 @@ import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { renderHook, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { notificationsApi, invitationsApi } from "./api";
-import { useNotifications, usePendingInvitations, useUnreadCount } from "./hooks";
+import { useNotifications, usePendingInvitations, useOpenCount } from "./hooks";
 
 function wrapper(qc: QueryClient) {
   return ({ children }: { children: ReactNode }) => (
@@ -28,39 +28,39 @@ function bell(qc: QueryClient, open: boolean) {
     () => ({
       list: useNotifications(open),
       pending: usePendingInvitations(open),
-      unread: useUnreadCount(),
+      open: useOpenCount(),
     }),
     { wrapper: wrapper(qc) },
   );
 }
 
 describe("what the notification bell fetches while it is closed", () => {
-  // cm:guard the bell component must stay MOUNTED while closed — its own header comment says so, because the realtime delivery and unread-indicator bridges hang off it — and that is a different thing from FETCHING while closed. Both lists feed a menu that renders only under `open` (ISS-1019).
+  // cm:guard the bell component must stay MOUNTED while closed — its own header comment says so, because the realtime delivery and open-indicator bridges hang off it — and that is a different thing from FETCHING while closed. Both lists feed a menu that renders only under `open` (ISS-1019).
   it("fetches neither list while the dropdown is closed", async () => {
     const qc = client();
     const list = vi.spyOn(notificationsApi, "list").mockResolvedValue({ items: [], totalCount: 0 });
     const pending = vi.spyOn(invitationsApi, "pending").mockResolvedValue([]);
-    const unread = vi.spyOn(notificationsApi, "unreadCount").mockResolvedValue({ count: 0 });
+    const openCount = vi.spyOn(notificationsApi, "openCount").mockResolvedValue({ count: 0 });
 
     const view = bell(qc, false);
     await tick();
 
     expect(list).not.toHaveBeenCalled();
     expect(pending).not.toHaveBeenCalled();
-    expect(unread).toHaveBeenCalledTimes(1);
+    expect(openCount).toHaveBeenCalledTimes(1);
     view.unmount();
   });
 
-  // cm:guard the unread count is NOT gated, and this is what says so: the favicon dot and the `(N)` document-title prefix read it while the bell is closed, so gating it would take a surface away rather than a request.
-  it("still fetches the unread count while the dropdown is closed", async () => {
+  // cm:guard the open count is NOT gated, and this is what says so: the favicon dot and the `(N)` document-title prefix read it while the bell is closed, so gating it would take a surface away rather than a request.
+  it("still fetches the open count while the dropdown is closed", async () => {
     const qc = client();
     vi.spyOn(notificationsApi, "list").mockResolvedValue({ items: [], totalCount: 0 });
     vi.spyOn(invitationsApi, "pending").mockResolvedValue([]);
-    const unread = vi.spyOn(notificationsApi, "unreadCount").mockResolvedValue({ count: 4 });
+    const openCount = vi.spyOn(notificationsApi, "openCount").mockResolvedValue({ count: 4 });
 
     const view = bell(qc, false);
-    await waitFor(() => expect(view.result.current.unread.data?.count).toBe(4));
-    expect(unread).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(view.result.current.open.data?.count).toBe(4));
+    expect(openCount).toHaveBeenCalledTimes(1);
     view.unmount();
   });
 
@@ -69,7 +69,7 @@ describe("what the notification bell fetches while it is closed", () => {
     const qc = client();
     const list = vi.spyOn(notificationsApi, "list").mockResolvedValue({ items: [], totalCount: 0 });
     const pending = vi.spyOn(invitationsApi, "pending").mockResolvedValue([]);
-    vi.spyOn(notificationsApi, "unreadCount").mockResolvedValue({ count: 0 });
+    vi.spyOn(notificationsApi, "openCount").mockResolvedValue({ count: 0 });
 
     const closed = bell(qc, false);
     await tick();
