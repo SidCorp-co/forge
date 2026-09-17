@@ -477,3 +477,32 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
     });
   });
 });
+
+// cm:guard the compounding defect could only be seen through BOTH components at once: each file's
+// cap was correct on its own, and nested they multiplied to 0.85 x 0.85 = 0.7225 — a turn got 72%
+// of the panel. `conversation-width.test.tsx` counts the caps inside the shared renderer; this one
+// counts them through the wrapper, which is the render a person was actually looking at (ISS-1083).
+describe("the assistant column, drawn through the chat wrapper", () => {
+  const answered: ConversationMessage = {
+    id: "m1",
+    seq: 1,
+    role: "assistant",
+    authorUserId: null,
+    authorLabel: null,
+    content: "Two issues are left.",
+    silenceReason: null,
+    createdAt: "2026-09-14T00:00:02.000Z",
+  };
+
+  it("carries exactly one restricting max-width, not one per component", () => {
+    const { container } = render(<ConversationThread messages={[asked, answered]} windows={[]} />);
+    const capped = Array.from(container.querySelectorAll<HTMLElement>("*"))
+      .map((el) => el.getAttribute("class") ?? "")
+      .filter((cls) => /(?:^|\s)(?:sm:)?max-w-\[/.test(cls));
+    // One for the person's bubble, one for the assistant column. Never two for either.
+    expect(capped).toHaveLength(2);
+    expect(capped.filter((c) => c.includes("max-w-[72ch]"))).toHaveLength(1);
+    expect(capped.filter((c) => c.includes("max-w-[88%]"))).toHaveLength(1);
+    for (const cls of capped) expect(cls).not.toContain("sm:max-w-");
+  });
+});

@@ -7,6 +7,7 @@
 import { useState } from "react";
 import { Button, Icon, StreamingText } from "@/design";
 import { AttachmentList } from "@/features/issues/components/attachment-list";
+import { AGENT_COLUMN, USER_BUBBLE } from "../layout";
 import type { AgentTodo, ConversationItem } from "../types";
 import { ThinkingLine } from "./thinking-line";
 import { ToolCard } from "./tool-card";
@@ -96,7 +97,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
 
   return (
     <div className="group flex flex-col items-end">
-      <div className="max-w-[88%] rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent sm:max-w-[80%]">
+      <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
         {editing ? (
           <div className="flex w-full flex-col gap-2" style={{ minWidth: 240 }}>
             <textarea
@@ -125,7 +126,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
         )}
       </div>
       {!editing && item.attachments.length > 0 && (
-        <div className="mt-2 flex max-w-[88%] justify-end sm:max-w-[80%]">
+        <div className={`mt-2 flex justify-end ${USER_BUBBLE}`}>
           <AttachmentList rows={item.attachments} />
         </div>
       )}
@@ -161,7 +162,7 @@ function AgentTurn({ item, streamingTail, busy, readOnly, onRegenerate, onFork }
 
   return (
     <div className="group flex flex-col items-start">
-      <div className="flex w-full max-w-[92%] flex-col gap-2 sm:max-w-[85%]">
+      <div className={`flex flex-col gap-2 ${AGENT_COLUMN}`}>
         {item.blocks.map((block, i) => {
           if (block.type === "text") {
             return <StreamingText key={i} text={block.text} streaming={streamingTail && i === lastTextIdx} />;

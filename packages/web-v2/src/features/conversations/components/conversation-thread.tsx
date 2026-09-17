@@ -15,6 +15,7 @@
 
 import { Icon } from "@/design";
 import { Conversation } from "@/features/session/components/conversation";
+import { USER_BUBBLE } from "@/features/session/layout";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import {
   AGENT_TURN_LABEL,
@@ -64,11 +65,13 @@ function AssistantTurn({
 }) {
   const items = parseMessages([entry]);
   if (items.length === 0) return null;
-  return (
-    <div className="flex w-full max-w-[92%] flex-col gap-2 sm:max-w-[85%]">
-      <Conversation items={items} readOnly streaming={streaming} />
-    </div>
-  );
+  // cm:guard NO width cap here. `Conversation`'s own `AgentTurn` owns the assistant column's
+  // measure, and this wrapper used to carry the identical literal — nested, the two multiplied to
+  // 0.85 x 0.85 = 0.7225, so a turn got 72% of the panel and a ~160px blank column beside it at a
+  // 550px width. The cap lives in the SHARED renderer rather than here because the full-page
+  // session screen draws through the same component and would otherwise have no policy at all
+  // (ISS-1083, plan consult decision 1).
+  return <Conversation items={items} readOnly streaming={streaming} />;
 }
 
 /**
@@ -126,7 +129,7 @@ function Said({ message, withdrawn }: { message: ConversationMessage; withdrawn?
   if (message.role === "user") {
     return (
       <div className="flex flex-col items-end">
-        <div className="max-w-[88%] rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent sm:max-w-[80%]">
+        <div className={`${USER_BUBBLE} rounded-lg rounded-br-sm bg-accent px-3.5 py-2.5 text-on-accent`}>
           <p className="fg-body whitespace-pre-wrap text-on-accent">{message.content}</p>
         </div>
         {message.authorLabel && (
@@ -155,7 +158,7 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
         // accent says "not filed yet", and once the accepted frame has arrived that is no longer true.
         // A row that stays faded until a refetch tells a person their message is still in flight for as
         // long as the turn takes, which is the defect this state exists to end.
-        className={`max-w-[88%] rounded-lg rounded-br-sm px-3.5 py-2.5 sm:max-w-[80%] ${
+        className={`${USER_BUBBLE} rounded-lg rounded-br-sm px-3.5 py-2.5 ${
           failed
             ? "border border-danger bg-surface"
             : item.state === "sent"
