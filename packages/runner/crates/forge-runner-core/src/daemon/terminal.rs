@@ -1033,7 +1033,13 @@ mod tests {
     }
 
     /// ISS-1050 step 19, run by hand: `cargo test -p forge-runner-core --lib
-    /// a_killed_pane_is_rebuilt_on_the_conversation_it_had -- --ignored --exact --nocapture`.
+    /// daemon::terminal::tests::a_killed_pane_is_rebuilt_on_the_conversation_it_had --
+    /// --ignored --exact --nocapture`.
+    ///
+    /// The module path is part of the command, not decoration: `--exact` matches the FULL test
+    /// path, so the bare name matches nothing and cargo reports `running 0 tests ... test result:
+    /// ok` and exits 0. Typed as it read before ISS-1050's testing pass, this command reported
+    /// success while running nothing at all.
     ///
     /// Composes the three production pieces on a REAL tmux — `resume_for`'s decision, `pane_argv`'s
     /// argv, and `ensure`'s spawn — which the unit tests above each cover alone and none covers
