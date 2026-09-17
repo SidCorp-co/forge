@@ -34,6 +34,7 @@ export function canonicalSessionId(value: unknown): SQL {
  *
  * e.g. sql`= ${canonicalSessionId(id)}`, sql`IN ${subqueryOfText}`.
  */
+// cm:guard `target` must also be a reference Postgres can resolve UNAMBIGUOUSLY, and a field of a drizzle subquery is only that when it is a real column: drizzle renders those qualified (`"issue_sessions"."agent_session_id"`) and renders an `sql`…`.as(alias)` field as the BARE alias. `usage_records` has a `session_id` column, so a subquery field aliased `session_id` emitted `"usage_records"."session_id" = "session_id"`, which Postgres refuses at PARSE time — the Issues list answered 500 on every non-empty project until ISS-1081. Nothing in this signature stops it: `SQL` accepts both spellings and the wrong one reads exactly like `sql`= ${agentSessions.id}::text`` two callers away. Pass the column and cast on this side; never an aliased expression, whatever it is aliased to.
 export function usageSessionMatch(target: SQL): SQL {
   return sql`${usageRecords.sessionId} ${target}`;
 }
