@@ -275,14 +275,20 @@ describe('ISS-1068 — the retirement migration preserves prose or refuses by na
     );
   });
 
-  it('removes a DISABLED ux-contract-improve schedule and keeps a copy of it', async () => {
+  // cm:guard the assertion is the RESTORE, not the presence of a backup row. A backup of a chosen
+  // handful of columns reads exactly like a real one and cannot be inserted back — `schedules.name`
+  // is NOT NULL with no default — so "a copy exists" is the check that would have passed on the
+  // shape this case exists to refuse. Every field below is a non-default value for that reason.
+  it('removes a DISABLED ux-contract-improve schedule and its backup restores the whole row', async () => {
     const scheduleId = randomUUID();
 
     await applyMigration(
       async (tx, { projectId }) => {
         await tx`
-          INSERT INTO schedules (id, project_id, name, cron, enabled, template_key, kind)
-          VALUES (${scheduleId}, ${projectId}, 'improver', '0 23 * * 3', false, 'ux-contract-improve', 'prompt')`;
+          INSERT INTO schedules (id, project_id, name, cron, enabled, template_key, kind, prompt, mode, params, metadata)
+          VALUES (${scheduleId}, ${projectId}, 'the weekly improver', '0 23 * * 3', false,
+                  'ux-contract-improve', 'prompt', 'RAW PROMPT', 'propose',
+                  ${'{"keys":["a"]}'}::jsonb, ${'{"note":"set by a person"}'}::jsonb)`;
       },
       async (tx, { error }) => {
         expect(error).toBeNull();
@@ -291,13 +297,26 @@ describe('ISS-1068 — the retirement migration preserves prose or refuses by na
         const live = await tx`SELECT id FROM schedules WHERE id = ${scheduleId}`;
         expect(live).toEqual([]);
 
-        const [kept] = await tx`
-          SELECT cron, enabled, template_key FROM ux_contract_retirement_backup_schedules
+        // Restore it from the backup alone — the statement the migration's own comment documents.
+        await tx`
+          INSERT INTO schedules
+          SELECT (jsonb_populate_record(NULL::schedules, row)).*
+            FROM ux_contract_retirement_backup_schedules
            WHERE id = ${scheduleId}`;
-        expect(kept).toMatchObject({
+
+        const [restored] = await tx`
+          SELECT name, cron, enabled, template_key, kind, prompt, mode, params, metadata
+            FROM schedules WHERE id = ${scheduleId}`;
+        expect(restored).toMatchObject({
+          name: 'the weekly improver',
           cron: '0 23 * * 3',
           enabled: false,
           template_key: 'ux-contract-improve',
+          kind: 'prompt',
+          prompt: 'RAW PROMPT',
+          mode: 'propose',
+          params: { keys: ['a'] },
+          metadata: { note: 'set by a person' },
         });
       },
     );

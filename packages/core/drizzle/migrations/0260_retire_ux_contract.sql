@@ -7,13 +7,19 @@ CREATE TABLE "ux_contract_retirement_backup" (
 	CONSTRAINT "ux_contract_retirement_backup_pk" PRIMARY KEY("project_id","slug")
 );
 --> statement-breakpoint
+-- The WHOLE row, as jsonb, and not a chosen handful of columns. `schedules.name` is NOT NULL with
+-- no default, so a backup of six columns cannot be inserted back at all — it would be a restore
+-- path that reads as one and fails the first time anybody needs it. Restoring is:
+--   INSERT INTO schedules
+--   SELECT (jsonb_populate_record(NULL::schedules, row)).*
+--     FROM ux_contract_retirement_backup_schedules;
+-- `template_key` and `enabled` are lifted out beside it so a person can read the table without
+-- unpacking json; `row` is what a restore uses.
 CREATE TABLE "ux_contract_retirement_backup_schedules" (
 	"id" uuid PRIMARY KEY NOT NULL,
-	"project_id" uuid,
 	"template_key" text NOT NULL,
-	"cron" text,
-	"mode" text,
 	"enabled" boolean NOT NULL,
+	"row" jsonb NOT NULL,
 	"migrated_at" timestamp with time zone DEFAULT now() NOT NULL
 );
 --> statement-breakpoint
@@ -118,8 +124,8 @@ BEGIN
      AND archived_at IS NULL
      AND (kind <> 'rule' OR injection <> 'on_demand');
 
-  INSERT INTO ux_contract_retirement_backup_schedules (id, project_id, template_key, cron, mode, enabled)
-  SELECT s.id, s.project_id, s.template_key, s.cron, s.mode, s.enabled
+  INSERT INTO ux_contract_retirement_backup_schedules (id, template_key, enabled, row)
+  SELECT s.id, s.template_key, s.enabled, to_jsonb(s)
     FROM schedules s
    WHERE s.template_key = 'ux-contract-improve'
   ON CONFLICT (id) DO NOTHING;
