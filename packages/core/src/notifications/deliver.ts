@@ -139,6 +139,13 @@ async function inhibitor(input: DeliverInput): Promise<string | null> {
 // this table (`issue_intervention_events`). The index cannot be created without deleting
 // the rows that metric is made of, which is a north-star series moved in silence to buy an
 // invariant that today's live data does not need.
+// cm:why an advisory lock around the insert would serialize it without touching that history,
+// and it is declined on a measurement rather than on taste: across the replica's 11037 rows
+// there are 587 repeat emissions under one `pipeline_wedge` key, and the SMALLEST gap between
+// any two of them is 30.0 seconds -- a retry cadence, not a race. The window has never been
+// entered, and closing it means a transaction around a write path some 48 call sites reach.
+// What would reopen the question: two records under one key seconds apart, which is what to
+// look for if a wedge is ever reported twice.
 
 async function activeRecord(input: DeliverInput) {
   if (!input.resolutionKey) return null;
