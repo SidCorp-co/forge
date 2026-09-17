@@ -2878,6 +2878,7 @@
 - **The Issues list opens again.** It failed on every project holding work: asking for each
   issue's cost sent the server a question it could not answer, so the page never loaded. Only
   empty projects opened. Costs are back.
+
 - **A release now reaches a machine.** Batch releases, skill checks, reconciles and smoke runs sat
   in a queue no machine read — one batch held its issues at *releasing* for sixteen hours.
   Machines now take these jobs and run them.

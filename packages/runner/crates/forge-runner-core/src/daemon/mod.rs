@@ -923,6 +923,27 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
 mod tests {
     use super::*;
 
+    /// A supervision tick has to fit inside core's result hop, with room to spare.
+    ///
+    /// `jobs/loop-monitor.ts:reapResultMisses` fails a `dispatched` job whose
+    /// newest evidence is older than `RESULT_QUIET_MINUTES` (60), computed as
+    /// the greatest of its last job event, its last phase row and `dispatched_at`
+    /// — and a release runs longer than that. This tick is the only thing that
+    /// refreshes the first of those for a pool job, so an interval anywhere near
+    /// the hour would let a healthy release be reaped between two beats.
+    #[test]
+    fn a_healthy_job_outlives_cores_quiet_threshold_between_two_beats() {
+        const CORE_RESULT_QUIET: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+        assert!(
+            POOL_SUPERVISE_INTERVAL.as_secs() > 0,
+            "a zero interval is a busy loop against core, not supervision"
+        );
+        assert!(
+            POOL_SUPERVISE_INTERVAL * 4 < CORE_RESULT_QUIET,
+            "leave room for missed beats: three ticks may fail against an unreachable core and the job must still outlive the hop"
+        );
+    }
+
     /// Counts the calls and reports how many sessions it "closed".
     fn spy(closed: usize) -> (Arc<AtomicUsize>, impl FnOnce() -> std::future::Ready<usize>) {
         let calls = Arc::new(AtomicUsize::new(0));
