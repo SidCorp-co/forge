@@ -15,6 +15,7 @@
 
 import { Icon } from "@/design";
 import { Conversation } from "@/features/session/components/conversation";
+import { DisclosureScope } from "@/features/session/disclosure";
 import { USER_BUBBLE } from "@/features/session/layout";
 import { type MessageEntry, parseMessages } from "@/features/session/types";
 import {
@@ -59,9 +60,12 @@ function entryOf(message: ConversationMessage): MessageEntry {
 function AssistantTurn({
   entry,
   streaming,
+  newestAgentId,
 }: {
   entry: MessageEntry;
   streaming?: boolean;
+  /** The thread's newest assistant turn — every turn above it folds its machinery (ISS-1083). */
+  newestAgentId?: string;
 }) {
   const items = parseMessages([entry]);
   if (items.length === 0) return null;
@@ -71,7 +75,17 @@ function AssistantTurn({
   // 550px width. The cap lives in the SHARED renderer rather than here because the full-page
   // session screen draws through the same component and would otherwise have no policy at all
   // (ISS-1083, plan consult decision 1).
-  return <Conversation items={items} readOnly streaming={streaming} />;
+  // cm:guard `newestAgentId` is passed from the THREAD and never left to `Conversation`: this
+  // component mounts one renderer per turn, so an instance's own last item is always its only item
+  // and nothing here would ever fold without it (ISS-1083 criterion 22).
+  return (
+    <Conversation
+      items={items}
+      readOnly
+      streaming={streaming}
+      {...(newestAgentId ? { newestAgentId } : {})}
+    />
+  );
 }
 
 /**
@@ -103,7 +117,15 @@ function WithdrawnDraft({ draft }: { draft: string }) {
   );
 }
 
-function Said({ message, withdrawn }: { message: ConversationMessage; withdrawn?: string }) {
+function Said({
+  message,
+  withdrawn,
+  newestAgentId,
+}: {
+  message: ConversationMessage;
+  withdrawn?: string;
+  newestAgentId?: string;
+}) {
   // cm:guard a row carrying a `silence_reason` is a turn that RAN and said nothing, and it renders as that rather than as an empty bubble — an assistant message with no text and no label is indistinguishable on screen from one still streaming.
   if (message.silenceReason) {
     return (
@@ -141,7 +163,7 @@ function Said({ message, withdrawn }: { message: ConversationMessage; withdrawn?
   return (
     <div className="flex flex-col gap-2">
       {withdrawn && <WithdrawnDraft draft={withdrawn} />}
-      <AssistantTurn entry={entryOf(message)} />
+      <AssistantTurn entry={entryOf(message)} {...(newestAgentId ? { newestAgentId } : {})} />
     </div>
   );
 }
@@ -217,7 +239,18 @@ export function ConversationThread({
   onRetry?: (id: string) => void;
 }) {
   const entries = threadEntries(messages, windows, outbox, agentTurns, progress);
+  // The thread's newest assistant turn, which is the one that never folds (ISS-1083 criterion 21).
+  // cm:guard read off the ENTRIES and not off `messages`, because the turn in flight is not a
+  // message yet: `threadEntries` is the one authority on what this thread's order is, including
+  // whether the frames still count as a turn of their own, and asking `messages` for the newest
+  // would fold the answer a person is watching arrive the moment it landed.
+  const newestAgentId = entries.reduce<string | undefined>((id, entry) => {
+    if (entry.kind === "progress") return entry.progress.entry.id ?? id;
+    if (entry.kind === "said" && entry.message.role === "assistant") return entry.message.id;
+    return id;
+  }, undefined);
   return (
+    <DisclosureScope>
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
         if (entry.kind === "said")
@@ -226,6 +259,7 @@ export function ConversationThread({
               key={entry.key}
               message={entry.message}
               {...(withdrawn[entry.message.id] ? { withdrawn: withdrawn[entry.message.id] } : {})}
+              {...(newestAgentId ? { newestAgentId } : {})}
             />
           );
         if (entry.kind === "outbox")
@@ -246,6 +280,7 @@ export function ConversationThread({
               {...(withdrawn[entry.progress.entry.id ?? ""]
                 ? { withdrawn: withdrawn[entry.progress.entry.id ?? ""] }
                 : {})}
+              {...(newestAgentId ? { newestAgentId } : {})}
             />
           );
         return (
@@ -260,6 +295,7 @@ export function ConversationThread({
         );
       })}
     </div>
+    </DisclosureScope>
   );
 }
 
@@ -277,16 +313,22 @@ export function ConversationThread({
 function LiveTurn({
   progress,
   withdrawn,
+  newestAgentId,
 }: {
   progress: ConversationProgressEntry;
   withdrawn?: string;
+  newestAgentId?: string;
 }) {
   return (
     <div className="flex flex-col gap-2" data-testid="thread-live-turn">
       {withdrawn && <WithdrawnDraft draft={withdrawn} />}
       {/* cm:guard the caret stops on the CORRECTION frame, which is the last one of the turn: a caret
           still trailing it would say the replacement is being typed when it is already whole. */}
-      <AssistantTurn entry={progress.entry} streaming={!progress.replaced} />
+      <AssistantTurn
+        entry={progress.entry}
+        streaming={!progress.replaced}
+        {...(newestAgentId ? { newestAgentId } : {})}
+      />
     </div>
   );
 }

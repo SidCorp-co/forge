@@ -567,3 +567,75 @@ describe("a tool's output as the wire actually carries it", () => {
     expect(screen.queryByTestId("tool-result-toggle")).toBeNull();
   });
 });
+
+// cm:guard THE moment this store exists for (ISS-1083 criterion 24): a turn settling on this
+// surface is not a re-render, it is a SWAP — `threadEntries` stops emitting the `progress` entry and
+// emits a `said` row instead, so React unmounts `LiveTurn` and mounts `Said` at that position. A
+// tool result a reader had opened while the answer was arriving used to go with it, and no key
+// inside the turn survives that, because the component at the position changes type. The scope on
+// `ConversationThread` does.
+describe("what a reader has opened, across the settle", () => {
+  const blocks: CanonicalBlock[] = [
+    { type: "text", text: "let me look" },
+    {
+      type: "tool",
+      toolCall: { id: "t1", name: "Read", input: { file_path: "release.md" }, output: '{"open":3}' },
+    },
+    { type: "text", text: "two issues left" },
+  ];
+
+  // The id is the SAME on both sides, which is the store's own premise: a progress entry carries
+  // "the id the settled row will carry" and `parseMessages` passes it straight through.
+  const arriving: ConversationProgressEntry = {
+    conversationId: "c1",
+    rev: 4,
+    entry: {
+      id: "m1",
+      type: "assistant",
+      timestamp: Date.parse("2026-09-14T00:00:01.000Z"),
+      content: "two issues left",
+      blocks,
+    },
+  };
+  const stored: ConversationMessage = {
+    ...asked,
+    id: "m1",
+    seq: 1,
+    role: "assistant",
+    authorUserId: null,
+    authorLabel: null,
+    content: "two issues left",
+    createdAt: "2026-09-14T00:00:01.000Z",
+    blocks,
+  };
+
+  it("keeps a tool result open when the turn it is in settles", () => {
+    const { rerender } = render(
+      <ConversationThread messages={[asked]} windows={[]} progress={arriving} />,
+    );
+    fireEvent.click(screen.getByTestId("tool-result-toggle"));
+    expect(screen.getByTestId("tool-result-body")).toHaveTextContent('"open": 3');
+
+    // The turn settles: the stored row lands and the frames stop being a turn of their own.
+    rerender(
+      <ConversationThread messages={[asked, stored]} windows={[closed("answered")]} progress={null} />,
+    );
+
+    expect(screen.queryByTestId("thread-live-turn")).toBeNull();
+    expect(screen.getByTestId("tool-result-body")).toHaveTextContent('"open": 3');
+  });
+
+  // cm:guard and it was CLOSED before the settle, so what survives is the reader's decision either
+  // way rather than a card that happens to default open. Without this the case above would pass
+  // against an implementation that opened every card on a settled row.
+  it("keeps a tool result closed when the reader never opened it", () => {
+    const { rerender } = render(
+      <ConversationThread messages={[asked]} windows={[]} progress={arriving} />,
+    );
+    rerender(
+      <ConversationThread messages={[asked, stored]} windows={[closed("answered")]} progress={null} />,
+    );
+    expect(screen.queryByTestId("tool-result-body")).toBeNull();
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Object · 1 field");
+  });
+});

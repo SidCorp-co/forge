@@ -4,11 +4,13 @@
 // Reused by the run thread (session-screen) and the /agent Chat surface.
 // Prompt turns are editable + regen/fork anchors; agent turns render ordered
 // thinking / text / tool / todos blocks with a streaming caret on the live tail.
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { Button, Icon, StreamingText } from "@/design";
 import { AttachmentList } from "@/features/issues/components/attachment-list";
+import { disclosureKeys, useThreadDisclosures } from "../disclosure";
+import { foldTurn } from "../fold";
 import { AGENT_COLUMN, USER_BUBBLE } from "../layout";
-import type { AgentTodo, ConversationItem } from "../types";
+import type { AgentTodo, ConversationItem, RenderBlock } from "../types";
 import { ThinkingLine } from "./thinking-line";
 import { ToolCard } from "./tool-card";
 
@@ -41,6 +43,16 @@ interface ConversationProps extends ConversationActions {
    * the messages fallback doesn't carry (ISS-348).
    */
   readOnly?: boolean;
+  /**
+   * The thread's newest agent turn. Every agent turn above it folds its machinery to one row.
+   */
+  // cm:guard the CALLER names it, because on the chat surface this component is mounted once per
+  // turn — `conversation-thread.tsx:AssistantTurn` renders a `Conversation` holding a single item —
+  // so an instance's own last item is the newest turn it can see and not the newest turn there is.
+  // Left to work it out for itself, nothing on that surface would ever fold. Where the caller holds
+  // the whole thread, as the session screen does, it may leave this alone and the last agent item
+  // is the answer.
+  newestAgentId?: string;
 }
 
 const TODO_ICON: Record<AgentTodo["status"], { name: "check" | "play" | "dot"; color: string }> = {
@@ -153,7 +165,29 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
   );
 }
 
-function AgentTurn({ item, streamingTail, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; busy?: boolean; readOnly?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
+/**
+ * The one row a folded turn shows in place of everything it collapsed.
+ */
+// cm:guard the same affordance a collapsed pause uses, deliberately: a reader who has learned that a
+// chevron and a grey line open onto more has learned it for both, and a second visual language for
+// "there is more behind this" is how a thread stops being scannable.
+function FoldRow({ label, onOpen }: { label: string; onOpen: () => void }) {
+  return (
+    <button
+      type="button"
+      data-testid="turn-fold"
+      aria-expanded={false}
+      onClick={onOpen}
+      className="flex w-fit items-center gap-1.5 rounded text-subtle hover:text-default"
+      style={{ fontSize: 12 }}
+    >
+      <Icon name="chevronRight" size={12} className="flex-none" />
+      <span>{label}</span>
+    </button>
+  );
+}
+
+function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; folded?: boolean; busy?: boolean; readOnly?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
   // cm:guard the caret trails the text block that is still GROWING, which — because a turn is
   // append-only — is the last block of the turn or none at all. It used to trail the last TEXT
   // block by index whatever came after it, so a turn that wrote a sentence and then called a tool
@@ -165,43 +199,111 @@ function AgentTurn({ item, streamingTail, busy, readOnly, onRegenerate, onFork }
   const tailIdx = item.blocks.length - 1;
   const caretIdx = item.blocks[tailIdx]?.type === "text" ? tailIdx : -1;
 
+  // cm:guard a turn a reader has opened anything inside NEVER folds, and the flag outlives the card
+  // they opened (`disclosure.tsx`): folding the turn the moment they close it would take away what
+  // they were in the middle of reading, and their own click would be what did it (criterion 25).
+  // cm:why the fold row's own open state is local while the cards' is not: a turn is only ever
+  // folded long after it settled, and the settle is the one moment this subtree is swapped out from
+  // under a reader. There is nothing for it to survive.
+  const disclosures = useThreadDisclosures();
+  const [unfolded, setUnfolded] = useState(false);
+  const keys = disclosureKeys(item.id, item.blocks);
+
+  // cm:guard focus MOVES into what the row revealed, because opening it REMOVES the control that
+  // was focused: a keyboard user who activated the row and was left on `document.body` has lost
+  // their place in the thread rather than continuing through the cards they just asked for
+  // (implementation consult F3).
+  // cm:why nothing is focused where nothing revealed is interactive — a turn whose every card and
+  // pause opens onto nothing renders static lines — and that limit is stated rather than answered
+  // with a `tabIndex={-1}` container: there is nothing there to continue through, and a focus ring
+  // around a whole turn says there is.
+  const columnRef = useRef<HTMLDivElement>(null);
+  useEffect(() => {
+    if (!unfolded) return;
+    columnRef.current
+      ?.querySelector<HTMLElement>(
+        '[data-testid="tool-result-toggle"],[data-testid="thinking-line-toggle"]',
+      )
+      ?.focus();
+  }, [unfolded]);
+  const fold =
+    folded === true && !unfolded && disclosures?.touched(item.id) !== true
+      ? foldTurn(item.blocks)
+      : null;
+
+  // cm:guard ONE renderer for both paths, and the keys are the block's own: a kept block is the
+  // SAME React element before and after its turn folds, so folding cannot remount the prose a
+  // reader is looking at (criterion 29, asserted as node identity in `conversation-fold.test.tsx`).
+  const renderBlock = (block: RenderBlock, i: number) => {
+    if (block.type === "text") {
+      return <StreamingText key={i} text={block.text} streaming={streamingTail && i === caretIdx} />;
+    }
+    if (block.type === "todos") return <TodoList key={i} todos={block.todos} />;
+    // cm:guard this arm is before the `ToolCard` fall-through and must stay there: the function
+    // ends by reading `block.tool` off whatever is left, so a block type with no arm reads a
+    // field off undefined rather than rendering nothing. The compiler caught exactly that the
+    // moment `RenderBlock` grew this member (ISS-1079).
+    if (block.type === "thinking") {
+      return (
+        // cm:why the index IS this block's identity: a turn's blocks are positional and
+        // append-only — the list grows at the end while the turn streams and never reorders — and a
+        // thinking block carries no id to key on. The sibling text and todos arms key the same way
+        // for the same reason. This used to need a `biome-ignore` for `noArrayIndexKey`; moving the
+        // arms into a named function took the rule out of scope, and the suppression with it, so
+        // what is left is the reason rather than the waiver (ISS-1083).
+        <ThinkingLine
+          key={i}
+          text={block.text}
+          durationMs={block.durationMs}
+          count={block.count}
+          streaming={streamingTail && i === item.blocks.length - 1}
+          {...(keys[i] ? { blockKey: keys[i] } : {})}
+        />
+      );
+    }
+    return (
+      <ToolCard
+        key={block.tool.id ?? i}
+        tool={block.tool}
+        live={streamingTail}
+        {...(keys[i] ? { blockKey: keys[i] } : {})}
+      />
+    );
+  };
+
   return (
-    <div className="group flex flex-col items-start">
-      <div className={`flex flex-col gap-2 ${AGENT_COLUMN}`}>
-        {item.blocks.map((block, i) => {
-          if (block.type === "text") {
-            return <StreamingText key={i} text={block.text} streaming={streamingTail && i === caretIdx} />;
-          }
-          if (block.type === "todos") return <TodoList key={i} todos={block.todos} />;
-          // cm:guard this arm is before the `ToolCard` fall-through and must stay there: the map
-          // ends by reading `block.tool` off whatever is left, so a block type with no arm reads a
-          // field off undefined rather than rendering nothing. The compiler caught exactly that the
-          // moment `RenderBlock` grew this member (ISS-1079).
-          if (block.type === "thinking") {
-            return (
-              <ThinkingLine
-                // biome-ignore lint/suspicious/noArrayIndexKey: a turn's blocks are positional and append-only — the list grows at the end while the turn streams and never reorders, so the index IS this block's identity. A thinking block carries no id to key on, and the sibling text and todos arms key the same way for the same reason.
-                key={i}
-                text={block.text}
-                durationMs={block.durationMs}
-                count={block.count}
-                streaming={streamingTail && i === item.blocks.length - 1}
-              />
-            );
-          }
-          return <ToolCard key={block.tool.id ?? i} tool={block.tool} live={streamingTail} />;
-        })}
+    // cm:why the turn carries its own id on the element: it is what lets a test name ONE turn in a
+    // thread and assert that folding did not touch it — criterion 29 is a statement about the turns
+    // a reader is not looking at, and there is no way to hold it without being able to point at one.
+    <div className="group flex flex-col items-start" data-testid="agent-turn" data-turn-id={item.id}>
+      <div ref={columnRef} className={`flex flex-col gap-2 ${AGENT_COLUMN}`}>
+        {fold
+          ? fold.rows.map((row) =>
+              row.kind === "fold" ? (
+                <FoldRow key="fold" label={row.label} onOpen={() => setUnfolded(true)} />
+              ) : (
+                renderBlock(row.block, row.index)
+              ),
+            )
+          : item.blocks.map(renderBlock)}
       </div>
       {!readOnly && <TurnActions item={item} busy={busy} onRegenerate={onRegenerate} onFork={onFork} />}
     </div>
   );
 }
 
-export function Conversation({ items, streaming, busy, readOnly, onRegenerate, onFork, onEditTurn }: ConversationProps) {
+export function Conversation({ items, streaming, busy, readOnly, newestAgentId, onRegenerate, onFork, onEditTurn }: ConversationProps) {
   let lastAgentIdx = -1;
   items.forEach((it, i) => {
     if (it.kind === "agent") lastAgentIdx = i;
   });
+  // cm:guard the newest agent turn never folds, which is the owner's decision and criterion 21: a
+  // reader who has just watched an answer arrive must not have it rearrange itself under them.
+  // cm:why folding can only ever happen at the BOTTOM of a thread, and that is what holds criterion
+  // 29 without a line of scroll arithmetic: exactly one turn stops being the newest each time a
+  // newer one appears, every turn above it folded at its own transition, and content shrinking
+  // below a reader's viewport does not move what is in it.
+  const newest = newestAgentId ?? (lastAgentIdx >= 0 ? items[lastAgentIdx]?.id : undefined);
 
   return (
     <div className="flex flex-col gap-5">
@@ -213,6 +315,7 @@ export function Conversation({ items, streaming, busy, readOnly, onRegenerate, o
             key={item.id}
             item={item}
             streamingTail={streaming && i === lastAgentIdx}
+            folded={newest !== undefined && item.id !== newest}
             busy={busy}
             readOnly={readOnly}
             onRegenerate={onRegenerate}

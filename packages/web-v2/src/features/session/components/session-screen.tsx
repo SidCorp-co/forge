@@ -46,6 +46,7 @@ import { Composer, ReadOnlyComposerNote } from "./composer";
 import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
+import { DisclosureScope } from "../disclosure";
 import { TurnStage, sessionTurnStage } from "./turn-stage";
 import { useStickToBottom } from "./use-stick-to-bottom";
 
@@ -357,6 +358,11 @@ export function SessionScreen({
         />
       ) : (
         <>
+      {/* cm:guard the scope is HERE, above the thread and outside the queries that refill it, so a
+          disclosure a reader opened survives the turn settling under them: on the chat surface that
+          settle swaps the whole live subtree for a stored one, and state held any lower goes with it
+          (ISS-1083 criterion 24, and `disclosure.tsx` for why). */}
+      <DisclosureScope>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
@@ -430,6 +436,7 @@ export function SessionScreen({
           </aside>
         )}
       </div>
+      </DisclosureScope>
 
       {/* Mobile rail */}
       <SlideOver
