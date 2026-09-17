@@ -167,6 +167,7 @@ import { promptRoutes } from './prompt/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
+import { registerReleaseUnstartedRecovery } from './release-batch/unstarted-recovery.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { registerGhostRunnerReaper } from './runners/ghost-reaper.js';
 import { runnerRoutes } from './runners/routes.js';
@@ -495,6 +496,7 @@ if (isMain) {
   await registerGhostRunnerReaper();
   await registerRetentionSweeper();
   await registerPipelineSweeper();
+  await registerReleaseUnstartedRecovery();
   await registerPhaseJournalBackfill();
   await registerPgBossHealthProbe();
   await registerOutboundDeliveryWorker();

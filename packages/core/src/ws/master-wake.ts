@@ -67,7 +67,7 @@ async function devicesServing(projectId: string): Promise<string[]> {
  * on the fleet is bound to do this project's work at all — the second is an
  * operator's problem and the first resolves itself on the next sweep.
  */
-// cm:guard `issueId` is NULLABLE and the frame carries the null through. Since ISS-933 a wake also fires on the mint of a job kind with no issue behind it — `smoke`, `release_batch`, `reconcile`, `verify_skill` — and a wake carries no work anyway: `daemon/mod.rs` reads the event NAME and `projectId`, then reads the whole pool for itself.
+// cm:guard `issueId` is NULLABLE and the frame carries the null through. Since ISS-933 a wake also fires on the mint of a job kind with no issue behind it — `smoke`, `release_batch`, `reconcile`, `verify_skill` — and a wake carries no work anyway: the box reads the event NAME and `projectId`, then reads the whole pool for itself. That last clause was aspirational until ISS-1080 wired `daemon/pool_jobs.rs`; a wake for one of the four kinds woke a sweep that read only the admissible ISSUES and went back to sleep.
 export async function wakeMastersForProject(args: {
   projectId: string;
   issueId: string | null;

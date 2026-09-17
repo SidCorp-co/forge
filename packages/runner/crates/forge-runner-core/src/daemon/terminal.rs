@@ -26,6 +26,28 @@ pub const MASTER_PREFIX: &str = "forge-master";
 // cm:guard a run pane and a master pane differ ONLY by this string and share every primitive below — `ensure`, `alive`, `kill` and `send_line` all take the name a caller built from a prefix. A second copy of those primitives for runs is what this constant exists to prevent: two spawn paths drift, and the one that runs less often is the one that rots (ISS-933 criterion 1).
 pub const RUN_PREFIX: &str = "forge-run";
 
+/// A job pane's prefix, distinct from a master's and a run's for the same reason they differ from each other.
+// cm:guard the job id is the WHOLE of the suffix, and that is load-bearing in both directions: `session_name` leaves a uuid untouched (hex and `-` only survive its filter), so `forge-job-<uuid>` round-trips, and `names_with_prefix` below reads the id back off the pane after a daemon restart. A name carrying anything else — a slug, a type, a counter — would make that read a guess.
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs — the only builder and the only reader of this prefix; the registry it rebuilds at startup has no other source.
+pub const JOB_PREFIX: &str = "forge-job";
+
+/// Every session on this box whose name starts with `prefix`.
+// cm:guard an unreachable tmux answers EMPTY, never an error, and the caller must read that as "this box has no panes I can see" rather than "there are none". The one caller rebuilds a registry from it, and a registry rebuilt from a failed listing would look exactly like a box that had just restarted with nothing running — which is how a live job loses its supervisor.
+pub async fn names_with_prefix(prefix: &str) -> Vec<String> {
+    let Ok(out) = tmux(&["list-sessions", "-F", "#{session_name}"]).await else {
+        return Vec::new();
+    };
+    if !out.status.success() {
+        return Vec::new();
+    }
+    String::from_utf8_lossy(&out.stdout)
+        .lines()
+        .map(str::trim)
+        .filter(|n| n.starts_with(prefix))
+        .map(str::to_string)
+        .collect()
+}
+
 /// Whether this box can host a resident session at all.
 // cm:guard REFUSE by name when tmux is missing rather than falling back to the `claude -p` pass this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of B3's liveness, B5's transcript or B6's inbox exist on it — the silent substitution `CLAUDE.md` forbids, on the exact machinery that is supposed to detect silence. `forge-runner doctor` names the same missing binary before an operator finds it this way.
 pub fn available() -> bool {
