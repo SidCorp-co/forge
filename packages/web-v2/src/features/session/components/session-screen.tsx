@@ -1,7 +1,6 @@
 "use client";
 
 import {
-  AgentWorking,
   Badge,
   Button,
   EmptyState,
@@ -47,6 +46,7 @@ import { Composer, ReadOnlyComposerNote } from "./composer";
 import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
+import { TurnStage, sessionTurnStage } from "./turn-stage";
 import { useStickToBottom } from "./use-stick-to-bottom";
 
 interface SessionScreenProps {
@@ -160,6 +160,16 @@ export function SessionScreen({
   const elapsed = useElapsed(startMs, live);
 
   const lastTurnId = items.length ? items[items.length - 1].turnId : undefined;
+
+  // What this turn is doing, in the one line that replaced the `AgentWorking` card below the
+  // thread (ISS-1083). Which statuses draw which stage is `sessionTurnStage`'s, named there with
+  // the three judgements it makes and asserted in `turn-stage.test.tsx`.
+  const stage = sessionTurnStage({
+    live,
+    display,
+    fromMessages,
+    ...(items.length ? { tail: items[items.length - 1] } : {}),
+  });
 
   // Auto-scroll the thread to the newest message (ISS-728) — this pane and the
   // mobile SlideOver reply panel both render this screen (embedded mode), so
@@ -354,14 +364,13 @@ export function SessionScreen({
               {turnsQ.isLoading ? (
                 <ProjectLoader label="loading turns…" size={110} />
               ) : items.length === 0 ? (
-                <EmptyState
-                  title="No messages yet"
-                  message={
-                    live
-                      ? "The agent is starting up…"
-                      : "This session has no turns."
-                  }
-                />
+                // cm:guard nothing here while the session is LIVE, because the stage line below is
+                // what says so now: this branch used to read "The agent is starting up…", which was
+                // a second sentence about the one fact and sat above a mascot card making the same
+                // claim (ISS-1083 criterion 17).
+                live ? null : (
+                  <EmptyState title="No messages yet" message="This session has no turns." />
+                )
               ) : (
                 <Conversation
                   items={items}
@@ -380,9 +389,14 @@ export function SessionScreen({
                   }
                 />
               )}
-              {live && (
-                <div className="mt-5">
-                  <AgentWorking label="Agent is working…" elapsed={elapsed} />
+              {/* cm:guard ONE position for the whole turn, at the end of the thread, and the
+                  same position whether the turn has produced blocks or nothing at all — which is
+                  the whole of criterion 17. The mascot card this replaced was drawn under every
+                  live turn, saying the agent was working directly beneath the words it had already
+                  written. */}
+              {stage && (
+                <div className="mt-3">
+                  <TurnStage stage={stage} {...(elapsed ? { elapsed } : {})} />
                 </div>
               )}
               <div ref={bottomRef} />

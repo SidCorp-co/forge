@@ -154,18 +154,23 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
 }
 
 function AgentTurn({ item, streamingTail, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; busy?: boolean; readOnly?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
-  // The caret trails the LAST text block of the live tail turn.
-  let lastTextIdx = -1;
-  item.blocks.forEach((b, i) => {
-    if (b.type === "text") lastTextIdx = i;
-  });
+  // cm:guard the caret trails the text block that is still GROWING, which — because a turn is
+  // append-only — is the last block of the turn or none at all. It used to trail the last TEXT
+  // block by index whatever came after it, so a turn that wrote a sentence and then called a tool
+  // left a cursor blinking at the end of that sentence for the whole of the call, above a card
+  // saying the call was still out (ISS-1083 criterion 18).
+  // cm:why this is the same tail read `turn-stage.ts:turnStageOf` makes, and deliberately so: the
+  // caret is on the prose exactly when the turn's stage line says `Responding…`, so the two cannot
+  // disagree about whether anything is being written.
+  const tailIdx = item.blocks.length - 1;
+  const caretIdx = item.blocks[tailIdx]?.type === "text" ? tailIdx : -1;
 
   return (
     <div className="group flex flex-col items-start">
       <div className={`flex flex-col gap-2 ${AGENT_COLUMN}`}>
         {item.blocks.map((block, i) => {
           if (block.type === "text") {
-            return <StreamingText key={i} text={block.text} streaming={streamingTail && i === lastTextIdx} />;
+            return <StreamingText key={i} text={block.text} streaming={streamingTail && i === caretIdx} />;
           }
           if (block.type === "todos") return <TodoList key={i} todos={block.todos} />;
           // cm:guard this arm is before the `ToolCard` fall-through and must stay there: the map

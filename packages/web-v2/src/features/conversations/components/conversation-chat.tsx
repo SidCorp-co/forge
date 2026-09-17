@@ -12,7 +12,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AgentWorking,
   EmptyState,
   ErrorState,
   IconButton,
@@ -20,7 +19,12 @@ import {
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { Composer, ReadOnlyComposerNote } from "@/features/session/components/composer";
+import {
+  TurnStage,
+  turnStageOf,
+} from "@/features/session/components/turn-stage";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
+import { parseMessages } from "@/features/session/types";
 import { formatApiError } from "@/lib/api/error";
 import {
   useConversation,
@@ -125,6 +129,22 @@ export function ConversationChat({
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
   const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
   const busy = send.isPending || open.isPending;
+
+  // What the turn in flight is doing, in the one line that replaced the `AgentWorking` card
+  // (ISS-1083).
+  // cm:guard `progress` alone makes a turn live, not just `busy`: in a group room the frames
+  // arriving are often for somebody else's question, and reading only this browser's own pending
+  // send would leave the thread silent for every turn a person did not start themselves.
+  // cm:guard `replaced` ends the turn here as it ends the caret in `LiveTurn`: the correction frame
+  // is the last one of the turn, so a stage line still running past it would say a reply was being
+  // written when it was already whole and withdrawn.
+  // cm:why the entry goes back through `parseMessages` rather than reading `entry.blocks` directly:
+  // a progress entry often carries `content` and no blocks at all, and the converter is the one
+  // place that turns either shape into the render blocks the rule reads a tail off.
+  const stage = turnStageOf({
+    live: (busy || progress != null) && !progress?.replaced,
+    ...(progress ? { blocks: parseMessages([progress.entry])[0]?.blocks } : {}),
+  });
 
   // cm:guard the control is live while the room is EMPTY and by no other test: a room whose column
   // is still null but which already holds a transcript was opened before ISS-1039 and answers in
@@ -319,14 +339,15 @@ export function ConversationChat({
               onRetry={retry}
             />
           )}
-          {/* cm:guard silenced while frames are arriving, because this placeholder is the thing they
-              replace: a spinner reading "Agent is working…" under a reply being typed says the turn
-              has produced nothing, directly beneath the words it has produced. It stays for the gap
-              between the send and the first frame, and for an Agent-mode turn, which streams nothing
-              here at all (ISS-1078). */}
-          {busy && !progress && (
-            <div className="mt-6">
-              <AgentWorking label="Agent is working…" />
+          {/* cm:guard ONE line for the whole turn, in ONE position at the end of the thread,
+              whether the turn has streamed prose or nothing yet (ISS-1083 criterion 17). What was
+              here was a mascot card reading "Agent is working…", silenced the moment frames
+              arrived — because under a reply being typed it said the turn had produced nothing
+              directly beneath the words it had produced (ISS-1078). Silencing it left the rest of
+              the turn saying nothing at all; this line says which stage it is in instead. */}
+          {stage && (
+            <div className="mt-4">
+              <TurnStage stage={stage} />
             </div>
           )}
           <div ref={bottomRef} />
