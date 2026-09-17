@@ -19,8 +19,8 @@ import { screenAtDoor } from '../../messaging/screen.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';
 import { emitNotification } from '../../notifications/emit.js';
 import { sendFixedReply } from './outbound.js';
-import { agentAuthoredSegments, renderRound } from './question-render.js';
 import { isUnreachableRoom, resolveQuestionDestination } from './question-destination.js';
+import { agentAuthoredSegments, renderRound } from './question-render.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
 import { registerThread, releaseQuestionThread } from './thread-registry.js';
 

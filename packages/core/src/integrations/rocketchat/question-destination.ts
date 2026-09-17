@@ -14,10 +14,10 @@
 import { and, eq } from 'drizzle-orm';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { db } from '../../db/client.js';
-import type { QuestionOrigin, QuestionStep } from '../../db/schema-questions.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
-import { directRoomFor } from './direct-room.js';
+import type { QuestionOrigin, QuestionStep } from '../../db/schema-questions.js';
 import { parseRocketChatVenueId } from './conversation-port.js';
+import { directRoomFor } from './direct-room.js';
 import { roomForProject } from './project-room.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
 import { questionThread } from './thread-registry.js';
@@ -171,7 +171,13 @@ export async function resolveQuestionDestination(
         reason: 'no Rocket.Chat room is bound to this project',
       };
     }
-    return { kind: 'room', connectionId: room.connectionId, rid: room.rid, tmid: null, takeAnchor: false };
+    return {
+      kind: 'room',
+      connectionId: room.connectionId,
+      rid: room.rid,
+      tmid: null,
+      takeAnchor: false,
+    };
   }
 
   if (input.origin.kind === 'unresolved') {
@@ -222,7 +228,8 @@ export async function resolveQuestionDestination(
     if (!auth) {
       return {
         kind: 'unresolvable',
-        reason: 'this round is private to whoever asked, and the connection carries no usable credentials to open a direct room with',
+        reason:
+          'this round is private to whoever asked, and the connection carries no usable credentials to open a direct room with',
       };
     }
     const direct = await directRoomFor(auth, input.origin.askedByKey);
@@ -255,7 +262,7 @@ async function isDirectRoomOf(
   connectionId: string,
   rid: string,
 ): Promise<boolean> {
-  if (!input.origin || input.origin.kind !== 'conversation') return false;
+  if (input.origin?.kind !== 'conversation') return false;
   const auth = await resolveRoomPostAuth(connectionId, {
     source: 'rocketchat.question-destination',
     questionId: input.questionId,

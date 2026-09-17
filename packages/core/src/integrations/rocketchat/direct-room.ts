@@ -7,7 +7,7 @@
 // told (ISS-1091 outcome 2).
 
 import { logger } from '../../logger.js';
-import { type RocketChatRestAuth, fetchUserProfile } from './rest-client.js';
+import { fetchUserProfile, type RocketChatRestAuth } from './rest-client.js';
 
 /**
  * The direct room, or why there is none, in the words the operator is shown.

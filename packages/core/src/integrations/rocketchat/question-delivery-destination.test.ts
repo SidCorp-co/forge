@@ -88,13 +88,22 @@ vi.mock('./question-render.js', () => ({
 vi.mock('../../issues/issue-prefix-read.js', () => ({ activeIssuePrefix: async () => 'ISS' }));
 vi.mock('../../lib/issue-ref.js', () => ({ formatIssueRef: () => 'ISS-1' }));
 
-const emitNotification = vi.fn<() => Promise<void>>(async () => {});
-vi.mock('../../notifications/emit.js', () => ({ emitNotification: (a: unknown) => emitNotification(a as never) }));
+const emitNotification = vi.fn<(a: unknown) => Promise<void>>(async () => {});
+vi.mock('../../notifications/emit.js', () => ({
+  emitNotification: (a: unknown) => emitNotification(a as never),
+}));
 vi.mock('../../notifications/auto-resolve.js', () => ({ resolveNotifications: async () => {} }));
 
 const { deliverOwedRound } = await import('./question-delivery.js');
 
-const owed = { questionId: 'q-1', projectId: 'p-1', issueId: null, round: 1, attempts: 0, wasUndeliverable: false };
+const owed = {
+  questionId: 'q-1',
+  projectId: 'p-1',
+  issueId: null,
+  round: 1,
+  attempts: 0,
+  wasUndeliverable: false,
+};
 const row = {
   id: 'q-1',
   steps: [{ round: 1, prompt: 'p', askedAt: 'now', answerShape: 'free_text', needed: 'x' }],
@@ -120,7 +129,9 @@ describe('deliverOwedRound', () => {
     destination.mockResolvedValue({ kind: 'unresolvable', reason: 'nobody to ask' });
     expect(await deliverOwedRound(owed)).toBe('undeliverable');
     expect(sendFixedReply).not.toHaveBeenCalled();
-    expect(updates.some((u) => u.status === 'undeliverable' && u.lastError === 'nobody to ask')).toBe(true);
+    expect(
+      updates.some((u) => u.status === 'undeliverable' && u.lastError === 'nobody to ask'),
+    ).toBe(true);
     expect(emitNotification).toHaveBeenCalledWith(
       expect.objectContaining({ body: expect.stringContaining('nobody to ask') }),
     );
@@ -159,7 +170,11 @@ describe('deliverOwedRound', () => {
     });
     expect(await deliverOwedRound(owed)).toBe('undeliverable');
     expect(sendFixedReply).not.toHaveBeenCalled();
-    expect(updates.some((u) => typeof u.lastError === 'string' && (u.lastError as string).includes('m-9'))).toBe(true);
+    expect(
+      updates.some(
+        (u) => typeof u.lastError === 'string' && (u.lastError as string).includes('m-9'),
+      ),
+    ).toBe(true);
   });
 
   it('gives the anchor back when the post then fails', async () => {

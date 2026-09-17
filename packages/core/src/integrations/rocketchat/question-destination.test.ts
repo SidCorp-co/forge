@@ -54,7 +54,9 @@ const step = (over: Partial<QuestionStep> = {}): QuestionStep =>
     ...over,
   }) as QuestionStep;
 
-const conversationOrigin = (over: Partial<Extract<QuestionOrigin, { kind: 'conversation' }>> = {}) =>
+const conversationOrigin = (
+  over: Partial<Extract<QuestionOrigin, { kind: 'conversation' }>> = {},
+) =>
   ({
     kind: 'conversation',
     adapter: 'rocketchat',
@@ -69,9 +71,7 @@ const conversationOrigin = (over: Partial<Extract<QuestionOrigin, { kind: 'conve
   }) as QuestionOrigin;
 
 const bindRoom = (rid: string) => {
-  connections.mockReturnValue([
-    { id: 'conn-1', config: { serverUrl: 'https://chat.example.co' } },
-  ]);
+  connections.mockReturnValue([{ id: 'conn-1', config: { serverUrl: 'https://chat.example.co' } }]);
   bindings.mockReturnValue([{ connectionId: 'conn-1', config: { rids: [rid] } }]);
 };
 

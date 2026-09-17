@@ -132,12 +132,7 @@ export function checkAnswer(answer: AskAnswer): void {
 }
 
 // cm:guard EVERY round this file mints is built here and screened here — the first one and every follow-up — because the cell does not care which round it is: round three is put to the same person, in the same room, by the same agent. Screening only the first would let a follow-up carry the option list inline that the first was refused for.
-function step(
-  round: number,
-  prompt: string,
-  answer: AskAnswer,
-  sensitive?: boolean,
-): QuestionStep {
+function step(round: number, prompt: string, answer: AskAnswer, sensitive?: boolean): QuestionStep {
   const built = buildStep(round, prompt, answer, sensitive);
   screenRound(built, (message, code) => {
     throw new QuestionRefused(message, code);

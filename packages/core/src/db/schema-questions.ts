@@ -23,8 +23,8 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
-import type { ConversationAdapter } from './schema-conversations.js';
 import { agentSessions, issues, projects } from './schema.js';
+import type { ConversationAdapter } from './schema-conversations.js';
 
 export const questionStatuses = ['open', 'answered', 'void', 'expired', 'needs_info'] as const;
 export type QuestionStatus = (typeof questionStatuses)[number];

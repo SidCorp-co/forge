@@ -16,9 +16,9 @@ import {
   CONVERSATION_AGENT_MARKER,
   readConversationAgentMeta,
 } from '../agent-sessions/conversation-agent.js';
+import { agentSessions } from '../db/schema.js';
 import { conversationMessages, conversationWindows } from '../db/schema-conversations.js';
 import type { QuestionOrigin } from '../db/schema-questions.js';
-import { agentSessions } from '../db/schema.js';
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 
 /** The pool, or a caller's open transaction — a park resolves its origin inside the transition's. */

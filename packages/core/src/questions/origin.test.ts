@@ -41,7 +41,10 @@ describe('resolveAskOrigin', () => {
   });
 
   it('answers null when the session carries no conversation marker', async () => {
-    const origin = await resolveAskOrigin(executorOf([{ metadata: { lensOverride: ['product'] } }]), 's-1');
+    const origin = await resolveAskOrigin(
+      executorOf([{ metadata: { lensOverride: ['product'] } }]),
+      's-1',
+    );
     expect(origin).toBeNull();
   });
 
