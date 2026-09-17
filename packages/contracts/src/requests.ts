@@ -10,5 +10,6 @@ export type {
   IssueFilters,
   CreateProjectInput,
   UpdateProjectInput,
-  PreviewDeployConfig,
+  EnvironmentsConfig,
+  NormalizedEnvironments,
 } from '@forge/core/public';
