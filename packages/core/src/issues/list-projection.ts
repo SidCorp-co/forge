@@ -2,6 +2,7 @@
 // cm:guard what this drops is what the row costs to read, never what a caller might want: the six TOAST-eligible body columns and the `ident_search` tsvector, which is a generated search index no client can use. Every scalar stays — `metadata` because web-v2's run drawer reads `metadata.branchConfig.branch` off a search row, `createdById` because its issues list groups on it. Adding a column back is one line here; dropping one is a contract change and needs the consumer sweep the filing asked for.
 
 import type { SQL } from 'drizzle-orm';
+import { db } from '../db/client.js';
 import { type IssueStatus, issues, type WaitingKind } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import type { IssueSearchField } from './search-predicate.js';
@@ -93,7 +94,7 @@ export function serializeRestListRow<T extends { issSeq: number }>(
 // cm:guard ISS-1016 — both REST list handlers get their page from HERE and build no `db.select()` of their own, because the index assertions in `issue-list-index-plan-e2e.test.ts` EXPLAIN what this returns. A handler with a query of its own is a query no plan test covers, and an EXPLAIN over a hand-built copy of it proves nothing about what production runs — which is the mistake ISS-1015 shipped and caught in review.
 /** One page of either REST issue list, ordered and limited. */
 export function issueListPageQuery(opts: {
-  where: SQL;
+  where: SQL | undefined;
   orderBy: SQL;
   limit: number;
   offset: number;

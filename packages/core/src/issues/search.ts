@@ -25,7 +25,6 @@ import {
   usageRecords,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
@@ -37,10 +36,11 @@ import {
   hydrateCreatorsForIssues,
 } from './creator.js';
 import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
+import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { buildIssueSearchCondition, issueSearchMatchedFields } from './search-predicate.js';
+import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 export interface IssueBuckets {
@@ -126,7 +126,7 @@ const searchQuerySchema = z
     withBuckets: z.coerce.boolean().optional().default(false),
     // cm:why opt-in like withCost/withFailureInfo: ONE grouped read of `issue_dependencies` over the page replaced the list row's per-row `GET /issues/:id/dependencies` — 25 requests a page at ISSUES_PAGE_SIZE (ISS-1017)
     withDependencies: z.coerce.boolean().optional().default(false),
-    // cm:why ISS-594 — the ONLY way a list row learns its modules: this response serializes the raw `issues` row, which has no label columns, and the alternative for web-v2's module cell was one `GET /issues/:id` per row
+    // cm:why ISS-594 — the ONLY way a list row learns its modules: this response serializes a projection of the `issues` row, which has no label columns, and the alternative for web-v2's module cell was one `GET /issues/:id` per row
     withModules: z.coerce.boolean().optional().default(false),
   })
   .strict();
@@ -335,24 +335,21 @@ searchRoutes.get(
 
     const buckets = q.withBuckets ? await countBuckets(axisFree) : null;
 
-    const orderBy = buildIssueOrderBy(q.sort);
-
-    const rows = await db
-      .select()
-      .from(issues)
-      .where(where)
-      .orderBy(orderBy)
-      .limit(q.limit)
-      .offset(q.offset);
+    // cm:why ISS-960 — `matchedFields` appears ONLY when `q` was sent, so a caller can tell "this row matched on its acceptance criteria" from "this row was not searched for at all". ISS-1016 moved it into the query: this route no longer selects `description`, `plan` or `acceptanceCriteria`, so the only honest way to name the match is to have Postgres name it, with the same `ISSUE_SEARCH_FIELDS` order and the same wildcard escaping the predicate itself uses.
+    // cm:why ISS-1016 — the page comes from `issueListPageQuery` and not from a `db.select()` here, so the plan `issue-list-index-plan-e2e.test.ts` EXPLAINs is the plan this handler runs
+    const rows = await issueListPageQuery({
+      where,
+      orderBy: buildIssueOrderBy(q.sort),
+      limit: q.limit,
+      offset: q.offset,
+      matchedFields: q.q ? matchedSearchFieldsSql(q.q) : null,
+    });
 
     const total = Number(n);
 
-    // cm:why ISS-960 — `matchedFields` appears ONLY when `q` was sent, so a caller can tell "this row matched on its acceptance criteria" from "this row was not searched for at all"; the fields are already on `r` (the select is whole-row), so naming them costs no second read
     const searchPrefix = await activeIssuePrefix(projectId);
     let serialized: Record<string, unknown>[] = rows.map((r) => ({
-      ...r,
-      displayId: formatIssueRef(searchPrefix, (r as { issSeq: number }).issSeq),
-      ...(q.q ? { matchedFields: issueSearchMatchedFields(q.q, r) } : {}),
+      ...serializeRestListRow(r, searchPrefix),
     }));
 
     // cm:guard an issue with no usage rows carries `estimatedCost: 0` and never a missing key — under `withCost=1` the field is always numeric, so a client cannot read "never ran" as "cost unknown" (ISS-437)
