@@ -202,9 +202,11 @@ describe('POST /api/webhooks/in/:slug', () => {
     const json = (await r.json()) as { code?: string };
     expect(json.code).toBe('HANDLER_FAILED');
   });
+});
 
-  // ── ISS-1085 slice 4 — the signature header is the matched provider's own ──────────────────
-
+// The signature header a provider-routed delivery is verified against is now the matched
+// provider's own declaration rather than a list this file holds (ISS-1085 slice 4).
+describe('POST /api/webhooks/in/:slug — the declared signature header', () => {
   it('routes a delivery carrying sentry-hook-resource to the Sentry adapter', async () => {
     selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
     getAdapterMock.mockReturnValueOnce({ provider: 'sentry', handleInbound: handleInboundMock });

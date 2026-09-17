@@ -116,6 +116,16 @@
   admission bar you set on the Ops Console, as drafts. Everything it turns away is named in the
   run's record, and a repeat sighting comments.
 
+- **Sentry can tell Forge about an error as it happens, not just on the schedule.** Point your
+  Sentry webhook at the project. Same admission bar, same drafts, same named refusals — you hear
+  sooner, not differently.
+
+- **An error that comes back reopens the issue you closed instead of filing a new one.** An issue
+  you deliberately dropped is left alone, and the recurrence is still recorded.
+
+- **Every Sentry delivery is logged, including ones nothing was done with.** The reason is in plain
+  words. Forge refuses to guess which declared target a delivery belongs to when several fit.
+
 - **A release-batch schedule's run history is readable again.** Its outcomes were stored and then
   shown as an empty list. Both kinds of schedule that run inside Forge now answer with what they did.
 

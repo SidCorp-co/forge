@@ -57,7 +57,11 @@ vi.mock('../../db/client.js', () => ({
   },
 }));
 
-const transitionMock = vi.fn(async () => ({ id: 'i1', status: 'reopen', reopenCount: 1 }));
+const transitionMock = vi.fn(async (..._a: unknown[]) => ({
+  id: 'i1',
+  status: 'reopen',
+  reopenCount: 1,
+}));
 vi.mock('../../issues/apply-transition.js', () => ({
   transitionIssueStatus: (...a: unknown[]) => transitionMock(...(a as [])),
 }));
@@ -111,6 +115,13 @@ function issue(over: Record<string, unknown> = {}) {
 }
 
 const ctx = { projectId: PROJECT, createdById: 'user-1', thresholds: THRESHOLDS, target: TARGET };
+
+/** The transition this run requested, or a throw naming the invariant the caller assumed. */
+function requestedTransition(): unknown[] {
+  const call = transitionMock.mock.calls[0];
+  if (!call) throw new Error('no status transition was requested');
+  return call as unknown[];
+}
 
 /** One already-filed Forge issue for the lookup to answer with. */
 function filed(over: Record<string, unknown> = {}) {
@@ -233,23 +244,24 @@ describe('an error that came back after somebody called it done', () => {
     const out = await intakeSentryIssue(issue(regressed), ctx);
     expect(out).toEqual({ kind: 'reopened' });
     expect(transitionMock).toHaveBeenCalledTimes(1);
-    expect(transitionMock.mock.calls[0]?.[0]).toMatchObject({ id: 'issue-1', status: 'closed' });
-    expect(transitionMock.mock.calls[0]?.[1]).toBe('reopen');
+    expect(requestedTransition()[0]).toMatchObject({ id: 'issue-1', status: 'closed' });
+    expect(requestedTransition()[1]).toBe('reopen');
   });
 
   // cm:guard the counter is the state machine's, incremented for exactly the `(closed, reopen)` pair this code requests. Asserting the increment against a mocked transition would be asserting the mock; asserting the PAIR against the real `isReopenEntry` is the half this module can honestly own.
   it('requests the one transition pair the state machine counts as a reopen', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     await intakeSentryIssue(issue(regressed), ctx);
-    const from = (transitionMock.mock.calls[0]?.[0] as { status: string }).status;
-    const to = transitionMock.mock.calls[0]?.[1] as string;
+    const call = requestedTransition();
+    const from = (call[0] as { status: string }).status;
+    const to = call[1] as string;
     expect(isReopenEntry(from as never, to as never)).toBe(true);
   });
 
   it('carries an authored reason naming Sentry as the evidence', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     await intakeSentryIssue(issue(regressed), ctx);
-    const opts = transitionMock.mock.calls[0]?.[3] as { transitionReason?: string };
+    const opts = requestedTransition()[3] as { transitionReason?: string };
     expect(opts.transitionReason).toContain('Sentry');
     expect(opts.transitionReason).toContain('FORGE-CORE-9K');
     expect(opts.transitionReason).toContain('regressed');
@@ -259,7 +271,7 @@ describe('an error that came back after somebody called it done', () => {
   it('attributes the move to a credential owner with no person at the keyboard', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     await intakeSentryIssue(issue(regressed), ctx);
-    expect(transitionMock.mock.calls[0]?.[2]).toEqual({
+    expect(requestedTransition()[2]).toEqual({
       type: 'user',
       id: 'user-1',
       agency: null,
