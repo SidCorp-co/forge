@@ -287,6 +287,21 @@ describe('target selection: a unique match or a named refusal, never a pick', ()
     expect((r as { refusal: string }).refusal).toContain('projectSlug');
   });
 
+  // cm:guard the review's F2. Judging the scoped matches first and returning early gave scoped targets a precedence nobody granted them: a delivery naming `web` chose the scoped target while an org-wide target in ANOTHER organization covered it just as well, so the pick was between two organizations and was made silently.
+  it('refuses where a scoped target and an org-wide target could both hold it', () => {
+    const mixed = {
+      host: 'h',
+      targets: [
+        { label: 'a-web', organizationSlug: 'org-a', projectSlug: 'web' },
+        { label: 'b-everything', organizationSlug: 'org-b' },
+      ],
+    };
+    const r = selectSentryTarget(mixed as never, 'web');
+    expect(r).toHaveProperty('refusal');
+    expect((r as { refusal: string }).refusal).toContain('a-web');
+    expect((r as { refusal: string }).refusal).toContain('b-everything');
+  });
+
   it('refuses where the binding declares no targets at all', () => {
     const r = selectSentryTarget({ host: 'h' } as never, 'web');
     expect(r).toHaveProperty('refusal');
@@ -370,6 +385,38 @@ describe('what reaches the shared intake', () => {
       expect(r.refusal).toBeUndefined();
     },
   );
+
+  // cm:guard the review's F1. Every path after the insert closes the row. A throw that left it `pending` would read to the connection drawer as a call still in flight, for a delivery that was answered and finished.
+  it('closes the delivery row as failed when the intake throws, then rethrows', async () => {
+    intakeSentryIssueMock.mockRejectedValue(new Error('STALE_TRANSITION'));
+    await expect(handleSentryWebhook(ctx(), delivery(body()))).rejects.toThrow('STALE_TRANSITION');
+    expect(updateDeliveryMock).toHaveBeenCalledWith(
+      'delivery-1',
+      expect.objectContaining({
+        status: 'failed',
+        errorMessage: expect.stringContaining('STALE_TRANSITION'),
+      }),
+    );
+  });
+
+  it('leaves no delivery row pending after a throw', async () => {
+    intakeSentryIssueMock.mockRejectedValue(new Error('boom'));
+    await expect(handleSentryWebhook(ctx(), delivery(body()))).rejects.toThrow('boom');
+    const statuses = updateDeliveryMock.mock.calls.map(
+      (c) => (c[1] as { status?: string } | undefined)?.status,
+    );
+    expect(statuses).toContain('failed');
+    expect(statuses).not.toContain('pending');
+  });
+
+  // cm:guard a target declaring no organizationSlug is a configuration a redelivery cannot fix, so it is a named refusal and a 200 rather than a throw. Left to propagate it would be a 500, and Sentry would retry the same delivery against the same broken declaration until it gave up.
+  it('refuses by name a selected target that declares no organizationSlug', async () => {
+    const noOrg = { host: 'h', targets: [{ label: 'all' }] };
+    const r = await handleSentryWebhook(ctx(noOrg), delivery(body()));
+    expect(r.actions).toBe(0);
+    expect(r.refusal).toContain('organizationSlug');
+    expect(intakeSentryIssueMock).not.toHaveBeenCalled();
+  });
 
   it('refuses rather than files where the project has no creator to file as', async () => {
     projectCreatedByIdMock.mockResolvedValue(null);

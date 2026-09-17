@@ -8,6 +8,7 @@
  * for one specific `(from, to)` pair, and a test that mocked the transition and then asserted the
  * increment itself would be asserting its own mock.
  */
+import { PgDialect } from 'drizzle-orm/pg-core';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { isReopenEntry } from '../../pipeline/state-machine.js';
 
@@ -121,6 +122,16 @@ function requestedTransition(): unknown[] {
   const call = transitionMock.mock.calls[0];
   if (!call) throw new Error('no status transition was requested');
   return call as unknown[];
+}
+
+/** The metadata merges this run issued, rendered as the SQL postgres would execute. */
+function mergedMetadata(): string {
+  return updateSets
+    .map((u) => {
+      const q = new PgDialect().sqlToQuery(u.metadata as never);
+      return `${q.sql} ${JSON.stringify(q.params)}`;
+    })
+    .join('\n');
 }
 
 /** One already-filed Forge issue for the lookup to answer with. */
@@ -303,11 +314,64 @@ describe('an error that came back after somebody called it done', () => {
     expect(executed).toHaveLength(0);
   });
 
+  // cm:guard the observation is made durable BEFORE the transition is attempted. Ordered the other way, a transition that threw would throw away the sighting with it, and the next delivery would compare against a stale baseline and call a real increase no growth.
   it('refreshes the counts before it attempts the transition', async () => {
     selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
     await intakeSentryIssue(issue(regressed), ctx);
-    expect(updateSets).toHaveLength(1);
     expect(transactions).toHaveLength(1);
+    expect(updateSets.length).toBeGreaterThanOrEqual(1);
+    expect(transitionMock).toHaveBeenCalledTimes(1);
+  });
+
+  // cm:guard the review's F3. Sentry RE-DELIVERS a hook that failed, carrying an identical body. Without a per-recurrence watermark, a regression that reopened an issue somebody then closed again would reopen it a second time off the replay — a counter incremented and a second reason posted for a recurrence that happened once.
+  it('does not reopen twice for the same recurrence re-delivered', async () => {
+    const seen = '2026-09-17T00:00:00Z';
+    selectRows.push(
+      [filed({ status: 'closed' })],
+      [filed({ status: 'closed', metadata: { sentry: { count: 41, reopenedAtLastSeen: seen } } })],
+    );
+    const out = await intakeSentryIssue(issue({ ...regressed, lastSeen: seen }), ctx);
+    expect(out).toMatchObject({ kind: 'refused' });
+    expect((out as { reason: string }).reason).toContain('same recurrence');
+    expect(transitionMock).not.toHaveBeenCalled();
+  });
+
+  it('reopens again for a genuinely later recurrence', async () => {
+    selectRows.push(
+      [filed({ status: 'closed' })],
+      [
+        filed({
+          status: 'closed',
+          metadata: { sentry: { count: 41, reopenedAtLastSeen: '2026-09-17T00:00:00Z' } },
+        }),
+      ],
+    );
+    const out = await intakeSentryIssue(
+      issue({ ...regressed, lastSeen: '2026-09-18T00:00:00Z' }),
+      ctx,
+    );
+    expect(out).toEqual({ kind: 'reopened' });
+    expect(transitionMock).toHaveBeenCalledTimes(1);
+  });
+
+  // cm:guard the watermark must be the recurrence a REOPEN was done for, never the last time anything was seen. Keyed on `lastSeen` alone, an ordinary observation by the scheduled pull would advance it and the webhook delivering the genuine regression a moment later would find them equal and decline — a regression lost to the other door having looked first.
+  it('reopens even where an ordinary observation already advanced lastSeen', async () => {
+    const seen = '2026-09-18T00:00:00Z';
+    selectRows.push(
+      [filed({ status: 'closed' })],
+      [filed({ status: 'closed', metadata: { sentry: { count: 41, lastSeen: seen } } })],
+    );
+    const out = await intakeSentryIssue(issue({ ...regressed, lastSeen: seen }), ctx);
+    expect(out).toEqual({ kind: 'reopened' });
+  });
+
+  it('stamps the recurrence it reopened for, so the next delivery can tell', async () => {
+    const seen = '2026-09-18T00:00:00Z';
+    selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
+    await intakeSentryIssue(issue({ ...regressed, lastSeen: seen }), ctx);
+    const merged = mergedMetadata();
+    expect(merged).toContain('reopenedAtLastSeen');
+    expect(merged).toContain(seen);
   });
 
   it('does not reopen an issue Sentry did not report as regressed', async () => {

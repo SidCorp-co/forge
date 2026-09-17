@@ -87,19 +87,24 @@ export function selectSentryTarget(
     };
   }
 
-  const matched = projectSlug === null ? [] : targets.filter((t) => t.projectSlug === projectSlug);
-  if (matched.length === 1 && matched[0]) return { label: matched[0].label };
-  if (matched.length > 1) {
-    return {
-      refusal: `this delivery names Sentry project "${projectSlug}" and ${matched.length} declared targets are scoped to it (${matched.map((t) => t.label).join(', ')}) — a Sentry issue carries no organization, so nothing here can tell them apart; give each target a distinct projectSlug or bind them to separate Forge projects`,
-    };
-  }
-
+  // cm:guard the candidate set is built WHOLE before uniqueness is judged, and an org-wide target is
+  // a candidate for every delivery. Judging the scoped matches first and returning early gave scoped
+  // targets a silent precedence they were never granted: a binding declaring `{org A, project web}`
+  // beside `{org B, no projectSlug}` answered a delivery naming `web` with A, though B covers the
+  // whole of org B and could hold it just as well.
+  const scoped = projectSlug === null ? [] : targets.filter((t) => t.projectSlug === projectSlug);
   const orgWide = targets.filter((t) => !t.projectSlug);
-  if (orgWide.length === 1 && orgWide[0]) return { label: orgWide[0].label };
-  if (orgWide.length > 1) {
+  const candidates = [...scoped, ...orgWide];
+
+  const first = candidates[0];
+  if (candidates.length === 1 && first) return { label: first.label };
+  if (candidates.length > 1) {
     return {
-      refusal: `this binding declares ${orgWide.length} targets carrying no projectSlug (${orgWide.map((t) => t.label).join(', ')}), and a delivery naming ${projectSlug === null ? 'no project' : `project "${projectSlug}"`} matches all of them equally — scope them with a projectSlug, or leave exactly one org-wide`,
+      refusal: `${candidates.length} declared targets could hold this delivery (${candidates.map((t) => t.label).join(', ')}) and a Sentry issue carries no organization, so nothing here can tell them apart — ${
+        projectSlug === null
+          ? 'this delivery names no project at all'
+          : `this delivery names project "${projectSlug}"`
+      }. Give each target a distinct projectSlug, leave at most one target org-wide, or bind them to separate Forge projects.`,
     };
   }
 
@@ -108,7 +113,7 @@ export function selectSentryTarget(
         refusal: `this delivery names no Sentry project, and every target this binding declares is scoped to one (${declared}) — it cannot be confined to any of them`,
       }
     : {
-        refusal: `this delivery belongs to Sentry project "${projectSlug}", which no target this binding declares is scoped to — this binding declares: ${declared}`,
+        refusal: `this delivery belongs to Sentry project "${projectSlug}", which no target this binding declares is scoped to and no org-wide target covers — this binding declares: ${declared}`,
       };
 }
 
@@ -175,34 +180,62 @@ export async function handleSentryWebhook(
     return { deliveryId, actions: 0, refusal: reason };
   };
 
-  const unserved = unservedReason(envelope);
-  if (unserved) return refuse(unserved);
+  // cm:guard EVERY path after the insert closes the row, including a throw. A delivery row left
+  // `pending` reads to the connection drawer as a call still in flight — for an inbound delivery
+  // that was answered and closed, that is a state that lies, and it is the shape a `catch` that only
+  // wrapped the happy path leaves behind. A retryable failure is recorded and RETHROWN so the router
+  // answers 500 and Sentry re-delivers; only a permanent refusal answers 200.
+  try {
+    const unserved = unservedReason(envelope);
+    if (unserved) return await refuse(unserved);
 
-  const issue = projectIssue(envelope.issue, '');
-  const selected = selectSentryTarget(ctx.config, issue.projectSlug);
-  if ('refusal' in selected) return refuse(selected.refusal);
+    const issue = projectIssue(envelope.issue, '');
+    const selected = selectSentryTarget(ctx.config, issue.projectSlug);
+    if ('refusal' in selected) return await refuse(selected.refusal);
 
-  const createdById = await projectCreatedById(ctx.projectId);
-  if (!createdById) {
-    return refuse(
-      'this project has no creator to file Sentry issues as, so the delivery could not be acted on',
+    const createdById = await projectCreatedById(ctx.projectId);
+    if (!createdById) {
+      return await refuse(
+        'this project has no creator to file Sentry issues as, so the delivery could not be acted on',
+      );
+    }
+
+    // cm:guard `resolveSentryTarget` THROWS for a target declaring no organizationSlug, which is a
+    // configuration a redelivery cannot fix. Caught and turned into a named refusal here rather than
+    // left to propagate: a 500 would have Sentry retry the same delivery against the same broken
+    // declaration until it gives up, and the operator would see a failing integration rather than
+    // the sentence naming the target they have to edit.
+    let target: ReturnType<typeof resolveSentryTarget>;
+    try {
+      target = resolveSentryTarget(ctx.config, selected.label);
+    } catch (err) {
+      return await refuse(
+        err instanceof Error ? err.message : 'the selected target could not be resolved',
+      );
+    }
+
+    const outcome = await intakeSentryIssue(issue, {
+      projectId: ctx.projectId,
+      createdById,
+      thresholds: await readSentryThresholds(),
+      target,
+    });
+
+    if (outcome.kind === 'refused') return await refuse(outcome.reason);
+
+    await updateDelivery(deliveryId, { status: 'ok', completedAt: new Date() });
+    logger.info(
+      { projectId: ctx.projectId, deliveryId, shortId: issue.shortId, outcome: outcome.kind },
+      'sentry webhook: delivery acted on',
     );
+    return { deliveryId, actions: 1 };
+  } catch (err) {
+    const message = err instanceof Error ? err.message : 'unknown error';
+    await updateDelivery(deliveryId, {
+      status: 'failed',
+      errorMessage: `this delivery failed part way and was not acted on: ${message}`,
+      completedAt: new Date(),
+    });
+    throw err;
   }
-
-  const target = resolveSentryTarget(ctx.config, selected.label);
-  const outcome = await intakeSentryIssue(issue, {
-    projectId: ctx.projectId,
-    createdById,
-    thresholds: await readSentryThresholds(),
-    target,
-  });
-
-  if (outcome.kind === 'refused') return refuse(outcome.reason);
-
-  await updateDelivery(deliveryId, { status: 'ok', completedAt: new Date() });
-  logger.info(
-    { projectId: ctx.projectId, deliveryId, shortId: issue.shortId, outcome: outcome.kind },
-    'sentry webhook: delivery acted on',
-  );
-  return { deliveryId, actions: 1 };
 }

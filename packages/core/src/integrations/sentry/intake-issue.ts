@@ -47,6 +47,16 @@ export interface SentrySightingRecord {
   seenAt: string;
   /** Set where THIS sighting carried no event count and the one above was carried forward. */
   countMissingAt?: string;
+  /**
+   * The `lastSeen` of the recurrence a reopen was already performed for.
+   *
+   * The watermark that makes a reopen idempotent per recurrence rather than per delivery. Sentry
+   * re-delivers a hook that failed, carrying an identical body — so without this, a regression that
+   * reopened an issue somebody then closed again would reopen it a second time off the replay,
+   * incrementing the counter and posting a second reason for a recurrence that never happened
+   * twice.
+   */
+  reopenedAtLastSeen?: string;
 }
 
 /**
@@ -190,6 +200,7 @@ export function sighting(
     permalink: issue.permalink ?? previous?.permalink ?? null,
     seenAt: new Date().toISOString(),
     ...(issue.count === null ? { countMissingAt: new Date().toISOString() } : {}),
+    ...(previous?.reopenedAtLastSeen ? { reopenedAtLastSeen: previous.reopenedAtLastSeen } : {}),
   };
 }
 
@@ -252,12 +263,18 @@ async function findFiled(projectId: string, externalId: string): Promise<Existin
  * comment is conditional on the event count having grown. The metadata is written either way —
  * `lastSeen` moving is worth recording and is not worth interrupting anybody for.
  */
+interface Observation {
+  what: 'commented' | 'refreshed';
+  /** The sighting recorded BEFORE this one, read under the same lock the write took. */
+  previous: SentrySightingRecord | null;
+}
+
 async function observe(
   existing: ExistingIssue,
   issue: SentryIssueDetail,
   shortId: string,
   authorId: string,
-): Promise<'commented' | 'refreshed'> {
+): Promise<Observation> {
   // cm:guard ONE transaction, and the row is re-read inside it UNDER A LOCK. These are two writes and exactly one comment is owed, which neither ordering of two independent statements can promise: whichever goes first, a failure between them is either a note nobody ever gets or a note everybody gets twice, and two deliveries overlapping read the same baseline and both comment. The lock is what makes the baseline this observation compares against the one no other observer can still be holding. `existing.metadata` from the pre-gate lookup is deliberately NOT reused here — it was read outside this transaction and may already be stale.
   return db.transaction(async (tx) => {
     const [locked] = await tx
@@ -290,7 +307,7 @@ async function observe(
       .set({ metadata: sentryMetadataMerge(sighting(issue, shortId, previous)) })
       .where(eq(issues.id, existing.id));
 
-    return grew ? 'commented' : 'refreshed';
+    return { what: grew ? 'commented' : 'refreshed', previous };
   });
 }
 
@@ -329,7 +346,9 @@ async function file(
 // cm:guard `dropped` is NOT reopened, and that is the rule rather than an omission. `closed` is Forge saying the work is done, and evidence that the error is still happening contradicts it — the issue's own contract says Forge cannot hold "fixed" against evidence. `dropped` is a PERSON saying they decided not to fix this, which no amount of recurrence contradicts; a monitoring signal that overrules a person's decision is the one thing this repo's ownership line forbids. The decline is reported by name rather than passed over in silence, because an operator who dropped an issue that keeps firing needs to know it keeps firing.
 async function reopenOnRegression(
   existing: ExistingIssue,
+  issue: SentryIssueDetail,
   shortId: string,
+  previous: SentrySightingRecord | null,
   ctx: SentryIntakeContext,
 ): Promise<SentryIntakeOutcome | null> {
   if (existing.status === 'dropped') {
@@ -339,6 +358,14 @@ async function reopenOnRegression(
     };
   }
   if (existing.status !== 'closed') return null;
+
+  // cm:guard the watermark is the RECURRENCE this issue was already reopened for, not the last time anything was seen. Comparing against `previous.lastSeen` instead would be wrong in the common case: the scheduled pull observes the same issue on its own tick and advances `lastSeen`, so a webhook delivering the genuine regression a moment later would find them equal and decline to reopen. `reopenedAtLastSeen` moves only when a reopen actually happens, so an ordinary observation cannot suppress one.
+  if (previous?.reopenedAtLastSeen && previous.reopenedAtLastSeen === issue.lastSeen) {
+    return {
+      kind: 'refused',
+      reason: `Sentry reports ${shortId} has regressed, but this is the same recurrence (last seen ${issue.lastSeen}) this issue was already reopened for — a re-delivered hook, not a second regression, so nothing was moved.`,
+    };
+  }
 
   // cm:guard the actor is a `user` carrying an EXPLICIT `agency: null`, and the three states are not interchangeable (`issues/actor-agency.ts`). This write is attributed to the project's creator, because that is whose credential the binding hangs off, but nobody is at the keyboard — an absent `agency` would read `human` and put a webhook's write behind the gates meant for a person's, while `null` is "unestablished" and fails closed to `agent`, which is what a delivery from outside is.
   await transitionIssueStatus(
@@ -354,6 +381,20 @@ async function reopenOnRegression(
       transitionReason: `Sentry reports ${shortId} has regressed: this error is happening again after this issue was closed. Reopened rather than filed a second time — an error coming back is the same work, and the detector key holds at most one live issue for it.`,
     },
   );
+
+  // cm:guard the watermark is stamped AFTER the transition succeeds, never before it or inside it. Stamped first, a transition that then threw would leave the recurrence marked as handled and the issue still closed — the next delivery would decline and the regression would be lost in silence. Stamped after, the failure mode of a lost stamp is a SECOND reopen on the retry, which is noise a person can see rather than a silence nobody can.
+  if (issue.lastSeen) {
+    await db
+      .update(issues)
+      .set({
+        metadata: sentryMetadataMerge({
+          ...sighting(issue, shortId, previous),
+          reopenedAtLastSeen: issue.lastSeen,
+        }),
+      })
+      .where(eq(issues.id, existing.id));
+  }
+
   logger.info(
     { projectId: ctx.projectId, issueId: existing.id, shortId },
     'sentry intake: regression reopened a closed issue',
@@ -375,13 +416,13 @@ export async function intakeSentryIssue(
   const shortId = issue.shortId?.trim() ?? '';
   const existing = shortId === '' ? null : await findFiled(ctx.projectId, shortId);
   if (existing) {
-    const what = await observe(existing, issue, shortId, ctx.createdById);
+    const observed = await observe(existing, issue, shortId, ctx.createdById);
     // cm:guard the observation is durable BEFORE the transition is attempted, deliberately. The counts and the growth note are what we learned; the reopen is what we do about it. Ordered the other way, a transition that throws would throw away the sighting too, and the next delivery would compare against a stale baseline and call an increase no growth.
     if (issue.substatus === SENTRY_REGRESSED_SUBSTATUS) {
-      const regressed = await reopenOnRegression(existing, shortId, ctx);
+      const regressed = await reopenOnRegression(existing, issue, shortId, observed.previous, ctx);
       if (regressed) return regressed;
     }
-    return what === 'commented' ? { kind: 'commented' } : { kind: 'refreshed' };
+    return observed.what === 'commented' ? { kind: 'commented' } : { kind: 'refreshed' };
   }
 
   const verdict = judgeSentryIssue(issue, ctx.thresholds);
@@ -403,6 +444,6 @@ export async function intakeSentryIssue(
       reason: `the insert for ${verdict.externalId} was refused by the unique index and the row it collided with could not be read back`,
     };
   }
-  const what = await observe(winner, issue, verdict.externalId, ctx.createdById);
-  return what === 'commented' ? { kind: 'commented' } : { kind: 'refreshed' };
+  const raced = await observe(winner, issue, verdict.externalId, ctx.createdById);
+  return raced.what === 'commented' ? { kind: 'commented' } : { kind: 'refreshed' };
 }
