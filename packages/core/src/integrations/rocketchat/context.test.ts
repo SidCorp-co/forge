@@ -255,6 +255,39 @@ describe('buildRocketChatQuoteContextToolset (ISS-1087)', () => {
     expect(out.limitation).toMatch(/before and after it, so that side is missing/);
   });
 
+  it('refuses an anchor whose room the server did not name, fetching nothing around it (criterion 29)', async () => {
+    serve({ m5: raw('m5', 5, { rid: undefined }) });
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'm5');
+    expect(out.isError).toBe(true);
+    expect(JSON.stringify(out)).toMatch(/did not say which room/);
+    expect(JSON.stringify(out)).not.toMatch(/text of m5/);
+    expect(calls.filter((c) => c.endsWith('.messages'))).toHaveLength(0);
+  });
+
+  it('names the page end when the quoted reply is the last of a full thread page (criterion 30)', async () => {
+    serve({ t51: raw('t51', 51, { tmid: 'T1' }), T1: raw('T1', 1) });
+    const inner = globalThis.fetch;
+    const fifty = Array.from({ length: 50 }, (_, i) => raw(`t${i + 2}`, i + 2, { tmid: 'T1' }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string) =>
+        new URL(input).pathname.endsWith('chat.getThreadMessages')
+          ? ({ ok: true, json: async () => ({ messages: fifty }) } as unknown as Response)
+          : inner(input),
+      ),
+    );
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't51');
+    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['t49', 't50', 't51']);
+    expect(out.limitation).toMatch(/later replies may be missing/);
+  });
+
+  it('names a root it could not read when the quoted reply is the thread’s first (criterion 30)', async () => {
+    serve({ t2: raw('t2', 12, { tmid: 'T1' }) });
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't2');
+    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['t2', 't3', 't4']);
+    expect(out.limitation).toMatch(/root could not be read/);
+  });
+
   it('advertises rocketchat_quote_context (criterion 24)', () => {
     const set = buildRocketChatQuoteContextToolset(auth, 'R1');
     expect(set.tools.map((t) => t.function.name)).toEqual(['rocketchat_quote_context']);

@@ -257,7 +257,8 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     images: inputs.images,
     // cm:guard spread onto THIS call and not onto `turn`, because `turn` is also spread into the
     // retry below — putting it there is what would stream the replacement on top of the draft.
-    ...(req.onTurnEvent ? { onTurnEvent: req.onTurnEvent } : {}),
+    // cm:guard and NOT in `tool` mode: the events carry the model's own prose, which in that mode is never the reply, and a watcher shown it would read a draft the room is never going to hear (ISS-1087 criterion 20; whole-set review F3).
+    ...(req.onTurnEvent && !capture ? { onTurnEvent: req.onTurnEvent } : {}),
   });
 
   const late = await req.divertAfterTurn?.(result, hook);
@@ -299,6 +300,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     }
   }
 
+  let declinedInRetry = false;
   const screenedMessage = await screenedTurnReply({
     door: req.door,
     projectId: req.venue.projectId,
@@ -310,18 +312,32 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     // cm:guard the retry WRITES nothing: its message is a code-authored instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the conversation, which is why it names one (ISS-1001).
     // cm:guard in `tool` mode a corrective retry is CAPTURED like the first attempt, through a capture of its own because the first is already spent: what the retry wrote as prose is not the reply, and a retry that never called `room_send` hands the screen an empty rewrite, which it refuses until the budget is spent and the turn falls silent (ISS-1087 criterion 20; whole-set review F1).
     retry: async (instruction) => {
-      if (!capture)
-        return runExternalChatTurn({ ...turn, record: 'nothing', message: instruction });
-      const again = roomSendCapture();
+      const again = capture ? roomSendCapture() : null;
       const retried = await runExternalChatTurn({
         ...turn,
-        tools: mergeToolsets(again.toolset, ...(inputs.tools ? [inputs.tools] : [])),
+        ...(again
+          ? { tools: mergeToolsets(again.toolset, ...(inputs.tools ? [inputs.tools] : [])) }
+          : {}),
         record: 'nothing',
         message: instruction,
       });
-      return { ...retried, reply: again.captured() ?? '' };
+      const text = again ? (again.captured() ?? '') : retried.reply;
+      // cm:guard a retry that DECLINES is a decline and never a rewrite to screen: the sentinel check above ran before this retry existed, so without this a "(nothing to add)" the model answered the corrective instruction with would go to the screen, be admitted, and reach the room as text (ISS-1087 criteria 37, 38; whole-set review F2). The empty reply spends the screen's budget; what the turn is then called is decided below.
+      if (req.mayDecline && declinedTurn(text)) {
+        declinedInRetry = true;
+        return { ...retried, reply: '' };
+      }
+      return { ...retried, reply: text };
     },
   });
+  if (declinedInRetry) {
+    await recordSilence({
+      conversationId: ctx.conversationId,
+      projectId: req.venue.projectId,
+      reason: 'nothing-to-say',
+    });
+    return { send: false, reason: 'nothing-to-say', declined: true };
+  }
   if (!screenedMessage) {
     await recordSilence({
       conversationId: ctx.conversationId,

@@ -194,6 +194,32 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
     );
   });
 
+  it('treats a corrective retry that declines through room_send as silence (criterion 37)', async () => {
+    screenReplyAtDoor.mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] });
+    let attempt = 0;
+    runExternalChatTurn.mockImplementation(async (args: { tools?: Tools }) => {
+      attempt += 1;
+      await send(attempt === 1 ? 'ISS-999 is fixed' : '(nothing to add) — sorry')(args.tools);
+      return { ...answered, reply: 'prose' };
+    });
+    const out = await runConversationTurn(request({ sendMode: 'tool', mayDecline: true }));
+    expect(out).toEqual({ kind: 'declined', reason: 'nothing-to-say' });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(recordSilence).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'nothing-to-say' }),
+    );
+  });
+
+  // cm:guard the watcher hook is withheld in tool mode because the events carry the model's prose, which that mode never posts (criterion 20; whole-set review F3).
+  it('streams none of the model’s prose to a watcher in tool mode', async () => {
+    const onTurnEvent = vi.fn();
+    modelTurn(send('posted by the tool'));
+    await runConversationTurn(request({ sendMode: 'tool', mayDecline: true, onTurnEvent }));
+    expect(runExternalChatTurn.mock.calls[0]?.[0]).not.toHaveProperty('onTurnEvent');
+    await runConversationTurn(request({ mayDecline: true, onTurnEvent }));
+    expect(runExternalChatTurn.mock.calls[1]?.[0]).toHaveProperty('onTurnEvent');
+  });
+
   it('posts no fallback when the turn fails before anything was captured (criterion 19)', async () => {
     const out = await runConversationTurn(
       request({

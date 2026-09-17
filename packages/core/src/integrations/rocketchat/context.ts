@@ -249,10 +249,21 @@ async function threadNeighbourhood(
       limitation: `the quoted message lies beyond the first ${QUOTE_THREAD_PAGE} replies of its thread, so its neighbours could not be read`,
     };
   }
+  const after = thread.slice(at + 1, at + 1 + QUOTE_NEIGHBOURS_EACH_SIDE);
+  // cm:guard what the page could NOT show is named: a root the server refused leaves the first replies with nothing before them, and an anchor at the end of a full page may have replies after it this read never reached — either shown as a plain neighbourhood reads as "nothing was said there" (ISS-1087 criterion 30; whole-set review F2).
+  const limits: string[] = [];
+  if (!root && at < QUOTE_NEIGHBOURS_EACH_SIDE)
+    limits.push(
+      'the thread’s root could not be read, so what stood before its first replies is missing',
+    );
+  if (replies.length >= QUOTE_THREAD_PAGE && after.length < QUOTE_NEIGHBOURS_EACH_SIDE)
+    limits.push(
+      `the thread was read to its first ${QUOTE_THREAD_PAGE} replies and the quoted message sits at the end of that page, so later replies may be missing`,
+    );
   return {
     before: thread.slice(Math.max(0, at - QUOTE_NEIGHBOURS_EACH_SIDE), at),
-    after: thread.slice(at + 1, at + 1 + QUOTE_NEIGHBOURS_EACH_SIDE),
-    limitation: null,
+    after,
+    limitation: limits.length ? limits.join('; ') : null,
   };
 }
 
@@ -336,9 +347,12 @@ export function buildRocketChatQuoteContextToolset(
       return toolError(`message ${messageId} was not found, or the bot cannot see it`);
     }
     // cm:guard the anchor's room is checked on EVERY fetch and an outsider is refused by name with nothing of it returned: a message id is global on a Rocket.Chat server, and a quote link pasted from another room would otherwise read that room's text into this one (ISS-1087 criterion 29).
-    if (anchor.rid !== undefined && anchor.rid !== rid) {
+    // cm:guard a message whose room the server did NOT name is refused too, not admitted on a shrug: an unproven room is the same hole as the wrong one (whole-set review F1).
+    if (anchor.rid !== rid) {
       return toolError(
-        `message ${messageId} is not in this room; only this room's messages can be expanded`,
+        anchor.rid === undefined
+          ? `the server did not say which room message ${messageId} is in, so it cannot be read as this room's`
+          : `message ${messageId} is not in this room; only this room's messages can be expanded`,
       );
     }
     const hood = anchor.tmid
