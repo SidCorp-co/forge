@@ -120,4 +120,97 @@ describe('ISS-940 backlog rows carry the evidence fields (real Postgres)', () =>
     const [row] = await rows();
     expect(row?.branch).toBeNull();
   });
+
+  // ISS-1062 — the repo projection is a THIRD evidence field on the same row, under the same rule as
+  // the two above: it is shown, never filtered on. These cases hold every other input fixed and vary
+  // only the projection, so a `WHERE` clause reading `repo_pull_requests` would show up here as a
+  // missing row and nowhere else.
+  describe('the repo projection travels as evidence and gates nothing', () => {
+    async function bindGitHub(): Promise<string> {
+      const connectionId = randomUUID();
+      const bindingId = randomUUID();
+      await harness.db.execute(sql`
+        INSERT INTO integration_connections (id, owner_type, owner_id, provider, active)
+        VALUES (${connectionId}, 'user', ${userId}, 'github', true)
+      `);
+      await harness.db.execute(sql`
+        INSERT INTO integration_bindings (id, connection_id, project_id, provider, role, stages, active, config)
+        VALUES (${bindingId}, ${connectionId}, ${projectId}, 'github', 'service', ARRAY[]::text[], true, '{}'::jsonb)
+      `);
+      return bindingId;
+    }
+
+    async function projectPr(
+      bindingId: string,
+      issueId: string,
+      number: number,
+      over: Record<string, unknown>,
+    ): Promise<void> {
+      await harness.db.execute(sql`
+        INSERT INTO repo_pull_requests
+          (project_id, binding_id, issue_id, number, repo_full_name, title, state, draft,
+           head_ref, head_sha, base_ref, base_sha, behind_by, mergeable_state, refreshed_for_head,
+           refresh_error, checks)
+        VALUES (
+          ${projectId}, ${bindingId}, ${issueId}, ${number}, 'SidCorp-co/forge', 'planted', 'open',
+          false, ${`ISS-${number}`}, ${'a'.repeat(40)}, 'main', ${'c'.repeat(40)},
+          ${(over.behindBy as number | null) ?? null},
+          ${(over.mergeableState as string | null) ?? null},
+          ${(over.refreshedForHead as string | null) ?? null},
+          ${(over.refreshError as string | null) ?? null},
+          ${JSON.stringify(over.checks ?? {})}::jsonb
+        )
+      `);
+    }
+
+    it('carries an empty list for an issue with no pull request', async () => {
+      await insertIssue(6);
+      const [row] = await rows();
+      expect(row?.pullRequests).toEqual([]);
+    });
+
+    it('carries the pull request linked to the issue', async () => {
+      const bindingId = await bindGitHub();
+      const issueId = await insertIssue(7);
+      await projectPr(bindingId, issueId, 7, { behindBy: 0, mergeableState: 'clean' });
+
+      const [row] = await rows();
+      expect(row?.pullRequests).toHaveLength(1);
+      expect(row?.pullRequests[0]).toMatchObject({
+        number: 7,
+        state: 'open',
+        behindBy: 0,
+        mergeableState: 'clean',
+      });
+    });
+
+    // cm:guard THE case criterion 29 is about: four projections, one admission. A conflicting branch, a red check and a failed read are facts a master reads before it spends a session; none of them is grounds for the kernel to hide the row, which is the same rule `merged_at` carries three cases above (ISS-940).
+    it('admits the same issues whatever the projection says', async () => {
+      const bindingId = await bindGitHub();
+      const none = await insertIssue(10);
+      const green = await insertIssue(11);
+      const conflicted = await insertIssue(12);
+      const unread = await insertIssue(13);
+      void none;
+      await projectPr(bindingId, green, 11, {
+        behindBy: 0,
+        mergeableState: 'clean',
+        refreshedForHead: 'a'.repeat(40),
+      });
+      await projectPr(bindingId, conflicted, 12, {
+        behindBy: 14,
+        mergeableState: 'dirty',
+        refreshedForHead: 'a'.repeat(40),
+      });
+      await projectPr(bindingId, unread, 13, { refreshError: 'HTTP 403 on SidCorp-co/forge' });
+
+      const got = await rows();
+      expect(got.map((r) => r.issueKey)).toEqual(['ISS-10', 'ISS-11', 'ISS-12', 'ISS-13']);
+      expect(got[0]?.pullRequests).toEqual([]);
+      expect(got[1]?.pullRequests[0]?.mergeableState).toBe('clean');
+      expect(got[2]?.pullRequests[0]?.mergeableState).toBe('dirty');
+      expect(got[3]?.pullRequests[0]?.refreshError).toMatch(/403/);
+      expect(got[3]?.pullRequests[0]?.behindBy).toBeNull();
+    });
+  });
 });
