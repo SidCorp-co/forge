@@ -147,7 +147,7 @@ function carrierLog(carrier: TranscriptCarrier, agentSessionId: string) {
 }
 
 /** One carrier row, narrowed to what the fold and the checkpoint read. */
-interface CarrierRow {
+export interface CarrierRow {
   kind: string;
   data: unknown;
   ts: Date;
@@ -155,20 +155,34 @@ interface CarrierRow {
 }
 
 /**
- * The rows of this carrier after `afterSeq`, in seq order, truncated at the
- * first gap.
+ * The unbroken run of `rows` starting at `afterSeq + 1`, stopping at the first gap.
  *
- * cm:guard the truncation is a correctness requirement and not tidiness.
+ * cm:guard this is a correctness requirement and not tidiness.
  * `applyEventsToState` states its own contract — the events it is handed MUST
- * start where the last call left off — because that is what makes an
- * incremental flush the SAME computation as a full re-derive rather than an
- * approximation of one. Before ISS-1030 nothing could produce a hole:
- * `jobs/events-routes.ts` assigns `seq` server-side under an advisory lock, so
- * insert order IS seq order. `agent_session_events` moves that assignment to the
- * writer, so a batch that lands after a later one is now possible, and the
- * checkpoint below advances only over the unbroken run. Rows past a gap are read
- * again on the next pass, once the hole is filled; a hole that never fills holds
- * the derive at the gap instead of skipping it for ever.
+ * start where the last call left off — because that is what makes an incremental
+ * flush the SAME computation as a full re-derive rather than an approximation of
+ * one. Before ISS-1030 nothing could produce a hole: `jobs/events-routes.ts`
+ * assigns `seq` server-side under an advisory lock, so insert order IS seq order.
+ * `agent_session_events` moves that assignment to the writer, so a batch that
+ * lands after a later one is now possible, and the checkpoint may advance only
+ * over the unbroken run. Rows past a gap are read again on the next pass, once
+ * the hole is filled; a hole that never fills holds the derive at the gap instead
+ * of skipping it for ever.
+ */
+export function contiguousPrefix(rows: readonly CarrierRow[], afterSeq: number): CarrierRow[] {
+  let expected = afterSeq + 1;
+  const prefix: CarrierRow[] = [];
+  for (const row of rows) {
+    if (row.seq !== expected) break;
+    prefix.push(row);
+    expected += 1;
+  }
+  return prefix;
+}
+
+/**
+ * The rows of this carrier after `afterSeq`, in seq order, truncated at the
+ * first gap — see `contiguousPrefix` for why the truncation is load-bearing.
  */
 async function readCarrierRows(
   carrier: TranscriptCarrier,
@@ -209,14 +223,7 @@ async function readCarrierRows(
           )
           .orderBy(asc(agentSessionEvents.seq));
 
-  let expected = afterSeq + 1;
-  const prefix: CarrierRow[] = [];
-  for (const row of rows) {
-    if (row.seq !== expected) break;
-    prefix.push(row);
-    expected += 1;
-  }
-  return prefix;
+  return contiguousPrefix(rows, afterSeq);
 }
 
 /**
