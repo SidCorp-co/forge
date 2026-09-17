@@ -53,7 +53,9 @@ function judged(answer: Extract<ContractAnswer, { kind: 'judged' }>): CheckRunBo
     `Status: \`${status}\`, which declares ${answer.declared.length} record(s).`,
     '',
   ];
-  lines.push(met.length > 0 ? '### On this issue' : '### On this issue\n\nNothing declared is met.');
+  lines.push(
+    met.length > 0 ? '### On this issue' : '### On this issue\n\nNothing declared is met.',
+  );
   for (const key of met) lines.push(`- \`${key}\``);
   lines.push('', '### Missing');
   if (unmet.length === 0) lines.push('Nothing.');
@@ -75,9 +77,7 @@ function judged(answer: Extract<ContractAnswer, { kind: 'judged' }>): CheckRunBo
   };
 }
 
-function noneDeclared(
-  answer: Extract<ContractAnswer, { kind: 'none-declared' }>,
-): CheckRunBody {
+function noneDeclared(answer: Extract<ContractAnswer, { kind: 'none-declared' }>): CheckRunBody {
   return {
     name: CHECK_RUN_NAME,
     conclusion: 'neutral',

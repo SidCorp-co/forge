@@ -36,9 +36,9 @@ import {
   type OutboundDispatchInput,
   type OutboundDispatchResult,
 } from '../types.js';
-import { CHECK_PUBLISH_EVENT, publishForStoredPullRequest } from './contract-check.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
+import { CHECK_PUBLISH_EVENT, publishForStoredPullRequest } from './contract-check.js';
 import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
@@ -191,9 +191,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     const [live] = await db
       .select({ id: integrationBindings.id })
       .from(integrationBindings)
-      .where(
-        and(eq(integrationBindings.id, ctx.bindingId), eq(integrationBindings.active, true)),
-      )
+      .where(and(eq(integrationBindings.id, ctx.bindingId), eq(integrationBindings.active, true)))
       .limit(1);
     if (!live) {
       const message = `github: project ${ctx.projectId} has no active GitHub binding — binding ${ctx.bindingId} is gone or deactivated, so there is no repository to publish a contract check on`;

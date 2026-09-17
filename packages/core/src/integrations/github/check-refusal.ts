@@ -112,7 +112,7 @@ function forbidden(err: GitHubPublishError): CheckRefusal {
     message:
       `GitHub answered 403 while ${WHERE[err.op]} and sent nothing saying which of the two it ` +
       'was: the App may lack `checks: write`, or this may be a secondary rate limit. Forge is ' +
-      'not guessing between them. Check the App\'s Checks permission first; if it is already ' +
+      "not guessing between them. Check the App's Checks permission first; if it is already " +
       '"Read and write", retry after a pause.',
   };
 }

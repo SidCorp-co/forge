@@ -170,7 +170,7 @@ export async function missingWorkEvidenceStrict(
 }
 
 // cm:guard fails OPEN on any internal error — a broken evidence check must never freeze a legitimate advance
-// cm:edge lockstep -> packages/core/src/issues/entry-criteria.ts — this pair is what `evaluateEntryCriteriaStrict` picks between, and the two must keep answering identically on every input that does NOT raise; a rule added to one body only would make the gate and the published check disagree about an issue neither of them failed to read.
+// cm:edge lockstep -> packages/core/src/issues/entry-criteria.ts — this pair is what `entry-criteria.ts:criteriaWith` binds each of its two maps to, and the two must keep answering identically on every input that does NOT raise; a rule added to one body only would make the gate and the published check disagree about an issue neither of them failed to read.
 export async function findMissingWorkEvidence(
   issueId: string,
   executor: EvidenceExecutor = db,

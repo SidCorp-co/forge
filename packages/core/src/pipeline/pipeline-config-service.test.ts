@@ -31,11 +31,23 @@ vi.mock('../db/client.js', () => ({
   },
 }));
 
+const { hooks } = await import('./hooks.js');
 const { PipelineConfigError, updatePipelineConfig } = await import('./pipeline-config-service.js');
+
+/** Every `contractInputChanged` this suite heard, on the one bus the writer emits to. */
+const heard: { projectId: string; issueId?: string; reason: string }[] = [];
+hooks.on(
+  'contractInputChanged',
+  async (payload) => {
+    heard.push(payload);
+  },
+  { name: 'pipeline-config-service-test-listener' },
+);
 
 beforeEach(() => {
   selectQueue.length = 0;
   dbExecute.mockClear();
+  heard.length = 0;
 });
 
 describe('PipelineConfigError', () => {
@@ -169,5 +181,58 @@ describe('updatePipelineConfig — CONFIG_CONFLICT (merged-document rules)', () 
     await expect(
       updatePipelineConfig({ projectId: PROJECT, patch: { enabled: true } as never }),
     ).resolves.toBeTruthy();
+  });
+});
+
+/**
+ * ISS-1072 — the declaration is an input to the contract's answer as much as any
+ * record is, so moving it moves every open pull request's check on the project.
+ */
+describe('updatePipelineConfig — contractInputChanged', () => {
+  const PROJECT = '00000000-0000-0000-0000-000000000001';
+
+  // cm:guard the emit carries NO issue, and that absence is what makes the subscriber fan out
+  // over the project rather than over one issue. Naming an issue here would make a project's
+  // own settings save the one contract change that never reached a check run.
+  it('announces a change to `statusEntryCriteria`, naming the project and no issue', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    pushSelect([
+      { agentConfig: { pipelineConfig: { statusEntryCriteria: { developed: ['plan'] } } } },
+    ]);
+
+    await updatePipelineConfig({
+      projectId: PROJECT,
+      patch: { statusEntryCriteria: { developed: ['plan'] } } as never,
+    });
+
+    expect(heard).toHaveLength(1);
+    expect(heard[0]?.projectId).toBe(PROJECT);
+    expect(heard[0]?.issueId).toBeUndefined();
+  });
+
+  // cm:guard a patch about something else must NOT republish. Every announcement costs one
+  // GitHub request per open pull request on the project, and a stage's model moving changes
+  // nothing the contract's answer reads.
+  it('stays silent for a patch that names something else entirely', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
+    pushSelect([{ agentConfig: { pipelineConfig: { lockedSkills: ['forge-drive'] } } }]);
+
+    await updatePipelineConfig({
+      projectId: PROJECT,
+      patch: { lockedSkills: ['forge-drive'] } as never,
+    });
+
+    expect(heard).toEqual([]);
+  });
+
+  it('announces nothing when the write was refused', async () => {
+    pushSelect([{ agentConfig: { pipelineConfig: { poolBacklog: { statuses: ['draft'] } } } }]);
+    await expect(
+      updatePipelineConfig({
+        projectId: PROJECT,
+        patch: { intakeGate: { enabled: true } } as never,
+      }),
+    ).rejects.toMatchObject({ name: 'PipelineConfigError' });
+    expect(heard).toEqual([]);
   });
 });

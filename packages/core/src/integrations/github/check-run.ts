@@ -32,7 +32,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { CHECK_RUN_NAME, checkRunBody, type CheckConclusion } from './check-run-body.js';
+import { CHECK_RUN_NAME, type CheckConclusion, checkRunBody } from './check-run-body.js';
 import type { GitHubRepoClient } from './client.js';
 import { type ContractAnswer, contractAnswerForIssue } from './contract-answer.js';
 

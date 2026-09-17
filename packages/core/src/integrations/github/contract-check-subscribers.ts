@@ -16,8 +16,8 @@
  * own echo.
  */
 
-import { hooks, type HooksBus } from '../../pipeline/hooks.js';
 import { logger } from '../../logger.js';
+import { type HooksBus, hooks } from '../../pipeline/hooks.js';
 import {
   noteNotPublished,
   openPullRequestsForIssue,
@@ -50,7 +50,11 @@ async function publishAll(pullRequestIds: string[], why: string): Promise<void> 
     await noteNotPublished(id, cappedReason(pullRequestIds.length));
   }
   logger.info(
-    { count: pullRequestIds.length, capped: Math.max(0, pullRequestIds.length - PROJECT_REPUBLISH_CAP), why },
+    {
+      count: pullRequestIds.length,
+      capped: Math.max(0, pullRequestIds.length - PROJECT_REPUBLISH_CAP),
+      why,
+    },
     'contract check: republished',
   );
 }

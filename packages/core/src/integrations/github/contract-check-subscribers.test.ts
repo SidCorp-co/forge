@@ -4,8 +4,8 @@
  *
  * `contract-check.js` is mocked because the question here is routing, not
  * publishing: which pull requests each topic asks for, and whether the ones the
- * cap excludes leave a record. The publishing itself is proved against a real
- * database in `tests/integration/github-contract-check-e2e.test.ts`.
+ * cap excludes leave a record. The publish itself — the delivery rows, the skips
+ * and the refusals — is `contract-check.test.ts`.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';

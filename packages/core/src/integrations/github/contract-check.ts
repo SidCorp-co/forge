@@ -108,11 +108,15 @@ async function credentialFor(
     .where(and(eq(integrationBindings.id, bindingId), eq(integrationBindings.active, true)))
     .limit(1);
   if (!binding) {
-    return { refusal: `the GitHub binding ${bindingId} this pull request was stored under is gone or deactivated` };
+    return {
+      refusal: `the GitHub binding ${bindingId} this pull request was stored under is gone or deactivated`,
+    };
   }
   const connection = await findConnectionById(binding.connectionId);
   if (!connection?.active) {
-    return { refusal: "the GitHub connection behind this project's binding is gone or deactivated" };
+    return {
+      refusal: "the GitHub connection behind this project's binding is gone or deactivated",
+    };
   }
   return {
     config: (binding.config ?? {}) as GitHubConfig,

@@ -74,8 +74,13 @@ const criteriaWith = (
       : null,
 });
 
-const CRITERIA = criteriaWith(findMissingWorkEvidence);
-const STRICT_CRITERIA = criteriaWith(missingWorkEvidenceStrict);
+// cm:guard each reader is reached through a wrapper rather than passed by name, so the import is
+// read when a `work_evidence` criterion is EVALUATED and not when this module loads. Binding the
+// identifiers here instead made importing this file — which `apply-transition.ts` pulls in, so
+// most of the tracker — fail outright in any test whose `work-evidence.js` mock was short one
+// export. Three suites went red on it at once and not one of them declares `work_evidence`.
+const CRITERIA = criteriaWith((id, executor) => findMissingWorkEvidence(id, executor));
+const STRICT_CRITERIA = criteriaWith((id, executor) => missingWorkEvidenceStrict(id, executor));
 
 /**
  * What the project declared for the status being entered, or an empty list.

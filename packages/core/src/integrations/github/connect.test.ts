@@ -1,3 +1,6 @@
+import { readFileSync } from 'node:fs';
+import { dirname, join } from 'node:path';
+import { fileURLToPath } from 'node:url';
 import { describe, expect, it, vi } from 'vitest';
 import {
   buildAppManifest,
@@ -59,6 +62,27 @@ describe('buildAppManifest', () => {
     for (const u of [m.redirect_url, m.setup_url, (m.hook_attributes as { url: string }).url]) {
       expect(u).toMatch(/^https:\/\/api\.forge\.example\//);
     }
+  });
+
+  // cm:guard ISS-1072 — the App cannot publish `forge/issue-contract` on `checks: read`, and a
+  // manifest decides the permissions of Apps created AFTER it alone. This holds the request; the
+  // case below holds the sentence that tells an operator what to do about the App that exists.
+  it('requests `checks: write`, which is what publishing a check run needs', () => {
+    expect((split().default_permissions as Record<string, string>).checks).toBe('write');
+  });
+
+  it('states what an operator does to the App that already exists', () => {
+    const source = readFileSync(
+      join(dirname(fileURLToPath(import.meta.url)), 'connect.ts'),
+      'utf8',
+    );
+    const manifest = source.slice(0, source.indexOf('default_permissions'));
+    // A manifest change reaches no existing installation, so the migration path has to be
+    // written down where the change is — or the one App Forge has keeps failing 403 with the
+    // fix known to nobody.
+    expect(manifest).toContain('Read and write');
+    expect(manifest).toContain('approve');
+    expect(manifest).toMatch(/Reconnecting does NOT|reconnecting will not/i);
   });
 
   it('posts to the org endpoint when an org is named', () => {

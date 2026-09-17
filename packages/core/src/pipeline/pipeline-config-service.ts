@@ -1,13 +1,13 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, projects, runners } from '../db/schema.js';
+import { hooks } from './hooks.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
   type PipelineConfigPatchInput,
   pipelineConfigSchema,
 } from './pipeline-config-schema.js';
-import { hooks } from './hooks.js';
 import type { StagesConfig } from './state-machine.js';
 
 /**

@@ -70,7 +70,8 @@ describe('404 means two different things one operation apart', () => {
       err({
         op: 'mint',
         status: 404,
-        message: 'installation 42 does not exist for this App — it was removed, or the App was never installed on that account',
+        message:
+          'installation 42 does not exist for this App — it was removed, or the App was never installed on that account',
       }),
     );
     expect(refusal.cause).toBe('installation-missing');
