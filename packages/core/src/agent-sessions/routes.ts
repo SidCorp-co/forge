@@ -602,8 +602,22 @@ agentSessionRoutes.patch(
     // cm:edge lockstep -> packages/core/src/jobs/session-transcript.ts — the chat
     // path's counterpart of `deriveSessionFinal`, which the pipeline path fires
     // from `jobs/lifecycle-routes.ts` on job terminal.
+    // cm:guard the gate is "this terminal patch carries NOTHING only a daemon on
+    // the previous release sends", and it is the whole compatibility story in one
+    // condition. That daemon reports its own transcript in `messages` and its own
+    // tool count in `toolCallCount`; a daemon on this release sends neither,
+    // because its lines went to the carrier and the transcript can count for
+    // itself. Widening this to every terminal patch would derive over a session
+    // whose carrier holds prompts alone and replace that daemon's transcript with
+    // the questions and none of the answers.
     let derivedTranscript = false;
-    if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
+    if (
+      patch.status !== undefined &&
+      TERMINAL_SESSION_STATUSES.has(patch.status) &&
+      patch.messages === undefined &&
+      patch.toolCallCount === undefined &&
+      c.get('principal') === 'device'
+    ) {
       derivedTranscript = await deriveChatTurnFinal(id);
       if (derivedTranscript) existing = await loadSessionOr404(id);
     }

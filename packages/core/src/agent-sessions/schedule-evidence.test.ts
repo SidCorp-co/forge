@@ -35,6 +35,20 @@ vi.mock('../db/client.js', () => {
 
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
 
+// cm:why the chat derive is stubbed rather than modelled: this file's subject is
+// the blind-schedule rule, and since ISS-1030 a terminal device PATCH carrying
+// neither `messages` nor `toolCallCount` also fires the carrier derive — which
+// reads `agent_session_events` and `agent_sessions` through the same chained db
+// double every case here queues answers into, so every read it makes shifts that
+// queue under the assertions. What the derive itself does with a real carrier is
+// proved in `tests/integration/chat-transcript-carrier-e2e.test.ts`, against a
+// database rather than a queue.
+const deriveChatTurnFinalMock = vi.fn(async () => false);
+vi.mock('../jobs/session-transcript.js', () => ({
+  deriveChatTurnFinal: () => deriveChatTurnFinalMock(),
+  maybeDeriveIncrementalFor: () => null,
+}));
+
 const verifyDeviceCredentialMock = vi.fn(async (_token: unknown) => null as { id: string } | null);
 vi.mock('../auth/device-credential.js', () => ({
   verifyDeviceCredential: (token: unknown) => verifyDeviceCredentialMock(token),

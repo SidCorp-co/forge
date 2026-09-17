@@ -580,31 +580,17 @@ export async function deriveSessionFinal(jobId: string, agentSessionId: string):
  * skipped. Rebuilding every turn instead would re-fold the session's entire
  * history on each one, which is quadratic over the life of a long conversation.
  * If the prefix rule is ever relaxed, this has to become a rebuild again.
+ *
+ * cm:guard WHO may call this is the caller's gate and deliberately not a query
+ * here. A daemon on the previous release still PATCHes its whole `messages`
+ * array, and core writes a prompt seed for every turn whoever runs it — so
+ * deriving on a session whose carrier holds prompts alone would replace that
+ * daemon's transcript with the questions and none of the answers.
+ * `agent-sessions/routes.ts` gates on the shape of the PATCH, which says the
+ * same thing without a read: a terminal PATCH from a device carrying no
+ * `messages` is a daemon that delivered its lines instead.
  */
 export async function deriveChatTurnFinal(agentSessionId: string): Promise<boolean> {
-  // cm:guard a session whose carrier holds nothing but PROMPTS is not this
-  // path's, and the check is what keeps the amnesty working. A daemon on the
-  // previous release still PATCHes its whole `messages` array, and core writes a
-  // prompt seed for every turn whoever runs it — so a derive on prompt rows alone
-  // would replace that daemon's transcript with the questions and none of the
-  // answers.
-  // cm:guard the `system` seed counts, and leaving it out is the case that
-  // caught this: a turn refused before its first line delivers no `stdout` at
-  // all, and its recorded failure would sit in the carrier unread while the
-  // session looked like it had simply gone quiet — which is precisely what
-  // `recordTurnError` exists to prevent.
-  const [delivered] = await db
-    .select({ seq: agentSessionEvents.seq })
-    .from(agentSessionEvents)
-    .where(
-      and(
-        eq(agentSessionEvents.agentSessionId, agentSessionId),
-        sql`(${agentSessionEvents.kind} = 'stdout' OR ${agentSessionEvents.data} -> 'entry' ->> 'type' = 'system')`,
-      ),
-    )
-    .limit(1);
-  if (!delivered) return false;
-
   const st = getState(agentSessionId);
   if (st.inFlight) {
     try {
