@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, eq, sql } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -15,7 +15,6 @@ import {
   issuePriorities,
   issueStatuses,
   issues,
-  jobs,
   jobTypes,
   projectMembers,
 } from '../db/schema.js';
