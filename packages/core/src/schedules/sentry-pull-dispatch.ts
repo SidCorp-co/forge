@@ -8,7 +8,7 @@
 import { eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { scheduleRuns } from '../db/schema.js';
-import { runSentryPull } from '../integrations/sentry/intake.js';
+import { runSentryPull, type SentryPullOutcome } from '../integrations/sentry/intake.js';
 import { logger } from '../logger.js';
 import type { DispatchScheduleInput, DispatchScheduleResult } from './dispatch-types.js';
 import { resolveScheduleTargetProject } from './release-batch-dispatch.js';
@@ -36,7 +36,17 @@ export async function dispatchScheduleSentryPull(
     return { ok: false, reason: 'session-failed', status: 'failed' };
   }
 
-  const outcome = await runSentryPull({ projectId });
+  // cm:guard the pull is called inside a catch, and the run row is settled on BOTH paths. Not every
+  // step of `runSentryPull` answers with an outcome — resolving the project's creator, building the
+  // adapter context and reading the thresholds all precede its own guards and can reject — and a
+  // rejection reaching here uncaught would leave this row `running` with no `finished_at` forever.
+  // That is a `schedule_runs` row claiming in-flight work no box is doing, which is the shape
+  // `docs/` calls an orphan and the one thing a run record must never become.
+  const outcome: SentryPullOutcome = await runSentryPull({ projectId }).catch((err: unknown) => ({
+    status: 'failed' as const,
+    output: '',
+    error: `sentry pull: ${err instanceof Error ? err.message : 'unknown error'}`,
+  }));
 
   try {
     await db

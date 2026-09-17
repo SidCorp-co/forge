@@ -25,6 +25,18 @@ import type {
   OutboundDispatchResult,
 } from '../types.js';
 import { sentryIssueUrl, sentryOrgIssuesUrl } from './endpoints.js';
+// cm:edge contract -> packages/core/src/integrations/sentry/listing.ts — the listing's vocabulary
+// and its pure decisions live there; this file makes the call and owns the delivery row.
+import {
+  assertListLimit,
+  confinementRefusal,
+  listQuery,
+  nextSentryCursor,
+  SENTRY_LIST_MAX_PAGES,
+  type SentryIssueListing,
+  type SentryListRefusal,
+  type SentryListRequest,
+} from './listing.js';
 import { type ResolvedSentryTarget, resolveSentryTarget } from './targets.js';
 import {
   SENTRY_ISSUE_STATUSES,
@@ -36,6 +48,20 @@ import {
 
 const CALL_TIMEOUT_MS = 15_000;
 
+// cm:why re-exported rather than left to `listing.js` alone: `issues.ts` is the module the adapter,
+// the tests and the intake path already import from, and splitting a file for a LINE BUDGET must
+// not move every caller's import. The definitions live in one place; this is the door.
+export {
+  nextSentryCursor,
+  SENTRY_LIST_DEFAULT_LIMIT,
+  SENTRY_LIST_DEFAULT_QUERY,
+  SENTRY_LIST_MAX_LIMIT,
+  SENTRY_LIST_MAX_PAGES,
+  type SentryIssueListing,
+  type SentryListRefusal,
+  type SentryListRequest,
+} from './listing.js';
+
 export const SENTRY_ISSUE_READ = 'sentry.issue.read';
 export const SENTRY_ISSUE_SET_STATUS = 'sentry.issue.set-status';
 export const SENTRY_ISSUE_LIST = 'sentry.issue.list';
@@ -46,11 +72,6 @@ export const SENTRY_DISPATCH_EVENTS = [
   SENTRY_ISSUE_SET_STATUS,
   SENTRY_ISSUE_LIST,
 ] as const;
-
-/** What a pull asks Sentry for when the caller names nothing narrower. */
-export const SENTRY_LIST_DEFAULT_QUERY = 'is:unresolved';
-export const SENTRY_LIST_DEFAULT_LIMIT = 25;
-export const SENTRY_LIST_MAX_LIMIT = 100;
 
 export type SentryAdapterContext = AdapterContext<SentryConfig, SentrySecrets>;
 
@@ -66,45 +87,13 @@ export interface SentryIssueRequest {
   status?: SentryIssueStatus;
 }
 
-/** One listing's request, and the same shape its delivery row records. */
-export interface SentryListRequest {
-  targetLabel?: string;
-  /** Sentry search syntax. The target's own `project:<slug>` is appended by this module. */
-  query?: string;
-  limit?: number;
-}
-
-/**
- * One answer this listing would not hand on, and why.
- *
- * Kept per answer rather than counted, because an operator whose target is mis-declared has to know
- * WHICH Sentry project answered before they can fix it — a number tells them only that something
- * did (ISS-1085 slice 3).
- */
-export interface SentryListRefusal {
-  issueId: string;
-  shortId: string | null;
-  /** The project Sentry said it belongs to; null where Sentry named none. */
-  belongsTo: string | null;
-  reason: string;
-}
-
-export interface SentryIssueListing {
-  result: OutboundDispatchResult;
-  target: ResolvedSentryTarget;
-  /** The answers that survived confinement, in the order Sentry returned them. */
-  issues: SentryIssueDetail[];
-  /** Every answer that did not, named individually. */
-  refused: SentryListRefusal[];
-}
-
 export interface SentryIssueCall {
   result: OutboundDispatchResult;
   issue: SentryIssueDetail;
 }
 
 type Attempt =
-  | { kind: 'ok'; body: unknown }
+  | { kind: 'ok'; body: unknown; link: string | null }
   | { kind: 'refused'; status: number; health: HealthStatus; reason: string };
 
 async function attempt(
@@ -126,7 +115,7 @@ async function attempt(
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
     });
-    if (res.ok) return { kind: 'ok', body: await res.json() };
+    if (res.ok) return { kind: 'ok', body: await res.json(), link: res.headers.get('link') };
     // cm:guard 401 and 403 are different verdicts and must not collapse — a 403 read as
     // `needs_reauth` sends the operator to replace a token that works (ISS-924).
     if (res.status === 401) {
@@ -168,6 +157,8 @@ async function callSentry(
   url: string,
   method: 'GET' | 'PUT',
   body?: Record<string, unknown>,
+  /** Filled with the response's `Link` header where the caller cares; the other two do not. */
+  out?: { link: string | null },
 ): Promise<unknown> {
   const authToken = ctx.secrets?.authToken;
   if (!authToken) {
@@ -210,6 +201,7 @@ async function callSentry(
   if (res.kind !== 'ok') {
     throw new Error(`sentry: ${method} ${url} — ${res.reason}`);
   }
+  if (out) out.link = res.link;
   return res.body;
 }
 
@@ -325,46 +317,6 @@ function assertTargetHoldsIssue(
   }
 }
 
-function assertListLimit(limit: unknown): number {
-  if (limit === undefined) return SENTRY_LIST_DEFAULT_LIMIT;
-  if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1) {
-    throw new Error(
-      `sentry: ${JSON.stringify(limit)} is not a listing limit — it has to be a whole number of at least 1`,
-    );
-  }
-  if (limit > SENTRY_LIST_MAX_LIMIT) {
-    throw new Error(
-      `sentry: a listing limit of ${limit} is above the ${SENTRY_LIST_MAX_LIMIT} this adapter will ask for in one call`,
-    );
-  }
-  return limit;
-}
-
-/** The caller's query, with the target's own project scoping appended rather than assumed. */
-function listQuery(query: string | undefined, target: ResolvedSentryTarget): string {
-  const base = query?.trim() ? query.trim() : SENTRY_LIST_DEFAULT_QUERY;
-  if (!target.projectSlug) return base;
-  return `${base} project:${target.projectSlug}`;
-}
-
-/**
- * Why this answer is not this target's, or `null` where it is.
- *
- * Same rule as `assertTargetHoldsIssue`, which refuses one addressed issue; this one reports rather
- * than throws, because a listing that threw on the first foreign answer would take the whole pull
- * down over one mis-scoped row instead of naming it.
- */
-function confinementRefusal(issue: SentryIssueDetail, target: ResolvedSentryTarget): string | null {
-  if (!target.projectSlug) return null;
-  if (issue.projectSlug === null) {
-    return `Sentry named no project for this issue, so it cannot be confined to target "${target.label}" (scoped to ${target.projectSlug})`;
-  }
-  if (issue.projectSlug !== target.projectSlug) {
-    return `belongs to project ${issue.projectSlug}, and target "${target.label}" is scoped to ${target.projectSlug}`;
-  }
-  return null;
-}
-
 function assertStatus(status: unknown): SentryIssueStatus {
   if (typeof status === 'string' && (SENTRY_ISSUE_STATUSES as readonly string[]).includes(status)) {
     return status as SentryIssueStatus;
@@ -452,6 +404,8 @@ export async function listSentryIssues(
 ): Promise<SentryIssueListing> {
   let target!: ResolvedSentryTarget;
   let refused: SentryListRefusal[] = [];
+  let pages = 0;
+  let truncated = false;
   const { result, value } = await withDelivery(
     ctx,
     SENTRY_ISSUE_LIST,
@@ -461,39 +415,80 @@ export async function listSentryIssues(
       target = resolveSentryTarget(ctx.config, input.targetLabel);
       const limit = assertListLimit(input.limit);
       const query = listQuery(input.query, target);
-      const url = sentryOrgIssuesUrl(ctx.config.host, target.organizationSlug, { query, limit });
-      const body = await callSentry(ctx, url, 'GET');
-      if (!Array.isArray(body)) {
-        throw new Error(
-          `sentry: ${url} answered ${typeof body}, and an issue listing has to be an array`,
-        );
-      }
       const admitted: SentryIssueDetail[] = [];
       const turnedAway: SentryListRefusal[] = [];
-      for (const raw of body) {
-        const issue = projectIssue(raw, '');
-        const why = confinementRefusal(issue, target);
-        if (why === null) admitted.push(issue);
-        else {
-          turnedAway.push({
-            issueId: issue.id,
-            shortId: issue.shortId,
-            belongsTo: issue.projectSlug,
-            reason: why,
-          });
+      let cursor: string | undefined;
+
+      // cm:guard the cursor is FOLLOWED, and the bound is SPOKEN. Sentry orders by last seen, so
+      // the issues past the last page this walk takes are the same ones on the next tick and the
+      // one after — a listing that read page one and reported an ordinary success would be a
+      // permanent blind spot nobody could see from the run record.
+      while (pages < SENTRY_LIST_MAX_PAGES) {
+        const url = sentryOrgIssuesUrl(ctx.config.host, target.organizationSlug, {
+          query,
+          limit,
+          ...(cursor ? { cursor } : {}),
+        });
+        const out: { link: string | null } = { link: null };
+        const body = await callSentry(ctx, url, 'GET', undefined, out);
+        if (!Array.isArray(body)) {
+          throw new Error(
+            `sentry: ${url} answered ${typeof body}, and an issue listing has to be an array`,
+          );
         }
+        pages += 1;
+        for (const raw of body) {
+          const issue = projectIssue(raw, '');
+          const why = confinementRefusal(issue, target);
+          if (why === null) admitted.push(issue);
+          else {
+            turnedAway.push({
+              issueId: issue.id,
+              shortId: issue.shortId,
+              belongsTo: issue.projectSlug,
+              reason: why,
+            });
+          }
+        }
+        const next = nextSentryCursor(out.link);
+        if (!next) {
+          refused = turnedAway;
+          return {
+            value: admitted,
+            // cm:guard the refusals go in the RESPONSE, not only in the return value — the delivery
+            // log is where an operator looks, and a confinement that refused forty answers while
+            // the row says `ok` with ten issues is a state that lies about itself.
+            response: {
+              query,
+              limit,
+              pages,
+              truncated,
+              admitted: admitted.length,
+              refused: turnedAway,
+            },
+          };
+        }
+        cursor = next;
       }
+
+      // The bound was reached and Sentry still had more. This is not an error and it is not a
+      // success either — it is a named incompleteness, and it is the caller's to report onward.
+      truncated = true;
       refused = turnedAway;
       return {
         value: admitted,
-        // cm:guard the refusals go in the RESPONSE, not only in the return value — the delivery log
-        // is where an operator looks, and a confinement that refused forty answers while the row
-        // says `ok` with ten issues is a state that lies about itself.
-        response: { query, limit, admitted: admitted.length, refused: turnedAway },
+        response: {
+          query,
+          limit,
+          pages,
+          truncated,
+          admitted: admitted.length,
+          refused: turnedAway,
+        },
       };
     },
   );
-  return { result, target, issues: value, refused };
+  return { result, target, issues: value, refused, pages, truncated };
 }
 
 /**

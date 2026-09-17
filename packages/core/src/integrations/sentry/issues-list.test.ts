@@ -228,3 +228,87 @@ describe('listSentryIssues — confinement to the named target', () => {
     expect(calls).toHaveLength(0);
   });
 });
+
+// ── F1 from the review of the landing head: the listing followed one page and said nothing ───────
+
+const { nextSentryCursor, SENTRY_LIST_MAX_PAGES } = await import('./issues.js');
+
+/** Answer a sequence of pages, each with the Link header Sentry would send for it. */
+function answerPages(pages: { body: unknown[]; more: boolean }[]) {
+  const calls: { url: string; init: RequestInit }[] = [];
+  let n = 0;
+  globalThis.fetch = vi.fn(async (input: string | URL | Request, init?: RequestInit) => {
+    calls.push({ url: String(input), init: init ?? {} });
+    const page = pages[Math.min(n, pages.length - 1)];
+    n += 1;
+    const more = page?.more ?? false;
+    return new Response(JSON.stringify(page?.body ?? []), {
+      status: 200,
+      headers: {
+        'content-type': 'application/json',
+        link: `<https://x/prev>; rel="previous"; results="false"; cursor="p", <https://x/next>; rel="next"; results="${more}"; cursor="c${n}"`,
+      },
+    });
+  }) as unknown as typeof fetch;
+  return calls;
+}
+
+describe('nextSentryCursor', () => {
+  it('reads the cursor only where Sentry says the next page has results', () => {
+    expect(nextSentryCursor('<https://x>; rel="next"; results="true"; cursor="abc"')).toBe('abc');
+  });
+
+  // cm:guard Sentry ALWAYS emits a rel="next"; `results="false"` is the only thing that says the
+  // page is empty. Reading the header's presence as "there is more" would make every listing walk
+  // to its page bound and report itself incomplete on a complete answer.
+  it('answers null where the next page has no results, although the link is present', () => {
+    expect(nextSentryCursor('<https://x>; rel="next"; results="false"; cursor="abc"')).toBeNull();
+  });
+
+  it('answers null for no header at all', () => {
+    expect(nextSentryCursor(null)).toBeNull();
+  });
+});
+
+describe('listSentryIssues — pagination', () => {
+  it('follows the cursor and returns the issues from BOTH pages', async () => {
+    const calls = answerPages([
+      { body: [sentryBody({ id: '1', shortId: 'A-1' })], more: true },
+      { body: [sentryBody({ id: '2', shortId: 'B-2' })], more: false },
+    ]);
+    const listing = await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' });
+
+    expect(calls).toHaveLength(2);
+    expect(new URL(String(calls[1]?.url)).searchParams.get('cursor')).toBe('c1');
+    expect(listing.issues.map((i) => i.shortId)).toEqual(['A-1', 'B-2']);
+    expect(listing.pages).toBe(2);
+    expect(listing.truncated).toBe(false);
+  });
+
+  it('makes ONE call where the first page is the last', async () => {
+    const calls = answerPages([{ body: [sentryBody()], more: false }]);
+    const listing = await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' });
+    expect(calls).toHaveLength(1);
+    expect(listing.pages).toBe(1);
+    expect(listing.truncated).toBe(false);
+  });
+
+  it('stops at its page bound and reports truncated rather than reporting a complete listing', async () => {
+    const calls = answerPages([{ body: [sentryBody()], more: true }]);
+    const listing = await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' });
+
+    expect(calls).toHaveLength(SENTRY_LIST_MAX_PAGES);
+    expect(listing.pages).toBe(SENTRY_LIST_MAX_PAGES);
+    expect(listing.truncated).toBe(true);
+    expect(deliveryResponse()).toMatchObject({ truncated: true, pages: SENTRY_LIST_MAX_PAGES });
+  });
+
+  it('records the page count in the delivery row on a complete listing too', async () => {
+    answerPages([
+      { body: [sentryBody({ id: '1', shortId: 'A-1' })], more: true },
+      { body: [sentryBody({ id: '2', shortId: 'B-2' })], more: false },
+    ]);
+    await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' });
+    expect(deliveryResponse()).toMatchObject({ pages: 2, truncated: false, admitted: 2 });
+  });
+});

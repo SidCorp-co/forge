@@ -38,8 +38,9 @@ export function sentryIssueUrl(host: string, organizationSlug: string, issueId: 
 export function sentryOrgIssuesUrl(
   host: string,
   organizationSlug: string,
-  params: { query: string; limit: number },
+  params: { query: string; limit: number; cursor?: string },
 ): string {
   const search = new URLSearchParams({ query: params.query, limit: String(params.limit) });
+  if (params.cursor) search.set('cursor', params.cursor);
   return `${sentryRestBase(host)}/api/0/organizations/${encodeURIComponent(organizationSlug)}/issues/?${search.toString()}`;
 }

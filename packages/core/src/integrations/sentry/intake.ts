@@ -94,7 +94,8 @@ export interface SentryIssueRow {
   detectorKey: string;
 }
 
-function cap(text: string, max: number): string {
+/** Bound a TITLE, which is a column a person scans. Never used for the run's own record. */
+function capTitle(text: string, max: number): string {
   return text.length > max ? `${text.slice(0, max - 1)}…` : text;
 }
 
@@ -131,7 +132,7 @@ export function buildSentryIssueRow(
     issue.metadataValue?.trim() ? issue.metadataValue : '_Sentry reported none._',
   ];
   return {
-    title: cap(headline, TITLE_CAP),
+    title: capTitle(headline, TITLE_CAP),
     description: lines.join('\n'),
     status: SENTRY_FILED_STATUS,
     source: SENTRY_ISSUE_SOURCE,
@@ -207,28 +208,35 @@ async function observe(
   authorId: string,
 ): Promise<'commented' | 'refreshed'> {
   const previous = recordedCount(existing.metadata);
-  const grew = issue.count !== null && (previous === null || issue.count > previous);
+  const grew = issue.count !== null && previous !== null && issue.count > previous;
+
+  // cm:guard THE COMMENT IS WRITTEN FIRST, and the order is the whole defence. These are two
+  // statements and nothing wraps them in one transaction, so one of them can land alone. Writing
+  // the counts first and the comment second means a comment that fails is a comment that NEVER
+  // arrives: the next tick reads the new count, finds no growth, and the person is never told. This
+  // way round, the worst a failure between them costs is the same comment twice — and a duplicate
+  // note is a thing a reader can see and dismiss, where a missing one is not.
+  if (grew) {
+    await db.insert(comments).values({
+      issueId: existing.id,
+      authorId,
+      body: [
+        `Sentry has seen \`${shortId}\` again.`,
+        '',
+        `- Events: ${issue.count} (was ${previous})`,
+        `- Users affected: ${issue.userCount ?? 'not reported'}`,
+        `- Last seen: ${issue.lastSeen ?? 'not reported'}`,
+        ...(issue.permalink ? ['', issue.permalink] : []),
+      ].join('\n'),
+    });
+  }
 
   await db
     .update(issues)
     .set({ metadata: sentryMetadataMerge(sighting(issue, shortId)) })
     .where(eq(issues.id, existing.id));
 
-  if (!grew) return 'refreshed';
-
-  await db.insert(comments).values({
-    issueId: existing.id,
-    authorId,
-    body: [
-      `Sentry has seen \`${shortId}\` again.`,
-      '',
-      `- Events: ${issue.count}${previous === null ? '' : ` (was ${previous})`}`,
-      `- Users affected: ${issue.userCount ?? 'not reported'}`,
-      `- Last seen: ${issue.lastSeen ?? 'not reported'}`,
-      ...(issue.permalink ? ['', issue.permalink] : []),
-    ].join('\n'),
-  });
-  return 'commented';
+  return grew ? 'commented' : 'refreshed';
 }
 
 /**
@@ -244,10 +252,16 @@ async function file(
   projectId: string,
   createdById: string,
   row: SentryIssueRow,
+  baseline: SentrySightingRecord,
 ): Promise<'filed' | 'raced'> {
+  // cm:guard the BASELINE goes in with the row, and leaving it out is not a cosmetic omission. With
+  // no `metadata.sentry`, `recordedCount` answers null on the first re-sighting, and a "grew" test
+  // written against null treats any count at all as growth — so an issue filed at 17 events and
+  // seen again at 17 posts a note saying it got worse. That is the noise the growth test exists to
+  // prevent, on the very first tick after filing.
   const inserted = await db.execute<{ id: string }>(sql`
-    INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, detector_key, status, created_via)
-    VALUES (${projectId}, ${row.title}, ${row.description}, ${createdById}, ${row.source}, ${row.externalId}, ${row.detectorKey}, ${row.status}, 'system')
+    INSERT INTO issues (project_id, title, description, created_by_id, source, external_id, detector_key, status, created_via, metadata)
+    VALUES (${projectId}, ${row.title}, ${row.description}, ${createdById}, ${row.source}, ${row.externalId}, ${row.detectorKey}, ${row.status}, 'system', ${JSON.stringify({ sentry: baseline })}::jsonb)
     ON CONFLICT (project_id, source, external_id) WHERE external_id IS NOT NULL DO NOTHING
     RETURNING id
   `);
@@ -275,42 +289,72 @@ async function pullOneTarget(
   let filed = 0;
   let commented = 0;
   let refreshed = 0;
-  const refusals: string[] = [];
+  let refusedCount = 0;
 
-  for (const refusal of listing.refused) {
-    refusals.push(`    confined out ${refusal.shortId ?? refusal.issueId}: ${refusal.reason}`);
-  }
-
-  for (const issue of listing.issues) {
-    // THE LOOKUP COMES FIRST. See this file's header — an issue already filed is observed, never
-    // re-judged, so a threshold raised today cannot silence yesterday's issues.
-    const shortId = issue.shortId?.trim() ?? '';
-    const existing = shortId === '' ? null : await findFiled(projectId, shortId);
-    if (existing) {
-      const what = await observe(existing, issue, shortId, createdById);
-      if (what === 'commented') commented += 1;
-      else refreshed += 1;
-      continue;
-    }
-
-    const verdict = judgeSentryIssue(issue, thresholds);
-    if (!verdict.admit) {
-      refusals.push(`    refused: ${verdict.reason}`);
-      continue;
-    }
-    const outcome = await file(
-      projectId,
-      createdById,
-      buildSentryIssueRow(issue, verdict.externalId, verdict.detectorKey, listing.target),
+  // cm:guard EVERY decision is pushed into the shared report AS IT IS MADE, never buffered locally
+  // and flushed at the end. A local buffer flushed after the loop is lost the moment any issue in
+  // the loop throws — and what is lost is precisely the named refusals this whole path exists to
+  // surface, leaving the operator a bare target error where there were thirty refusals and four
+  // filings. The header line goes in FIRST, before anything can throw, so the report always says
+  // which target the lines under it belong to.
+  const headerAt = report.length;
+  report.push(`  target ${target.label}:`);
+  if (listing.truncated) {
+    report.push(
+      `    INCOMPLETE: stopped after ${listing.pages} page(s) and Sentry had more. Issues past that point were not seen this tick, and will not be on the next one either — raise the schedule's reach or narrow the query.`,
     );
-    if (outcome === 'filed') filed += 1;
-    else refusals.push(`    raced ${verdict.externalId}: another writer held the key first`);
+  }
+  for (const refusal of listing.refused) {
+    report.push(`    confined out ${refusal.shortId ?? refusal.issueId}: ${refusal.reason}`);
   }
 
-  report.push(
-    `  target ${target.label}: ${listing.issues.length} answered, ${listing.refused.length} confined out, ${filed} filed, ${commented} commented, ${refreshed} refreshed, ${refusals.length - listing.refused.length} refused`,
-  );
-  report.push(...refusals);
+  try {
+    for (const issue of listing.issues) {
+      // THE LOOKUP COMES FIRST. See this file's header — an issue already filed is observed, never
+      // re-judged, so a threshold raised today cannot silence yesterday's issues.
+      const shortId = issue.shortId?.trim() ?? '';
+      const existing = shortId === '' ? null : await findFiled(projectId, shortId);
+      if (existing) {
+        const what = await observe(existing, issue, shortId, createdById);
+        if (what === 'commented') commented += 1;
+        else refreshed += 1;
+        continue;
+      }
+
+      const verdict = judgeSentryIssue(issue, thresholds);
+      if (!verdict.admit) {
+        refusedCount += 1;
+        report.push(`    refused: ${verdict.reason}`);
+        continue;
+      }
+      const outcome = await file(
+        projectId,
+        createdById,
+        buildSentryIssueRow(issue, verdict.externalId, verdict.detectorKey, listing.target),
+        sighting(issue, verdict.externalId),
+      );
+      if (outcome === 'filed') {
+        filed += 1;
+        continue;
+      }
+      // cm:guard a lost race is not a tick with nothing to do. Another writer holds the key, so the
+      // row exists — reload it and OBSERVE it, or this sighting's counts are thrown away and the
+      // person watching that issue is told nothing about the increase that arrived with it.
+      const winner = await findFiled(projectId, verdict.externalId);
+      if (winner) {
+        const what = await observe(winner, issue, verdict.externalId, createdById);
+        if (what === 'commented') commented += 1;
+        else refreshed += 1;
+      } else {
+        report.push(
+          `    raced ${verdict.externalId}: the insert was refused by the unique index and the row it collided with could not be read back`,
+        );
+      }
+    }
+  } finally {
+    report[headerAt] =
+      `  target ${target.label}: ${listing.issues.length} answered over ${listing.pages} page(s), ${listing.refused.length} confined out, ${filed} filed, ${commented} commented, ${refreshed} refreshed, ${refusedCount} refused`;
+  }
   return { filed, commented };
 }
 
@@ -393,7 +437,19 @@ export async function runSentryPull(args: { projectId: string }): Promise<Sentry
   }
 
   const summary = `${filed} issue(s) filed, ${commented} commented, across ${targets.length} target(s)`;
-  const output = cap([summary, ...report, ...failures].join('\n'), OUTPUT_CAP);
+  // cm:guard the FAILURES are placed above the per-issue detail, not appended after it, and the
+  // truncation says so out loud. `schedule_runs.output` is one text column and this report is the
+  // only record these decisions get, so the cap can and will eat the tail — appending failures last
+  // put the load-bearing lines exactly where the knife falls. A bare ellipsis would leave an
+  // operator reading a list that looks complete. What is NOT done here: persisting the whole report
+  // somewhere retrievable. That needs a store this change does not have, and the honest bound is to
+  // keep what matters and name what was dropped.
+  const head = [summary, ...failures, ...report];
+  const joined = head.join('\n');
+  const output =
+    joined.length > OUTPUT_CAP
+      ? `${joined.slice(0, OUTPUT_CAP - 120)}\n… TRUNCATED at ${OUTPUT_CAP} characters. ${joined.length - OUTPUT_CAP} more character(s) of decisions were dropped from this record.`
+      : joined;
   if (failures.length > 0) {
     return {
       status: 'failed',
