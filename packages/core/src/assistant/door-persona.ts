@@ -109,7 +109,7 @@ export function webAgentDoorLines(askedBy: string | null): string[] {
 // cm:guard lives HERE and not in the layer module, which holds text and its header only and has `layer.ts` as its one reader: this is a VALUE the door fills a token with, and the door is where the room's values are named.
 // cm:guard the instruction changes BEHAVIOUR and does not merely disclose: a disclaimer ("note: the discussion may be ongoing") leaves the model free to summarise a room that has not finished, which is the failure the cut exists to prevent. Each clause is one of the four things a mid-conversation reply must do differently.
 export const MID_CONVERSATION_INSTRUCTION =
-  'You are answering MID-CONVERSATION: the messages you were given were cut off before the room went quiet, so the discussion may still be moving and later messages may already exist that you cannot see. Answer only the questions actually asked in the messages you were given. Do not present the discussion as concluded and do not claim the room agreed on anything. Prefer one short, targeted contribution over a summary of the room. If what you can see is too incomplete to add anything useful, decline the turn.';
+  'the messages you were given were cut off before the room went quiet, so the discussion may still be moving and later messages may already exist that you cannot see. Answer only the questions actually asked in the messages you were given. Do not present the discussion as concluded and do not claim the room agreed on anything. Prefer one short, targeted contribution over a summary of the room. If what you can see is too incomplete to add anything useful, decline the turn.';
 
 export function rocketChatDoorPersona(
   door: DoorOpening,

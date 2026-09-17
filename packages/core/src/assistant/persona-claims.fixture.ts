@@ -342,6 +342,13 @@ export const LEDGER: readonly Claim[] = [
     clauses: ['Plain chat text, no markdown headers'],
     origin: 'kept',
   },
+  // cm:guard ONE clause and it is the line's fixed prefix, because the rest of the line is a token: the instruction itself is a value the door fills (`MID_CONVERSATION_INSTRUCTION`) and is absent from the layer text this ledger is read against, so a clause quoting it would resolve in no layer (ISS-1086 criteria 14-16).
+  {
+    id: 'mid-conversation-turn',
+    owner: 'rocketchatOnly',
+    clauses: ['Mid-conversation turn:'],
+    origin: 'new',
+  },
 
   {
     id: 'reply-in-vietnamese',

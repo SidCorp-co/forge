@@ -22,7 +22,7 @@ describe('what a cut window tells the room turn', () => {
 
   it('carries nothing of it when the window settled on quiet (criterion 16)', () => {
     expect(persona('quiet')).not.toContain(MID_CONVERSATION_INSTRUCTION);
-    expect(persona('quiet')).not.toMatch(/MID-CONVERSATION/);
+    expect(persona('quiet')).not.toMatch(/Mid-conversation turn/);
   });
 
   // cm:guard an absent reason is a row claimed before the column existed, and it reads exactly as `quiet` here as it does in the router's detail: two readings of one null would be the two that disagree.
@@ -36,6 +36,6 @@ describe('what a cut window tells the room turn', () => {
     const quiet = rocketChatChannelLines('alice', { botName: 'Babo', cut: 'quiet' });
     const cut = rocketChatChannelLines('alice', { botName: 'Babo', cut: 'deadline' });
     expect(cut).toHaveLength(quiet.length + 1);
-    expect(cut[cut.length - 1]).toBe(`- ${MID_CONVERSATION_INSTRUCTION}`);
+    expect(cut[cut.length - 1]).toBe(`- Mid-conversation turn: ${MID_CONVERSATION_INSTRUCTION}`);
   });
 });
