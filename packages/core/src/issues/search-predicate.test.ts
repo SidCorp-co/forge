@@ -1,6 +1,10 @@
 import { PgDialect } from 'drizzle-orm/pg-core';
 import { describe, expect, it } from 'vitest';
-import { buildIlikePattern, ISSUE_SEARCH_FIELDS, matchedSearchFieldsSql } from './search-predicate.js';
+import {
+  buildIlikePattern,
+  ISSUE_SEARCH_FIELDS,
+  matchedSearchFieldsSql,
+} from './search-predicate.js';
 
 describe('buildIlikePattern', () => {
   it('wraps plain text with %', () => {

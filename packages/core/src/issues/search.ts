@@ -36,9 +36,9 @@ import {
   hydrateCreatorsForIssues,
 } from './creator.js';
 import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
-import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
+import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';

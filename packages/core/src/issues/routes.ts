@@ -38,9 +38,9 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from './label-service.js';
+import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
 import { jobHistoryForStep } from './search.js';
