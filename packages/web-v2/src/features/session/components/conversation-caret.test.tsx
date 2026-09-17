@@ -13,7 +13,7 @@
 // Matchers are extended on vitest's OWN `expect` for the reason `thinking-line.test.tsx` gives.
 
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type { ConversationItem, RenderBlock } from "../types";
 import { Conversation } from "./conversation";
@@ -127,5 +127,85 @@ describe("where the caret goes while a turn streams", () => {
       />,
     );
     expect(carets(container)).toEqual([]);
+  });
+});
+
+// cm:guard the resident master's finding on ISS-1083, 2026-09-17: before this change a live turn
+// whose blocks were `[text, thinking]` satisfied BOTH live conditions at once — the caret went to
+// the last TEXT block, and `ThinkingLine` reads "Thinking…" on `i === blocks.length - 1` — so two
+// things on screen claimed the turn was live and one of them pointed at a block that had stopped
+// growing. The comment's own note is why this case is not a caret query: the second indicator is a
+// different element with different markup, and counting `.forge-caret` alone would have missed it.
+//
+// cm:guard what these cases hold is the exclusivity of the two BLOCK-LEVEL indicators, and nothing
+// wider: `Conversation` draws no stage line and no outbox row, so neither is mountable here and a
+// total of one is not what is being asserted (final consult F1). The stage line is a fact about the
+// TURN and the two below are facts about blocks — a turn reading `Working…` while its pause reads
+// `Thinking…` is two scales agreeing, and the stage line's own position is criterion 17's, held in
+// `turn-stage.test.tsx` as node identity.
+describe("which block-level indicator speaks", () => {
+  // cm:guard the LABEL is read and never the line's whole text: a settled pause a reader has opened
+  // puts its reasoning inside the same wrapper, and reasoning that happens to contain the word would
+  // count a finished block as live (final consult F2). The toggle holds the label alone where there
+  // is one; a pause with nothing to open onto has no children but its label.
+  const spokenLabel = (el: Element) =>
+    el.querySelector('[data-testid="thinking-line-toggle"]')?.textContent ?? el.textContent ?? "";
+  const claims = (root: HTMLElement) => [
+    ...Array.from(root.querySelectorAll(".forge-caret")).map(() => "caret"),
+    ...Array.from(root.querySelectorAll('[data-testid="thinking-line"]'))
+      .filter((el) => spokenLabel(el).includes("Thinking…"))
+      .map(() => "thinking"),
+  ];
+
+  it("lets the pause speak alone while the turn is thinking after having written", () => {
+    const { container } = render(
+      <Conversation
+        items={[agent([text("Let me think about that."), { type: "thinking" }])]}
+        readOnly
+        streaming
+      />,
+    );
+    expect(claims(container)).toEqual(["thinking"]);
+  });
+
+  it("lets the caret speak alone while the turn is writing after having thought", () => {
+    const { container } = render(
+      <Conversation
+        items={[agent([{ type: "thinking", durationMs: 400 }, text("Here is what I found")])]}
+        readOnly
+        streaming
+      />,
+    );
+    expect(claims(container)).toEqual(["caret"]);
+  });
+
+  // cm:guard and neither speaks while a tool is out, because the CARD says `Running…` and the turn's
+  // own stage line says `Working…`. Three claims about one turn is the noise this rule ends.
+  it("leaves both silent while a tool call is out", () => {
+    const { container } = render(
+      <Conversation items={[agent([text("Let me look."), tool("t1")])]} readOnly streaming />,
+    );
+    expect(claims(container)).toEqual([]);
+  });
+
+  // cm:guard F2's own sequence: a settled pause whose reasoning holds the word, OPENED, beside prose
+  // that is still growing. Read off the wrapper's text this reported two claims and named the
+  // finished block as one of them.
+  it("does not hear a settled pause whose reasoning quotes the word", () => {
+    const { container } = render(
+      <Conversation
+        items={[
+          agent([
+            { type: "thinking", text: "Thinking… about which run to read first", durationMs: 900 },
+            text("Here is what I found"),
+          ]),
+        ]}
+        readOnly
+        streaming
+      />,
+    );
+    fireEvent.click(screen.getByTestId("thinking-line-toggle"));
+    expect(screen.getByTestId("thinking-line-text")).toHaveTextContent("Thinking…");
+    expect(claims(container)).toEqual(["caret"]);
   });
 });
