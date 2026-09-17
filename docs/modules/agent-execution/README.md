@@ -51,7 +51,7 @@ flowchart LR
 | Worktree and git work | `core/src/git/` |
 | Git credential for a checkout | `core/src/git/github-app-credential.ts` (mint), `packages/runner` `cmd/git_credential.rs` (helper) |
 | The daemon itself | `packages/runner` (crates `forge-runner`, `forge-runner-core`) |
-| Evidence retention | `core/src/jobs/retention-sweeper.ts` |
+| Evidence retention | `core/src/pipeline/retention/` (`policy.ts` states the rules, `sweep.ts` enforces them) |
 | UI | web `features/runners/`, `pairing/`, `sessions/`, `session/`, `conversations/`, `agents/` |
 
 ## Vocabulary
@@ -90,8 +90,11 @@ flowchart LR
   the box, because a hold nothing enforces is worse than none (`runner_full`, removed 2026-09-05).
   The pane is the only record that job is running, so a restart reconciles what this box started
   against what it is still running rather than re-launching or trusting an in-memory map.
-- **`job_events` are pruned at 30 days** for jobs in terminal states. Anything that must outlive
-  that belongs in `activity_log` or memory, not in the event stream.
+- **`job_events` are pruned at 30 days** for jobs in terminal states, and never before that job's
+  session records its transcript as finalised — the transcript is what survives, and these rows are
+  what rebuild it. A session whose finalisation never completed has its events held, and the sweep
+  finalises it rather than expiring them (ISS-1027). Anything that must outlive the window belongs
+  in `activity_log` or memory, not in the event stream.
 
 ## Boundaries
 

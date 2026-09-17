@@ -224,7 +224,7 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
   });
 
   describe('what the numbers mean', () => {
-    // cm:guard `oldestRow` is the only thing that lets a reader decide whether these are LIFETIME counts. `agent-surface.md`'s "whole table" clause holds only while `enforceMcpAuditRetention` stays unwired; when someone wires it, this field is what shows a 90-day floor instead of a claim in prose going quietly stale.
+    // cm:guard `oldestRow` is the only thing that lets a reader decide whether these are LIFETIME counts. `agent-surface.md`'s "whole table" clause holds only while `retention/policy.ts` states no window for this table; if that ever changes, this field is what shows the window instead of a claim in prose going quietly stale.
     it('reports the oldest row, so a reader can judge the window for themselves', async () => {
       const tokenId = await makeToken(admin.id, 'old');
       const oldest = new Date('2026-01-02T03:04:05.000Z');

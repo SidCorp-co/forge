@@ -112,6 +112,14 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Six tables that only ever grew now have a retention rule and a nightly sweep.** The operator
+  sets each window, and the sweep reports what it removed and kept. The runner Activity
+  panel says how long that history lasts.
+
+- **A job's events are no longer deleted before the transcript they rebuild is written.** Events are
+  kept until the session records its transcript as final. Where that never happened, the sweep
+  writes the transcript instead of letting them expire.
+
 - **You can see the assistant think.** A turn now shows how long the model paused before answering,
   and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
 

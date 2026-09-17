@@ -222,12 +222,13 @@ correctly under the new credential: `forge_skill_facts.get` had 23 **device** ca
 a PAT, and is on `PAT_ALLOWED_PREFIXES` — which is exactly the point. Check which species the
 callers hold and which the middleware admits, not whether a route is mounted.
 
-**The device counts are frozen, and that is the pruner's doing rather than `ISS-931`'s.** They
-could not fall before either: the table declares 90-day retention and nothing calls
-`enforceMcpAuditRetention`. Wiring it would drain every device count to zero within 90 days of the
-last device call — and that must not be read as clearing 20 tools at once, because rule 1 above is
-about callers who return, not about rows that expire. Whoever wires the pruner rewrites rule 1 in
-the same commit, or the drain silently licenses the deletions it was never evidence for.
+**The device counts are frozen, and that is retention's doing rather than `ISS-931`'s.** They
+cannot fall: `mcp_audit_log` has no retention window at all, which `pipeline/retention/policy.ts` states
+and `GET /api/admin/mcp-audit/tools` returns in its `retention` field. A window would drain every
+device count to zero within it of the last device call — and that must not be read as clearing 20
+tools at once, because rule 1 above is about callers who return, not about rows that expire.
+Whoever gives this table a window rewrites rule 1 in the same commit, or the drain silently
+licenses the deletions it was never evidence for.
 
 **The zero-rows amnesty survives, unchanged and still priced.** A tool at zero rows lifetime under
 both spellings has nobody to strand and nobody to come back, so it needs no reachable replacement.
@@ -236,15 +237,17 @@ It is available exactly once per tool, buys nothing for any tool with traffic, a
 appears in `mcp_audit_log` after a deletion taken this way, the reading was wrong and the tool
 comes back.
 
-**"Whole table" is a lifetime count only while the pruner stays unwired.** `mcp_audit_log` declares
-90-day retention — `drizzle/migrations/0063_mcp_audit_log.sql` says so and
-`auth/mcp-audit.ts:enforceMcpAuditRetention` implements it — and **nothing calls that function**.
-So today a zero really does mean "never called". Wire it to a tick and the same query answers
-"not called in 90 days", which would license deleting a quarterly-called tool with nothing going
-red: the `7f0c5a56` shape again, arriving through the measurement rather than the column. Whoever
-wires the pruner rewrites this paragraph in the same commit. Until then, read that function before
-spending a zero, and note that `forge_memory.revisions` — added `f568c503` on 2026-09-05, deleted
-the next day — is a zero under any retention, so it did not test this clause.
+**"Whole table" is a lifetime count because this table has no retention window.**
+`pipeline/retention/policy.ts` is where that is stated, and it states the reason as this paragraph:
+`mcp_audit_log` is the one append-only table ISS-1027 left unswept, because a window turns the
+query below from "never called" into "not called lately" and would license deleting a
+quarterly-called tool with nothing going red — the `7f0c5a56` shape again, arriving through the
+measurement rather than through the column. `drizzle/migrations/0063_mcp_audit_log.sql` declares 90
+days in a comment and is superseded by that entry; the `enforceMcpAuditRetention` that implemented
+those 90 days and that nothing ever called was deleted with it. What would end the exception is a
+per-tool lifetime aggregate that survives deletion, and whoever builds one rewrites this paragraph
+and rule 1 in the same commit. Note that `forge_memory.revisions` — added `f568c503` on 2026-09-05,
+deleted the next day — is a zero under any retention, so it did not test this clause.
 
 
 Read `mcp_audit_log` split on `device_id IS NOT NULL` / `token_id IS NOT NULL` — never on
@@ -297,11 +300,12 @@ option `ISS-946` listed — gate deletions on something an agent *can* read — 
 reason the section above gives: `forge call <tool>` makes static evidence insufficient for every
 tool, so there is nothing greppable to promote into a clearance.
 
-`enforceMcpAuditRetention` is still unwired, so these are lifetime counts — and the route does not
-merely assert that. It returns `oldestRow`, the oldest row in the table, so a reader sees the
-window instead of trusting this paragraph. Wire the pruner and that field starts reading ~90 days
-back, which is the signal that this page's rule 1 and the "whole table" clause both need rewriting
-in that same commit.
+`mcp_audit_log` has no retention window, so these are lifetime counts — and the route does not
+merely assert that. It returns the stated rule in `retention`, and `oldestRow`, the oldest row in
+the table, so a reader sees the rule and the evidence for it together instead of trusting this
+paragraph. A `retention.days` that is ever not `null`, or an `oldestRow` that starts tracking a
+window, is the signal that this page's rule 1 and the "whole table" clause both need rewriting in
+that same commit.
 
 ## Who delivers the target
 
