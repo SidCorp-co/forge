@@ -31,7 +31,6 @@ type Mods = {
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   STRANDED_GRACE_MS: typeof import('../../src/pipeline/stranded-issues.js').STRANDED_GRACE_MS;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
-  STRANDED_RENOTIFY_MS: typeof import('../../src/pipeline/stranded-issues.js').STRANDED_RENOTIFY_MS;
 };
 
 type NotifRow = { user_id: string; type: string; resolution_key: string; read: boolean };
@@ -193,8 +192,8 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect((await readNotifs(harness, s.issueId)).length).toBe(first.notified);
   });
 
-  // cm:guard reading the alarm must NOT re-arm it on the next 60s tick — the predicate matches every `waiting` park past the grace window rather than the rare merged-and-parked contradiction the deleted staged arm needed, so an unread-only dedupe turns one read into a ping every minute for the life of the park.
-  it('stays quiet after a read while the re-notify window is still open', async () => {
+  // cm:guard reading the alarm must NOT re-arm it on the next 60s tick — the predicate matches every `waiting` park past the grace window rather than the rare merged-and-parked contradiction the deleted staged arm needed, so a dedupe that a read could clear turns one read into a ping every minute for the life of the park. ISS-1063 is what makes this structural rather than a window: the read is on the delivery and the record cannot see it.
+  it('stays quiet after a read, because a read is not something the record can see', async () => {
     const s = await seed();
     const first = await announce(harness, mods.detectStrandedIssues);
     expect(first.notified).toBeGreaterThan(0);
@@ -206,8 +205,8 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect((await readNotifs(harness, s.issueId)).length).toBe(first.notified);
   });
 
-  // cm:guard the cooldown must suppress only while the alarm is UNRESOLVED. A resolved row is a strand that ENDED — the human moved the issue off `waiting` and auto-resolve stamped it — so a later re-strand is a NEW one and is owed its own alarm on time. Dedupe on `read`/`created_at` alone and it is muted for the rest of the window, which is silence a caller cannot tell from "nothing is wrong".
-  it('re-notifies a RESOLVED strand that recurred, without waiting out the window', async () => {
+  // cm:guard the dedupe must suppress only while the alarm is UNRESOLVED. A resolved row is a strand that ENDED — the human moved the issue off `waiting` and auto-resolve stamped it — so a later re-strand is a NEW one and is owed its own alarm at once. Dedupe on anything that outlives the resolution and it is muted, which is silence a caller cannot tell from "nothing is wrong".
+  it('re-notifies a RESOLVED strand that recurred, at once', async () => {
     const s = await seed();
     const first = await announce(harness, mods.detectStrandedIssues);
     expect(first.notified).toBeGreaterThan(0);
@@ -220,20 +219,28 @@ describe('detectStrandedIssues E2E (ISS-762)', () => {
     expect(second.notified).toBe(first.notified);
   });
 
-  it('re-notifies once the read alarm is older than the re-notify window', async () => {
+  // ISS-1063 — this asserted a 24-hour re-notify window, which is DELETED along with the
+  // lookup it bounded: the window existed because the old dedupe keyed on an unread row, so
+  // a glance at the bell re-armed the alarm and the 60-second sweep pinged again within the
+  // minute. Read state is not on the record any more, and what stops a second telling is the
+  // delivery layer. So the assertion inverts: age is now no reason to raise a still-firing
+  // strand again, and a pass that reintroduced a `created_at` window would fail here.
+  it('does not raise a still-firing strand again however old its record is', async () => {
     const s = await seed();
     const first = await announce(harness, mods.detectStrandedIssues);
-    const stale = new Date(Date.now() - mods.STRANDED_RENOTIFY_MS - HOUR).toISOString();
+    expect(first.notified).toBeGreaterThan(0);
+
     await markRead(harness, s.issueId);
-    // cm:why the state must move too (ISS-1063): the guard is `state IN ('firing','inhibited') OR created_at within the window`, so a stale-but-still-firing alarm is still ONE alarm and must not be named twice. A strand somebody dealt with is `resolved`; what this case is about is the window, not the state.
     await patchAlarm(
       harness,
       s.issueId,
-      sql`created_at = ${stale}, state = 'resolved', resolved_at = now()`,
+      sql`created_at = now() - interval '30 days', state = 'firing'`,
     );
 
     const second = await announce(harness, mods.detectStrandedIssues);
-    expect(second.notified).toBe(first.notified);
+    expect(second.detected).toBe(1);
+    expect(second.notified).toBe(0);
+    expect((await readNotifs(harness, s.issueId)).length).toBe(first.notified);
   });
 
   it('stays silent inside the grace window', async () => {
