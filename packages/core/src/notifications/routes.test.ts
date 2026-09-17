@@ -276,23 +276,41 @@ describe('POST /api/notifications/:id/done and /dismiss', () => {
 });
 
 describe('DELETE /api/notifications/:id', () => {
-  it('204 on success', async () => {
-    authVerified();
-    deleteReturning.mockResolvedValueOnce([{ id: DELIVERY_ID }]);
-    const res = await buildApp().request(`/api/notifications/${DELIVERY_ID}`, {
+  const del = async () =>
+    buildApp().request(`/api/notifications/${DELIVERY_ID}`, {
       method: 'DELETE',
       headers: { authorization: `Bearer ${await token()}` },
     });
-    expect(res.status).toBe(204);
+
+  it('204 once nothing it carries is still true', async () => {
+    authVerified();
+    results.push([{ id: DELIVERY_ID }], []);
+    expect((await del()).status).toBe(204);
   });
 
-  it('404 when not owned by user', async () => {
+  it('404 when not owned by user, without looking at what it carries', async () => {
     authVerified();
-    deleteReturning.mockResolvedValueOnce([]);
-    const res = await buildApp().request(`/api/notifications/${DELIVERY_ID}`, {
-      method: 'DELETE',
-      headers: { authorization: `Bearer ${await token()}` },
-    });
+    results.push([]);
+    const res = await del();
     expect(res.status).toBe(404);
+    // The ownership read is the ONLY one made: a stranger must not learn from a 409 that
+    // this delivery exists and what condition it holds.
+    expect(results).toHaveLength(0);
+  });
+
+  // ISS-1063 — the delivery is the receipt `deliver.ts:deliverTo` reads to decide whether
+  // this person has already been told. Deleting one whose condition is still firing makes
+  // the next sweep write another and interrupt again, once a minute, for as long as the
+  // condition lasts — so the refusal is the deliverable, and it names the way out.
+  it('409 naming the condition, when it carries one that is still true', async () => {
+    authVerified();
+    results.push(
+      [{ id: DELIVERY_ID }],
+      [{ title: 'the pipeline is wedged', type: 'pipeline_wedge' }],
+    );
+    const res = await del();
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { message?: string; error?: string };
+    expect(`${body.message ?? body.error}`).toContain('the pipeline is wedged');
   });
 });

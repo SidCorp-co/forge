@@ -86,12 +86,19 @@ beforeEach(async () => {
 });
 
 /** Every bell row this reader holds. */
-async function bellOf(userId: string): Promise<{ title: string }[]> {
+async function bellOf(userId: string): Promise<{ id: string; title: string }[]> {
   const res = await app.request('/api/notifications', {
     headers: { authorization: `Bearer ${tokens[userId]}` },
   });
   expect(res.status).toBe(200);
-  return ((await res.json()) as { items: { title: string }[] }).items;
+  return ((await res.json()) as { items: { id: string; title: string }[] }).items;
+}
+
+function deleteDelivery(userId: string, deliveryId: string) {
+  return app.request(`/api/notifications/${deliveryId}`, {
+    method: 'DELETE',
+    headers: { authorization: `Bearer ${tokens[userId]}` },
+  });
 }
 
 async function silence(userId: string, body: Record<string, unknown>): Promise<void> {
@@ -275,5 +282,79 @@ describe('notifications · grouping quiets the channel that interrupts', () => {
       off();
     }
     expect(announced.sort()).toEqual([alice, bob].sort());
+  });
+});
+
+describe('notifications · a receipt for a condition that is still true is not deletable', () => {
+  it('refuses the delete, names the condition, and points at silences', async () => {
+    await wedge('wedge:a', [alice]);
+    const [row] = await bellOf(alice);
+
+    const res = await deleteDelivery(alice, row?.id ?? '');
+    expect(res.status).toBe(409);
+    const body = (await res.json()) as { message?: string; error?: string };
+    const message = body.message ?? body.error ?? '';
+    expect(message).toContain('the pipeline is wedged');
+    expect(message).toContain('/api/notifications/silences');
+    expect(await bellOf(alice)).toHaveLength(1);
+  });
+
+  // cm:guard this is the reason the refusal exists, not a second opinion about it. The
+  // delivery is the receipt `deliverTo` reads to decide whether this person has been told:
+  // delete one while its condition still fires and the next sweep finds no receipt, writes a
+  // second delivery and interrupts again — once a minute, for as long as the condition lasts.
+  it('so a reader cannot re-arm a firing condition by deleting it', async () => {
+    await wedge('wedge:a', [alice]);
+    const [row] = await bellOf(alice);
+    expect((await deleteDelivery(alice, row?.id ?? '')).status).toBe(409);
+
+    // The next two sweeps re-emit the same identity, as every periodic producer now does.
+    expect((await wedge('wedge:a', [alice]))?.delivered).toBe(0);
+    expect((await wedge('wedge:a', [alice]))?.delivered).toBe(0);
+    expect(await bellOf(alice)).toHaveLength(1);
+  });
+
+  it('allows the delete once the condition has ended', async () => {
+    await wedge('wedge:a', [alice]);
+    const [row] = await bellOf(alice);
+    await harness.db.execute(sql`UPDATE notifications SET state = 'resolved', resolved_at = now()`);
+
+    expect((await deleteDelivery(alice, row?.id ?? '')).status).toBe(204);
+    expect(await bellOf(alice)).toEqual([]);
+  });
+
+  it('allows the delete of a signal, which was never a condition', async () => {
+    await mods.recordAndDeliver({
+      recipients: [alice],
+      projectId,
+      type: 'issue_status_changed',
+      title: 'ISS-1 moved to testing',
+    });
+    const [row] = await bellOf(alice);
+
+    expect((await deleteDelivery(alice, row?.id ?? '')).status).toBe(204);
+    expect(await bellOf(alice)).toEqual([]);
+  });
+});
+
+describe('notifications · a live root cause stops the delivery retry too', () => {
+  it('does not tell a newly-reachable reader about a child while its cause fires', async () => {
+    await strand('stranded:1', [alice], 2);
+    await ripen();
+    expect((await strand('stranded:1', [alice], 1))?.delivered).toBe(1);
+
+    // The root starts firing after the child was already delivered to Alice. Bob has not been
+    // told, and must not be: inhibition decides who hears about a child, and the retry that
+    // catches up a reader gated out earlier is a telling like any other.
+    await wedge('wedge:root', [alice, bob]);
+    expect((await strand('stranded:1', [alice, bob], 1))?.delivered).toBe(0);
+    expect((await bellOf(bob)).map((r) => r.title)).toEqual(['the pipeline is wedged']);
+
+    // …and the child stays FIRING rather than being demoted, because it is still true and the
+    // count of what is still true is the number this whole change exists to make honest.
+    const [{ state }] = (await harness.db.execute(
+      sql`SELECT state FROM notifications WHERE resolution_key = 'stranded:1'`,
+    )) as unknown as [{ state: string }];
+    expect(state).toBe('firing');
   });
 });

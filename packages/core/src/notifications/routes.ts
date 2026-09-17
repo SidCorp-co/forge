@@ -38,6 +38,9 @@ const badRequest = (details: unknown) =>
 const notFound = (message: string) =>
   new HTTPException(404, { message, cause: { code: 'NOT_FOUND' } });
 
+const conflict = (message: string) =>
+  new HTTPException(409, { message, cause: { code: 'CONDITION_STILL_TRUE' } });
+
 /**
  * ISS-1063 — what "still true for me" means, in one place.
  *
@@ -323,11 +326,44 @@ notificationRoutes.delete(
   async (c) => {
     const { id } = c.req.valid('param');
     const userId = c.get('userId');
-    const deleted = await db
-      .delete(notificationDeliveries)
+    const [own] = await db
+      .select({ id: notificationDeliveries.id })
+      .from(notificationDeliveries)
       .where(and(eq(notificationDeliveries.id, id), eq(notificationDeliveries.userId, userId)))
-      .returning({ id: notificationDeliveries.id });
-    if (deleted.length === 0) throw notFound('notification not found');
+      .limit(1);
+    if (!own) throw notFound('notification not found');
+
+    // cm:guard refuse by name rather than deleting it. A delivery is the receipt that says
+    // this person was told, and `deliver.ts:deliverTo` reads it to decide whether to tell
+    // them again: delete one while its condition is still firing and the next sweep finds no
+    // receipt, writes a second delivery and interrupts again — every minute, for as long as
+    // the condition lasts. It is also the hole `closeTasks` closes one route along: a person
+    // may finish work, and may not declare that a condition stopped being true. Deleting the
+    // row that says so is that declaration wearing another verb, and it would make the open
+    // count a number people can change by looking at it.
+    const [live] = await db
+      .select({ title: notifications.title, type: notifications.type })
+      .from(notificationDeliveryMembers)
+      .innerJoin(notifications, eq(notifications.id, notificationDeliveryMembers.notificationId))
+      .where(
+        and(
+          eq(notificationDeliveryMembers.deliveryId, id),
+          eq(notifications.kind, 'condition'),
+          isNull(notifications.resolvedAt),
+          inArray(notifications.state, ['pending', 'firing', 'inhibited']),
+        ),
+      )
+      .limit(1);
+    if (live) {
+      throw conflict(
+        `This notification carries a condition that is still true — '${live.title}' ` +
+          `(${live.type}) — and deleting it would only mean being told again on the next ` +
+          'sweep. A condition ends when the system sees it end. To stop hearing about it ' +
+          'meanwhile, POST /api/notifications/silences with a matcher and an expiry.',
+      );
+    }
+
+    await db.delete(notificationDeliveries).where(eq(notificationDeliveries.id, id));
     return c.body(null, 204);
   },
 );

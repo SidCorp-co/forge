@@ -369,7 +369,8 @@ export async function recordAndDeliver(
     // condition that started pending while the deployment was healthy and matures two
     // minutes into a wedge is a child of that wedge, and promoting it to `firing` on the
     // state of the world two minutes ago reports the cause twice.
-    const inhibitedNow = ripe ? await inhibitor(input) : null;
+    const inhibitedNow =
+      ripe || existing.state === 'firing' ? await inhibitor(input) : null;
     const promote = ripe && !inhibitedNow;
     await db
       .update(notifications)
@@ -381,6 +382,14 @@ export async function recordAndDeliver(
       .where(eq(notifications.id, existing.id));
     if (existing.state === 'pending' && !promote) return { id: existing.id, delivered: 0 };
     if (existing.state === 'inhibited') return { id: existing.id, delivered: 0 };
+    // cm:guard a FIRING record with a live root cause keeps its state and stops DELIVERING.
+    // Inhibition decides who is told, and the retry below is a telling: a reader not yet told
+    // about a child must not be told while the cause is being reported, whoever else already
+    // holds it. What this deliberately does NOT do is demote the record to `inhibited` --
+    // `routes.ts` counts `kind = 'condition' AND state = 'firing'`, so demoting a condition
+    // that is still true would take it out of the count of what is still true, which is the
+    // one number this whole issue exists to make honest.
+    if (inhibitedNow) return { id: existing.id, delivered: 0 };
     // cm:guard a FIRING record re-emitted tries delivery again, and this is not a second
     // notification: `deliverTo` skips anybody already holding a member link for it. What
     // it catches is the reader who was gated out of the first delivery — silenced, or
