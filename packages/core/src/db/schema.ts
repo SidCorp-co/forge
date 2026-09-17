@@ -1057,7 +1057,10 @@ export type IssuePriority = (typeof issuePriorities)[number];
 export const issueComplexities = ['xs', 's', 'm', 'l', 'xl'] as const;
 export type IssueComplexity = (typeof issueComplexities)[number];
 
-export const issueSources = ['manual', 'github'] as const;
+// cm:why no CHECK constraint backs this tuple and none is added: `issues.source` is plain
+// `text DEFAULT 'manual' NOT NULL` (migration 0008), so widening the tuple is a TypeScript
+// narrowing that emits no DDL. ISS-1085 slice 3 verified that before assuming a migration was owed.
+export const issueSources = ['manual', 'github', 'sentry'] as const;
 export type IssueSource = (typeof issueSources)[number];
 
 // cm:why NEW column, not reused reportedBy — reportedBy is client-writable free text, so it can't carry a trusted label
@@ -1835,7 +1838,20 @@ export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
 // cm:why `kind` is a plain text column with a TS-only enum, so adding a kind costs no migration — only every reader that switches on it. `prompt` dispatches a Claude agent session; `script` (ISS-618) and `release_batch` run in core with no session, no device and no runner.
-export const scheduleKinds = ['prompt', 'script', 'release_batch'] as const;
+export const scheduleKinds = ['prompt', 'script', 'release_batch', 'sentry_pull'] as const;
+
+// cm:guard the kinds that run INSIDE core and start no agent session, so their history lives in
+// `schedule_runs` and nowhere else. `schedules/service.ts:listScheduleRuns` reads this set to decide
+// which table to answer from, and `schedules/dispatch.ts` gives each one its own branch. A kind
+// added here without a dispatch branch falls through to the prompt arm; a runner-less kind left OUT
+// of here writes `schedule_runs` rows that the runs endpoint then answers `{ runs: [] }` over —
+// which is what `release_batch` did from the day it shipped until ISS-1085 slice 3.
+export const RUNNER_LESS_SCHEDULE_KINDS = ['script', 'release_batch', 'sentry_pull'] as const;
+export type RunnerLessScheduleKind = (typeof RUNNER_LESS_SCHEDULE_KINDS)[number];
+
+export function isRunnerLessScheduleKind(kind: string | null | undefined): boolean {
+  return (RUNNER_LESS_SCHEDULE_KINDS as readonly string[]).includes(kind ?? '');
+}
 export type ScheduleKind = (typeof scheduleKinds)[number];
 
 export const schedules = pgTable(

@@ -2,20 +2,28 @@
  * ISS-524 / ISS-1085 — Sentry integration adapter.
  *
  * Sentry reaches Forge's agents through the official `@sentry/mcp-server` injected into the runner
- * (see `resolver.ts`), and core reaches Sentry through two outbound calls of its own: read one
- * issue, set one issue's status (`issues.ts`). Those two are the half of the Forge/Sentry loop that
+ * (see `resolver.ts`), and core reaches Sentry through three outbound calls of its own: read one
+ * issue, set one issue's status, and list a target's unresolved issues (`issues.ts`). Those two are the half of the Forge/Sentry loop that
  * lets a Forge issue closed with a merged SHA tell Sentry `resolvedInNextRelease` — not bare
  * `resolved`, because merged is not serving. Core also makes the test-connection call
  * `GET /api/0/organizations/`, which validates the auth token and surfaces the accessible orgs to
  * the config UI.
  *
- * There is still NO inbound surface, and the omission is deliberate. Sentry event text is untrusted
- * — an error message usually carries whatever a user typed into the app that crashed — so ingesting
- * it into an issue, a comment or a prompt is a prompt-injection chokepoint of exactly the kind
- * `prompt/sanitize.ts` exists for. The outbound read already char-strips the free text it brings
- * back (`sanitizeUntrusted`, see the `cm:guard` on `SentryIssueDetail`); a path that renders any of
- * it into an agent's prompt owes `markUntrusted()` at that projection, the way
- * `mcp/tools/forge-issues.ts` does. Until such a path exists, `handleInbound` refuses by name.
+ * Sentry text DOES now reach a Forge issue — `intake.ts`, the scheduled pull (slice 3) — and that
+ * is a pull core initiates, not a surface Sentry pushes to. `handleInbound` still refuses by name,
+ * because there is still no webhook: that is slice 4, and the issue's own body says why it comes
+ * second (a lost webhook delivery is lost for good, while a scheduled pull catches up on the next
+ * tick).
+ *
+ * The chokepoint that omission used to stand in for is now real code and is described where it
+ * lives, in `intake.ts`'s header. In short: every free-text field is `sanitizeUntrusted`-stripped on
+ * the way in (`issues.ts:text()`), the DATA frame is applied at the agent-facing projection rather
+ * than at the database write — `prompt/user.ts` and `mcp/tools/forge-issues.ts:serialize`, both of
+ * which would DESTROY a stored frame, since `markUntrusted` strips frame tokens from its own input
+ * — and the row the pull writes is a closed shape with no priority, category or label for Sentry
+ * text to steer. The one agent-facing projection that does not frame is `serializeListRow`, priced
+ * in its own `cm:why` and recorded at
+ * `docs/proposals/an-mcp-list-title-is-char-stripped-and-not-framed.md`.
  */
 import { logger } from '../../logger.js';
 import { isPreviousCredentialValid } from '../rotation.js';

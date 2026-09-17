@@ -476,3 +476,144 @@ describe('dispatchSentryOutbound — criterion 3', () => {
     expect(deliveryPatch().status).toBe('failed');
   });
 });
+
+// ── ISS-1085 slice 3 — the listing, and the confinement that makes a target label load-bearing ──
+
+const { listSentryIssues, SENTRY_ISSUE_LIST } = await import('./issues.js');
+
+const LIST_URL_PREFIX = 'https://logs.canawan.com/api/0/organizations/canawan/issues/?';
+
+function deliveryResponse(): Record<string, unknown> {
+  const patch = updateDeliveryMock.mock.calls.at(-1)?.[1] as { response?: unknown } | undefined;
+  return (patch?.response ?? {}) as Record<string, unknown>;
+}
+
+describe('listSentryIssues — the request core issues', () => {
+  it('issues ONE org-scoped GET carrying the connection auth token as a bearer', async () => {
+    const calls = answerOnce([sentryBody()]);
+    await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' });
+
+    expect(calls).toHaveLength(1);
+    const call = calls[0];
+    if (!call) throw new Error('no call recorded');
+    expect(call.url.startsWith(LIST_URL_PREFIX)).toBe(true);
+    expect(call.init.method).toBe('GET');
+    expect((call.init.headers as Record<string, string>).Authorization).toBe(
+      'Bearer sntryu_current',
+    );
+    expect(call.init.body).toBeUndefined();
+  });
+
+  it("puts the target's own project slug into the query rather than assuming the org is scoped", async () => {
+    const calls = answerOnce([sentryBody()]);
+    await listSentryIssues(buildCtx(), { targetLabel: 'forge-web' });
+    const url = new URL(String(calls[0]?.url));
+    expect(url.searchParams.get('query')).toBe('is:unresolved project:forge-web');
+    expect(url.pathname).toBe('/api/0/organizations/canawan/issues/');
+  });
+
+  it('refuses a limit that is not a whole number of at least 1, before any call is made', async () => {
+    const calls = answerOnce([]);
+    await expect(listSentryIssues(buildCtx(), { targetLabel: 'forge-core', limit: 0 })).rejects.toThrow(
+      'sentry: 0 is not a listing limit — it has to be a whole number of at least 1',
+    );
+    expect(calls).toHaveLength(0);
+  });
+
+  it('refuses a body that is not an array rather than reading zero issues out of it', async () => {
+    answerOnce({ detail: 'nope' });
+    await expect(
+      listSentryIssues(buildCtx(), { targetLabel: 'forge-core' }),
+    ).rejects.toThrow(/answered object, and an issue listing has to be an array/);
+    expect(updateDeliveryMock.mock.calls.at(-1)?.[1]).toMatchObject({ status: 'failed' });
+  });
+});
+
+describe('listSentryIssues — confinement to the named target', () => {
+  it('admits only the answers belonging to the target project', async () => {
+    answerOnce([
+      sentryBody({ id: '1', shortId: 'A-1', project: { slug: 'forge-core' } }),
+      sentryBody({ id: '2', shortId: 'B-2', project: { slug: 'forge-web' } }),
+      sentryBody({ id: '3', shortId: 'C-3', project: {} }),
+    ]);
+    const listing = await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' });
+    expect(listing.issues.map((i) => i.shortId)).toEqual(['A-1']);
+  });
+
+  it('names EACH refused answer by its issue id and the project it belongs to, never a count', async () => {
+    answerOnce([
+      sentryBody({ id: '1', shortId: 'A-1', project: { slug: 'forge-core' } }),
+      sentryBody({ id: '2', shortId: 'B-2', project: { slug: 'forge-web' } }),
+      sentryBody({ id: '3', shortId: 'C-3', project: {} }),
+    ]);
+    const listing = await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' });
+
+    expect(listing.refused).toEqual([
+      {
+        issueId: '2',
+        shortId: 'B-2',
+        belongsTo: 'forge-web',
+        reason: 'belongs to project forge-web, and target "forge-core" is scoped to forge-core',
+      },
+      {
+        issueId: '3',
+        shortId: 'C-3',
+        belongsTo: null,
+        reason:
+          'Sentry named no project for this issue, so it cannot be confined to target "forge-core" (scoped to forge-core)',
+      },
+    ]);
+    // and the same, in the row an operator reads
+    expect(deliveryResponse()).toMatchObject({ admitted: 1, refused: listing.refused });
+  });
+
+  it('confines nothing where the target declares no project slug — org-wide is the operator own declaration', async () => {
+    answerOnce([
+      sentryBody({ id: '1', shortId: 'A-1', project: { slug: 'forge-core' } }),
+      sentryBody({ id: '2', shortId: 'B-2', project: { slug: 'anything-else' } }),
+    ]);
+    const ctx = buildCtx({ authToken: 'sntryu_current' }, [
+      { label: 'whole-org', organizationSlug: 'canawan' },
+    ]);
+    const listing = await listSentryIssues(ctx, { targetLabel: 'whole-org' });
+    expect(listing.issues.map((i) => i.shortId)).toEqual(['A-1', 'B-2']);
+    expect(listing.refused).toEqual([]);
+  });
+
+  it('records one outbound delivery row named for the listing event', async () => {
+    answerOnce([sentryBody()]);
+    await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' }, 'req-list-1');
+    expect(recordDeliveryMock).toHaveBeenCalledTimes(1);
+    expect(recordDeliveryMock).toHaveBeenCalledWith(
+      expect.objectContaining({
+        bindingId: BINDING_ID,
+        direction: 'outbound',
+        eventName: SENTRY_ISSUE_LIST,
+        requestId: 'req-list-1',
+      }),
+    );
+    expect(updateDeliveryMock.mock.calls.at(-1)?.[1]).toMatchObject({ status: 'ok' });
+  });
+
+  it('is reachable through the generic dispatch door under its own event name', async () => {
+    answerOnce([sentryBody()]);
+    await dispatchSentryOutbound(buildCtx(), {
+      eventName: SENTRY_ISSUE_LIST,
+      payload: { targetLabel: 'forge-core' },
+      // biome-ignore lint/suspicious/noExplicitAny: OutboundDispatchInput carries more than this test needs
+    } as any);
+    expect(recordDeliveryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ eventName: SENTRY_ISSUE_LIST }),
+    );
+  });
+
+  it('refuses an undeclared target label before any call is made', async () => {
+    const calls = answerOnce([]);
+    await expect(
+      listSentryIssues(buildCtx(), { targetLabel: 'forge-mobile' }),
+    ).rejects.toThrow(
+      'sentry: no target labelled "forge-mobile" — this binding declares: forge-core, forge-web',
+    );
+    expect(calls).toHaveLength(0);
+  });
+});

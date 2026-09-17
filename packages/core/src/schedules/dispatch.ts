@@ -24,6 +24,7 @@ import {
   loadCreatedBy,
   resolveScheduleTargetProject,
 } from './release-batch-dispatch.js';
+import { dispatchScheduleSentryPull } from './sentry-pull-dispatch.js';
 import { runScheduleScript } from './script/executor.js';
 
 // Keys for standing templates that build their own prompt instead of the steward.
@@ -139,6 +140,11 @@ export async function dispatchScheduleRun(
   }
   if (schedule.kind === 'release_batch') {
     return dispatchScheduleReleaseBatchRun(input);
+  }
+  // ISS-1085 slice 3 — same runner-less shape: core calls Sentry itself, so there is no device and
+  // no agent session to wait on.
+  if (schedule.kind === 'sentry_pull') {
+    return dispatchScheduleSentryPull(input);
   }
 
   if (schedule.prompt == null && !schedule.templateKey) {

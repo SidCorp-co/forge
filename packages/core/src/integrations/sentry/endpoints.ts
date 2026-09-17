@@ -26,3 +26,20 @@ export function sentryRestBase(host: string): string {
 export function sentryIssueUrl(host: string, organizationSlug: string, issueId: string): string {
   return `${sentryRestBase(host)}/api/0/organizations/${encodeURIComponent(organizationSlug)}/issues/${encodeURIComponent(issueId)}/`;
 }
+
+/**
+ * The organization's issue list, under the same org scoping one issue is addressed by.
+ *
+ * `query` is Sentry's own search syntax and is the SERVER-side half of the confinement — a target
+ * declaring a project slug puts `project:<slug>` in it. It is never the whole of the confinement:
+ * what Sentry answers is checked against the target again in `issues.ts`, because a filter that is
+ * only ever asked for is a filter nobody has verified (ISS-1085 slice 3).
+ */
+export function sentryOrgIssuesUrl(
+  host: string,
+  organizationSlug: string,
+  params: { query: string; limit: number },
+): string {
+  const search = new URLSearchParams({ query: params.query, limit: String(params.limit) });
+  return `${sentryRestBase(host)}/api/0/organizations/${encodeURIComponent(organizationSlug)}/issues/?${search.toString()}`;
+}

@@ -1821,6 +1821,13 @@
       "when": 1795996800000,
       "tag": "0264_conversation_windows_cut_reason",
       "breakpoints": true
+    },
+    {
+      "idx": 267,
+      "version": "7",
+      "when": 1796083200000,
+      "tag": "0267_sentry_admission_thresholds",
+      "breakpoints": true
     }
   ]
 }

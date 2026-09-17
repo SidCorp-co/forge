@@ -24,7 +24,7 @@ import type {
   OutboundDispatchInput,
   OutboundDispatchResult,
 } from '../types.js';
-import { sentryIssueUrl } from './endpoints.js';
+import { sentryIssueUrl, sentryOrgIssuesUrl } from './endpoints.js';
 import { type ResolvedSentryTarget, resolveSentryTarget } from './targets.js';
 import {
   SENTRY_ISSUE_STATUSES,
@@ -38,9 +38,19 @@ const CALL_TIMEOUT_MS = 15_000;
 
 export const SENTRY_ISSUE_READ = 'sentry.issue.read';
 export const SENTRY_ISSUE_SET_STATUS = 'sentry.issue.set-status';
+export const SENTRY_ISSUE_LIST = 'sentry.issue.list';
 
 /** Every event name `dispatchOutbound` implements. Named in the refusal for anything else. */
-export const SENTRY_DISPATCH_EVENTS = [SENTRY_ISSUE_READ, SENTRY_ISSUE_SET_STATUS] as const;
+export const SENTRY_DISPATCH_EVENTS = [
+  SENTRY_ISSUE_READ,
+  SENTRY_ISSUE_SET_STATUS,
+  SENTRY_ISSUE_LIST,
+] as const;
+
+/** What a pull asks Sentry for when the caller names nothing narrower. */
+export const SENTRY_LIST_DEFAULT_QUERY = 'is:unresolved';
+export const SENTRY_LIST_DEFAULT_LIMIT = 25;
+export const SENTRY_LIST_MAX_LIMIT = 100;
 
 export type SentryAdapterContext = AdapterContext<SentryConfig, SentrySecrets>;
 
@@ -54,6 +64,38 @@ export interface SentryIssueRequest {
   issueId: string;
   targetLabel?: string;
   status?: SentryIssueStatus;
+}
+
+/** One listing's request, and the same shape its delivery row records. */
+export interface SentryListRequest {
+  targetLabel?: string;
+  /** Sentry search syntax. The target's own `project:<slug>` is appended by this module. */
+  query?: string;
+  limit?: number;
+}
+
+/**
+ * One answer this listing would not hand on, and why.
+ *
+ * Kept per answer rather than counted, because an operator whose target is mis-declared has to know
+ * WHICH Sentry project answered before they can fix it — a number tells them only that something
+ * did (ISS-1085 slice 3).
+ */
+export interface SentryListRefusal {
+  issueId: string;
+  shortId: string | null;
+  /** The project Sentry said it belongs to; null where Sentry named none. */
+  belongsTo: string | null;
+  reason: string;
+}
+
+export interface SentryIssueListing {
+  result: OutboundDispatchResult;
+  target: ResolvedSentryTarget;
+  /** The answers that survived confinement, in the order Sentry returned them. */
+  issues: SentryIssueDetail[];
+  /** Every answer that did not, named individually. */
+  refused: SentryListRefusal[];
 }
 
 export interface SentryIssueCall {
@@ -283,6 +325,46 @@ function assertTargetHoldsIssue(
   }
 }
 
+function assertListLimit(limit: unknown): number {
+  if (limit === undefined) return SENTRY_LIST_DEFAULT_LIMIT;
+  if (typeof limit !== 'number' || !Number.isInteger(limit) || limit < 1) {
+    throw new Error(
+      `sentry: ${JSON.stringify(limit)} is not a listing limit — it has to be a whole number of at least 1`,
+    );
+  }
+  if (limit > SENTRY_LIST_MAX_LIMIT) {
+    throw new Error(
+      `sentry: a listing limit of ${limit} is above the ${SENTRY_LIST_MAX_LIMIT} this adapter will ask for in one call`,
+    );
+  }
+  return limit;
+}
+
+/** The caller's query, with the target's own project scoping appended rather than assumed. */
+function listQuery(query: string | undefined, target: ResolvedSentryTarget): string {
+  const base = query?.trim() ? query.trim() : SENTRY_LIST_DEFAULT_QUERY;
+  if (!target.projectSlug) return base;
+  return `${base} project:${target.projectSlug}`;
+}
+
+/**
+ * Why this answer is not this target's, or `null` where it is.
+ *
+ * Same rule as `assertTargetHoldsIssue`, which refuses one addressed issue; this one reports rather
+ * than throws, because a listing that threw on the first foreign answer would take the whole pull
+ * down over one mis-scoped row instead of naming it.
+ */
+function confinementRefusal(issue: SentryIssueDetail, target: ResolvedSentryTarget): string | null {
+  if (!target.projectSlug) return null;
+  if (issue.projectSlug === null) {
+    return `Sentry named no project for this issue, so it cannot be confined to target "${target.label}" (scoped to ${target.projectSlug})`;
+  }
+  if (issue.projectSlug !== target.projectSlug) {
+    return `belongs to project ${issue.projectSlug}, and target "${target.label}" is scoped to ${target.projectSlug}`;
+  }
+  return null;
+}
+
 function assertStatus(status: unknown): SentryIssueStatus {
   if (typeof status === 'string' && (SENTRY_ISSUE_STATUSES as readonly string[]).includes(status)) {
     return status as SentryIssueStatus;
@@ -354,6 +436,67 @@ export async function setSentryIssueStatus(
 }
 
 /**
+ * Every unresolved Sentry issue a target holds, confined to that target.
+ *
+ * TWO halves, and the second is not redundant. The query carries `project:<slug>` so Sentry does
+ * the narrowing, and every answer is then checked against the target again — because a filter that
+ * is only ever ASKED for is a filter nobody has verified, and `forge-core` and `forge-web` both sit
+ * under the `canawan` organization, so an org-scoped listing reaches both. An answer that fails
+ * confinement is not dropped quietly: it is named in the delivery row by its Sentry issue id and
+ * the project it belongs to, which is what an operator needs to fix a mis-declared target.
+ */
+export async function listSentryIssues(
+  ctx: SentryAdapterContext,
+  input: SentryListRequest,
+  requestId?: string,
+): Promise<SentryIssueListing> {
+  let target!: ResolvedSentryTarget;
+  let refused: SentryListRefusal[] = [];
+  const { result, value } = await withDelivery(
+    ctx,
+    SENTRY_ISSUE_LIST,
+    { ...input },
+    requestId,
+    async () => {
+      target = resolveSentryTarget(ctx.config, input.targetLabel);
+      const limit = assertListLimit(input.limit);
+      const query = listQuery(input.query, target);
+      const url = sentryOrgIssuesUrl(ctx.config.host, target.organizationSlug, { query, limit });
+      const body = await callSentry(ctx, url, 'GET');
+      if (!Array.isArray(body)) {
+        throw new Error(
+          `sentry: ${url} answered ${typeof body}, and an issue listing has to be an array`,
+        );
+      }
+      const admitted: SentryIssueDetail[] = [];
+      const turnedAway: SentryListRefusal[] = [];
+      for (const raw of body) {
+        const issue = projectIssue(raw, '');
+        const why = confinementRefusal(issue, target);
+        if (why === null) admitted.push(issue);
+        else {
+          turnedAway.push({
+            issueId: issue.id,
+            shortId: issue.shortId,
+            belongsTo: issue.projectSlug,
+            reason: why,
+          });
+        }
+      }
+      refused = turnedAway;
+      return {
+        value: admitted,
+        // cm:guard the refusals go in the RESPONSE, not only in the return value — the delivery log
+        // is where an operator looks, and a confinement that refused forty answers while the row
+        // says `ok` with ten issues is a state that lies about itself.
+        response: { query, limit, admitted: admitted.length, refused: turnedAway },
+      };
+    },
+  );
+  return { result, target, issues: value, refused };
+}
+
+/**
  * The generic door's implementation — `registry.ts:dispatchThrough` reaches this.
  *
  * An unrecognised event is refused BY NAME and leaves a failed delivery row, rather than being
@@ -369,6 +512,10 @@ export async function dispatchSentryOutbound(
   }
   if (input.eventName === SENTRY_ISSUE_SET_STATUS) {
     return (await setSentryIssueStatus(ctx, payload, input.requestId)).result;
+  }
+  if (input.eventName === SENTRY_ISSUE_LIST) {
+    const listInput = (input.payload ?? {}) as SentryListRequest;
+    return (await listSentryIssues(ctx, listInput, input.requestId)).result;
   }
   const { result } = await withDelivery(
     ctx,
