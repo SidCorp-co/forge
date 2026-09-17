@@ -1,0 +1,251 @@
+#!/usr/bin/env node
+// Refuse a read of `env` or `db` that runs when a core module is merely IMPORTED.
+//
+// ISS-1067. `config/env.ts` used to validate the environment at module scope and
+// `db/client.ts` used to construct the postgres pool there, so importing anything
+// whose graph reached either did work — and on a missing variable, threw inside
+// the import. That failure has no assertion and no test name in it: the CI log
+// for PR #457 showed three stack frames, `env.ts` → `db/client.ts` →
+// `knowledge/service.ts`, and the file's three cases reported as skipped.
+//
+// Both are lazy now. This checker is what keeps them lazy, because the property
+// is invisible in a green run: a seventh module-scope reader breaks nothing today
+// and restores the whole side effect for every importer downstream of it.
+//
+// THE RULE is "does this read run when the file is imported", which is NOT the
+// same as "is this read outside a function":
+//   - a module-scope IIFE is a function body that runs at import, and is caught;
+//   - a `typeof db` in a type position erases at compile time, and is not;
+//   - a block guarded by the entrypoint comparison (`import.meta.url === ...`)
+//     does not run when the file is imported — that guard is false precisely when
+//     another module is importing it — and is not caught. An unguarded read in
+//     the same file still is.
+//
+// WHAT IT CANNOT HOLD, stated because a gate whose limit is unwritten gets read
+// as holding more than it does: a named function CALLED at module scope runs at
+// import, and a syntactic walk does not follow that call. Nothing in core does
+// this today; if something starts to, this checker will not say so.
+//
+// Modes: --all (CI, the only mode — the property is about every importer of these
+// two modules, and a staged subset would report clean on a tree that is not)
+// Exit: 0 clean · 1 a read runs at import · 2 could not run.
+
+import { readdirSync, readFileSync, statSync } from 'node:fs';
+import { dirname, join, relative, resolve } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import ts from 'typescript';
+
+const ROOT = resolve(dirname(fileURLToPath(import.meta.url)), '..');
+const SCAN_ROOT = join(ROOT, 'packages', 'core', 'src');
+const SKIP_DIRS = new Set(['node_modules', 'dist', 'coverage', '.next', '.turbo']);
+
+/** The two modules whose exports must not be read at import time, and the export each owns. */
+const LAZY_EXPORTS = [
+  { file: 'config/env.ts', specifier: /config\/env\.js$/, name: 'env' },
+  { file: 'db/client.ts', specifier: /db\/client\.js$/, name: 'db' },
+];
+
+function die(message) {
+  console.error(`check-lazy-module-init: ${message}`);
+  process.exit(2);
+}
+
+function sourceFiles(dir, out = []) {
+  for (const entry of readdirSync(dir)) {
+    if (SKIP_DIRS.has(entry)) continue;
+    const path = join(dir, entry);
+    if (statSync(path).isDirectory()) {
+      sourceFiles(path, out);
+    } else if (entry.endsWith('.ts') && !entry.endsWith('.test.ts') && !entry.endsWith('.d.ts')) {
+      out.push(path);
+    }
+  }
+  return out;
+}
+
+/** Local names bound to one of the lazy exports, mapped to the export they name. */
+function trackedNames(sourceFile) {
+  const tracked = new Map();
+  for (const statement of sourceFile.statements) {
+    if (!ts.isImportDeclaration(statement)) continue;
+    if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
+    const spec = statement.moduleSpecifier.text;
+    const lazy = LAZY_EXPORTS.find((e) => e.specifier.test(spec));
+    if (lazy === undefined) continue;
+    const bindings = statement.importClause?.namedBindings;
+    if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
+    for (const element of bindings.elements) {
+      const imported = (element.propertyName ?? element.name).text;
+      if (imported === lazy.name) tracked.set(element.name.text, lazy.name);
+    }
+  }
+  return tracked;
+}
+
+// cm:guard `import.meta.url === ...` is the entrypoint test, and a block it guards does not run
+// when the file is imported — which is the whole property this checker holds. Recognised through a
+// binding as well, because `const isMain = import.meta.url === ...; if (isMain) { … }` is how
+// packages/core/src/index.ts spells it.
+function entrypointBindings(sourceFile) {
+  const names = new Set();
+  const isEntrypointTest = (node) =>
+    node !== undefined &&
+    ts.isBinaryExpression(node) &&
+    node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
+    [node.left, node.right].some(
+      (side) =>
+        ts.isPropertyAccessExpression(side) && side.getText(sourceFile) === 'import.meta.url',
+    );
+  for (const statement of sourceFile.statements) {
+    if (!ts.isVariableStatement(statement)) continue;
+    for (const declaration of statement.declarationList.declarations) {
+      if (ts.isIdentifier(declaration.name) && isEntrypointTest(declaration.initializer)) {
+        names.add(declaration.name.text);
+      }
+    }
+  }
+  return { names, isEntrypointTest };
+}
+
+// cm:guard exported so scripts/check-lazy-module-init.test.mjs can hand it fixture TEXT rather than
+// plant files in the tree. The alternative was a `--scan-root` flag, which is the one affordance
+// this checker must not have: a run that can narrow its own scope reports clean on a tree that is
+// not, which is what the `--all` refusal below exists to prevent.
+/** Every read of a tracked name that runs when this file is imported. */
+export function importTimeReads(path, text) {
+  const sourceFile = ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true);
+  const tracked = trackedNames(sourceFile);
+  if (tracked.size === 0) return [];
+  const { names: entrypointNames, isEntrypointTest } = entrypointBindings(sourceFile);
+  const lines = text.split('\n');
+  const found = [];
+
+  const guardsEntrypoint = (expression) =>
+    (ts.isIdentifier(expression) && entrypointNames.has(expression.text)) ||
+    isEntrypointTest(expression);
+
+  // cm:guard an IIFE's body runs at import, so `runsAtImport` stays true through it. Every OTHER
+  // function boundary turns it false: `cors({ origin: (o) => env.X.includes(o) })` is the shape
+  // this change introduced on purpose, and a checker that flagged any callback would refuse it.
+  const isImmediatelyInvoked = (node) => {
+    // `(() => env.X)()` wraps the arrow in a ParenthesizedExpression, so the CallExpression is the
+    // GRANDparent — climbing only one level is how the first version of this check reported clean
+    // on the very fixture it was written for.
+    let outermost = node;
+    while (outermost.parent !== undefined && ts.isParenthesizedExpression(outermost.parent)) {
+      outermost = outermost.parent;
+    }
+    const parent = outermost.parent;
+    if (parent === undefined || !ts.isCallExpression(parent)) return false;
+    return parent.expression === outermost;
+  };
+
+  const walk = (node, runsAtImport) => {
+    if (ts.isIfStatement(node) && guardsEntrypoint(node.expression)) {
+      // The test itself still runs at import; neither branch does.
+      walk(node.expression, runsAtImport);
+      if (node.thenStatement) walk(node.thenStatement, false);
+      if (node.elseStatement) walk(node.elseStatement, false);
+      return;
+    }
+
+    let next = runsAtImport;
+    const isFunctionLike =
+      ts.isFunctionDeclaration(node) ||
+      ts.isFunctionExpression(node) ||
+      ts.isArrowFunction(node) ||
+      ts.isMethodDeclaration(node) ||
+      ts.isGetAccessor(node) ||
+      ts.isSetAccessor(node) ||
+      ts.isConstructorDeclaration(node);
+    if (isFunctionLike) next = isImmediatelyInvoked(node) ? runsAtImport : false;
+
+    // cm:guard a type query erases at compile time, so `Pick<typeof db, 'select'>` reads nothing at
+    // runtime. 24 of core's 26 module-scope mentions of `db` are exactly this shape, and a checker
+    // that counted them would be 92% noise on its first run.
+    // cm:guard `isTypeQueryNode` and NOTHING wider. A name bound to a VALUE reaches type syntax only
+    // through `typeof`, so this is the narrowest guard that holds the tree — measured: the scan is
+    // clean on all 952 files with this alone. `isTypeNode` also holds it today and skips more of the
+    // tree than the rule needs, which is where a false negative would come from.
+    if (ts.isTypeQueryNode(node)) return;
+
+    if (next && ts.isIdentifier(node) && tracked.has(node.text)) {
+      const parent = node.parent;
+      const isBinding = ts.isImportSpecifier(parent);
+      const isPropertyName =
+        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+        (ts.isPropertyAssignment(parent) && parent.name === node);
+      if (!isBinding && !isPropertyName) {
+        const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
+        found.push({
+          line: line + 1,
+          name: tracked.get(node.text),
+          text: (lines[line] ?? '').trim(),
+        });
+      }
+    }
+    ts.forEachChild(node, (child) => walk(child, next));
+  };
+
+  ts.forEachChild(sourceFile, (child) => walk(child, true));
+  return found;
+}
+
+// cm:guard `main` runs only when this file IS the command. Its own test IMPORTS it, to hand
+// `importTimeReads` fixture text rather than plant files in the tree, and an import that walked 952
+// files and called process.exit would take the test runner down with it.
+if (import.meta.url === `file://${process.argv[1]}`) main();
+
+// cm:guard --all is the only mode. The property is about every importer of the two modules, so a
+// staged subset would report clean on a tree that is not — and a checker that accepted a subset
+// would pass the commit that reintroduced the side effect in a file the commit did not touch.
+function main() {
+  if (!process.argv.includes('--all')) {
+    die(
+      'only --all is supported: the property is repo-wide and a subset reports clean on a tree that is not',
+    );
+  }
+
+  let files;
+  try {
+    files = sourceFiles(SCAN_ROOT);
+  } catch (err) {
+    die(`could not read ${relative(ROOT, SCAN_ROOT)}: ${err.message}`);
+  }
+  if (files.length === 0) {
+    die(`scanned 0 files under ${relative(ROOT, SCAN_ROOT)} — the scope matched nothing`);
+  }
+
+  const offenders = [];
+  for (const path of files) {
+    const rel = relative(ROOT, path);
+    // The two modules own their own exports and are where the lazy read is built.
+    if (LAZY_EXPORTS.some((e) => rel.endsWith(e.file))) continue;
+    const reads = importTimeReads(path, readFileSync(path, 'utf8'));
+    if (reads.length > 0) offenders.push({ path: rel, reads });
+  }
+
+  console.log(`lazy-module-init: ${files.length} file(s) scanned`);
+  if (offenders.length === 0) process.exit(0);
+
+  const total = offenders.reduce((n, o) => n + o.reads.length, 0);
+  console.error(
+    `\ncheck-lazy-module-init: ${total} read(s) across ${offenders.length} file(s) run at import\n`,
+  );
+  for (const { path, reads } of offenders) {
+    console.error(`  ${path}`);
+    for (const read of reads) console.error(`    :${read.line}  ${read.name}  ${read.text}`);
+  }
+  console.error(
+    '\nEach of these makes IMPORTING this file do work: reading `env` validates the whole\n' +
+      'environment and throws on a missing variable, and reading `db` constructs the postgres\n' +
+      'pool. Every module downstream of this one inherits that, and the failure it produces\n' +
+      'names no test and carries no assertion (ISS-1067).\n' +
+      '\n' +
+      'Move the read to the moment the value is needed. The three shapes already in the tree:\n' +
+      '  a request callback   packages/core/src/index.ts, the cors `origin` callback\n' +
+      '  a memoised function  packages/core/src/integrations/rocketchat/connection-manager.ts\n' +
+      '  a lazy middleware    packages/core/src/lib/upload-body-limit.ts\n',
+  );
+  process.exit(1);
+}

@@ -38,7 +38,19 @@ import type { RocketChatConfig, RocketChatSecrets } from './types.js';
 import { drainConversationWindows, startWindowDrainLoop } from './window-drain.js';
 
 // cm:guard the first CORS origin IS the web app's origin (operators must allow it for the UI to work at all); exported so the escalation bridge's Bao turn builds the same issue-link base as the sync path
-export const webBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
+// cm:guard a function, not a const: as a const this read ran at module scope, so importing this file
+// — which the integration registry does for every generic path — validated the whole environment and
+// threw on a missing variable (ISS-1067). `integrations/github/connect-routes.ts` already spells the
+// same value this way. Memoised, so the split still happens once.
+let cachedWebBaseUrl: string | undefined;
+let webBaseUrlRead = false;
+export function webBaseUrl(): string | undefined {
+  if (!webBaseUrlRead) {
+    cachedWebBaseUrl = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
+    webBaseUrlRead = true;
+  }
+  return cachedWebBaseUrl;
+}
 
 const LOCK_NAMESPACE = 'forge:rocketchat';
 const MAX_BACKOFF_MS = 30_000;
@@ -91,7 +103,7 @@ class RocketChatConnectionManager {
     this.stopQuestionDrain = startQuestionDrainLoop(() => this.started);
     this.stopWindowDrain = startWindowDrainLoop(
       () => this.started,
-      () => drainConversationWindows(this.conns, webBaseUrl),
+      () => drainConversationWindows(this.conns, webBaseUrl()),
     );
     this.stopCommentMirror = startCommentMirrorLoop(() => this.started, hooks);
     const rows = await db

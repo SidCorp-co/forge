@@ -1,10 +1,8 @@
 import { zValidator } from '@hono/zod-validator';
 import { asc, count, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
@@ -42,6 +40,7 @@ import {
   updateCommentBody,
 } from './service.js';
 import { attachAuthors, buildCommentTree, type CommentAttachmentLite } from './tree.js';
+import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 
 /** The comment projection every REST response here shares. */
 const idParamSchema = z.object({ id: z.uuid() });
@@ -434,11 +433,8 @@ commentRoutes.post(
   requireAnyAuth(),
   // Reject the request before parseBody buffers the entire payload — this
   // caps memory regardless of file size.
-  bodyLimit({
-    maxSize: env.UPLOADS_MAX_BYTES,
-    onError: () => {
-      throw attachmentBadRequest('file too large', 'FILE_TOO_LARGE');
-    },
+  uploadBodyLimit(() => {
+    throw attachmentBadRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', commentIdParamSchema, (r) => {
     if (!r.success)

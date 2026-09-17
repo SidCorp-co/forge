@@ -1,13 +1,12 @@
 import { zValidator } from '@hono/zod-validator';
 import { eq } from 'drizzle-orm';
 import { type Context, Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
+import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
@@ -86,11 +85,8 @@ async function authorizeSession(
 
 agentSessionAttachmentRoutes.post(
   '/:sessionId/attachments',
-  bodyLimit({
-    maxSize: env.UPLOADS_MAX_BYTES,
-    onError: () => {
-      throw badRequest('file too large', 'FILE_TOO_LARGE');
-    },
+  uploadBodyLimit(() => {
+    throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', sessionIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid sessionId', 'BAD_REQUEST', z.flattenError(r.error));

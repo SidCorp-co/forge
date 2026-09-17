@@ -156,7 +156,7 @@ async function synthesizeViaBao(
 
   const persona = rocketChatPersona(route.name, meta.askedByUsername, {
     projectSlug: route.slug,
-    webBaseUrl,
+    webBaseUrl: webBaseUrl(),
     botName: meta.botName,
   });
   // cm:guard pass NO tools on a pure relay turn — runExternalChatTurn's requireInitialToolUse would otherwise force a needless call

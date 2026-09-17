@@ -200,12 +200,20 @@ app.use('*', requestId());
 app.use('*', requestLogger());
 
 // cm:guard an explicit origin from the `CORS_ORIGINS` allow-list, NEVER `*` — cookie-based browser auth needs Access-Control-Allow-Credentials, which the spec refuses alongside a wildcard origin, so widening this silently logs every browser client out
-const CORS_ORIGINS = env.CORS_ORIGINS.split(',')
-  .map((s) => s.trim())
-  .filter((s) => s.length > 0);
+// cm:guard read on the FIRST REQUEST, never at module scope: this file is imported by tests and by
+// anything that reaches `app`, and a module-scope `env.CORS_ORIGINS` made that import validate the
+// whole environment and throw on a missing variable (ISS-1067). The list is memoised, so the split
+// still happens once rather than per request.
+let corsOrigins: string[] | undefined;
+function allowedOrigins(): string[] {
+  corsOrigins ??= env.CORS_ORIGINS.split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return corsOrigins;
+}
 // cm:why `/mcp` is mounted below with the same allow-list because it is reached from a BROWSER, not only by CLIs — the settings/mcp Test Connection panel calls it — and `X-Forge-Project-Slug` is in `allowHeaders` for that panel's preflight, alongside the bearer PAT (ISS-161).
 const corsMiddleware = cors({
-  origin: (origin) => (CORS_ORIGINS.includes(origin) ? origin : null),
+  origin: (origin) => (allowedOrigins().includes(origin) ? origin : null),
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization', 'X-Device-Token', 'X-Forge-Project-Slug'],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],

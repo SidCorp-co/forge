@@ -1,10 +1,8 @@
 import { zValidator } from '@hono/zod-validator';
 import { asc, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
@@ -14,6 +12,7 @@ import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
+import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });
@@ -43,11 +42,8 @@ issueAttachmentRoutes.use('/:id/attachments', requireAnyAuth());
 
 issueAttachmentRoutes.post(
   '/:id/attachments',
-  bodyLimit({
-    maxSize: env.UPLOADS_MAX_BYTES,
-    onError: () => {
-      throw badRequest('file too large', 'FILE_TOO_LARGE');
-    },
+  uploadBodyLimit(() => {
+    throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', issueIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid id', 'BAD_REQUEST', z.flattenError(r.error));
