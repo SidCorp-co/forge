@@ -1814,13 +1814,6 @@
       "when": 1795910400000,
       "tag": "0263_repo_pull_requests",
       "breakpoints": true
-    },
-    {
-      "idx": 264,
-      "version": "7",
-      "when": 1795996800000,
-      "tag": "0264_agent_session_events",
-      "breakpoints": true
     }
   ]
 }
