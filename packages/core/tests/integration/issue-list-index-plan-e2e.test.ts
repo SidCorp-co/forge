@@ -83,8 +83,9 @@ describe('the page queries and the search predicate are index-served (ISS-1016)'
     process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
     process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
 
-    // cm:why dynamic, after DATABASE_URL is set — `db/client.ts` validates the environment at
-    // import time and a static import fails the whole file before a case runs
+    // cm:why dynamic, after DATABASE_URL is set, matching every other file in this suite. Since
+    // ISS-1067 a static import would also work — `config/env.ts` and `db/client.ts` do their work on
+    // the first property read rather than at import — so this is convention, not necessity.
     ({ issues } = await import('../../src/db/schema.js'));
     ({ issueListPageQuery } = await import('../../src/issues/list-projection.js'));
     ({ buildIssueSearchCondition, matchedSearchFieldsSql } = await import(

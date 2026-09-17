@@ -98,8 +98,10 @@ describe('the REST issue lists answer with a projection (ISS-1016)', () => {
     process.env.EMBEDDINGS_BASE_URL ??= 'https://stub.invalid';
     process.env.EMBEDDINGS_API_KEY ??= 'stub-key';
 
-    // cm:why dynamic, after DATABASE_URL is set: `db/client.ts` validates the environment at import
-    // time, so a static import of anything reaching it fails the WHOLE file before a case runs.
+    // cm:why dynamic, after DATABASE_URL is set, matching every other file in this suite. Since
+    // ISS-1067 a static import would also work — `config/env.ts` and `db/client.ts` do their work on
+    // the first property read rather than at import — so this is the suite's convention now and no
+    // longer a necessity; it stays because moving one file off it is a change to all of them.
     ({ REST_ISSUE_LIST_OMITTED: omitted } = await import('../../src/issues/list-projection.js'));
     const { issueProjectRoutes } = await import('../../src/issues/routes.js');
     const { searchRoutes } = await import('../../src/issues/search.js');
