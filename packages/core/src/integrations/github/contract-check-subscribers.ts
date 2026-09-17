@@ -59,6 +59,7 @@ async function publishAll(pullRequestIds: string[], why: string): Promise<void> 
   );
 }
 
+// cm:hack ISS-1072 until:a publisher queue lands, or the hooks bus can carry a subscriber it does not await — `HooksBus.emit` awaits each subscriber in order, so this one turns a reaction into a step: the tracker write that emitted waits for GitHub. Priced: a typical publish adds a few hundred ms to a field write, a slow one up to 24s, and a project-wide declaration change holds its caller for up to 25 of them in sequence. Registering last and swallowing failures bounds the blast radius and not the wait. Dropping the await is NOT the fix — it loses the delivery row and the `failures` entry `outbox-worker.ts` reads. docs/proposals/a-tracker-write-waits-on-github.md carries the design and the condition that ends this.
 // cm:guard every handler swallows its own failure. `HooksBus.emit` records a throwing subscriber and carries on, but this one shares the `transition` topic with the pipeline orchestrator, whose delivery IS asserted — and a GitHub outage must not be able to put a red on an outbox row that nothing here owns.
 async function guarded(why: string, run: () => Promise<void>): Promise<void> {
   try {
