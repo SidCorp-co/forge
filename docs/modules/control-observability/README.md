@@ -50,7 +50,11 @@ are never swept.** A table with no rule and a table whose rule is "keep it all" 
 the outside, which is how six of them reached production with the deletion question deferred and
 invisible (ISS-1027). Each entry carries its window, the environment variable that moves it, the
 floor an override may not cross, and the reason. The nightly sweep reports what it removed and what
-its predicates held back, per table, on every tick.
+its predicates held back, per table, on every tick. Those two are different facts and the report
+keeps them apart: the held count is the negation of that table's own delete predicate, so it is what
+a rule keeps and never a backlog the tick ran out of budget for — a tick that stopped at its batch
+cap says so in `capped` instead. Fold them together and `deleted: 0, heldBack: n` stops telling a
+wedged rule from a sweep that simply has more to do.
 
 ## The interventions metric, defined by the event and not by the recorder
 
