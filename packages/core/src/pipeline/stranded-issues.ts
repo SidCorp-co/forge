@@ -12,7 +12,7 @@
 // decision, and a close is a claim about shipped work that a pass which
 // cannot read the repository must not make.
 
-import { and, eq, gte, inArray, isNotNull, isNull, lt, ne, notInArray, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, notifications, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -97,22 +97,22 @@ async function surfaceOnce(args: {
         eq(notifications.type, 'issue_stranded'),
         eq(notifications.resolutionKey, args.resolutionKey),
         isNull(notifications.resolvedAt),
-        // cm:guard a `pending` record is ALWAYS re-emitted, whichever arm below would
-        // otherwise match. A type declaring a pending duration is promoted to `firing` by a
-        // LATER emission of the same identity — that re-emission IS its second evaluation.
-        // Short-circuit here and the record never promotes and nobody is ever told about a
-        // condition that is still true; the re-notify window would suppress the very pass
-        // that announces it. The delivery layer's own dedup (`activeRecord`) is what stops
-        // the re-emission writing a second record.
-        ne(notifications.state, 'pending'),
         or(
-          inArray(notifications.state, ['firing', 'inhibited']),
+          inArray(notifications.state, ['pending', 'firing', 'inhibited']),
           gte(notifications.createdAt, new Date(args.now.getTime() - STRANDED_RENOTIFY_MS)),
         ),
       ),
     )
     .limit(1);
-  if (existing) return 0;
+
+  // cm:guard ISS-1063 — an existing episode is RE-EMITTED rather than short-circuited, and
+  // what makes that safe is that `emitNotification` returns who was NEWLY told, which is 0
+  // for a record everybody already holds. Two things need the re-emission and neither can
+  // happen without it: a `pending` record is promoted to `firing` by a LATER emission of the
+  // same identity — that emission IS its second evaluation — and a record whose delivery a
+  // silence held back is delivered when the silence expires. `deliverTo` skips anybody
+  // already holding a member link for this record, so nobody is told twice, and the
+  // `resolved_at IS NULL` above is what keeps this from reopening an episode that ended.
 
   const adminIds = await projectAdminUserIds(args.projectId);
   if (adminIds.length === 0) return -1;

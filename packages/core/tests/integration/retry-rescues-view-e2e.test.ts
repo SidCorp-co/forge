@@ -159,6 +159,58 @@ describe('ISS-826 retry_rescues', () => {
     expect({ records, deliveries }).toEqual({ records: 1, deliveries: 1 });
   });
 
+  // ISS-1063 — the delivery layer retries a firing record's missing deliveries, but only for
+  // a pass that reaches it. A producer that short-circuits on "this record already exists"
+  // makes that retry unreachable: the owner is silenced when the alarm matures, and is never
+  // told for the rest of that record's life however long the silence was.
+  it('an alarm that matured under a silence is delivered once the silence ends', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    const runId = await insertRun(project.id);
+    for (let i = 0; i < 5; i += 1) {
+      const failed = await seedJob({
+        projectId: project.id,
+        pipelineRunId: runId,
+        status: 'failed',
+        failureKind: 'infra',
+        failureReason: 'hooks_path',
+      });
+      await seedJob({
+        projectId: project.id,
+        pipelineRunId: runId,
+        status: 'done',
+        retryOf: failed,
+      });
+    }
+    await harness.db.execute(sql`
+      INSERT INTO notification_silences (created_by, type, reason, expires_at)
+      VALUES (${owner.id}, 'retry_rescue_threshold', 'working on it', now() + interval '1 hour')
+    `);
+    const { detectRetryRescueThresholds } = await import(
+      '../../src/pipeline/retry-rescue-alert.js'
+    );
+
+    await detectRetryRescueThresholds();
+    await harness.db.execute(
+      sql`UPDATE notifications SET pending_since = now() - interval '10 minutes'`,
+    );
+    // It matures: the condition IS firing, and the silence held the telling back.
+    expect(await detectRetryRescueThresholds()).toEqual({ detected: 1, notified: 0 });
+    const [{ state }] = (await harness.db.execute(
+      sql`SELECT state FROM notifications WHERE type = 'retry_rescue_threshold'`,
+    )) as unknown as [{ state: string }];
+    expect(state).toBe('firing');
+
+    await harness.db.execute(
+      sql`UPDATE notification_silences SET expires_at = now() - interval '1 minute'`,
+    );
+    expect(await detectRetryRescueThresholds()).toEqual({ detected: 1, notified: 1 });
+    const [{ deliveries: after }] = (await harness.db.execute(
+      sql`SELECT count(*)::int AS deliveries FROM notification_deliveries`,
+    )) as unknown as [{ deliveries: number }];
+    expect(after).toBe(1);
+  });
+
   it('excludes unrescued chains and first-attempt successes', async () => {
     const owner = await createTestUser(harness.db);
     const project = await createTestProject(harness.db, owner.id);

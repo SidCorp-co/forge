@@ -56,7 +56,7 @@ export async function detectRetryRescueThresholds(
     for (const row of rows) {
       const resolutionKey = retryRescueResolutionKey(row.project_id, row.failure_reason, now);
       const [existing] = await db
-        .select({ id: notifications.id, state: notifications.state })
+        .select({ id: notifications.id, resolvedAt: notifications.resolvedAt })
         .from(notifications)
         .where(
           and(
@@ -65,13 +65,19 @@ export async function detectRetryRescueThresholds(
           ),
         )
         .limit(1);
-      // cm:guard ISS-1063 — a `pending` record is re-emitted, and only a `pending` one.
-      // This type declares `pendingEvaluations: 2`, which means a LATER emission of the
-      // same identity is what promotes it to `firing` and delivers it. Short-circuiting on
-      // existence alone left the first pass writing a record nobody would ever be told
-      // about and every later pass skipping it, until `PENDING_STALE_MS` cleared it and the
-      // cycle began again: an alarm that can never fire, green on every tick.
-      if (existing && existing.state !== 'pending') continue;
+      // cm:guard ISS-1063 — an UNRESOLVED record is re-emitted on every pass, and the
+      // delivery layer decides what that means. Two things need it. A `pending` record
+      // (this type declares `pendingEvaluations: 2`) is promoted by a LATER emission of the
+      // same identity, so short-circuiting on existence left the first pass writing a record
+      // nobody would ever be told about and every later pass skipping it: an alarm that can
+      // never fire, green on every tick. And a `firing` record whose delivery was held back
+      // by a silence is delivered when that silence expires, which only happens if a later
+      // pass reaches `recordAndDeliver` at all. `deliverTo` skips anybody already holding a
+      // member link, so a re-emission tells nobody twice.
+      // cm:guard a RESOLVED record still short-circuits: the key is scoped to the 24-hour
+      // window, and emitting past a resolution would write a second record for the same
+      // window rather than reopening the first.
+      if (existing?.resolvedAt) continue;
 
       const [project] = await db
         .select({ createdBy: projects.createdBy })

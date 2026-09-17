@@ -164,19 +164,20 @@ async function nameOnce(args: { now: Date; row: OrphanRow; ref: string }): Promi
     )
     .limit(1);
 
-  // cm:guard ISS-1063 — a `pending` record is ALWAYS re-emitted, and the re-emission is
-  // deliberately SILENT. A type declaring a pending duration is promoted to `firing` by a LATER
-  // emission of the same identity — that re-emission IS its second evaluation, so short-circuit
-  // here and the record never promotes and nobody is ever told about a condition that is still
-  // true. It does not log and does not count, because the log line below is what `reported`
-  // counts and one episode is named once: counting the promotion tick too would report two
-  // episodes for one orphan, which is what `ORPHAN_RENOTIFY_MS` exists to prevent. The delivery
-  // layer's own dedup (`activeRecord`) is what stops the re-emission writing a second record.
-  if (existing?.state === 'pending') {
+  // cm:guard ISS-1063 — an existing episode is ALWAYS re-emitted, and the re-emission is
+  // deliberately SILENT. It does not log and does not count, because the log line below is what
+  // `reported` counts and one episode is named once; counting a re-emission would report two
+  // episodes for one orphan, which is what `ORPHAN_RENOTIFY_MS` exists to prevent. What the
+  // re-emission buys is everything the delivery layer decides per tick: a `pending` record is
+  // promoted to `firing` by a LATER emission of the same identity, and a record whose delivery a
+  // silence held back is delivered when that silence expires. Short-circuit here and neither can
+  // ever happen. `deliverTo` skips anybody already holding a member link for this record, so a
+  // re-emission tells nobody twice. The `resolvedAt IS NULL` above is what keeps this from
+  // reopening an episode that ended.
+  if (existing) {
     await emit(args, resolutionKey);
     return false;
   }
-  if (existing) return false;
 
   // cm:guard the log line is the deliverable and is emitted whether or not anyone is reachable by
   // notification. A project with no admin would otherwise make this pass silent on exactly the box

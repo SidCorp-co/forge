@@ -60,7 +60,7 @@ describe('detectRetryRescueThresholds', () => {
       { project_id: 'project-1', failure_reason: 'hooks_path', rescues: 6 },
     ]);
     selectLimit
-      .mockResolvedValueOnce([{ id: 'already-alerted', state: 'pending' }])
+      .mockResolvedValueOnce([{ id: 'already-alerted', resolvedAt: null }])
       .mockResolvedValueOnce([{ createdBy: 'owner-1' }]);
     emitNotification.mockResolvedValueOnce({ id: 'notification-1', delivered: 1 });
     const second = await detectRetryRescueThresholds(now);
@@ -68,11 +68,12 @@ describe('detectRetryRescueThresholds', () => {
     expect(second).toEqual({ detected: 1, notified: 1 });
     expect(emitNotification).toHaveBeenCalledTimes(2);
 
-    // And once it is firing, the same window says nothing more.
+    // And once the window's alarm is RESOLVED, the same window says nothing more: emitting
+    // past a resolution would write a second record for one window rather than reopening it.
     execute.mockResolvedValueOnce([
       { project_id: 'project-1', failure_reason: 'hooks_path', rescues: 7 },
     ]);
-    selectLimit.mockResolvedValueOnce([{ id: 'already-alerted', state: 'firing' }]);
+    selectLimit.mockResolvedValueOnce([{ id: 'already-alerted', resolvedAt: new Date() }]);
     const third = await detectRetryRescueThresholds(now);
 
     expect(third).toEqual({ detected: 1, notified: 0 });
