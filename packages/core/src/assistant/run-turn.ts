@@ -32,16 +32,7 @@ import type { ChatMessage, ChatProvider } from './providers/types.js';
 import { runTurnEvents, type TurnCoreResult, usageForLog } from './run-turn-core.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import { memoryNoteGateFor } from './tools/memory-note-gate-deps.js';
-import { createTranscriptAccumulator } from './transcript-entry.js';
-
-/**
- * How often a growing entry is re-sent while text streams in.
- */
-// cm:why a coalescing window rather than a frame per event: this wire streams token by token and
-// each frame carries the WHOLE entry, so emitting per chunk re-sends every settled tool output on
-// every token. A tool call or its result flushes immediately regardless — those are the frames a
-// reader is waiting on, and there are few of them.
-const ENTRY_FLUSH_MS = 120;
+import { createTranscriptAccumulator, ENTRY_FLUSH_MS } from './transcript-entry.js';
 
 export interface RunTurnArgs {
   c: Context;
