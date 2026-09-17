@@ -371,7 +371,7 @@ export const projects = pgTable(
       onDelete: 'set null',
     }),
     agentConfig: jsonb('agent_config'),
-    // cm:guard BOTH sides of a deployment, and `environments.live.url` is the only place in this schema that holds the address a release ships to. Renamed from `preview_deploy` by 0264 (ISS-1069), which also rewrote every row: sidpeak could not cut a release at all because the live address existed nowhere and had to be read off the Coolify UI by hand.
+    // cm:guard BOTH sides of a deployment, and `environments.live.url` is the only place in this schema that holds the address a release ships to. Renamed from `preview_deploy` by 0271 (ISS-1069), which also rewrote every row: sidpeak could not cut a release at all because the live address existed nowhere and had to be read off the Coolify UI by hand.
     // cm:edge lockstep -> packages/core/src/projects/environments.ts — that file is the ONLY place this column's shape is stated; every reader normalises through it.
     environments: jsonb('environments'),
     webhookSecret: text('webhook_secret'),

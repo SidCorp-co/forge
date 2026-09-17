@@ -13,7 +13,7 @@ import {
 } from '../helpers/index.js';
 
 /**
- * ISS-1069 — migration 0264 runs against the real table, on every shape a row can hold.
+ * ISS-1069 — migration 0271 runs against the real table, on every shape a row can hold.
  *
  * The migration is the half of this change that cannot be rolled back by reverting a commit, and
  * its rules are all about values the TypeScript side never sees: a column holding SQL null, a
@@ -23,7 +23,7 @@ import {
  * actual `.sql` file against the actual `projects` table.
  *
  * It does that by putting the column BACK under its old name first. The harness database is already
- * migrated, so 0264 has run; renaming `environments` to `preview_deploy` reconstructs the exact
+ * migrated, so 0271 has run; renaming `environments` to `preview_deploy` reconstructs the exact
  * pre-migration state the file is written against. That is also what makes the abort cases
  * meaningful: an aborted run must leave the old name in place with every row unwritten, which is a
  * claim about the column's NAME and not only its contents.
@@ -46,7 +46,7 @@ async function statements(path: string): Promise<string[]> {
 }
 
 /**
- * Put the column back under its pre-0264 name, so the file can be replayed against it.
+ * Put the column back under its pre-0271 name, so the file can be replayed against it.
  *
  * Idempotent, because an ABORT case leaves the column already under the old name and the next
  * test would otherwise fail on the rename rather than on its own subject.
@@ -112,11 +112,11 @@ async function read(id: string, column: 'environments' | 'preview_deploy'): Prom
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
-  forward = await statements('../../drizzle/migrations/0264_environments.sql');
+  forward = await statements('../../drizzle/migrations/0271_environments.sql');
   // cm:guard the down file is ONE statement block — it carries its own BEGIN/COMMIT and no
   // `--> statement-breakpoint`, because nothing in the migrator ever reads it. A split that
   // produced more than one piece means the file grew a breakpoint it must not have.
-  const downParts = await statements('../../drizzle/rollback/0264_down.sql');
+  const downParts = await statements('../../drizzle/rollback/0271_down.sql');
   expect(downParts).toHaveLength(1);
   down = downParts[0] as string;
 }, 120_000);
@@ -312,12 +312,12 @@ describe('a row the new shape cannot hold aborts by name, writing nothing', () =
 /**
  * The way back, and the one thing it cannot restore.
  *
- * `rollback/0264_down.sql` is applied BY HAND before the previous image starts, so nothing in CI
+ * `rollback/0271_down.sql` is applied BY HAND before the previous image starts, so nothing in CI
  * would otherwise execute a line of it — and a rollback file that has never run is a plan rather
  * than a way back. The NOTICE is asserted as well as the values, because the live side has no
  * field in the old shape and printing it is the only chance an operator gets to write it down.
  */
-describe('rollback/0264_down.sql', () => {
+describe('rollback/0271_down.sql', () => {
   // cm:guard a connection of its own with `onnotice` wired, because the NOTICE is half of what
   // this file has to prove: the live side has no field in the old shape, so printing it is the
   // only chance an operator gets to write those values down before they go. A run that swallowed
@@ -338,7 +338,7 @@ describe('rollback/0264_down.sql', () => {
     return notices;
   }
 
-  it('returns a fully-populated row to the value it held before 0264 ran', async () => {
+  it('returns a fully-populated row to the value it held before 0271 ran', async () => {
     const before = {
       stagingUrl: 'https://stg.example.com',
       stagingApiUrl: 'https://api.stg.example.com',

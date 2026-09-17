@@ -27,7 +27,7 @@
 -- deployment and types it in.
 --
 -- NON-DESTRUCTIVE. The column is RENAMED, not replaced, and every old key is carried
--- to a new name rather than dropped. Running backwards is `rollback/0264_down.sql`,
+-- to a new name rather than dropped. Running backwards is `rollback/0271_down.sql`,
 -- which restores the old name and the old value shape.
 --
 -- A ROW THE NEW SHAPE CANNOT REPRESENT ABORTS THIS MIGRATION BY NAME rather than
@@ -127,7 +127,7 @@ BEGIN
     -- format string with four adjacent placeholders reads as two literal signs and swallows the
     -- list. The newlines come from the E'' string instead.
     RAISE EXCEPTION
-      E'ISS-1069: these projects hold a `preview_deploy` value the `environments` shape cannot represent, so this migration has written nothing:\n%\nCorrect each row named above and redeploy. Do NOT widen the check in 0264_environments.sql: a value quietly cleaned away here is a value the operator never learns they lost.',
+      E'ISS-1069: these projects hold a `preview_deploy` value the `environments` shape cannot represent, so this migration has written nothing:\n%\nCorrect each row named above and redeploy. Do NOT widen the check in 0271_environments.sql: a value quietly cleaned away here is a value the operator never learns they lost.',
       offenders;
   END IF;
 END $iss1069$;--> statement-breakpoint

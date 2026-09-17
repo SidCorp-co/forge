@@ -1828,6 +1828,13 @@
       "when": 1797724800000,
       "tag": "0268_sentry_admission_thresholds",
       "breakpoints": true
+    },
+    {
+      "idx": 271,
+      "version": "7",
+      "when": 1799625600000,
+      "tag": "0271_environments",
+      "breakpoints": true
     }
   ]
 }
