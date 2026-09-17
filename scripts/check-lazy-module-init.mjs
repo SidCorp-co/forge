@@ -121,15 +121,23 @@ function entrypointBindings(sourceFile) {
   const names = new Set();
   const isImportMetaUrl = (node) =>
     ts.isPropertyAccessExpression(node) && node.getText(sourceFile) === 'import.meta.url';
-  const isProcessArgvElement = (node) =>
+  // cm:guard `process.argv[1]` and no other index. `process.argv[2]` is a CLI's first ARGUMENT, so
+  // `import.meta.url === \`file://${process.argv[2]}\`` is true whenever a tool is handed this
+  // module's own path — the block runs during an import and the gate would call it a guard.
+  const isProcessArgvOne = (node) =>
     ts.isElementAccessExpression(node) &&
     ts.isPropertyAccessExpression(node.expression) &&
-    node.expression.getText(sourceFile) === 'process.argv';
+    node.expression.getText(sourceFile) === 'process.argv' &&
+    ts.isNumericLiteral(node.argumentExpression) &&
+    node.argumentExpression.text === '1';
+  // cm:guard head EXACTLY `file://` and an empty tail: the whole template is the entrypoint path and
+  // nothing else. A head that merely starts with it, or a tail carrying more, is a different string.
   const isEntrypointUrlTemplate = (node) =>
     ts.isTemplateExpression(node) &&
-    node.head.text.startsWith('file://') &&
+    node.head.text === 'file://' &&
     node.templateSpans.length === 1 &&
-    isProcessArgvElement(node.templateSpans[0].expression);
+    node.templateSpans[0].literal.text === '' &&
+    isProcessArgvOne(node.templateSpans[0].expression);
   const isEntrypointTest = (node) => {
     if (node === undefined || !ts.isBinaryExpression(node)) return false;
     if (node.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) return false;

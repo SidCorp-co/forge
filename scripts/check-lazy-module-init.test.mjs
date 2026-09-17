@@ -174,6 +174,20 @@ describe('check-lazy-module-init — holes the review found', () => {
     expect(found).toHaveLength(1);
   });
 
+  // cm:guard process.argv[2] is a CLI's first ARGUMENT, so this comparison is true whenever a tool is
+  // handed this module's own path — the block runs during an import.
+  it('catches a read guarded by a process.argv index other than 1', () => {
+    const found = reads(
+      `${INLINE_GUARD.replace('argv[1]', 'argv[2]')}  const port = env.PORT;\n}\n`,
+    );
+    expect(found).toHaveLength(1);
+  });
+
+  it('catches a read guarded by a template carrying more than the entrypoint path', () => {
+    const found = reads(`${INLINE_GUARD.replace('`)', '/x`)')}  const port = env.PORT;\n}\n`);
+    expect(found).toHaveLength(1);
+  });
+
   it('catches a read guarded by a template that is not the entrypoint shape', () => {
     const found = reads(
       `${INLINE_GUARD.replace('file://', 'other://')}  const port = env.PORT;\n}\n`,
