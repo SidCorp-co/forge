@@ -107,7 +107,7 @@ describe('ALWAYS_INJECT_ENFORCEMENT_NOTE — the detail the screen has no room f
   // silence, and the note is interpolated into an MCP tool description and a guide body, so a
   // stale name reaches an agent as fact.
   it('names no database table this deployment does not have', () => {
-    const liveTables = new Set(
+    const liveTables = new Set<string>(
       Object.values(dbSchema)
         .filter((value) => isTable(value))
         .map((table) => getTableName(table)),

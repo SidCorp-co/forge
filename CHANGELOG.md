@@ -2278,6 +2278,27 @@
 
 ### Removed
 
+- **The UX Contract screen is gone, and the checklist it wrote for your project is not.** Forge let
+  you choose a set of UI completeness rules from presets and turned them into a written contract —
+  loading states, empty states, error states, accessibility, microcopy, responsive — which then went
+  into every agent's briefing on your project, headed "follow them exactly". It also collected
+  findings agents were meant to file against those rules, and ran a weekly agent that was supposed
+  to learn new rules from them. Almost none of that happened: across the twelve projects carrying an
+  always-applied contract, sixteen days produced no findings at all on six of them, and the
+  improver's clustering never worked on real data. So the machinery is retired: the rules table, the
+  findings table, the settings tab, the preset picker and the weekly agent.
+
+  **The contract itself stays, on every project that had one.** It is now an ordinary project rule
+  you can read and edit on the Knowledge screen, under the name `ux-contract`, with the same words
+  it had before — not summarised, not regenerated, byte for byte what was there. The one thing that
+  changes is delivery: it is no longer pasted into every briefing regardless of what the work
+  touches. An agent fetches it by name when the change is about the UI, which is what its own first
+  line always said it was for. If your project does not have one and wants a UI bar, you write it
+  once on the Knowledge screen; nothing compiles it or switches itself on any more.
+
+  If a project's rules could not be matched to the prose it kept, the upgrade stops and names that
+  project rather than dropping anything.
+
 - **Nine days of maintenance on prompts nothing could ever read, ended.** When the staged pipeline
   was removed, the instructions written for its nine stages were left behind: eight blocks of
   per-stage guidance and nine pieces of process knowledge, all addressed to steps that can no longer
