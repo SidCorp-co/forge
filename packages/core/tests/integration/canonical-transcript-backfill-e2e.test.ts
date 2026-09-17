@@ -10,6 +10,7 @@
  */
 
 import { randomUUID } from 'node:crypto';
+import { fileURLToPath } from 'node:url';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -52,10 +53,42 @@ beforeEach(async () => {
   projectId = (await createTestProject(harness.db, ownerId, { orgId: org.id })).id;
 });
 
-/** The raw `postgres` handle the backfill takes — the same one migrate.ts hands it. */
+/**
+ * The `postgres` handle the backfill takes, configured as `migrate.ts` leaves it.
+ *
+ * cm:guard the `drizzle()` wrapper is the fixture and not decoration. Drizzle's
+ * postgres-js driver replaces that client's json serializer with an identity
+ * one, and `migrate.ts` builds a drizzle instance over this very client — so in
+ * production the backfill ALWAYS writes through the identity serializer and
+ * `sql.json` throws there for every array. A suite that handed it a clean client
+ * exercised a configuration no deploy has: measured 2026-09-17, every case here
+ * passed while the container died on its first row.
+ */
 async function rawSql() {
   const postgres = (await import('postgres')).default;
-  return postgres(harness.url, { max: 1 });
+  const { drizzle } = await import('drizzle-orm/postgres-js');
+  const client = postgres(harness.url, { max: 1 });
+  drizzle(client);
+  return client;
+}
+
+/**
+ * The handle as the DEPLOY hands it over: drizzle's migrator has just run on it.
+ *
+ * cm:guard the migrator is part of the fixture and not scenery. Measured
+ * 2026-09-17 on a real container path: after `migrate()` has used this client,
+ * `sql.json` on it throws for every array it is given, so the backfill died on
+ * its first row — on a client the suite had never migrated, every case passed.
+ * The one thing that would have met it is a boot.
+ */
+async function migratedSql() {
+  const sql = await rawSql();
+  const { drizzle } = await import('drizzle-orm/postgres-js');
+  const { migrate } = await import('drizzle-orm/postgres-js/migrator');
+  await migrate(drizzle(sql), {
+    migrationsFolder: fileURLToPath(new URL('../../drizzle/migrations', import.meta.url)),
+  });
+  return sql;
 }
 
 async function sessionWithMessages(messages: unknown[]): Promise<string> {
@@ -246,5 +279,28 @@ describe('the deploy refuses until the backfill has actually finished', () => {
     } finally {
       await raw.end();
     }
+  });
+});
+
+describe('the backfill runs on the client the deploy hands it', () => {
+  it('converts a legacy row on a client drizzle has just migrated', async () => {
+    const id = await sessionWithMessages([
+      { role: 'user', content: 'where does the runner code live?' },
+      {
+        role: 'assistant',
+        content: 'In packages/runner.',
+        contentBlocks: [{ type: 'text', text: 'In packages/runner.' }],
+      },
+    ]);
+    const turnId = await turnOn(id, { role: 'user', content: 'where does the runner code live?' });
+    const sql = await migratedSql();
+    try {
+      const report = await backfill(sql);
+      expect(report.entries).toBeGreaterThan(0);
+    } finally {
+      await sql.end();
+    }
+    expect((await messagesOf(id))[0]).toMatchObject({ type: 'user' });
+    expect(await turnEntryOf(turnId)).toMatchObject({ type: 'user' });
   });
 });

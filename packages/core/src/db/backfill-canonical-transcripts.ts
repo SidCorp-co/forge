@@ -45,6 +45,21 @@ const LEGACY_MESSAGES = `messages @> '[{"role": "user"}]'
    OR jsonb_path_exists(messages, '$[*].contentBlocks')
    OR jsonb_path_exists(messages, '$[*].role')`;
 
+/**
+ * A jsonb parameter as a STRING, never through `sql.json`.
+ *
+ * cm:guard measured on the real deploy path 2026-09-17: this backfill runs on
+ * the same postgres client drizzle's migrator has just used, and `sql.json` on
+ * that client then throws `The "string" argument must be of type string ...
+ * Received an instance of Array` for every array it is handed. The integration
+ * suite could not see it — there the client has never run a migration — so the
+ * first thing that would have met it is a container boot. A stringified
+ * parameter with an explicit cast does not depend on the driver's state.
+ */
+function asJsonb(value: unknown): string {
+  return JSON.stringify(value);
+}
+
 /** Convert `agent_sessions.messages`, one session at a time. */
 async function backfillSessions(sql: Sql): Promise<{ sessions: number; entries: number }> {
   const rows = await sql<{ id: string; messages: unknown }[]>`
@@ -62,7 +77,7 @@ async function backfillSessions(sql: Sql): Promise<{ sessions: number; entries: 
       );
     }
     if (converted.converted === 0) continue;
-    await sql`UPDATE agent_sessions SET messages = ${sql.json(converted.messages as never)} WHERE id = ${row.id}`;
+    await sql`UPDATE agent_sessions SET messages = ${asJsonb(converted.messages)}::jsonb WHERE id = ${row.id}`;
     sessions += 1;
     entries += converted.converted;
   }
@@ -97,7 +112,7 @@ async function backfillTurns(sql: Sql): Promise<{ turns: number; entries: number
       );
     }
     if (!converted.converted) continue;
-    await sql`UPDATE agent_session_turns SET content = ${sql.json({ ...(wrapper ?? {}), value: converted.entry } as never)} WHERE id = ${row.id}`;
+    await sql`UPDATE agent_session_turns SET content = ${asJsonb({ ...(wrapper ?? {}), value: converted.entry })}::jsonb WHERE id = ${row.id}`;
     turns += 1;
     entries += 1;
   }
@@ -169,7 +184,7 @@ export async function revertCanonicalTranscripts(sql: Sql): Promise<BackfillRepo
   for (const row of sessionRows) {
     if (!Array.isArray(row.messages)) continue;
     const restored = row.messages.map((entry) => legacyEntryOf(entry) ?? entry);
-    await sql`UPDATE agent_sessions SET messages = ${sql.json(restored as never)} WHERE id = ${row.id}`;
+    await sql`UPDATE agent_sessions SET messages = ${asJsonb(restored)}::jsonb WHERE id = ${row.id}`;
     sessions += 1;
     entries += row.messages.filter((e) => legacyEntryOf(e) !== null).length;
   }
@@ -183,7 +198,7 @@ export async function revertCanonicalTranscripts(sql: Sql): Promise<BackfillRepo
     const wrapper = row.content as { value?: unknown } | null;
     const legacy = legacyEntryOf(wrapper?.value);
     if (legacy === null) continue;
-    await sql`UPDATE agent_session_turns SET content = ${sql.json({ ...(wrapper ?? {}), value: legacy } as never)} WHERE id = ${row.id}`;
+    await sql`UPDATE agent_session_turns SET content = ${asJsonb({ ...(wrapper ?? {}), value: legacy })}::jsonb WHERE id = ${row.id}`;
     turns += 1;
     entries += 1;
   }
