@@ -275,16 +275,20 @@ pub async fn take_one(
 
     let pane = pane_name(&prepared.job_id);
     // cm:guard no checkout means the hold goes BACK, never a pane in whatever directory the daemon happens to be in. A `release_batch` agent tags and promotes the repo it is standing in, so a wrong cwd is not a failed job — it is a release cut from the wrong tree. Core's `repoPath` is the answer; the box's own binding is the fallback `resolve_repo` already computes for every other caller; neither is a refusal by name.
-    let Some(cwd) = prepared
+    // cm:guard each candidate must EXIST ON THIS BOX before it is taken, and the reason is that `projects.repo_path` is ONE string for a fleet of boxes. sid-desk carries `/home/kieutrung/services/sid-desk` — dev1's checkout — while forge-vm's own runner row carries `/home/forge/projects/sid-desk`; core hands out the former to both. Without the `is_dir` filter the non-existent path wins, `tmux -c` silently falls back to `$HOME`, and the pane opens in the daemon's home directory: measured 2026-09-17, four release_batch jobs in a row died there because Claude asked whether it trusted `/home/forge` and the briefing's own Enter answered "No, exit".
+    let cwd_candidates: Vec<PathBuf> = prepared
         .repo_path
         .as_deref()
         .map(PathBuf::from)
-        .or_else(|| fallback_cwd.map(Path::to_path_buf))
-    else {
+        .into_iter()
+        .chain(fallback_cwd.map(Path::to_path_buf))
+        .collect();
+    let Some(cwd) = cwd_candidates.iter().find(|p| p.is_dir()).cloned() else {
         give_back(pool_ports, &prepared.job_id, session_id).await;
         tracing::error!(
-            "[pool] {project_id}: job {} has no repo path at core and this box has no binding for the project — given back; bind it or set the runner's repo_path",
-            prepared.job_id
+            "[pool] {project_id}: job {} has no checkout THIS BOX can stand in — tried {:?}; given back. Core's project repo_path may belong to another box; bind it here or set the runner's repo_path",
+            prepared.job_id,
+            cwd_candidates
         );
         return Took::GaveBack(prepared.job_id);
     };
@@ -594,6 +598,7 @@ mod tests {
         failed: Mutex<Vec<(String, String)>>,
         beats: Mutex<Vec<String>>,
         recorded: Mutex<Vec<String>>,
+        cwds: Mutex<Vec<PathBuf>>,
     }
 
     struct FakePool {
@@ -626,7 +631,9 @@ mod tests {
             system_prompt: "sys".into(),
             prompt_string: prompt.map(str::to_string),
             model: "claude".into(),
-            repo_path: Some("/srv/app".into()),
+            // cm:why a REAL directory: `take_one` now refuses a checkout this box cannot stand in, so a
+            // made-up path would make every test here assert the refusal instead of the claim.
+            repo_path: Some(core_repo().to_string_lossy().into_owned()),
             prior_claude_session_id: None,
             runner_id: "r1".into(),
         }))
@@ -667,6 +674,20 @@ mod tests {
         }
     }
 
+    /// A directory that exists, standing in for what core believes the checkout is.
+    fn core_repo() -> PathBuf {
+        let p = std::env::temp_dir().join("forge-pool-core-repo");
+        std::fs::create_dir_all(&p).expect("temp dir");
+        p
+    }
+
+    /// A directory that exists, standing in for THIS box's own binding.
+    fn box_repo() -> PathBuf {
+        let p = std::env::temp_dir().join("forge-pool-box-repo");
+        std::fs::create_dir_all(&p).expect("temp dir");
+        p
+    }
+
     struct FakePanes {
         rec: Arc<Recorder>,
         open_fails: bool,
@@ -676,10 +697,11 @@ mod tests {
 
     #[async_trait::async_trait]
     impl Panes for FakePanes {
-        async fn open(&self, name: &str, _cwd: &Path, prompt: &str) -> Result<()> {
+        async fn open(&self, name: &str, cwd: &Path, prompt: &str) -> Result<()> {
             if self.open_fails {
                 return Err(Error::Other("no tmux".into()));
             }
+            self.rec.cwds.lock().unwrap().push(cwd.to_path_buf());
             self.rec
                 .opened
                 .lock()
@@ -814,7 +836,7 @@ mod tests {
             &w.registry,
             "p1",
             "master-session",
-            Some(Path::new("/fallback")),
+            Some(&box_repo()),
             bound,
         )
         .await
@@ -1023,6 +1045,69 @@ mod tests {
     }
 
     // cm:guard a release cut from the wrong tree is worse than one not cut at all, which is why
+    /// Core's `repo_path` is one string for a fleet, so it is a CANDIDATE, not the answer.
+    // cm:guard the assertion is on the cwd the pane was opened in, never on `Took::Started` alone: the
+    // bug this covers started a pane perfectly well — in `$HOME`, because `tmux -c` falls back there
+    // rather than failing on a directory that is not present. A test that only checked the claim
+    // landed was green all the way through four dead release jobs on 2026-09-17.
+    #[tokio::test]
+    async fn a_core_path_this_box_does_not_have_loses_to_the_boxs_own_binding() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("go"))),
+            None,
+        );
+        if let Some(Prepared::Took(p)) = w.pool.prepare.lock().unwrap().as_mut() {
+            p.repo_path = Some("/home/somebody-else/services/sid-desk".into());
+        }
+
+        assert_eq!(take(&w, 2).await, Took::Started("j1".into()));
+        assert_eq!(w.rec.cwds.lock().unwrap().clone(), vec![box_repo()]);
+    }
+
+    /// And when core's path IS present here, it still wins — the order is unchanged.
+    #[tokio::test]
+    async fn a_core_path_that_exists_here_is_still_preferred() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("go"))),
+            None,
+        );
+
+        assert_eq!(take(&w, 2).await, Took::Started("j1".into()));
+        assert_eq!(w.rec.cwds.lock().unwrap().clone(), vec![core_repo()]);
+    }
+
+    /// Neither candidate is present: the hold goes back rather than a pane opening in the daemon's home.
+    #[tokio::test]
+    async fn no_candidate_exists_on_this_box_so_the_hold_goes_back() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("go"))),
+            None,
+        );
+        if let Some(Prepared::Took(p)) = w.pool.prepare.lock().unwrap().as_mut() {
+            p.repo_path = Some("/nowhere/on/this/box".into());
+        }
+
+        let took = take_one(
+            &w.pool,
+            &w.panes,
+            &w.report,
+            &w.records,
+            &w.registry,
+            "p1",
+            "master-session",
+            Some(Path::new("/also/nowhere")),
+            2,
+        )
+        .await;
+
+        assert_eq!(took, Took::GaveBack("j1".into()));
+        assert!(w.rec.opened.lock().unwrap().is_empty(), "no pane may open");
+        assert_eq!(w.rec.released.lock().unwrap().clone(), vec!["j1".to_string()]);
+    }
+
     // this is a refusal and not a fallback to the daemon's own working directory.
     #[tokio::test]
     async fn a_job_with_no_checkout_anywhere_gives_the_hold_back() {
