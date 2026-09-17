@@ -56,6 +56,13 @@ export interface TableSweepResult {
   durationMs: number;
   /** An environment override this tick refused, and why. */
   rejected: string | null;
+  /**
+   * The batch loop hit its cap with a full batch still coming back, so eligible
+   * rows are left over and `heldBack` counts them alongside the exempt ones.
+   * It is reported rather than folded away because the two are different facts:
+   * a backlog the sweep did not reach, and rows a rule deliberately keeps.
+   */
+  capped: boolean;
 }
 
 /** What the finalise-repair pass did this tick. */
@@ -99,6 +106,7 @@ async function sweepTable(rule: RetentionRule): Promise<TableSweepResult> {
     heldBack: 0,
     durationMs: 0,
     rejected: resolved.rejected,
+    capped: false,
   };
   if (resolved.rejected) {
     logger.warn(
@@ -112,13 +120,23 @@ async function sweepTable(rule: RetentionRule): Promise<TableSweepResult> {
   }
 
   let deleted = 0;
+  let capped = true;
   for (let i = 0; i < MAX_BATCHES; i++) {
     const batch = await countRows(statements.deleteBatch(resolved.days, BATCH_SIZE));
     deleted += batch;
-    if (batch < BATCH_SIZE) break;
+    if (batch < BATCH_SIZE) {
+      capped = false;
+      break;
+    }
+  }
+  if (capped) {
+    logger.warn(
+      { table: rule.table, deleted, batches: MAX_BATCHES },
+      'retention: the batch cap stopped this table before it ran out of rows — heldBack counts a backlog as well as what the rule keeps',
+    );
   }
   const heldBack = statements.heldBack ? await readCount(statements.heldBack(resolved.days)) : 0;
-  return { ...base, deleted, heldBack, durationMs: Date.now() - t0 };
+  return { ...base, deleted, heldBack, capped, durationMs: Date.now() - t0 };
 }
 
 type Candidate = { job_id: string; session_id: string };

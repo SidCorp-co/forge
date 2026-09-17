@@ -183,6 +183,25 @@ describe('the transcript rule: the repair pass (ISS-1027)', () => {
     expect(rows[0]?.n).toBe(2);
   });
 
+  // cm:guard `ts` on a job event comes FROM THE CALLER while `seq` is assigned here, so the two orders need not agree and a sweep deleting on `ts` can take an INTERIOR event. A prefix check alone passes this history and rebuilds a transcript with a hole in it.
+  it('refuses a history with a hole in the middle, not only one missing its start', async () => {
+    const complete = [
+      { id: 'm1', role: 'user', content: 'the first turn' },
+      { id: 'm2', role: 'assistant', content: 'the second turn' },
+    ];
+    const sessionId = await fx.insertSession({ messages: complete });
+    const jobId = await fx.insertJob({ status: 'done', sessionId, finishedDaysAgo: OLD });
+    await fx.insertJobEvent(jobId, OLD, 1, { kind: 'progress', data: { claudeSessionId: 'a' } });
+    // seq 2 was deleted on its timestamp; seq 3 outlived it.
+    await fx.insertJobEvent(jobId, OLD, 3, { kind: 'progress', data: { claudeSessionId: 'b' } });
+
+    const result = await fx.mods.runRetentionSweep();
+
+    expect(await jobEvents()).toBe(2);
+    expect(await fx.metadataOf(sessionId)).not.toHaveProperty('transcriptFinalizedAt');
+    expect(result.repair.withTruncatedHistory).toEqual([sessionId]);
+  });
+
   // cm:guard this is the anti-starvation property and the only thing that makes the per-run bound safe: order the candidates by the job's age instead and the two sessions attempted longest ago take the budget on every run for ever, and the one never tried is never tried. The bound is one here so a wrong ORDER BY cannot hide behind a budget wide enough to reach everybody anyway.
   it('spends the repair bound least-recently-attempted first', async () => {
     process.env.RETENTION_FINALIZE_REPAIR_MAX = '1';

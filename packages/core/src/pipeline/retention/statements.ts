@@ -164,12 +164,18 @@ export const RETENTION_STATEMENTS: Readonly<Record<string, TableStatements>> = {
   retrieval_analytics: retrievalAnalytics,
 };
 
+// cm:guard the count-equals-max half is not belt-and-braces, it is the case a prefix check cannot see: `events-routes.ts` numbers events itself but takes `ts` FROM THE CALLER, so sequence order and timestamp order need not agree, and a sweep that deletes on `ts` can take an INTERIOR event while seq 1 survives. `min(seq) = 1` alone admits that history as whole, and the repair then rebuilds a transcript with a hole in it and marks it final.
 /**
- * `events-routes.ts` numbers a job's events `COALESCE(MAX(seq), 0) + i + 1`, so
- * the first event a job ever writes is seq 1 and a surviving history that does
- * not start there is a SUFFIX of what the job produced.
+ * Whether a job's surviving events are the whole history it produced.
+ *
+ * `events-routes.ts` numbers them `COALESCE(MAX(seq), 0) + i + 1`, so a whole
+ * history runs 1..N with nothing missing. `(job_id, seq)` is unique, so a count
+ * equal to the maximum means no gap anywhere.
  */
-const HISTORY_IS_WHOLE = sql`(SELECT min(e2.seq) FROM job_events e2 WHERE e2.job_id = j.id) = 1`;
+const HISTORY_IS_WHOLE = sql`coalesce((
+  SELECT min(e2.seq) = 1 AND count(*) = max(e2.seq)
+  FROM job_events e2 WHERE e2.job_id = j.id
+), false)`;
 
 function unfinalizedOverAge(days: number): SQL {
   return sql`

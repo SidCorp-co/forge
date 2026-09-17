@@ -71,10 +71,34 @@ describe('retention sweep: the batch loop', () => {
 
     expect(jobEvents?.deleted).toBe(20_003);
     // Three batches for `job_events` rather than one, plus one statement per
-    // remaining swept table and one more per table that reads a held-back count.
+    // remaining swept table, one more per table that reads a held-back count,
+    // and the truncated-history report, which runs even with the repair bound at
+    // zero because it reports rather than repairs.
     const swept = RETENTION_RULES.filter((r) => r.days !== null).length;
     const held = Object.values(RETENTION_STATEMENTS).filter((t) => t.heldBack !== null).length;
-    expect(executeMock).toHaveBeenCalledTimes(3 + (swept - 1) + held);
+    expect(executeMock).toHaveBeenCalledTimes(3 + (swept - 1) + held + 1);
+  });
+
+  // cm:guard `heldBack` is a count of what is left past the window, so at the batch cap it counts an undrained backlog as well as what a rule keeps. Two different facts under one number is the shape this repo calls a silent substitution, so the cap is reported rather than folded away.
+  it('says when the batch cap stopped it before the table ran out of rows', async () => {
+    const full = Array.from({ length: 10_000 }, (_, i) => ({ id: String(i) }));
+    executeMock.mockResolvedValue(full);
+
+    const result = await runRetentionSweep();
+    const jobEvents = result.tables.find((t) => t.table === 'job_events');
+
+    expect(jobEvents?.capped).toBe(true);
+    expect(warnMock).toHaveBeenCalledWith(
+      expect.objectContaining({ table: 'job_events' }),
+      expect.stringContaining('batch cap'),
+    );
+  });
+
+  it('does not say it was capped when a short batch ended the loop', async () => {
+    answerWith([[{ id: 'a' }]]);
+    const result = await runRetentionSweep();
+
+    expect(result.tables.every((t) => t.capped === false)).toBe(true);
   });
 
   it('reads the held-back count for a rule that has an exemption', async () => {
