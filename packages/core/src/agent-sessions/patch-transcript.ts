@@ -18,6 +18,16 @@ export interface TranscriptPatch {
   messages: Record<string, unknown>[] | undefined;
   /** True when this call derived the turn's transcript from the carrier. */
   derived: boolean;
+  /**
+   * True when this wholesale write must be recorded in the carrier as well.
+   *
+   * cm:guard the carrier has to stay a complete account of the session, and a
+   * `messages` array written past it is the one thing that can make it
+   * incomplete. The row is written by the handler INSIDE its own transaction,
+   * beside the update it records, so a carrier claiming a transcript the session
+   * does not hold is not a state this pair can leave behind.
+   */
+  snapshot: boolean;
 }
 
 /**
@@ -75,7 +85,7 @@ export async function applyTranscriptPatch(args: {
   // the same one the migration calls, on purpose; a second set of rules here is
   // the divergence this issue exists to end.
   // cm:edge lockstep -> packages/core/src/agent-sessions/canonical-legacy.ts
-  if (patch.messages === undefined) return { messages: undefined, derived };
+  if (patch.messages === undefined) return { messages: undefined, derived, snapshot: false };
   const canonical = toCanonicalMessages(patch.messages);
   if (!canonical.ok) {
     throw new HTTPException(400, {
@@ -83,5 +93,10 @@ export async function applyTranscriptPatch(args: {
       cause: { code: 'UNREPRESENTABLE_ENTRY', details: canonical },
     });
   }
-  return { messages: canonical.messages, derived };
+  // cm:guard an interim flush from a daemon on the previous release is NOT
+  // recorded: it PATCHes its whole array on every throttled write, and its own
+  // terminal patch carries everything those held. A write by a person — an
+  // edited turn — is recorded whenever it lands, because nothing supersedes it.
+  const snapshot = isTerminal || !isDevice;
+  return { messages: canonical.messages, derived, snapshot };
 }

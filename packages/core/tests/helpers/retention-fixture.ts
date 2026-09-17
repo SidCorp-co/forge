@@ -45,6 +45,12 @@ export interface RetentionFixture {
     seq: number,
     ev?: { kind?: string; data?: unknown },
   ): Promise<string>;
+  insertSessionEvent(
+    sessionId: string,
+    daysAgo: number,
+    seq: number,
+    ev?: { kind?: string; data?: unknown },
+  ): Promise<string>;
   insertRunner(): Promise<string>;
   insertRunnerEvent(runnerId: string, daysAgo: number): Promise<string>;
   insertQueueSnapshot(daysAgo: number): Promise<string>;
@@ -127,6 +133,16 @@ export async function createRetentionFixture(): Promise<RetentionFixture> {
     },
 
     // cm:guard one DEVICE per runner, not the fixture's shared one: `runners_project_device_type_uq` is on (project_id, device_id, type), so two runners built the obvious way collide on a constraint that has nothing to do with retention.
+    async insertSessionEvent(sessionId, daysAgo, seq, ev = {}) {
+      const id = randomUUID();
+      await harness.db.execute(sql`
+        INSERT INTO agent_session_events (id, agent_session_id, ts, kind, data, seq)
+        VALUES (${id}, ${sessionId}, ${ago(daysAgo)}, ${ev.kind ?? 'stdout'},
+                ${JSON.stringify(ev.data ?? { line: { type: 'assistant' } })}::jsonb, ${seq})
+      `);
+      return id;
+    },
+
     async insertRunner() {
       const id = randomUUID();
       const device = await createTestDevice(harness.db, ids.ownerId);

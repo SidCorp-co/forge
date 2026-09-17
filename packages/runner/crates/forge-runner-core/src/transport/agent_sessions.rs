@@ -110,9 +110,22 @@ async fn post_chunk(client: &CoreClient, session_id: &str, events: &[LineEvent])
 const MAX_BATCH: usize = 100;
 
 /// Deliver this turn's lines, chunked.
+///
+/// cm:guard the error says how many lines were STORED before it, because they
+/// were. A batch past the first is delivered on its own request, so a failure
+/// here leaves earlier chunks committed on the server — and an operator told
+/// that none of the turn was stored goes looking for a transcript that is
+/// partly there. The count is what the caller puts in front of a person.
 pub async fn post_events(client: &CoreClient, session_id: &str, events: &[LineEvent]) -> Result<()> {
+    let total = events.len();
+    let mut delivered = 0usize;
     for chunk in events.chunks(MAX_BATCH) {
-        post_chunk(client, session_id, chunk).await?;
+        if let Err(e) = post_chunk(client, session_id, chunk).await {
+            return Err(Error::Other(format!(
+                "post_events: {delivered} of {total} line(s) were stored before this failed: {e}"
+            )));
+        }
+        delivered += chunk.len();
     }
     Ok(())
 }
@@ -245,4 +258,67 @@ pub async fn patch_session(
         delay_ms = delay_ms.saturating_mul(2);
     }
     Err(Error::Other("patch_session: exhausted retries".into()))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
+
+    /// Answers `first`, then `second`, then closes — two chunks, two verdicts.
+    async fn serve_two(first: &'static str, second: &'static str) -> String {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        tokio::spawn(async move {
+            for status in [first, second] {
+                let Ok((mut sock, _)) = listener.accept().await else {
+                    return;
+                };
+                let mut buf = [0u8; 65536];
+                let _ = sock.read(&mut buf).await;
+                let body = r#"{"accepted":0}"#;
+                let resp = format!(
+                    "HTTP/1.1 {status}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                    body.len()
+                );
+                let _ = sock.write_all(resp.as_bytes()).await;
+                let _ = sock.shutdown().await;
+            }
+        });
+        format!("http://{addr}")
+    }
+
+    fn lines(n: usize) -> Vec<LineEvent> {
+        (1..=n)
+            .map(|seq| LineEvent::stdout(seq as u64, serde_json::json!({ "type": "assistant" })))
+            .collect()
+    }
+
+    // cm:guard the message a person reads must not claim more was lost than was.
+    // A second chunk refused leaves the first one COMMITTED on the server, and
+    // "stored none of it" sends whoever is investigating to look for a
+    // transcript that is partly there.
+    #[tokio::test]
+    async fn a_refusal_of_the_second_chunk_says_the_first_was_stored() {
+        let url = serve_two("200 OK", "400 Bad Request").await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let err = post_events(&client, "s-1", &lines(MAX_BATCH + 1))
+            .await
+            .expect_err("the second chunk was refused");
+        let text = err.to_string();
+        assert!(
+            text.contains(&format!("{MAX_BATCH} of {} line(s) were stored", MAX_BATCH + 1)),
+            "the error must count what landed: {text}"
+        );
+    }
+
+    #[tokio::test]
+    async fn a_first_chunk_refused_reports_nothing_stored() {
+        let url = serve_two("400 Bad Request", "400 Bad Request").await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let err = post_events(&client, "s-1", &lines(3))
+            .await
+            .expect_err("the only chunk was refused");
+        assert!(err.to_string().contains("0 of 3 line(s) were stored"));
+    }
 }

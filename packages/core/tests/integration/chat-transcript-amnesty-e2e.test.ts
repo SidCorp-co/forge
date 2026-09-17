@@ -258,3 +258,51 @@ describe('a daemon on the previous release keeps working, and what it sends is c
     expect(messages[0]).toMatchObject({ content: 'the old daemon said this' });
   });
 });
+
+describe('a box upgraded mid-conversation keeps the turns the old daemon answered', () => {
+  // cm:guard this is the rolling upgrade, and it is the shape the whole amnesty
+  // is for: core ships first, the boxes follow. A turn answered by the previous
+  // release never reaches the carrier, so the first derive after the upgrade
+  // rebuilds the session from a carrier holding the prompts and this turn's
+  // lines — and writes that over a conversation that had the answers in it.
+  it('keeps an old daemon’s answer when the next turn is derived from the carrier', async () => {
+    const s = await chatSession();
+    const id = idOf(s);
+
+    // Turn one, answered by a daemon on the previous release.
+    const first = await patchSession(id, {
+      status: 'completed',
+      toolCallCount: 1,
+      messages: [
+        { type: 'user', content: 'what did you do?' },
+        { type: 'assistant', content: 'the old daemon answered' },
+      ],
+    });
+    expect(first.status).toBe(200);
+
+    // The box is upgraded. Turn two is dispatched the way `chat-turn.ts` does it,
+    // and answered on the wire.
+    const stored = await transcriptOf(id);
+    const seeded = await seedTurn(db, id, {
+      priorMessages: stored,
+      entry: { id: randomUUID(), type: 'user', content: 'and now?', timestamp: 2 },
+      at: new Date(),
+    });
+    // `dispatchChatTurn` flips the row back to `running` in the same transaction
+    // as that seed; the carrier route refuses a terminal session by design.
+    await harness.db.execute(sql`UPDATE agent_sessions SET status = 'running' WHERE id = ${id}`);
+    expect((await postLines(id, aTurnThatRanTools(seeded.lastSeq))).status).toBe(200);
+    expect((await patchSession(id, { status: 'completed' })).status).toBe(200);
+
+    const messages = await transcriptOf(id);
+    const said = messages.map((m) => String(m.content ?? ''));
+    expect(said).toContain('what did you do?');
+    expect(said).toContain('the old daemon answered');
+    expect(said).toContain('and now?');
+    // The new turn's own work is there too — this is a fold, not a restore.
+    const blocks = messages.flatMap((m) =>
+      Array.isArray(m.blocks) ? (m.blocks as Array<Record<string, unknown>>) : [],
+    );
+    expect(blocks.filter((b) => b.type === 'tool')).toHaveLength(1);
+  });
+});

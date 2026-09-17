@@ -121,6 +121,38 @@ export async function backfillCanonicalTranscripts(sql: Sql): Promise<BackfillRe
  * a rolled-back core serves `role`-shaped readers against canonical rows —
  * which is the class of failure ISS-807 was.
  */
+/** The name this backfill's completion is recorded under in `backfill_markers`. */
+export const CANONICAL_BACKFILL_KEY = 'canonical-transcripts';
+
+/** What one gated attempt did. */
+export type BackfillOnce =
+  | { ran: false; reason: 'already-done' }
+  | { ran: true; report: BackfillReport };
+
+/**
+ * Run the canonical backfill unless it has already run to completion.
+ *
+ * cm:guard the marker is written only when the conversion RETURNS, and that is
+ * the whole of what this wrapper is for. Gating on the drizzle ledger instead —
+ * the shape this replaced — asks whether the DDL applied, which a boot that
+ * applied it and then threw on a row it could not represent answers yes to for
+ * ever: the deploy's refusal lasts exactly one attempt, and every boot after it
+ * serves canonical-only readers a table still holding legacy rows.
+ * cm:edge lockstep -> packages/core/src/db/migrate.ts — its only caller
+ */
+export async function runCanonicalBackfillOnce(sql: Sql): Promise<BackfillOnce> {
+  const marked = await sql<{ n: number }[]>`
+    SELECT count(*)::int AS n FROM backfill_markers WHERE key = ${CANONICAL_BACKFILL_KEY}
+  `;
+  if ((marked[0]?.n ?? 0) > 0) return { ran: false, reason: 'already-done' };
+  const report = await backfillCanonicalTranscripts(sql);
+  await sql`
+    INSERT INTO backfill_markers (key) VALUES (${CANONICAL_BACKFILL_KEY})
+    ON CONFLICT (key) DO NOTHING
+  `;
+  return { ran: true, report };
+}
+
 export async function revertCanonicalTranscripts(sql: Sql): Promise<BackfillReport> {
   const sessionRows = await sql<{ id: string; messages: unknown }[]>`
     SELECT id, messages FROM agent_sessions

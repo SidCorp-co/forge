@@ -3,7 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { initSentry, Sentry } from '../observability/sentry.js';
-import { backfillCanonicalTranscripts } from './backfill-canonical-transcripts.js';
+import { runCanonicalBackfillOnce } from './backfill-canonical-transcripts.js';
 import {
   describeUnrecorded,
   type JournalEntry,
@@ -21,41 +21,19 @@ const migrationsFolder = new URL('../../drizzle/migrations', import.meta.url).pa
 const sql = postgres(url, { max: 1 });
 const db = drizzle(sql);
 
-/** ISS-1030 — the migration whose landing the canonical-transcript backfill rides. */
-const CANONICAL_BACKFILL_WHEN = 1796083200000;
-
-/** Whether this boot is the one that applies a given journal entry. */
-// cm:why read BEFORE `migrate()` rather than after: the migrator records an entry
-// as it applies it, so afterwards every entry is recorded and there is no way
-// left to tell which of them this boot brought in. The backfill is idempotent
-// regardless — it selects only rows still holding a legacy entry — but a
-// full-table predicate on the largest jsonb column in the schema is not
-// something to pay on every container start.
-async function alreadyRecorded(when: number): Promise<boolean> {
-  try {
-    const rows = await sql<{ n: number }[]>`
-      SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations WHERE created_at = ${when}
-    `;
-    return (rows[0]?.n ?? 0) > 0;
-  } catch {
-    // No ledger yet — a first-ever boot, where there is nothing to backfill.
-    return true;
-  }
-}
-
 try {
   console.log('[migrate] applying migrations from', migrationsFolder);
-  const backfillDone = await alreadyRecorded(CANONICAL_BACKFILL_WHEN);
   // cm:guard a migration's `when` in meta/_journal.json must exceed every already-recorded created_at or it's silently skipped forever, not an error (ISS-807)
   await migrate(db, { migrationsFolder });
 
   // cm:guard this THROWS on a row it cannot represent and the outer catch exits
   // non-zero, which is the whole point: the deploy stops naming the row rather
   // than the row being cleaned away so the deploy succeeds (ISS-1030).
-  if (!backfillDone) {
-    const report = await backfillCanonicalTranscripts(sql);
+  const backfill = await runCanonicalBackfillOnce(sql);
+  if (backfill.ran) {
+    const { entries, sessions, turns } = backfill.report;
     console.log(
-      `[migrate] canonical-transcript backfill: ${report.entries} entr(ies) rewritten across ${report.sessions} session(s) and ${report.turns} turn row(s)`,
+      `[migrate] canonical-transcript backfill: ${entries} entr(ies) rewritten across ${sessions} session(s) and ${turns} turn row(s)`,
     );
   }
 

@@ -523,7 +523,13 @@ async fn consume(
                         // turn on the far side of a hole in the seq run — and the fold holds at a
                         // hole, so the transcript would stop there looking like a turn that simply
                         // went quiet. A turn that says it stopped recording is recoverable.
-                        let msg = format!("[TRANSCRIPT_REFUSED] core refused this turn's transcript and stored none of it: {e}");
+                        // cm:guard the sentence says what is true of the BATCH and not of
+                        // the turn: core stores a refused batch not at all, while chunks
+                        // delivered before it are already committed. `post_events` counts
+                        // them, and the count rides in `{e}`.
+                        let msg = format!(
+                            "[TRANSCRIPT_REFUSED] core refused a batch of this turn's transcript and stored none of that batch: {e}"
+                        );
                         tracing::error!("[chat {session_id}] {msg}");
                         let _ = patch_failed(client, session_id, claude_sid.clone(), &msg).await;
                         return;
@@ -544,7 +550,7 @@ async fn consume(
     if !pending.is_empty() {
         if let Err(e) = agent_sessions::post_events(client, session_id, &pending).await {
             let msg = format!(
-                "[TRANSCRIPT_INCOMPLETE] the last {} line(s) of this turn were never delivered: {e}",
+                "[TRANSCRIPT_INCOMPLETE] this turn's transcript was not delivered in full ({} line(s) pending at the end): {e}",
                 pending.len()
             );
             tracing::error!("[chat {session_id}] {msg}");

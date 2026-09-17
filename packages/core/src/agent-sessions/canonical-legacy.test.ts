@@ -133,6 +133,28 @@ describe('toCanonicalMessages — a whole transcript', () => {
     expect(out.why).toContain('moderator');
   });
 
+  // cm:guard an entry with NEITHER legacy field is not canonical by elimination.
+  // Both of these used to pass through untouched, and `messageRoleToTurnRole`
+  // then answered null for them: a person's line left the conversation and the
+  // PATCH still answered 200.
+  it.each([
+    ['an entry with no `type` at all', { content: 'keep this' }],
+    ['an entry whose `type` names no canonical kind', { type: 'moderator', content: 'keep this' }],
+    ['an entry whose `type` is not a string', { type: 7, content: 'keep this' }],
+  ])('refuses %s', (_name, entry) => {
+    const out = toCanonicalEntry(entry);
+    expect(out.ok).toBe(false);
+    if (out.ok) throw new Error('expected a refusal');
+    expect(out.why).toContain('names no canonical kind');
+    // The refusal says what a valid entry looks like rather than only that this one is not.
+    expect(out.why).toContain('tool_result');
+  });
+
+  it('refuses a legacy entry whose blocks convert but whose kind is nameless', () => {
+    const out = toCanonicalEntry({ contentBlocks: [{ type: 'text', text: 'hi' }] });
+    expect(out.ok).toBe(false);
+  });
+
   it('refuses a `messages` that is not an array at all', () => {
     const out = toCanonicalMessages({ role: 'user' });
     expect(out.ok).toBe(false);

@@ -60,6 +60,7 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
+import { recordReportedTranscript } from './session-events.js';
 import { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } from './session-failure.js';
 import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
@@ -776,6 +777,10 @@ agentSessionRoutes.patch(
         .where(eq(agentSessions.id, id))
         .returning();
       if (!row) throw notFound('agent session not found');
+      // cm:edge lockstep -> packages/core/src/agent-sessions/session-events.ts — the carrier's record of a transcript written past it
+      if (transcript.snapshot && patchedMessages) {
+        await recordReportedTranscript(tx, id, patchedMessages, patchNow);
+      }
       if (!messagesPatched) return { updated: row, sync: null };
       const prevMessages = Array.isArray(existing.messages) ? existing.messages : [];
       const nextMessages = patchedMessages ?? [];

@@ -178,15 +178,30 @@ const AGENT_SESSION_EVENTS_SOURCE = sql`
   JOIN agent_sessions s ON s.id = e.agent_session_id
 `;
 
+// cm:guard the batch is bounded in SESSIONS, and that is the whole of what makes
+// the rule above true. A `LIMIT` over ROWS cuts the batch in the middle of a
+// carrier: one committed statement takes a session's oldest rows and leaves its
+// newest, which is exactly the truncation `SESSION_EVENTS_RELEASABLE` exists to
+// prevent — and a sweep stopped by its batch cap, a crash or a deploy leaves it
+// standing. Every row of a releasable session is over-age by that predicate's
+// own `NOT EXISTS`, so no per-row age test is needed once the session qualifies.
+const RELEASABLE_SESSIONS = (days: number, limit: number): SQL => sql`(
+  SELECT s.id FROM agent_sessions s
+  WHERE s.status IN ${SESSION_TERMINAL}
+    AND s.metadata ->> ${TRANSCRIPT_FINALIZED_KEY} IS NOT NULL
+    AND EXISTS (SELECT 1 FROM agent_session_events e WHERE e.agent_session_id = s.id)
+    AND NOT EXISTS (
+      SELECT 1 FROM agent_session_events e2
+      WHERE e2.agent_session_id = s.id
+        AND e2.ts >= now() - make_interval(days => ${days})
+    )
+  LIMIT ${limit}
+)`;
+
 const agentSessionEvents: TableStatements = {
   deleteBatch: (days, limit) => sql`
     DELETE FROM agent_session_events
-    WHERE id IN (
-      SELECT e.id ${AGENT_SESSION_EVENTS_SOURCE}
-      WHERE ${olderThan(sql`e.ts`, days)}
-        AND ${SESSION_EVENTS_RELEASABLE(days)}
-      LIMIT ${limit}
-    )
+    WHERE agent_session_id IN ${RELEASABLE_SESSIONS(days, limit)}
     RETURNING id
   `,
   heldBack: (days) => sql`

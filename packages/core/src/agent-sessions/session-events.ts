@@ -62,7 +62,7 @@ export async function seedTurn(
   args: { priorMessages: unknown[]; entry: Record<string, unknown>; at: Date },
 ): Promise<SeedResult> {
   let seq = await nextSeq(tx, agentSessionId);
-  const carryIn: Record<string, unknown>[] = [];
+  const rows: Array<{ kind: 'seed' | 'snapshot'; data: Record<string, unknown> }> = [];
   if (seq === 1 && args.priorMessages.length > 0) {
     const converted = toCanonicalMessages(args.priorMessages);
     if (!converted.ok) {
@@ -70,19 +70,54 @@ export async function seedTurn(
         `agent_session_events: cannot carry this session's standing transcript into its carrier — messages[${converted.index}] ${converted.why}`,
       );
     }
-    carryIn.push(...converted.messages);
+    // cm:why ONE `snapshot` and not one `seed` per entry: the standing transcript
+    // is what the session's record WAS at this seq, so folding it as a
+    // replacement reproduces it exactly, while merging it entry by entry runs it
+    // through `mergeMessages` — which folds consecutive assistant entries
+    // together — and hands back a history the session never had.
+    rows.push({ kind: 'snapshot', data: { entries: converted.messages } });
   }
+  rows.push({ kind: 'seed', data: { entry: args.entry } });
 
-  const values = [...carryIn, args.entry].map((entry, i) => ({
+  const values = rows.map((row, i) => ({
     agentSessionId,
-    kind: 'seed' as const,
-    data: { entry },
+    kind: row.kind,
+    data: row.data,
     seq: seq + i,
     ts: args.at,
   }));
   await tx.insert(agentSessionEvents).values(values);
   seq += values.length - 1;
   return { lastSeq: seq };
+}
+
+/**
+ * Record a transcript that was written WHOLESALE, so the carrier keeps being a
+ * complete account of the session.
+ *
+ * cm:guard this is the other half of the amnesty, and without it the amnesty
+ * ends in the loss it exists to prevent. Core dispatches a turn to a daemon on
+ * the previous release: the carrier gets the seeded prompt, the daemon's answer
+ * arrives on `PATCH messages` and never reaches the carrier. Upgrade that box
+ * and the next turn's derive folds a carrier holding prompts and this turn's
+ * lines, then writes it over a transcript that had the earlier answers in it.
+ * The carrier is non-empty, so `seedTurn`'s carry-in does not fire either —
+ * non-emptiness is not completeness, and this row is what makes it so.
+ */
+export async function recordReportedTranscript(
+  tx: DbOrTx,
+  agentSessionId: string,
+  entries: Record<string, unknown>[],
+  at: Date,
+): Promise<void> {
+  const seq = await nextSeq(tx, agentSessionId);
+  await tx.insert(agentSessionEvents).values({
+    agentSessionId,
+    kind: 'snapshot' as const,
+    data: { entries },
+    seq,
+    ts: at,
+  });
 }
 
 /**

@@ -188,8 +188,23 @@ const MAX_REHYDRATION_CHARS = 12_000;
  * migrates to a different runner (the on-disk `--resume` state is unreachable).
  * Returns '' when there is no prior history (a genuine cold start).
  */
+// cm:guard the label is read off the canonical `type` and there is no `role`
+// branch left to fall back to. Until ISS-1030 this read `role` alone; every
+// entry at rest is now canonical, so a `role` reading here would have labelled
+// the WHOLE prior conversation `?:` — the new box would be handed the words with
+// nothing saying which were the person's and which were its own answers, and it
+// would still have returned a prompt. That is a silent substitution, not a
+// missing feature, which is why it is a guard and not a comment.
+const TYPE_LABEL: Readonly<Record<string, string>> = {
+  user: 'User',
+  assistant: 'Assistant',
+  system: 'System',
+  tool_use: 'Tool',
+  tool_result: 'Tool',
+};
+
 export function buildRehydrationBlock(
-  prev: ReadonlyArray<{ role?: string; content?: unknown }>,
+  prev: ReadonlyArray<{ type?: string; content?: unknown }>,
 ): string {
   if (!prev.length) return '';
   const kept: string[] = [];
@@ -197,8 +212,7 @@ export function buildRehydrationBlock(
   for (let i = prev.length - 1; i >= 0; i--) {
     const m = prev[i];
     if (!m) continue;
-    const role =
-      m.role === 'assistant' ? 'Assistant' : m.role === 'user' ? 'User' : (m.role ?? '?');
+    const role = (m.type && TYPE_LABEL[m.type]) ?? m.type ?? '?';
     const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
     const line = `${role}: ${content}`;
     // Always keep at least the newest turn even if it alone exceeds the budget.

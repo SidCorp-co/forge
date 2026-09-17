@@ -26,6 +26,7 @@ let projectId: string;
 let ownerId: string;
 let backfill: typeof import('../../src/db/backfill-canonical-transcripts.js').backfillCanonicalTranscripts;
 let revert: typeof import('../../src/db/backfill-canonical-transcripts.js').revertCanonicalTranscripts;
+let once: typeof import('../../src/db/backfill-canonical-transcripts.js').runCanonicalBackfillOnce;
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -33,9 +34,11 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  ({ backfillCanonicalTranscripts: backfill, revertCanonicalTranscripts: revert } = await import(
-    '../../src/db/backfill-canonical-transcripts.js'
-  ));
+  ({
+    backfillCanonicalTranscripts: backfill,
+    revertCanonicalTranscripts: revert,
+    runCanonicalBackfillOnce: once,
+  } = await import('../../src/db/backfill-canonical-transcripts.js'));
 }, 60_000);
 
 afterAll(async () => {
@@ -195,5 +198,43 @@ describe('the canonical-transcript backfill', () => {
     }
     expect(await messagesOf(id)).toEqual(before);
     expect(await turnEntryOf(turnId)).toEqual({ role: 'user', content: 'fix the bug' });
+  });
+});
+
+describe('the deploy refuses until the backfill has actually finished', () => {
+  // cm:guard the gate is the MARKER and never the migration ledger. `migrate()`
+  // records a migration when its DDL commits, so a boot that applied the DDL and
+  // then threw on a row it could not represent would answer "already done" for
+  // ever — the refusal that stops the deploy would last exactly one attempt, and
+  // every boot after it would serve canonical-only readers a table still holding
+  // legacy rows.
+  it('refuses again on the next boot, and marks only once the conversion returns', async () => {
+    const good = await sessionWithMessages([{ role: 'user', content: 'hi' }]);
+    const bad = await sessionWithMessages([{ role: 'moderator', content: 'nope' }]);
+    const raw = await rawSql();
+    try {
+      await expect(once(raw)).rejects.toThrow(/moderator/);
+      const afterFailure = await harness.db.execute<{ n: number }>(
+        sql`SELECT count(*)::int AS n FROM backfill_markers`,
+      );
+      expect(Number((afterFailure[0] as { n: number }).n)).toBe(0);
+
+      // The same boot again, as a restarting container is: still refused.
+      await expect(once(raw)).rejects.toThrow(/moderator/);
+
+      // The row is repaired, and the next attempt converts what is left.
+      await harness.db.execute(
+        sql`UPDATE agent_sessions SET messages = ${JSON.stringify([{ role: 'system', content: 'nope' }])}::jsonb WHERE id = ${bad}`,
+      );
+      const ran = await once(raw);
+      expect(ran.ran).toBe(true);
+      expect((await messagesOf(good))[0]).toMatchObject({ type: 'user' });
+      expect((await messagesOf(bad))[0]).toMatchObject({ type: 'system' });
+
+      // And a boot after that does not pay for the scan again.
+      expect(await once(raw)).toEqual({ ran: false, reason: 'already-done' });
+    } finally {
+      await raw.end();
+    }
   });
 });

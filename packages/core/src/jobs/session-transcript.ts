@@ -27,7 +27,7 @@
  * incremental flush resumes the SAME fold `buildSessionFromEvents` runs, so
  * there is no second reducer to drift.
  */
-import { and, asc, eq, getTableColumns, gt, sql } from 'drizzle-orm';
+import { and, eq, getTableColumns, sql } from 'drizzle-orm';
 import {
   broadcastSession,
   broadcastTurnAppended,
@@ -35,17 +35,23 @@ import {
 } from '../agent-sessions/broadcast.js';
 import { syncTurnsWithMessages } from '../agent-sessions/turns-helpers.js';
 import { db } from '../db/client.js';
-import { agentSessions, jobEvents } from '../db/schema.js';
-import { agentSessionEvents } from '../db/schema-agent-session-events.js';
+import { agentSessions } from '../db/schema.js';
 import { finalizedMerge } from '../db/transcript-marker.js';
 import {
   type AgentMessage,
-  applyEventsToState,
   createDeriveState,
   type DeriveState,
-  mergeMessages,
 } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
+import {
+  applyCarrierRows,
+  carrierLog,
+  readCarrierRows,
+  type TranscriptCarrier,
+} from './session-transcript-carrier.js';
+
+export type { CarrierRow, TranscriptCarrier } from './session-transcript-carrier.js';
+export { contiguousPrefix } from './session-transcript-carrier.js';
 
 const INCREMENTAL_FLUSH_INTERVAL_MS = 30_000;
 const INCREMENTAL_FLUSH_STDOUT_THRESHOLD = 8;
@@ -131,132 +137,6 @@ const storedFingerprint = sql<string>`md5(${agentSessions.messages}::text) || ':
 // cm:guard the cancel is re-checked in the WRITE and not only in the read above, because a cancel moves neither column the fingerprint covers: it lands on `status` and `failure_reason`, so a cancel committing between the two would leave the swap intact and the late stream would be written, broadcast and dual-written to the turn table by the very derive the read-time guard says drops it.
 // cm:guard `is not distinct from`, never `=`: `failure_reason` is nullable, and a plain equality makes the whole conjunction NULL for a failed session carrying no reason — `NOT NULL` is NULL, the row matches nothing, and every derive on such a session silently writes nothing at all.
 const notUserCancelled = sql`not (${agentSessions.status} = 'failed' and ${agentSessions.failureReason} is not distinct from 'user_cancelled')`;
-
-/**
- * Where one session's raw events live. A `job` carrier reads `job_events` by
- * `job_id`; a `chat` carrier reads `agent_session_events` by `agent_session_id`.
- * Nothing else about a derive differs, which is the point: one reducer, one
- * compare-and-swap writer, one broadcast, two tables.
- */
-export type TranscriptCarrier = { kind: 'job'; jobId: string } | { kind: 'chat' };
-
-/** The log fields that name which carrier a line is about. */
-function carrierLog(carrier: TranscriptCarrier, agentSessionId: string) {
-  return carrier.kind === 'job'
-    ? { jobId: carrier.jobId, agentSessionId }
-    : { carrier: 'chat' as const, agentSessionId };
-}
-
-/** One carrier row, narrowed to what the fold and the checkpoint read. */
-export interface CarrierRow {
-  kind: string;
-  data: unknown;
-  ts: Date;
-  seq: number;
-}
-
-/**
- * The unbroken run of `rows` starting at `afterSeq + 1`, stopping at the first gap.
- *
- * cm:guard this is a correctness requirement and not tidiness.
- * `applyEventsToState` states its own contract — the events it is handed MUST
- * start where the last call left off — because that is what makes an incremental
- * flush the SAME computation as a full re-derive rather than an approximation of
- * one. It applies to the CHAT carrier, and only there: `jobs/events-routes.ts`
- * assigns `seq` server-side under an advisory lock, so a job's insert order IS
- * seq order. `agent_session_events` moves that assignment to the writer, so a
- * batch that lands after a later one is now possible, and the checkpoint may
- * advance only over the unbroken run. Rows past a gap are read again on the next pass, once
- * the hole is filled; a hole that never fills holds the derive at the gap instead
- * of skipping it for ever.
- */
-export function contiguousPrefix(rows: readonly CarrierRow[], afterSeq: number): CarrierRow[] {
-  let expected = afterSeq + 1;
-  const prefix: CarrierRow[] = [];
-  for (const row of rows) {
-    if (row.seq !== expected) break;
-    prefix.push(row);
-    expected += 1;
-  }
-  return prefix;
-}
-
-/**
- * The rows of this carrier after `afterSeq`, in seq order — truncated at the
- * first gap on the CHAT carrier only.
- *
- * cm:guard the truncation follows who assigns `seq`, and applying it to both
- * carriers is a regression rather than symmetry. `jobs/events-routes.ts` assigns
- * `seq` server-side under an advisory lock, so a job's rows cannot arrive out of
- * order — but they CAN be swept: retention deletes old `job_events`, and a
- * rebuild from `afterSeq = 0` then starts at a seq that is not 1. Truncating
- * there would fold nothing and hold the transcript at a hole that can never
- * fill. The runner assigns `seq` on the chat carrier, where a late batch is
- * exactly the hole `contiguousPrefix` exists to wait for.
- */
-async function readCarrierRows(
-  carrier: TranscriptCarrier,
-  agentSessionId: string,
-  afterSeq: number,
-): Promise<CarrierRow[]> {
-  const rows: CarrierRow[] =
-    carrier.kind === 'job'
-      ? await db
-          .select({
-            kind: jobEvents.kind,
-            data: jobEvents.data,
-            ts: jobEvents.ts,
-            seq: jobEvents.seq,
-          })
-          .from(jobEvents)
-          .where(
-            afterSeq > 0
-              ? and(eq(jobEvents.jobId, carrier.jobId), gt(jobEvents.seq, afterSeq))
-              : eq(jobEvents.jobId, carrier.jobId),
-          )
-          .orderBy(asc(jobEvents.seq))
-      : await db
-          .select({
-            kind: agentSessionEvents.kind,
-            data: agentSessionEvents.data,
-            ts: agentSessionEvents.ts,
-            seq: agentSessionEvents.seq,
-          })
-          .from(agentSessionEvents)
-          .where(
-            afterSeq > 0
-              ? and(
-                  eq(agentSessionEvents.agentSessionId, agentSessionId),
-                  gt(agentSessionEvents.seq, afterSeq),
-                )
-              : eq(agentSessionEvents.agentSessionId, agentSessionId),
-          )
-          .orderBy(asc(agentSessionEvents.seq));
-
-  return carrier.kind === 'chat' ? contiguousPrefix(rows, afterSeq) : rows;
-}
-
-/**
- * Fold one contiguous run of carrier rows into `state`.
- *
- * Every row whose payload is a raw stream-json line goes through
- * `applyEventsToState`, which is the one reducer for that wire. A `seed` row is
- * the one thing that wire cannot carry: `parseStreamMessages` answers
- * `{messages:[]}` for a `user` line holding no `tool_result`, so the prompt a
- * person typed is not derivable from the stream at all, and core writes it as a
- * canonical entry of its own. It is appended through `mergeMessages`, the same
- * merge every other entry goes through, rather than pushed by a rule of its own.
- */
-function applyCarrierRows(state: DeriveState, rows: CarrierRow[]): void {
-  for (const row of rows) {
-    if (row.kind !== 'seed') {
-      applyEventsToState(state, [row]);
-      continue;
-    }
-    const entry = (row.data as { entry?: unknown } | null | undefined)?.entry;
-    if (entry && typeof entry === 'object') mergeMessages(state.messages, [entry as AgentMessage]);
-  }
-}
 
 interface Resumed {
   lastSeq: number;

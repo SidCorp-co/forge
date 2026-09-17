@@ -7,6 +7,7 @@ import * as activitySchema from './schema-activity.js';
 import * as adminThresholdsSchema from './schema-admin-thresholds.js';
 import * as agentSelvesSchema from './schema-agent-selves.js';
 import * as agentSessionEventsSchema from './schema-agent-session-events.js';
+import * as backfillMarkersSchema from './schema-backfill-markers.js';
 import * as conversationsSchema from './schema-conversations.js';
 import * as journalSchema from './schema-journal.js';
 import * as memoryChunksSchema from './schema-memory-chunks.js';
@@ -29,6 +30,7 @@ const schema = {
   ...questionsSchema,
   ...rocketchatSchema,
   ...agentSessionEventsSchema,
+  ...backfillMarkersSchema,
   ...sessionInboxSchema,
   ...memoryChunksSchema,
   ...memoryRevisionsSchema,

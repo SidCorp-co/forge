@@ -446,7 +446,8 @@ describe('a turn that ends badly says so on the transcript', () => {
     const id = idOf(s);
     const res = await patchSession(id, {
       status: 'failed',
-      turnError: '[TRANSCRIPT_REFUSED] core refused this turn’s transcript and stored none of it',
+      turnError:
+        '[TRANSCRIPT_REFUSED] core refused a batch of this turn’s transcript and stored none of that batch: post_events: 0 of 3 line(s) were stored before this failed',
     });
     expect(res.status).toBe(200);
     const messages = await transcriptOf(id);

@@ -31,6 +31,24 @@ export type CanonicalConversion =
 // `The way back` on this issue is built on.
 export const LEGACY_ENTRY_KEY = '__legacyEntry';
 
+/**
+ * The five kinds a canonical entry may be, and the whole of what the readers
+ * left in the product can draw.
+ *
+ * cm:edge lockstep -> packages/core/src/agent-sessions/turns-helpers.ts — `messageRoleToTurnRole`
+ * cm:edge lockstep -> packages/web-v2/src/features/session/types.ts — `entryRole`
+ * cm:edge lockstep -> packages/core/src/lib/agent-stream-parser.ts — `AgentMessage['type']`, the producer
+ */
+export const CANONICAL_ENTRY_TYPES = [
+  'user',
+  'assistant',
+  'system',
+  'tool_use',
+  'tool_result',
+] as const;
+
+const CANONICAL_TYPES: ReadonlySet<string> = new Set(CANONICAL_ENTRY_TYPES);
+
 const ROLE_TO_TYPE: Readonly<Record<string, string>> = {
   user: 'user',
   assistant: 'assistant',
@@ -83,7 +101,22 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
   const entry = raw as Record<string, unknown>;
   const hasRole = entry.role !== undefined;
   const hasLegacyBlocks = Array.isArray(entry.contentBlocks);
+  // cm:guard an entry carrying neither legacy field is NOT canonical by
+  // elimination — it is canonical when its `type` names one of the five kinds,
+  // and `{ content: 'hello' }` or `{ type: 'moderator' }` names none of them.
+  // Passing those through as "already canonical" is the silent substitution this
+  // file exists to refuse: `messageRoleToTurnRole` answers null for them, the
+  // turn sync drops them, and a person's line leaves the conversation with a 200
+  // on the wire. The refusal is the deliverable — the caller is told which entry
+  // and what a valid one looks like.
   if (!hasRole && !hasLegacyBlocks) {
+    const type = entry.type;
+    if (typeof type !== 'string' || !CANONICAL_TYPES.has(type)) {
+      return {
+        ok: false,
+        why: `entry has \`type: ${JSON.stringify(type)}\`, which names no canonical kind (${CANONICAL_ENTRY_TYPES.join(', ')})`,
+      };
+    }
     return { ok: true, entry, converted: false };
   }
 
@@ -127,6 +160,19 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
     // ordered blocks from the annotation would put the derive's interleaving back
     // to the flattened one.
     if (out.blocks === undefined) out.blocks = blocks;
+  }
+
+  // cm:guard the same check on the way OUT: a legacy entry carrying
+  // `contentBlocks` and no `role` reaches here with whatever `type` it already
+  // had, which may be none. A rewrite that produces an entry the readers cannot
+  // draw is the thing this conversion exists to prevent, so it is refused with
+  // the same sentence rather than stored because it passed through a converter.
+  const producedType = out.type;
+  if (typeof producedType !== 'string' || !CANONICAL_TYPES.has(producedType)) {
+    return {
+      ok: false,
+      why: `entry converts to \`type: ${JSON.stringify(producedType)}\`, which names no canonical kind (${CANONICAL_ENTRY_TYPES.join(', ')})`,
+    };
   }
 
   out[LEGACY_ENTRY_KEY] = entry;

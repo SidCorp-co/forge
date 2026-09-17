@@ -45,6 +45,15 @@ export const agentSessionEventKinds = [
   // the reader appends its `data.entry` verbatim, which is what makes a full
   // re-derive of a chat session equal to the incremental one.
   'seed',
+  // cm:why a transcript can also be replaced WHOLESALE by something that is not
+  // the wire: a daemon on the previous release reports its whole `messages`
+  // array on the terminal PATCH, and a person editing a turn in the browser
+  // rewrites the array too. Neither goes through the carrier, so without a row
+  // saying so the carrier stops being a complete account of the session and the
+  // next rebuild silently replaces the conversation with the turns it does hold.
+  // The reader RESETS its accumulated transcript to `data.entries` when it folds
+  // one of these, which is what that wholesale replacement actually was.
+  'snapshot',
 ] as const;
 export type AgentSessionEventKind = (typeof agentSessionEventKinds)[number];
 
