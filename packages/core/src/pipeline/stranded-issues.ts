@@ -12,7 +12,7 @@
 // decision, and a close is a claim about shipped work that a pass which
 // cannot read the repository must not make.
 
-import { and, asc, eq, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -20,7 +20,7 @@ import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
 import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
 import { isTerminalPlacement } from './status-assertions.js';
-import { advanceSweep, type SweepPosition, sweepPosition } from './sweep-cursor.js';
+import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 
 /**
  * How many strands one pass surfaces, matching the run axis and `PAUSED_RUN_SCAN_LIMIT`.
@@ -166,7 +166,10 @@ export async function detectStrandedIssues(
     // `/pipeline/sweep`, and a shared position would let that call drag the fleet-wide sweep's own
     // traversal past rows it never read.
     const cursorKey = `stranded:${scope.projectId ?? '*'}`;
-    const from = sweepPosition(cursorKey);
+    // The staleness cutoff IS this traversal's far edge: it is the bound that walks forward with
+    // the clock and lets newly-aged strands in, so freezing it for the traversal's length is what
+    // makes the set finite and the wrap reachable.
+    const window = sweepWindow(cursorKey, cutoff.toISOString());
 
     const rows = await db
       .select({
@@ -189,14 +192,14 @@ export async function detectStrandedIssues(
       .where(
         and(
           eq(issues.status, 'waiting'),
-          lt(issues.updatedAt, cutoff),
+          sql`"issues"."updated_at" < ${window.until}::timestamptz`,
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
           // cm:guard write the columns LITERALLY and qualified — drizzle renders a column
           // reference interpolated into a raw template UNQUALIFIED, and a bare `id` here resolves
           // against whichever joined table claims it first.
-          ...(from
+          ...(window.after
             ? [
-                sql`("issues"."updated_at", "issues"."id") > (${from.ts}::timestamptz, ${from.id}::uuid)`,
+                sql`("issues"."updated_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
               ]
             : []),
         ),
@@ -207,7 +210,7 @@ export async function detectStrandedIssues(
     const filled = rows.length === STRANDED_SCAN_LIMIT;
     const lastRow = rows.at(-1);
     const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
-    advanceSweep(cursorKey, last, filled);
+    advanceSweep(cursorKey, window, last, filled);
 
     // cm:guard ONE round trip for every project this page touches, before the loop. The memo is
     // per-PASS and not a process-level cache on purpose: an admin added between two ticks is
@@ -289,7 +292,7 @@ export async function detectOwedCloses(
     const terminal = issueStatuses.filter(isTerminalPlacement);
 
     const cursorKey = `owed-close:${scope.projectId ?? '*'}`;
-    const from = sweepPosition(cursorKey);
+    const window = sweepWindow(cursorKey, cutoff.toISOString());
 
     const rows = await db
       .select({
@@ -308,11 +311,11 @@ export async function detectOwedCloses(
       .where(
         and(
           isNotNull(issues.mergedAt),
-          lt(issues.mergedAt, cutoff),
+          sql`"issues"."merged_at" < ${window.until}::timestamptz`,
           notInArray(issues.status, terminal),
-          ...(from
+          ...(window.after
             ? [
-                sql`("issues"."merged_at", "issues"."id") > (${from.ts}::timestamptz, ${from.id}::uuid)`,
+                sql`("issues"."merged_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
               ]
             : []),
           // cm:guard write `issues.id` LITERALLY in both subqueries — drizzle renders a column reference interpolated into a raw `sql` template UNQUALIFIED, so `${'$'}{issues.id}` becomes a bare `id`, which inside `from jobs j` resolves to `j.id` and makes the clause `j.issue_id = j.id`: never true, `not exists` always true, and the exclusion silently disappears. Caught by owed-close-e2e.test.ts, which is the only place it can be caught.
@@ -327,7 +330,7 @@ export async function detectOwedCloses(
     const filled = rows.length === STRANDED_SCAN_LIMIT;
     const lastRow = rows.at(-1);
     const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
-    advanceSweep(cursorKey, last, filled);
+    advanceSweep(cursorKey, window, last, filled);
 
     const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
 

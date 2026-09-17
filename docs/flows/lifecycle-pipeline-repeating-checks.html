@@ -90,7 +90,7 @@ flowchart TD
   R --> RD["everything is reached,<br/>just later than it would have been"]
   A --> AB{"take the oldest handful<br/>every time anyway?"}
   AB -->|"the obvious thing"| BAD["<b>the same handful, forever.</b><br/>Item 201 is never mentioned<br/>to anyone, at all"]
-  AB -->|"what it does now"| GOOD["<b>remember where it stopped</b> and<br/>carry on from there next time,<br/>starting over at the end —<br/>and after ten passes regardless"]
+  AB -->|"what it does now"| GOOD["<b>remember where it stopped</b> and<br/>carry on from there next time,<br/>over a list whose far end was<br/>fixed when the round began"]
 </pre></div>
   <p class="cap">This is the whole reason there are two mechanisms instead of one. A capped repair is
   a <b>delay</b>: it finishes each item it touches, so the list gets shorter and the next pass picks
@@ -103,12 +103,17 @@ flowchart TD
 
   <p class="cap">Starting over "when it reaches the end" is not on its own enough, and this was the
   finding a second reader raised against the first version of it. If new items keep arriving ahead
-  of the remembered position faster than a pass can get through them, there is no end to reach: every
-  pass is full, the position only ever moves forward, and everything behind it is never mentioned
-  again — the same blind spot one level up. So a traversal also starts over after <b>ten</b> passes
-  whatever the last page looked like. The price, said out loud: a list longer than ten passes' worth
-  is re-read from the top before its tail is reached, which starves the newest rather than the
-  oldest, and the oldest is the work that has been waiting longest.</p>
+  of the remembered position faster than a pass can get through them, there is no end to reach:
+  every pass is full, the position only ever moves forward, and everything behind it is never
+  mentioned again — the same blind spot one level up. Capping the number of passes instead is
+  <b>not</b> the answer, and the same reader refuted that too: cap it at ten and a settled list of
+  2,001 items starts over at item 2,000, so item 2,001 is never mentioned at all. That is the
+  original defect with a different boundary on it. What the round does instead is <b>fix its far
+  end when it begins</b>. Each of these checks already ignores anything newer than a cutoff — parked
+  less than so many days, held for less than so many hours — and holding that one cutoff still for
+  the whole round makes the list finite: items can drop out of it, nothing can join it, so the end
+  is always reached and the round always starts over. Anything that became eligible meanwhile
+  belongs to the next round, which begins moments later.</p>
 
   <p class="stage"><b>2</b>A pass that ran out of room says so, with the number</p>
   <div class="board"><pre class="mermaid">

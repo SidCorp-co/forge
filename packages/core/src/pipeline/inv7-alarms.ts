@@ -23,7 +23,7 @@ import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 import { pauseResumesItself } from './run-pause.js';
-import { advanceSweep, type SweepPosition, sweepPosition } from './sweep-cursor.js';
+import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 import {
   emitPipelineWedge,
   pausedRunWedgeEntityId,
@@ -66,7 +66,9 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
   // alarmed hold is still a candidate next tick. A bare `LIMIT` would therefore re-read the same
   // oldest page forever and never reach hold 201 — the cursor in `sweep-cursor.ts` is the half of
   // the bound that makes the traversal fair, and neither half works without the other.
-  const from = sweepPosition('aged-holds');
+  // The hold-age cutoff is this traversal's frozen far edge: see `sweep-cursor.ts` for why a
+  // wrap-on-a-short-page rule alone cannot reach the end of a set that is still growing.
+  const window = sweepWindow('aged-holds', cutoffIso);
   const rows = await db.execute<AgedHoldRow>(sql`
     SELECT j.id AS job_id,
            j.project_id,
@@ -80,10 +82,10 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
     LEFT JOIN issues i ON i.id = j.issue_id
     JOIN projects p ON p.id = j.project_id
     WHERE j.status = 'held'
-      AND (j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt') < ${cutoffIso}
+      AND (j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt') < ${window.until}
       ${
-        from
-          ? sql`AND ((j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt'), j.id::text) > (${from.ts}, ${from.id})`
+        window.after
+          ? sql`AND ((j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt'), j.id::text) > (${window.after.ts}, ${window.after.id})`
           : sql``
       }
     ORDER BY (j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt') ASC, j.id::text ASC
@@ -98,7 +100,7 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
   // traversal would skip rows.
   const lastHeld: SweepPosition | null =
     lastHold?.held_at != null ? { ts: lastHold.held_at, id: lastHold.job_id } : null;
-  advanceSweep('aged-holds', lastHeld, filled);
+  advanceSweep('aged-holds', window, lastHeld, filled);
 
   for (const row of rows) {
     const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A step';
