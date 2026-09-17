@@ -5344,6 +5344,17 @@
 
 ### Changed
 
+- **The issues list and the issue search answer faster, and searching for an identifier is no longer
+  the slow way to find something.** Both lists used to send back the whole of every issue on the
+  page — the description, the plan, the acceptance criteria, the session notes, the release note —
+  for up to two hundred issues at a time, so that they could work out which field your search term
+  had matched. Nothing on either screen showed any of it. They now send back what the list draws,
+  and the field names come back with it, worked out by the database while it is already reading the
+  row. Searching has changed underneath too: a search for `cascade` or `ISS-1016` used to make the
+  database read every issue in the project from end to end, and now it looks the term up. On the
+  issues we measured, a page of results comes back in about a third of the time it took, and a
+  search that looks like a code identifier in about a fortieth.
+
 - **Cost figures on sessions, issues and pipeline runs load faster.** Each read scanned the whole
   usage table; they now go straight to the rows for the session, and the run dashboards no longer
   re-read costs once per step.
