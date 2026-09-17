@@ -22,7 +22,7 @@ const sql = postgres(url, { max: 1 });
 const db = drizzle(sql);
 
 /** ISS-1030 — the migration whose landing the canonical-transcript backfill rides. */
-const CANONICAL_BACKFILL_WHEN = 1795996800000;
+const CANONICAL_BACKFILL_WHEN = 1796083200000;
 
 /** Whether this boot is the one that applies a given journal entry. */
 // cm:why read BEFORE `migrate()` rather than after: the migrator records an entry
