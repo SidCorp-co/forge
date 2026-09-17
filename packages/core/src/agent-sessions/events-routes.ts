@@ -14,7 +14,7 @@
  */
 
 import { zValidator } from '@hono/zod-validator';
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -146,42 +146,43 @@ agentSessionEventsRoutes.post(
       });
     }
 
-    // cm:guard a `seq` this batch claims that is already held by a row core
-    // wrote — a `seed` or a `snapshot` — is REFUSED by name, because
-    // `ON CONFLICT DO NOTHING` cannot tell that apart from the retry it exists
-    // for. Core takes the next free `seq` when it records a wholesale write
-    // (an edit, a regeneration, an old daemon's array) and the runner numbers
-    // this turn's lines from the base it was dispatched with, so the two can
-    // meet — and a line swallowed as a "duplicate" is a line of the person's
-    // conversation gone with a 200 on the wire. The turn stops here instead,
-    // saying where.
-    const claimed = await db
-      .select({ seq: agentSessionEvents.seq, kind: agentSessionEvents.kind })
-      .from(agentSessionEvents)
-      .where(
-        and(
-          eq(agentSessionEvents.agentSessionId, sessionId),
-          inArray(
-            agentSessionEvents.seq,
-            events.map((e) => e.seq),
+    // cm:guard the claim check and the insert are ONE transaction under the same
+    // advisory lock `session-events.ts:nextSeq` takes, and nothing less closes
+    // this. A `seq` this batch claims may already be held by a row core wrote —
+    // a `seed` or a `snapshot` — and `ON CONFLICT DO NOTHING` cannot tell that
+    // apart from the retry it exists for, so the line would be swallowed as a
+    // duplicate and answered 200 with a part of the person's conversation gone.
+    // Checking outside the transaction only narrows the window: core takes the
+    // next free `seq` whenever it records a wholesale write (an edit, a
+    // regeneration, an old daemon's array), and one committing between the check
+    // and the insert lands in exactly the same silence. Holding the lock makes
+    // the two writers take their turns.
+    // cm:edge lockstep -> packages/core/src/agent-sessions/session-events.ts — the other holder of this lock
+    const inserted = await db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${sessionId}))`);
+      const claimed = await tx
+        .select({ seq: agentSessionEvents.seq, kind: agentSessionEvents.kind })
+        .from(agentSessionEvents)
+        .where(
+          and(
+            eq(agentSessionEvents.agentSessionId, sessionId),
+            inArray(
+              agentSessionEvents.seq,
+              events.map((e) => e.seq),
+            ),
           ),
-        ),
-      );
-    const taken = claimed.find((row) => row.kind !== 'stdout');
-    if (taken) {
-      throw conflict(
-        `seq ${taken.seq} is already held by a \`${taken.kind}\` row core wrote; this turn's lines were numbered from a base that is no longer free`,
-        'SEQ_TAKEN_BY_CORE',
-      );
-    }
-
-    // cm:guard ONE transaction and `ON CONFLICT DO NOTHING` on `(agent_session_id,
-    // seq)`. Together they are the whole delivery contract: every line of a batch
-    // is stored or none is, and a batch posted twice stores each line once. There
-    // is no advisory lock here and the jobs route needs one only because it
-    // computes `MAX(seq)` itself.
-    const inserted = await db.transaction(async (tx) =>
-      tx
+        );
+      const taken = claimed.find((row) => row.kind !== 'stdout');
+      if (taken) {
+        throw conflict(
+          `seq ${taken.seq} is already held by a \`${taken.kind}\` row core wrote; this turn's lines were numbered from a base that is no longer free`,
+          'SEQ_TAKEN_BY_CORE',
+        );
+      }
+      // cm:guard `ON CONFLICT DO NOTHING` on `(agent_session_id, seq)` remains the
+      // delivery contract for the runner's OWN retries: every line of a batch is
+      // stored or none is, and a batch posted twice stores each line once.
+      return tx
         .insert(agentSessionEvents)
         .values(
           events.map((e) => ({
@@ -195,8 +196,8 @@ agentSessionEventsRoutes.post(
         .onConflictDoNothing({
           target: [agentSessionEvents.agentSessionId, agentSessionEvents.seq],
         })
-        .returning({ seq: agentSessionEvents.seq }),
-    );
+        .returning({ seq: agentSessionEvents.seq });
+    });
 
     // cm:why voided exactly as the jobs route voids its own: the derive is
     // throttled and best-effort, and a throw here would fail line INGEST to

@@ -391,6 +391,41 @@ describe('the delivery contract', () => {
     expect(kinds.map((k) => k.kind)).toEqual(['seed', 'snapshot']);
   });
 
+  // cm:guard the check and the insert take ONE turn, not two. A check outside the
+  // transaction only narrows the window: core takes the next free `seq` whenever
+  // it records a wholesale write, and one committing between the check and the
+  // insert is swallowed in exactly the same silence. The interleaving is made
+  // deterministic here by holding the advisory lock both writers take.
+  it('waits for a snapshot committing under it rather than swallowing the line', async () => {
+    const s = await chatSession();
+    const id = idOf(s);
+    const base = baseOf(s);
+    const held = await harness.client.reserve();
+    let posted: Promise<Response> | null = null;
+    try {
+      await held.unsafe('BEGIN');
+      await held.unsafe('SELECT pg_advisory_xact_lock(hashtext($1))', [id]);
+      posted = postLines(id, [
+        {
+          seq: base + 1,
+          line: { type: 'assistant', message: { content: [{ type: 'text', text: 'mine' }] } },
+        },
+      ]);
+      await waitForAdvisoryWaiter();
+      await held.unsafe(
+        `INSERT INTO agent_session_events (agent_session_id, kind, data, seq)
+         VALUES ($1, 'snapshot', '{"entries":[]}'::jsonb, $2)`,
+        [id, base + 1],
+      );
+      await held.unsafe('COMMIT');
+    } finally {
+      held.release();
+    }
+    const res = await (posted as Promise<Response>);
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain('SEQ_TAKEN_BY_CORE');
+  });
+
   it('refuses a batch by the seq of the line it cannot represent, and stores none of it', async () => {
     const s = await chatSession();
     const id = idOf(s);
@@ -494,3 +529,17 @@ describe('a turn that ends badly says so on the transcript', () => {
     expect((rows[0] as { status: string }).status).toBe('failed');
   });
 });
+
+/** Wait until a backend is parked on the session's advisory lock. */
+async function waitForAdvisoryWaiter(): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    const rows = await harness.db.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'
+        AND query ILIKE '%pg_advisory_xact_lock%'
+    `);
+    if (Number((rows[0] as { n: number } | undefined)?.n ?? 0) > 0) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error('the events route never waited on the carrier lock');
+}
