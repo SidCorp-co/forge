@@ -56,7 +56,7 @@ describe('a streamed turn', () => {
 
     p.onTurnEvent({ type: 'tool_call', id: 't1', name: 'forge_issues', arguments: '{"a":1}' });
     p.onTurnEvent({ type: 'tool_result', id: 't1', result: 'two rows' });
-    await p.onSettled('');
+    await p.onSettled('', false);
 
     // cm:guard the first two frames are the call and its result; the third is the settling frame
     // every turn now closes with (see "closes with a frame carrying the delivered sentence").
@@ -79,7 +79,7 @@ describe('a streamed turn', () => {
       clock.advance(10);
       p.onTurnEvent({ type: 'chunk', text });
     }
-    await p.onSettled('abcdef');
+    await p.onSettled('abcdef', false);
 
     // cm:guard ONE frame out of six chunks, plus the settling frame every turn closes with. The
     // count is the assertion and the text is not: a producer emitting six frames each holding the
@@ -97,7 +97,7 @@ describe('a streamed turn', () => {
     p.onTurnEvent({ type: 'chunk', text: 'first' });
     clock.advance(500);
     p.onTurnEvent({ type: 'chunk', text: ' second' });
-    await p.onSettled('first second');
+    await p.onSettled('first second', false);
 
     expect(publishToConversationReaders).toHaveBeenCalledTimes(3);
     expect(framesOf()[1]?.data.entry.content).toBe('first second');
@@ -125,7 +125,9 @@ describe('a streamed turn', () => {
     p.onTurnEvent({ type: 'tool_call', id: 't1', name: 'forge_issues', arguments: '{}' });
     clock.advance(500);
     p.onTurnEvent({ type: 'chunk', text: 'still going' });
-    await expect(p.onSettled('still going')).resolves.toMatchObject({ blocks: expect.any(Array) });
+    await expect(p.onSettled('still going', false)).resolves.toMatchObject({
+      blocks: expect.any(Array),
+    });
   });
 
   // cm:guard criterion 14's producer half. The check is not made here and must not be: every frame
@@ -136,13 +138,13 @@ describe('a streamed turn', () => {
     const clock = fakeClock();
     const p = startConversationProgress({ conversationId: 'conv-1', now: clock.now });
     p.onTurnEvent({ type: 'tool_call', id: 't1', name: 'forge_issues', arguments: '{}' });
-    await p.onSettled('');
+    await p.onSettled('', false);
     expect(publishToConversationReaders.mock.calls[0]?.[0]).toBe('conv-1');
   });
 });
 
 describe('a turn whose reply the screen replaced', () => {
-  const runTurn = async (streamed: string, delivered: string) => {
+  const runTurn = async (streamed: string, delivered: string, screenReplaced = true) => {
     const clock = fakeClock();
     const p = startConversationProgress({
       conversationId: 'conv-1',
@@ -153,7 +155,7 @@ describe('a turn whose reply the screen replaced', () => {
     p.onTurnEvent({ type: 'tool_result', id: 't1', result: 'two rows' });
     clock.advance(500);
     p.onTurnEvent({ type: 'chunk', text: streamed });
-    return { settled: await p.onSettled(delivered), clock };
+    return { settled: await p.onSettled(delivered, screenReplaced), clock };
   };
 
   // cm:guard criterion 8: the replacement is its own MARKED frame and not an edit of the draft in
@@ -182,7 +184,11 @@ describe('a turn whose reply the screen replaced', () => {
   // cm:guard the ordinary turn keeps its whole ordered record, which is what makes criterion 10
   // true when the room is re-opened: a turn that ran tools still shows its cards.
   it('hands the record every block when nothing was replaced', async () => {
-    const { settled } = await runTurn('the sentence that went out', 'the sentence that went out');
+    const { settled } = await runTurn(
+      'the sentence that went out',
+      'the sentence that went out',
+      false,
+    );
     expect(settled.blocks?.map((b) => b.type)).toEqual(['tool', 'text']);
     expect(framesOf().every((f) => f.data.replaced === undefined)).toBe(true);
   });
@@ -191,7 +197,7 @@ describe('a turn whose reply the screen replaced', () => {
   // growing frames and the settled row to a single assistant turn. Two identities for one answer
   // is what made a reducer draw two turns on beta (ISS-1029 review F1).
   it('carries one entry id from the first frame to the row', async () => {
-    const { settled } = await runTurn('said', 'said');
+    const { settled } = await runTurn('said', 'said', false);
     expect(settled.entryId).toBe('entry-1');
     const ids = framesOf().map((f) => (f.data.entry as { id: string }).id);
     expect(ids.length).toBeGreaterThan(1);
@@ -203,7 +209,7 @@ describe('a turn whose reply the screen replaced', () => {
   // correction would tell a reader that text was withdrawn which they never saw.
   it('marks nothing on a turn that never streamed a word, and stores no blocks for it', async () => {
     const p = startConversationProgress({ conversationId: 'conv-1' });
-    const settled = await p.onSettled('no paired device is free to take this turn');
+    const settled = await p.onSettled('no paired device is free to take this turn', false);
     expect(publishToConversationReaders).not.toHaveBeenCalled();
     expect(settled.blocks).toBeNull();
   });
@@ -211,6 +217,23 @@ describe('a turn whose reply the screen replaced', () => {
   // cm:guard the comparison is against the LAST text block and never the accumulated `content`:
   // a turn that talks before calling a tool accumulates commentary the delivered text never had,
   // and comparing that would mark every such turn a correction the reader has to read past.
+  // cm:guard the producer OBEYS the report and derives nothing, which is the property that survives
+  // every shape of turn: identical strings marked replaced must still be marked, and different
+  // strings reported as accepted must still be left alone. An implementation that compared the two
+  // itself passes neither of these, and passed every earlier case in this file.
+  it('marks what the runner reports, not what the strings look like', async () => {
+    const same = await runTurn('the same sentence', 'the same sentence', true);
+    expect(framesOf().at(-1)?.data.replaced).toBe(true);
+    expect(
+      same.settled.blocks?.some((b) => b.type === 'text' && b.text === 'the same sentence'),
+    ).toBe(true);
+
+    publishToConversationReaders.mockClear();
+    const differ = await runTurn('a preamble. ', 'the answer nobody replaced', false);
+    expect(framesOf().every((f) => f.data.replaced === undefined)).toBe(true);
+    expect(differ.settled.blocks?.map((b) => b.type)).toEqual(['tool', 'text']);
+  });
+
   it('does not mark a turn that merely talked before it called a tool', async () => {
     const clock = fakeClock();
     const p = startConversationProgress({ conversationId: 'conv-1', now: clock.now });
@@ -220,7 +243,7 @@ describe('a turn whose reply the screen replaced', () => {
     p.onTurnEvent({ type: 'tool_result', id: 't1', result: 'two rows' });
     clock.advance(500);
     p.onTurnEvent({ type: 'chunk', text: 'there are two.' });
-    await p.onSettled('there are two.');
+    await p.onSettled('there are two.', false);
     expect(framesOf().every((f) => f.data.replaced === undefined)).toBe(true);
   });
 });
@@ -241,7 +264,7 @@ describe('the frame a turn closes on', () => {
     const p = startConversationProgress({ conversationId: 'conv-1', now: clock.now });
     p.onTurnEvent({ type: 'chunk', text: 'hel' });
     p.onTurnEvent({ type: 'chunk', text: 'lo' });
-    await p.onSettled('hello');
+    await p.onSettled('hello', false);
 
     expect(JSON.parse(serialized[serialized.length - 1] as string).data.entry.content).toBe(
       'hello',
@@ -274,31 +297,11 @@ describe('the frame a turn closes on', () => {
     p.onTurnEvent({ type: 'chunk', text: 'forty' });
     p.onTurnEvent({ type: 'chunk', text: '-two' });
     release();
-    await p.onSettled('the answer is forty-two');
+    await p.onSettled('the answer is forty-two', false);
 
     expect(JSON.parse(serialized[0] as string).data.entry.content).toBe('the answer is ');
     expect(JSON.parse(serialized.at(-1) as string).data.entry.content).toBe(
       'the answer is forty-two',
     );
-  });
-
-  // cm:guard consult F3: the door is handed `result.reply.trim()`, so an accepted answer that merely
-  // ended in a newline arrives at `onSettled` differing from the streamed tail by whitespace alone.
-  // Reading that as a replacement would announce a correction nobody made AND drop every text block
-  // from the record — the record damage is why this is asserted on `blocks` as well as on the frame.
-  it('does not read the delivery path’s own trimming as a replacement', async () => {
-    const clock = fakeClock();
-    const p = startConversationProgress({ conversationId: 'conv-1', now: clock.now });
-    p.onTurnEvent({ type: 'chunk', text: 'let me look. ' });
-    clock.advance(500);
-    p.onTurnEvent({ type: 'tool_call', id: 't1', name: 'forge_issues', arguments: '{}' });
-    p.onTurnEvent({ type: 'tool_result', id: 't1', result: 'two rows' });
-    clock.advance(500);
-    p.onTurnEvent({ type: 'chunk', text: 'There are two.\n' });
-    const settled = await p.onSettled('There are two.');
-
-    expect(framesOf().every((f) => f.data.replaced === undefined)).toBe(true);
-    expect(settled.blocks?.map((b) => b.type)).toEqual(['text', 'tool', 'text']);
-    expect(settled.blocks?.at(-1)).toEqual({ type: 'text', text: 'There are two.' });
   });
 });

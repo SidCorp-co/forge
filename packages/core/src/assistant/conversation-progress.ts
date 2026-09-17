@@ -61,7 +61,7 @@ export interface ConversationProgressHandle {
   /** Fold one loop event into the entry and, on the window, publish it. */
   onTurnEvent: (event: ChatStreamEvent) => void;
   /** The screen has settled on this exact text; publish the final frame and say what to store. */
-  onSettled: (deliveredText: string) => Promise<SettledEntry>;
+  onSettled: (deliveredText: string, screenReplaced: boolean) => Promise<SettledEntry>;
 }
 
 /**
@@ -82,21 +82,6 @@ function snapshot(entry: AgentMessage): AgentMessage {
     })),
     ...(entry.toolCalls ? { toolCalls: entry.toolCalls.map((t) => ({ ...t })) } : {}),
   };
-}
-
-/** The turn's last text block — what the model finally said, as the socket carried it. */
-// cm:guard the LAST text block and never the accumulated `content`: `content` is every text block
-// joined, so on a turn that talked before calling a tool it holds commentary the delivered text
-// never had — and comparing THAT against the delivered string would mark every tool-using turn a
-// correction. The delivered text is the round that requested no tools, which is this block.
-function finalProse(entry: AgentMessage | null): string | null {
-  const blocks = entry?.blocks;
-  if (!blocks) return null;
-  for (let i = blocks.length - 1; i >= 0; i--) {
-    const block = blocks[i];
-    if (block?.type === 'text') return block.text ?? '';
-  }
-  return null;
 }
 
 /** The same blocks with every text block dropped. */
@@ -222,17 +207,20 @@ export function startConversationProgress(args: {
       send(entry);
     },
 
-    async onSettled(deliveredText: string): Promise<SettledEntry> {
+    async onSettled(deliveredText: string, screenReplaced: boolean): Promise<SettledEntry> {
       const entry = acc.entry();
-      const streamed = finalProse(entry);
-      // cm:guard the comparison is TRIMMED on both sides, because the delivery path trims: a reply
-      // the screen accepted whole still reaches `deliver` as `result.reply.trim()`, so an untrimmed
-      // comparison would announce a correction — and drop every text block from the record — for any
-      // answer that merely ended in a newline (consult F3).
-      // cm:guard a turn that published NOTHING has nothing to correct, whatever it delivers: an
-      // Agent-mode divert and a room answered by a code-authored line never streamed a word, and
+      // cm:guard the replacement is REPORTED by `turn-runner.ts` and is not worked out here, which
+      // is the whole reason this takes an argument: this module holds the prose it published and not
+      // the screen's verdict, and every way of deriving one from the other is wrong on some ordinary
+      // turn. Comparing the accumulated `content` calls a turn's own preamble a withdrawn draft —
+      // "Sure, let me look." then a tool then the answer, and the row stores only the answer.
+      // Comparing the last text block instead survives that and still misreads the trim the delivery
+      // path applies, and neither notices a retry that produced the same sentence. A guess that is
+      // right most of the time is the silent substitution wearing a friendlier name.
+      // cm:guard a turn that published NOTHING has nothing to correct, whatever the runner reports:
+      // an Agent-mode divert and a room answered by a code-authored line never streamed a word, and
       // marking their reply a correction would tell a reader text was withdrawn that they never saw.
-      const replaced = published && streamed !== null && streamed.trim() !== deliveredText.trim();
+      const replaced = published && screenReplaced;
       // cm:guard a turn the model never ran — an Agent-mode divert, a code-authored refusal — stores
       // NO blocks at all rather than a single invented text block: that row is a text-only row and
       // `toCanonicalEntry` has answered for those since ISS-1029. Manufacturing blocks for it would

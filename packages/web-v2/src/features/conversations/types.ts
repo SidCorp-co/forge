@@ -271,6 +271,16 @@ export function threadEntries(
   windows: ConversationWindow[],
   outbox: OutboxMessage[] = [],
   agentTurns: AgentTurn[] = [],
+  /**
+   * A turn is arriving on the socket right now, so the newest open window has its answer.
+   */
+  // cm:guard the window IS still open while a turn streams into it — that is what open means — so
+  // without this the thread prints "Nobody has answered this yet" directly above a half-written
+  // answer. That is the fourth on-screen state being confusable with the first, which the three
+  // this function exists to separate must never be. It suppresses the NEWEST open window only: an
+  // older one is a question that really is unanswered, and one live turn answers one window
+  // (ISS-1078 criterion 15).
+  liveTurn = false,
 ): ThreadEntry[] {
   // cm:guard a `handed-off` window is matched to its TURN by window id, and a window with no turn
   // behind it renders as `pending` rather than as nothing: the pair can be split for as long as the
@@ -282,12 +292,17 @@ export function threadEntries(
     at.push(w);
     bySeq.set(w.lastSeq, at);
   }
+  const answeringNow = liveTurn
+    ? windows.filter((w) => !w.closedAt).sort((a, b) => a.lastSeq - b.lastSeq).at(-1)?.id
+    : undefined;
   const out: ThreadEntry[] = [];
   const ordered = [...messages].sort((a, b) => a.seq - b.seq);
   for (const message of ordered) {
     out.push({ kind: "said", key: message.id, message });
     for (const w of bySeq.get(message.seq) ?? []) {
-      if (!w.closedAt) out.push({ kind: "pending", key: w.id });
+      if (!w.closedAt) {
+        if (w.id !== answeringNow) out.push({ kind: "pending", key: w.id });
+      }
       else if (w.decision === "handed-off") {
         const turn = turnByWindow.get(w.id);
         // cm:guard a DELIVERED turn contributes no entry, for the reason `answered` does not: its

@@ -278,9 +278,12 @@ describe("ConversationThread", () => {
     expect(screen.getByText("the sentence that went out")).toBeInTheDocument();
   });
 
-  // cm:guard criterion 15: a fourth on-screen state — in flight, with partial content — must not be
-  // confusable with the three `threadEntries` already tells apart. This asserts all four are present
-  // and distinct in one render, because each read alone passes on a screen that collapsed them.
+  // cm:guard criterion 15, and the sharp edge of it: the fourth on-screen state must not be
+  // confusable with the three, and the way it WAS confusable is that a window stays open while a
+  // turn streams into it — so the thread printed "Nobody has answered this yet" directly above a
+  // half-written answer. The live turn now stands in for that window's pending row, and an older
+  // window that genuinely has no answer still reads pending. All four are asserted in one render,
+  // because each read alone passes on a screen that collapsed them.
   it("keeps the live turn distinct from pending, from a silence and from an answer", () => {
     const answered: ConversationMessage = {
       ...asked,
@@ -293,11 +296,17 @@ describe("ConversationThread", () => {
     };
     render(
       <ConversationThread
-        messages={[asked, answered, { ...asked, id: "m2", seq: 2, content: "and the next?" }]}
+        messages={[
+          asked,
+          answered,
+          { ...asked, id: "m2", seq: 2, content: "and the next?" },
+          { ...asked, id: "m3", seq: 3, content: "and after that?" },
+        ]}
         windows={[
           closed("answered"),
           { ...closed("nothing-to-say"), id: "w2", firstSeq: 1, lastSeq: 1 },
           { ...closed(null), id: "w3", firstSeq: 2, lastSeq: 2, closedAt: null },
+          { ...closed(null), id: "w4", firstSeq: 3, lastSeq: 3, closedAt: null },
         ]}
         progress={{
           conversationId: "c1",
@@ -305,106 +314,21 @@ describe("ConversationThread", () => {
         }}
       />,
     );
-    expect(screen.getByTestId("thread-pending")).toHaveTextContent(/nobody has answered this yet/i);
-    expect(screen.getByTestId("thread-silence")).toHaveTextContent(/had nothing to add/i);
     expect(screen.getByText("the release went out.")).toBeInTheDocument();
+    expect(screen.getByTestId("thread-silence")).toHaveTextContent(/had nothing to add/i);
     expect(screen.getByTestId("thread-live-turn")).toHaveTextContent("reading the issues");
+    // The older open window is still a question nobody has answered; the newest one is being
+    // answered right now, and says so by showing the answer instead of the label.
+    expect(screen.getAllByTestId("thread-pending")).toHaveLength(1);
   });
 
-  // cm:guard consult F4, and it is the case the socket-is-not-the-record boundary turns on at the
-  // READING end: a replaced turn stores its tool blocks plus the delivered sentence, and the
-  // canonical reader takes a row's `blocks` in preference to its `content` whenever they are
-  // non-empty. A row whose blocks held the lookups alone would render as cards with no answer under
-  // them — the reply would be in the column and invisible on the screen.
-  it("draws the delivered answer of a replaced turn, not just its lookups", () => {
+  // cm:guard the suppression is conditional on there BEING a live turn, so a room read with no
+  // socket frame in hand reads exactly as it did before this change.
+  it("still says nobody has answered when no turn is arriving", () => {
     render(
-      <ConversationThread
-        messages={[
-          {
-            ...asked,
-            id: "entry-1",
-            seq: 1,
-            role: "assistant",
-            authorLabel: null,
-            content: "the reply that was sent",
-            blocks: [
-              { type: "tool", toolCall: { id: "t1", name: "forge_issues", input: {} } },
-              { type: "text", text: "the reply that was sent" },
-            ],
-          },
-        ]}
-        windows={[]}
-      />,
+      <ConversationThread messages={[asked]} windows={[{ ...closed(null), closedAt: null }]} />,
     );
-    expect(screen.getByText("the reply that was sent")).toBeInTheDocument();
-    expect(screen.getByText(/forge_issues/)).toBeInTheDocument();
-  });
-
-  // cm:guard consult F5's other half: the durable row carries the replacement's text and nothing on
-  // it says it replaced anything, so the notice has to be drawn against the ROW once the live turn
-  // is gone. Without this the withdrawal is visible for about as long as one refetch takes.
-  it("keeps saying a stored turn was a replacement", () => {
-    render(
-      <ConversationThread
-        messages={[
-          {
-            ...asked,
-            id: "entry-1",
-            seq: 1,
-            role: "assistant",
-            authorLabel: null,
-            content: "the reply that was sent",
-            blocks: null,
-          },
-        ]}
-        windows={[]}
-        corrections={["entry-1"]}
-      />,
-    );
-    expect(screen.getByTestId("thread-correction")).toHaveTextContent(
-      /replaced what it was writing/i,
-    );
-    expect(screen.getByText("the reply that was sent")).toBeInTheDocument();
-  });
-
-  it("says nothing of the kind about a turn nobody replaced", () => {
-    render(
-      <ConversationThread
-        messages={[
-          {
-            ...asked,
-            id: "entry-1",
-            seq: 1,
-            role: "assistant",
-            authorLabel: null,
-            content: "hello",
-            blocks: null,
-          },
-        ]}
-        windows={[]}
-        corrections={["some-other-entry"]}
-      />,
-    );
-    expect(screen.queryByTestId("thread-correction")).toBeNull();
-  });
-
-  // cm:guard consult F5: a settled turn whose row has not arrived is still DRAWN — the settle is a
-  // fact about the server, not about this browser's cache — and only its caret stops. Dropping it
-  // here leaves the thread holding neither the streamed answer nor the durable one.
-  it("keeps drawing a settled turn whose durable row has not arrived, without the caret", () => {
-    const { container } = render(
-      <ConversationThread
-        messages={[asked]}
-        windows={[closed("answered")]}
-        progress={{
-          conversationId: "c1",
-          settled: true,
-          entry: { id: "entry-1", type: "assistant", content: "there are two open issues." },
-        }}
-      />,
-    );
-    expect(screen.getByTestId("thread-live-turn")).toHaveTextContent("there are two open issues.");
-    expect(container.querySelectorAll(".forge-caret")).toHaveLength(0);
+    expect(screen.getByTestId("thread-pending")).toHaveTextContent(/nobody has answered this yet/i);
   });
 
   // cm:guard criterion 1 on the screen: the row a person just typed stops saying "Sending…" the

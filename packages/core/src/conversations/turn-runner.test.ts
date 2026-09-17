@@ -185,6 +185,71 @@ describe('a turn for a transport that is four functions', () => {
     expect(outcome).toMatchObject({ kind: 'superseded' });
   });
 
+  // cm:guard the replacement is REPORTED and not inferred anywhere downstream, and these are the two
+  // ordinary turns every inference gets wrong. A preamble: the model says "let me look", calls a
+  // tool, then answers — the streamed prose and the delivered sentence differ with no refusal
+  // anywhere, and a watcher comparing them strikes the preamble through as a withdrawn draft. A
+  // trailing newline: `screenedTurnReply` hands the door `result.reply.trim()`, so an accepted reply
+  // arrives differing by whitespace alone. Both must come back `screenReplaced: false`.
+  it('reports no replacement for a preamble or for the delivery path’s own trimming', async () => {
+    const seen: boolean[] = [];
+    const onSettled = vi.fn(async (_text: string, replaced: boolean) => {
+      seen.push(replaced);
+      return { entryId: 'entry-7', blocks: null };
+    });
+
+    runExternalChatTurn.mockResolvedValue({ ...answered, reply: 'the answer.\n' });
+    await runConversationTurn(request({ onSettled }));
+
+    runExternalChatTurn.mockResolvedValue({
+      ...answered,
+      reply: 'let me look. the answer.',
+    });
+    await runConversationTurn(request({ onSettled }));
+
+    expect(seen).toEqual([false, false]);
+    expect(deliver.mock.calls.map((c) => (c[1] as { text: string }).text)).toEqual([
+      'the answer.',
+      'let me look. the answer.',
+    ]);
+  });
+
+  // cm:guard and the case that IS one: the screen refuses, the retry answers differently, and what
+  // went out is not what the room watched being written.
+  it('reports a replacement when the screen refused the first attempt', async () => {
+    const seen: boolean[] = [];
+    const onSettled = vi.fn(async (_text: string, replaced: boolean) => {
+      seen.push(replaced);
+      return { entryId: 'entry-7', blocks: null };
+    });
+    screenReplyAtDoor
+      .mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] })
+      .mockResolvedValueOnce({ ok: true });
+    runExternalChatTurn
+      .mockResolvedValueOnce({ ...answered, reply: 'the draft' })
+      .mockResolvedValueOnce({ ...answered, reply: 'the retry answer' });
+
+    await runConversationTurn(request({ onSettled }));
+
+    expect(seen).toEqual([true]);
+  });
+
+  // cm:guard a turn that timed out or errored HAS replaced what the room watched arrive: the prose
+  // stopped and a fixed sentence went out instead, which owes the same notice a refusal does.
+  it('reports a replacement when the turn failed and a fallback went out', async () => {
+    const seen: boolean[] = [];
+    const onSettled = vi.fn(async (_text: string, replaced: boolean) => {
+      seen.push(replaced);
+      return { entryId: 'entry-7', blocks: null };
+    });
+    runExternalChatTurn.mockRejectedValue(new Error('the provider went away'));
+
+    await runConversationTurn(request({ onSettled }));
+
+    expect(seen).toEqual([true]);
+    expect(deliver.mock.calls[0]?.[1]).toMatchObject({ text: errorFallbackReply('Babo') });
+  });
+
   // cm:guard this is criteria 10 and 11 at the seam: the row takes the id the socket streamed under
   // and the blocks the producer says are storable, so re-opening the room draws the same one turn
   // the frames drew rather than a second identity with no tool cards on it.

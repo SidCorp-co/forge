@@ -86,7 +86,19 @@ export interface TurnHookContext {
 // cm:guard `send: false` is the explicit "this turn posts nothing" case, and it is not a failure: an adapter that handed the turn to a slower path answers through that path, and posting here as well double-replies (ISS-727).
 export type TurnReply =
   | { send: false; reason: string; declined?: boolean }
-  | { send: true; message: ScreenedMessage };
+  | {
+      send: true;
+      message: ScreenedMessage;
+      /**
+       * The text going out is NOT what the model's first attempt said.
+       */
+      // cm:guard reported as a FACT by the layer that replaced it, never inferred downstream from
+      // comparing strings: a watcher that guessed would call a turn's own preamble a withdrawn
+      // draft on any reply the screen trimmed or the model prefixed, and would stay silent on a
+      // retry that happened to produce the same sentence. Absent means false, which is right for
+      // every divert — those replace nothing because nothing ran (ISS-1078).
+      screenReplaced?: boolean;
+    };
 
 export interface ConversationTurnRequest {
   venue: ConversationVenue;
@@ -159,7 +171,12 @@ export interface ConversationTurnRequest {
   // cm:guard it answers with what the durable ROW should carry — the turn's one identity and its
   // blocks — because the producer of the frames is the only thing that knows both, and because
   // where the screen replaced the text those blocks are NOT the ones it streamed (ISS-1078).
-  onSettled?: ((deliveredText: string) => Promise<SettledEntry>) | undefined;
+  // cm:guard whether the screen replaced anything is TOLD to it and not left to be worked out: the
+  // watcher holds the prose but not the verdict, and every way of inferring one from the other is
+  // wrong on some ordinary turn.
+  onSettled?:
+    | ((deliveredText: string, screenReplaced: boolean) => Promise<SettledEntry>)
+    | undefined;
   /** Released once the turn is over, however it ended. */
   dispose?: () => Promise<void>;
   log?: Record<string, unknown>;
@@ -244,20 +261,22 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     }
   }
 
-  return {
-    send: true,
-    message: await screenedTurnReply({
-      door: req.door,
-      projectId: req.venue.projectId,
-      handleName: req.handleName,
-      first: result,
-      setPhase: ctx.setPhase,
-      ...(req.log ? { log: req.log } : {}),
-      // cm:guard the retry WRITES nothing: its message is a code-authored instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the conversation, which is why it names one (ISS-1001).
-      retry: (instruction) =>
-        runExternalChatTurn({ ...turn, record: 'nothing', message: instruction }),
-    }),
-  };
+  const message = await screenedTurnReply({
+    door: req.door,
+    projectId: req.venue.projectId,
+    handleName: req.handleName,
+    first: result,
+    setPhase: ctx.setPhase,
+    ...(req.log ? { log: req.log } : {}),
+    // cm:guard the retry WRITES nothing: its message is a code-authored instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the conversation, which is why it names one (ISS-1001).
+    retry: (instruction) =>
+      runExternalChatTurn({ ...turn, record: 'nothing', message: instruction }),
+  });
+  // cm:guard the comparison is made HERE, against the model's own final text, and it is a report
+  // rather than a guess: this is the one place that holds both the attempt and what the screen
+  // settled on. `screenedTurnReply` hands the door `result.reply.trim()`, so the trim is accounted
+  // for and nothing about blocks, streaming or preambles enters into it (ISS-1078).
+  return { send: true, message, screenReplaced: message.text !== result.reply.trim() };
 }
 
 /**
@@ -301,7 +320,14 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
       tags: { area: 'conversations', phase, timed_out: String(timedOut) },
       extra: { adapter: req.venue.adapter, externalId: req.venue.externalId, ...req.log },
     });
-    reply = { send: true, message: codeAuthored(errorFallbackReply(req.handleName)) };
+    // cm:guard a turn that failed or timed out HAS replaced whatever it was writing, and says so:
+    // the room watched prose arrive and is now handed a fixed sentence instead, which is the same
+    // withdrawal a screen refusal is and owes the same notice.
+    reply = {
+      send: true,
+      message: codeAuthored(errorFallbackReply(req.handleName)),
+      screenReplaced: true,
+    };
   } finally {
     clearTimeout(timer);
     await req.dispose?.();
@@ -319,7 +345,7 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     if (req.onBeforeDeliver && !(await req.onBeforeDeliver())) {
       return { kind: 'superseded', reason: 'the right to answer here moved to another holder' };
     }
-    entry = (await req.onSettled?.(reply.message.text)) ?? null;
+    entry = (await req.onSettled?.(reply.message.text, reply.screenReplaced === true)) ?? null;
     receipt = await transport.deliver(req.venue, reply.message);
   } catch (err) {
     // cm:guard nothing is recorded when the door refuses: the venue never saw this text, and a transcript row for it would say the opposite. The commonest refusal is a room rebound while the turn ran, which `deliver` names rather than swallows.

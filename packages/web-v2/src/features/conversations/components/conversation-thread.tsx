@@ -173,13 +173,9 @@ export function ConversationThread({
   corrections?: string[];
   onRetry?: (id: string) => void;
 }) {
-  const entries = threadEntries(messages, windows, outbox, agentTurns);
-  // cm:guard the live turn is dropped the moment its own durable row is in `messages`, matched on
-  // the entry id the socket streamed under and the row was written with: they are ONE turn, and
-  // drawing both would show a person their answer twice for as long as the settle took. The id is
-  // shared precisely so this reduction is an equality rather than a guess (ISS-1029 review F1).
-  const liveId = (progress?.entry as { id?: string } | undefined)?.id;
-  const settled = liveId !== undefined && messages.some((m) => m.id === liveId);
+  const live = progress && !settledIntoRow(progress, messages) ? progress : null;
+  const entries = threadEntries(messages, windows, outbox, agentTurns, live !== null);
+
   return (
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
@@ -214,14 +210,14 @@ export function ConversationThread({
       })}
       {/* cm:guard the live turn is appended AFTER every stored row and never interleaved, for the
           reason the outbox is: it has no `seq`, because it has not been written yet. */}
-      {progress && !settled && (
-        <div data-testid="thread-live-turn" data-replaced={progress.replaced ? "yes" : undefined}>
+      {live && (
+        <div data-testid="thread-live-turn" data-replaced={live.replaced ? "yes" : undefined}>
           {/* cm:guard a REPLACEMENT says so, above the text, rather than arriving in the draft's
               place: prose reaches this thread before the reply screen has judged it, and what pays
               for that is telling the reader the sentence they read was withdrawn. A silent swap is
               the substitution that decision refuses by name (core `messaging/doors.ts`,
               `web-chat-reply`). */}
-          {progress.replaced && (
+          {live.replaced && (
             <p className="fg-caption mb-1 flex items-center gap-1.5 text-muted" data-testid="thread-correction">
               <Icon name="alert" size={12} className="flex-none" />
               The agent replaced what it was writing — this is the reply that was sent.
@@ -230,14 +226,22 @@ export function ConversationThread({
           {/* cm:guard the caret stops on a replacement AND on a settle, for the same reason in two
               shapes: the turn is over. One is the reply that went out and the other is the room
               saying it is done, and a caret under either says the agent is still writing. */}
-          <CanonicalTurn
-            entry={progress.entry}
-            streaming={!progress.replaced && !progress.settled}
-          />
+          <CanonicalTurn entry={live.entry} streaming={!live.replaced && !live.settled} />
         </div>
       )}
     </div>
   );
+}
+
+/**
+ * The live turn and its durable row are ONE turn, under one entry id.
+ */
+// cm:guard matched on the id the socket streamed under and the row was written with, which is shared
+// precisely so this reduction is an equality rather than a guess: drawing both would show a person
+// their answer twice for as long as the settle took (ISS-1029 review F1, ISS-1078 criterion 11).
+function settledIntoRow(progress: ConversationProgress, messages: ConversationMessage[]): boolean {
+  const liveId = (progress.entry as { id?: string } | undefined)?.id;
+  return liveId !== undefined && messages.some((m) => m.id === liveId);
 }
 
 /**
