@@ -96,11 +96,15 @@ async function claimBatch(): Promise<OutboxRow[]> {
         SELECT id FROM pipeline_outbox
          WHERE processed_at IS NULL
            -- cm:guard ISS-1021 — a LITERAL, never a bind parameter, and that is the whole point of
-           -- the change. idx_outbox_unprocessed is partial on this same predicate, and Postgres
-           -- cannot prove a partial index predicate is implied by "attempts < $n" because it does
-           -- not know what $n holds at plan time. Bound as a parameter the new index is simply
-           -- never used and the migration is silently worthless — which is why the criterion for
-           -- it is an EXPLAIN naming the index rather than a reading of the migration file.
+           -- the change. idx_outbox_unprocessed is partial on this same predicate, and a GENERIC
+           -- plan cannot prove the predicate is implied by "attempts < $n" because $n is unknown
+           -- when that plan is built. A custom plan substitutes the value and does prove it, so
+           -- the parameterised form looks fine the first few times it runs — and this statement is
+           -- prepared and re-executed every second, which is exactly the shape Postgres switches
+           -- to a generic plan for. Measured on a seeded 35,001-row table: literal 0.072ms on an
+           -- Index Scan; the same query under force_generic_plan, 6.69ms on a Seq Scan removing
+           -- 35,001 rows. That is why the criterion for this is an EXPLAIN naming the index rather
+           -- than a reading of the migration file.
            AND attempts < ${sql.raw(String(MAX_REDELIVERIES))}
            AND (claimed_at IS NULL OR claimed_at < now() - interval '${sql.raw(String(CLAIM_LEASE_MS))} milliseconds')
          ORDER BY created_at

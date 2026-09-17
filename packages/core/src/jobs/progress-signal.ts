@@ -60,7 +60,7 @@ export interface QuietJobCandidateOptions {
    * keep seeing the whole backlog, because saying the loop fell behind is the one thing it is for.
    * Leave it unset and the query is unbounded exactly as it was.
    */
-  limit?: number;
+  limit?: number | undefined;
 }
 
 /**

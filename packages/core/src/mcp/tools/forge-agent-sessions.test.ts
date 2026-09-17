@@ -158,9 +158,7 @@ describe('forge_agent_sessions.get', () => {
   it('returns the tail and total the query produced, adding nothing of its own', async () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
     const tail = Array.from({ length: 20 }, (_, i) => ({ role: 'user', content: `m${i + 15}` }));
-    selectLimit.mockResolvedValueOnce([
-      { ...baseSessionRow, messages: tail, totalMessages: 35 },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages: tail, totalMessages: 35 }]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     const result = (await tool.handler({ sessionId: SESSION_ID })) as {
@@ -179,9 +177,7 @@ describe('forge_agent_sessions.get', () => {
   // `tests/integration/agent-session-tail.test.ts`.
   it('passes an empty transcript through as [] and 0', async () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([
-      { ...baseSessionRow, messages: [], totalMessages: 0 },
-    ]);
+    selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages: [], totalMessages: 0 }]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     const result = (await tool.handler({ sessionId: SESSION_ID })) as {

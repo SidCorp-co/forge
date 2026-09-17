@@ -189,9 +189,7 @@ describe('alarmStalledQueuedJobs', () => {
     expect(gateReasons).toHaveBeenCalledTimes(1);
     // Every project on the page reaches the one call — a batched read that quietly dropped a
     // project would alarm on jobs whose gate it never asked about.
-    expect(gateReasons.mock.calls[0]?.[0]).toEqual(
-      expect.arrayContaining(['proj-1', 'proj-2']),
-    );
+    expect(gateReasons.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(['proj-1', 'proj-2']));
   });
 });
 

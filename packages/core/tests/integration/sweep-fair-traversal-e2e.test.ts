@@ -12,7 +12,6 @@
  * test with a real page of rows rather than a unit test with a stubbed query.
  */
 
-import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {

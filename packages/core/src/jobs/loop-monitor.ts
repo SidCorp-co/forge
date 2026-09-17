@@ -24,6 +24,7 @@ import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { emitPipelineWedge, type WedgeHop } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
+import { JOB_AXIS_SCAN_LIMIT, reportHopPage } from './hop-bounds.js';
 import {
   isKillEpisodeLive,
   type KillableJobRef,
@@ -70,30 +71,6 @@ const ACK_FAST_MS_DEFAULT = 90_000;
  *  derive its margin from the same number. */
 // cm:guard never lower RESULT_QUIET_MINUTES — legitimate release/code merges run long and get reaped as orphans
 export const RESULT_QUIET_MINUTES = 60;
-
-/**
- * How many candidates one job-axis hop takes per tick, matching the run axis's own 200.
- *
- * ISS-1021 — all three hops read their whole candidate set, so a backlog after an outage made one
- * tick's work scale with the outage rather than with the loop. A plain oldest-first bound is the
- * right shape HERE and would be a blind spot in the notify-only passes (`pipeline/sweep-cursor.ts`
- * says why): every row this reaper takes is either written terminal or moved through the kill
- * gate, and the gate resolves at `killGraceMs()`, so a candidate leaves the set within a bounded
- * time whatever it is. Nothing is skipped — an unread candidate is simply read on a later tick,
- * and at 200 a tick against a 60-second loop drains 12,000 rows an hour.
- */
-export const JOB_AXIS_SCAN_LIMIT = 200;
-
-// cm:guard report the truncation on the CANDIDATES read, not on `reaped` — a page full of rows the
-// kill gate is still holding reaps nothing and is exactly the backlog worth naming, so keying this
-// on the terminal writes would go quiet in the case it exists for.
-function logHopTruncation(hop: string, examined: number): void {
-  if (examined < JOB_AXIS_SCAN_LIMIT) return;
-  logger.warn(
-    { hop, limit: JOB_AXIS_SCAN_LIMIT, examined },
-    'loop-monitor: hop filled its candidate page — the rest is read on the next tick',
-  );
-}
 
 function readTimeoutEnv(name: string, fallback: number): number {
   const raw = process.env[name];
@@ -366,8 +343,7 @@ export async function reapAckMisses(
         SELECT 1 FROM job_events e WHERE e.job_id = j.id
       )
       ${projectClause}
-    ORDER BY j.dispatched_at ASC
-    LIMIT ${sql.raw(String(JOB_AXIS_SCAN_LIMIT))}
+    ORDER BY j.dispatched_at ASC LIMIT ${sql.raw(String(JOB_AXIS_SCAN_LIMIT))}
   `);
 
   const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
@@ -402,8 +378,7 @@ export async function reapAckMisses(
   if (result.reaped > 0) {
     logger.info({ reaped: result.reaped }, 'loop-monitor: ack-hop misses reaped to failed');
   }
-  logHopTruncation('ack', candidates.length);
-  return result;
+  return reportHopPage('ack', candidates.length, result);
 }
 
 /**
@@ -630,8 +605,7 @@ export async function reapSessionLostJobs(
       AND s.status IN ('failed', 'cancelled_stale')
       AND ${RESULT_GUARD}
       ${projectClause}
-    ORDER BY j.dispatched_at ASC NULLS FIRST
-    LIMIT ${sql.raw(String(JOB_AXIS_SCAN_LIMIT))}
+    ORDER BY j.dispatched_at ASC NULLS FIRST LIMIT ${sql.raw(String(JOB_AXIS_SCAN_LIMIT))}
   `);
 
   const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
@@ -659,8 +633,7 @@ export async function reapSessionLostJobs(
   if (result.reaped > 0) {
     logger.info({ reaped: result.reaped }, 'loop-monitor: session-lost jobs reconciled to failed');
   }
-  logHopTruncation('session-lost', candidates.length);
-  return result;
+  return reportHopPage('session-lost', candidates.length, result);
 }
 
 /**
@@ -675,17 +648,14 @@ export async function reapSessionLostJobs(
  * query measures the likeness, and stays green while the shape the sweeper
  * actually runs drifts away from it.
  */
-// cm:guard `limit` is the REAPER's and is passed by `reapResultMisses` alone. The exported query
-// keeps its unbounded shape because `jobs/stale-detector.ts` reads it to say the loop did not act
-// on a row it should have — bounding the alarm to the same page would hide exactly the backlog it
-// exists to name, and an EXPLAIN test reading this export would measure a plan the reaper no
-// longer runs if the two diverged silently.
+// cm:guard `limit` is the reaper's alone; `jobs/hop-bounds.ts` says why the alarm keeps the
+// unbounded shape.
 export function resultMissCandidateQuery(scope: LoopScope = {}, limit?: number): SQL {
   return quietJobCandidateQuery({
     columns: KILL_GATE_CANDIDATE_COLUMNS,
     quietMinutes: RESULT_QUIET_MINUTES,
     scope,
-    ...(limit === undefined ? {} : { limit }),
+    limit,
   });
 }
 
@@ -693,9 +663,8 @@ export async function reapResultMisses(
   _now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<JobAxisReapResult> {
-  const candidates = await db.execute<KillGateCandidateRow>(
-    resultMissCandidateQuery(scope, JOB_AXIS_SCAN_LIMIT),
-  );
+  const query = resultMissCandidateQuery(scope, JOB_AXIS_SCAN_LIMIT);
+  const candidates = await db.execute<KillGateCandidateRow>(query);
 
   const STALE_REASON = `runner stale (no progress / no started event for >${RESULT_QUIET_MINUTES}min)`;
   const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
@@ -728,8 +697,7 @@ export async function reapResultMisses(
   if (result.reaped > 0) {
     logger.info({ reaped: result.reaped }, 'loop-monitor: result-hop misses reaped to failed');
   }
-  logHopTruncation('result', candidates.length);
-  return result;
+  return reportHopPage('result', candidates.length, result);
 }
 
 /**
