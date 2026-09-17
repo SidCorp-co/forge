@@ -44,6 +44,18 @@ at stake: slice 2 has no production caller, so the only way to queue a Sentry de
 delivery log's own Retry button, which mints a fresh `retry_<hex>` each time a person presses it.
 The person can press it again. A release cannot.
 
+## Honest costs
+
+Priced against the three shapes below, not against the bug they fix.
+
+| Cost | Who pays it |
+|---|---|
+| Shape 1 or 2 makes a delivery row mutable after it has settled. `deploy-confirmations.ts` holds one confirmation per `deliveryId`, and `deliveries.ts:findDeliveryByRequestId` is how the release path reaches a dispatch it already made — both now read a row whose `status`, `response` and `durationMs` can go backwards under them. Every future reader of the delivery log has to know that a row is the latest attempt rather than an attempt. | whoever reads or joins on a delivery row |
+| Shape 1 or 2 loses the per-attempt history the log shows today. An operator looking at a deploy that failed twice and then worked sees one row, not three, and the two failures are gone rather than stacked. That is the same information the delivery log exists to give them. | whoever debugs a flapping integration |
+| Shape 3 gives up the dedupe the unique index is named for. `routes.ts`'s retry handler must NOT pre-record a delivery precisely because the index collides; drop the guarantee and that reasoning has to be re-derived, and two senders reusing one `requestId` become two dispatches instead of one. | whoever relies on `(binding, requestId)` as an idempotency key |
+| Whichever shape wins, the proof is `core-integration`. That suite needs a Postgres this box shares with every other session on it, so the fix cannot be proved on a developer machine that is not alone — it is a CI-only red until someone stands up a private database for it. | whoever builds the fix |
+| Doing nothing has a price too, and it is the one already being paid: every transient failure on a request-keyed outbound job silently spends its five backoff attempts on a Postgres error. Nobody is told, because the job's own error message is about a unique constraint rather than about the provider. | whoever waits on a deploy that quietly stopped retrying |
+
 ## Why this is a proposal and not a commit
 
 The fix is one function — an idempotent acquire in `recordDelivery` — and every shape of it is a
