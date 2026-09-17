@@ -295,7 +295,8 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
       return;
     }
     const live = liveConnectionFor(conn.connectionId);
-    if (!live) return;
+    // cm:guard registered is not LIVE: between a socket's close and the redial that replaces it the registry still names the old client, and a write on it would wait out the DDP timeout under both names and be remembered as a server refusal (whole-set review, pass B F1).
+    if (live?.client.getState() !== 'live') return;
     await showActivity(live, conn.connectionId, parts.rid, ack.on);
   },
 

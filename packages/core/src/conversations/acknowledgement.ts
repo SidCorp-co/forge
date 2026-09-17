@@ -23,6 +23,32 @@ export const RECEIVED_FLOOR_MS = 5000;
 // cm:guard sits UNDER the 15-second expiry the Rocket.Chat client applies to an activity it stops hearing about (`UserAction.ts` TIMEOUT) and at the client's own renewal rate (TIMEOUT / 3), so a core that dies mid-turn leaves no indicator past that expiry and a live one never lets it lapse (ISS-1088 criterion 6).
 export const WORKING_RENEW_MS = 5000;
 
+/**
+ * How long one acknowledgement call may take before the lifecycle moves on without it.
+ */
+// cm:guard BOUNDED, because `settle()` is awaited on the route between the turn and the window's close: a transport call that never returns would otherwise hold the status and the close hostage to decoration, which the turn's own timeout does not cover. The call is abandoned, not cancelled — the transport may still complete it — and the abandonment is logged (whole-set review, pass A F2).
+export const ACK_TIMEOUT_MS = 5000;
+
+function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const t = setTimeout(
+      () => reject(new Error(`the acknowledgement did not return within ${ms}ms`)),
+      ms,
+    );
+    t.unref?.();
+    p.then(
+      (v) => {
+        clearTimeout(t);
+        resolve(v);
+      },
+      (e) => {
+        clearTimeout(t);
+        reject(e);
+      },
+    );
+  });
+}
+
 export interface AcknowledgeArgs {
   transport: Pick<ConversationTransport, 'acknowledge'> | undefined;
   venue: ConversationVenue;
@@ -52,7 +78,7 @@ export function acknowledgeRequest(args: AcknowledgeArgs): RequestAcknowledgemen
   const tell = (
     ackArg: Parameters<NonNullable<ConversationTransport['acknowledge']>>[1],
   ): Promise<void> =>
-    ack.call(transport, args.venue, ackArg).catch((err: unknown) => {
+    withDeadline(ack.call(transport, args.venue, ackArg), ACK_TIMEOUT_MS).catch((err: unknown) => {
       logger.warn(
         { err, ...args.log, ack: ackArg, externalId: args.venue.externalId },
         'conversations: an acknowledgement could not be shown',
@@ -60,10 +86,16 @@ export function acknowledgeRequest(args: AcknowledgeArgs): RequestAcknowledgemen
     });
 
   let chain: Promise<void> = Promise.resolve();
+  let queued = 0;
   const enqueue = (
     ackArg: Parameters<NonNullable<ConversationTransport['acknowledge']>>[1],
   ): void => {
-    chain = chain.then(() => tell(ackArg));
+    queued += 1;
+    chain = chain
+      .then(() => tell(ackArg))
+      .finally(() => {
+        queued -= 1;
+      });
   };
 
   let receivedSet = false;
@@ -75,7 +107,10 @@ export function acknowledgeRequest(args: AcknowledgeArgs): RequestAcknowledgemen
   };
 
   enqueue({ kind: 'working', on: true });
-  const renew = setInterval(() => enqueue({ kind: 'working', on: true }), WORKING_RENEW_MS);
+  // cm:guard a renewal is SKIPPED while an earlier call is still out: renewals queued behind a stalled transport would pile up and each spend its own deadline at settle, and a renewal that arrives after the previous one finally returned says nothing the previous one did not (whole-set review, pass A F2).
+  const renew = setInterval(() => {
+    if (queued === 0) enqueue({ kind: 'working', on: true });
+  }, WORKING_RENEW_MS);
   renew.unref?.();
 
   // cm:guard measured from RECEIPT: a request admitted seven seconds after it arrived is marked at once, one admitted four seconds after it arrived waits the remaining second, and one whose turn settles before the floor is never marked at all (ISS-1088 criteria 3, 4, 31).

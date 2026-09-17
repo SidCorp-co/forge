@@ -305,6 +305,13 @@ describe('the one terminal status (criteria 9-17)', () => {
     );
   });
 
+  it('a close that throws after an answer posts NO status — the room has its answer (pass A F1)', async () => {
+    closeWindow.mockRejectedValueOnce(new Error('db down'));
+    await expect(route()).resolves.toMatchObject({ decision: 'unreachable' });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(closeWindow).toHaveBeenCalledTimes(2);
+  });
+
   it('a claim that moved on posts no status', async () => {
     runConversationTurn.mockResolvedValue({ kind: 'declined', reason: 'turn-failed' });
     reserveDelivery.mockResolvedValueOnce(false);

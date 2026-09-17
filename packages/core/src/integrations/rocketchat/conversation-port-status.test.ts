@@ -201,6 +201,18 @@ describe('acknowledge (ISS-1088 criteria 23-27, 30)', () => {
     ]);
   });
 
+  it('does nothing for working on a registered socket that is no longer live (pass B F1)', async () => {
+    registerLiveConnection('conn-1', {
+      namespace: 'chat.example.co',
+      client: { notifyUserActivity, getState: () => 'closed' as const },
+      username: 'babo',
+      displayName: 'Babo Bot',
+    });
+    await rocketChatConversationPorts.acknowledge?.(room, { kind: 'working', on: true });
+    expect(notifyUserActivity).not.toHaveBeenCalled();
+    expect(loggerWarn).not.toHaveBeenCalled();
+  });
+
   it('does nothing for working where this core holds no live client for the room’s connection (criterion 25)', async () => {
     await rocketChatConversationPorts.acknowledge?.(room, { kind: 'working', on: true });
     expect(notifyUserActivity).not.toHaveBeenCalled();

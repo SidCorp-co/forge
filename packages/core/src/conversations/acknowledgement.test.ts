@@ -15,7 +15,7 @@ vi.mock('../logger.js', () => ({
   },
 }));
 
-const { acknowledgeRequest, RECEIVED_FLOOR_MS, WORKING_RENEW_MS } = await import(
+const { ACK_TIMEOUT_MS, acknowledgeRequest, RECEIVED_FLOOR_MS, WORKING_RENEW_MS } = await import(
   './acknowledgement.js'
 );
 
@@ -27,16 +27,18 @@ const VENUE = {
 };
 
 const acks: unknown[] = [];
-const acknowledge = vi.fn(async (_venue: unknown, ack: unknown) => {
+const record = async (_venue: unknown, ack: unknown) => {
   acks.push(ack);
-});
+};
+const acknowledge = vi.fn(record);
 const transport = { acknowledge };
 
 beforeEach(() => {
   vi.useFakeTimers();
   vi.setSystemTime(new Date('2026-09-18T10:00:10.000Z'));
   acks.length = 0;
-  acknowledge.mockClear();
+  acknowledge.mockReset();
+  acknowledge.mockImplementation(record);
   loggerWarn.mockClear();
 });
 afterEach(() => vi.useRealTimers());
@@ -137,6 +139,26 @@ describe('a transport without acknowledge, and one that refuses', () => {
     await ack.settle();
     expect(loggerWarn).toHaveBeenCalledTimes(1);
     expect(acks).toContainEqual({ kind: 'received', messageId: 'rc-1', on: true });
+  });
+
+  it('moves on from a call that never returns, within a bound, and does not pile renewals behind it (pass A F2)', async () => {
+    acknowledge.mockImplementation(() => new Promise<void>(() => undefined));
+    const ack = start(9000);
+    await vi.advanceTimersByTimeAsync(WORKING_RENEW_MS * 3);
+    // working-on, received-on, and at most one renewal once both had been abandoned — not the three renewals an unbounded queue would hold
+    expect(acknowledge.mock.calls.length).toBeLessThanOrEqual(3);
+    let settled = false;
+    void ack.settle().then(() => {
+      settled = true;
+    });
+    await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS * 5);
+    expect(settled).toBe(true);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({
+        err: expect.objectContaining({ message: expect.stringContaining('did not return') }),
+      }),
+      expect.any(String),
+    );
   });
 
   it('settles idempotently', async () => {

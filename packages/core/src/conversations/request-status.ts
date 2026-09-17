@@ -173,10 +173,15 @@ export interface RequestTrack {
   handleName: string | null;
   /** Whether a status went out for this window already — one per window, whichever path posts it. */
   posted: boolean;
+  /**
+   * Whether the turn came back with an outcome, so the status question has been asked of it.
+   */
+  // cm:guard set the moment the outcome is known and read by the catch: a throw AFTER that point — the transcript, the close — is not evidence that nothing was posted, because the turn may well have delivered, and a nothing-posted status after a delivered answer tells the asker to ask again for an answer they have (whole-set review, pass A F1).
+  outcomeKnown: boolean;
 }
 
 export function newRequestTrack(): RequestTrack {
-  return { anchor: null, venue: null, handleName: null, posted: false };
+  return { anchor: null, venue: null, handleName: null, posted: false, outcomeKnown: false };
 }
 
 interface WindowRef {
@@ -192,7 +197,10 @@ export async function statusAfterThrow(
   claim: WindowClaim,
   track: RequestTrack,
 ): Promise<PostedStatus | null> {
-  if (!track.anchor || !track.venue || !track.handleName || track.posted) return null;
+  // cm:guard a throw before the outcome is known is a turn that never delivered — `runConversationTurn` catches its own delivery and transcript failures and reports them as outcomes, so what escapes it happened before anything was sent; a throw after the outcome is known has already had its status judged (whole-set review, pass A F1).
+  if (!track.anchor || !track.venue || !track.handleName || track.posted || track.outcomeKnown) {
+    return null;
+  }
   track.posted = true;
   try {
     return await postStatus({
@@ -228,6 +236,7 @@ export async function withTerminalStatus<
   args: { window: WindowRef; deliveryKey: string; claim: WindowClaim; track: RequestTrack },
 ): Promise<T> {
   const { track } = args;
+  track.outcomeKnown = true;
   if (!track.anchor || !track.venue || !track.handleName || track.posted) return routed;
   const status = terminalStatusFor(routed);
   if (!status) return routed;
