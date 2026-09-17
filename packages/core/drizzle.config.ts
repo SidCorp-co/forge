@@ -19,6 +19,7 @@ export default defineConfig({
     './src/db/schema-conversations.ts',
     './src/db/schema-agent-selves.ts',
     './src/db/schema-project-facts-backup.ts',
+    './src/db/schema-repo-projection.ts',
   ],
   out: './drizzle/migrations',
   dbCredentials: {
