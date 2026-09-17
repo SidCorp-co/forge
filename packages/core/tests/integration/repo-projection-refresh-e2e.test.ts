@@ -16,6 +16,13 @@ import { BASE, H1, H2, projectionGround } from './repo-projection-ground.js';
 
 const g = projectionGround();
 
+/** A key that really signs, so a stubbed `fetch` is reached rather than thrown short of. */
+const REACHABLE_KEY = generateKeyPairSync('rsa', {
+  modulusLength: 2048,
+  privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+  publicKeyEncoding: { type: 'spki', format: 'pem' },
+}).privateKey;
+
 describe('a refresh is fenced on the head it answered for', () => {
   // cm:guard THE case the `AND head_sha = <captured>` in `storeRefresh` exists for: a slow read for a head the row has since left knows nothing about the head it now carries, so neither its counts nor its complaint belongs there.
   it('writes neither values nor error onto a row whose head has moved', async () => {
@@ -199,11 +206,16 @@ describe('two refreshes for one row are ordered by when they started', () => {
 });
 
 describe('a push to a base nothing is waiting on', () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
   // cm:guard `openPullRequestsOnBase`'s `base_ref` predicate is what this is about, and the plant
   // that proves it is dropping that one `eq`: a base-blind read turns every push to any ref into a
-  // refresh of every open row, and the return value goes from 0 to 1 here. The `fetch` stub is the
-  // second half — a push nothing is based on must reach GitHub not at all, so a read attempted for
-  // rows that should not have been selected fails by its own name rather than by a count.
+  // refresh of every open row, and the return value goes from 0 to 1 here.
+  // cm:guard the key is a REAL one and the installation id is set, so the `fetch` stub is genuinely
+  // reachable: with a placeholder string the token signing throws first, and `calls` would stay
+  // empty however wrong the selection was — an assertion that cannot fail covers nothing.
   it('writes no row and makes no GitHub read', async () => {
     await g.seedIssue(g.projectId, 4242);
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
@@ -216,7 +228,7 @@ describe('a push to a base nothing is waiting on', () => {
     const ctx = {
       ...g.ctx(),
       config: { owner: 'SidCorp-co', repo: 'forge', installationId: 42 },
-      secrets: { appId: '1', privateKey: 'unused — no read should happen' },
+      secrets: { appId: '1', privateKey: REACHABLE_KEY },
     };
 
     expect(
@@ -229,7 +241,6 @@ describe('a push to a base nothing is waiting on', () => {
     expect(calls).toEqual([]);
     const after = await g.row();
     expect(after).toEqual(before);
-    vi.unstubAllGlobals();
   });
 });
 
