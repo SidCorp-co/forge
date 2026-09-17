@@ -48,6 +48,7 @@ vi.mock('./store.js', () => ({
     return r.order === 'oldest-first' ? inRange.slice(0, r.limit) : inRange.slice(-r.limit);
   },
   deliveredDecisionUnderKey: async () => (delivered ? 'answered' : null),
+  assistantSentExternalIds: async () => new Set<string>(),
   // cm:guard the REAL reading and not a stub: what a null mode means is the claim this module now
   // forks on, so a mock returning a fixed answer would make every case below say nothing about it.
   effectiveConversationMode: (row: { mode: 'assistant' | 'agent' | null }) =>

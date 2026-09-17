@@ -5,11 +5,12 @@
 // knows the pair `(adapter, externalId)` that names it and the handle that
 // gives it its scope.
 
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import {
+  type ConversationAdapter,
   type ConversationMessageRole,
   conversationMessages,
   conversations,
@@ -39,6 +40,7 @@ export {
   listConversationsInProject,
   renameConversation,
   setConversationArchived,
+  setConversationPresence,
   settleConversationMode,
 } from './rooms.js';
 
@@ -66,6 +68,8 @@ export interface StoredConversationMessage {
   authorLabel: string | null;
   /** The transport's own id for whoever spoke, where it named one. */
   authorKey: string | null;
+  /** The transport's own id for the message this one replies to or quotes, where it named one (ISS-1087). */
+  replyToExternalId: string | null;
   content: string;
   /** Ordered canonical blocks, or null on a row written through the text-only door. */
   blocks: ContentBlock[] | null;
@@ -168,6 +172,7 @@ export interface AppendMessageArgs {
   authorLabel?: string | null;
   authorKey?: string | null;
   externalId?: string | null;
+  replyToExternalId?: string | null;
   images?: readonly ConversationImage[] | undefined;
   /** Ordered canonical blocks for this row; omit on a caller that has only text. */
   blocks?: readonly ContentBlock[] | null | undefined;
@@ -249,6 +254,7 @@ export async function appendMessagesIn(
           authorKey: m.authorKey ?? null,
           content: m.content,
           externalId: m.externalId ?? null,
+          replyToExternalId: m.replyToExternalId ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
           // cm:guard an EMPTY blocks array is written as null, not as `[]`: `[]` would say "this
           // turn produced nothing", which is a claim, while null says "this row carries its answer
@@ -320,6 +326,30 @@ export async function readMessages(
 }
 
 /**
+ * Which of these transport ids name a message one of this adapter's handles delivered.
+ */
+// cm:guard ADAPTER-wide and not this conversation's rows alone: a Rocket.Chat thread is a conversation of its own, and the message a person quotes from inside it is the root the handle posted in the ROOM's conversation. The ids are a transport's and unique within its server; the join through `conversations` keeps one transport's ids from being read against another's (ISS-1087 criteria 13, 14).
+export async function assistantSentExternalIds(
+  adapter: ConversationAdapter,
+  ids: readonly string[],
+  tx: Executor = defaultDb,
+): Promise<Set<string>> {
+  if (ids.length === 0) return new Set();
+  const rows = await tx
+    .select({ externalId: conversationMessages.externalId })
+    .from(conversationMessages)
+    .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
+    .where(
+      and(
+        eq(conversations.adapter, adapter),
+        eq(conversationMessages.role, 'assistant'),
+        inArray(conversationMessages.externalId, [...ids]),
+      ),
+    );
+  return new Set(rows.flatMap((r) => (r.externalId ? [r.externalId] : [])));
+}
+
+/**
  * Has this conversation already been shown the reply for this delivery key?
  */
 // cm:guard the key is the AT-MOST-ONCE proof and it is checked against what was DELIVERED, never against what was attempted: a window re-claimed after its holder died is owed an answer only if the room never got one, and the row carrying the key is the only evidence either way (ISS-1004 rule 2).
@@ -386,6 +416,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     authorKey: row.authorKey,
     content: row.content,
     externalId: row.externalId,
+    replyToExternalId: row.replyToExternalId,
     blocks: asBlocks(row.blocks),
     images: asImages(row.images),
     deliveryProof: row.deliveryProof ?? null,
