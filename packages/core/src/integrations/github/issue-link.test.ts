@@ -46,12 +46,7 @@ describe('the reference a branch opens with', () => {
   });
 });
 
-// cm:guard this stub DISCARDS the predicate, so nothing below can prove the `project_id` in the
-// WHERE. That is deliberate and it is the whole reason
-// `tests/integration/repo-projection-e2e.test.ts` plants two projects against Postgres: a stub whose
-// `where` returns itself makes a scoping test pass whatever the query asks for, which is the
-// proof-by-absence ISS-1071's own F2 was filed for. What these cases prove is the ORDER of the two
-// reads and the short-circuit, which is a property of this function and not of the database.
+// cm:guard this stub DISCARDS the predicate, so nothing below can prove the `project_id` in the WHERE. That is deliberate and it is the whole reason `tests/integration/repo-projection-e2e.test.ts` plants two projects against Postgres: a stub whose `where` returns itself makes a scoping test pass whatever the query asks for, which is the proof-by-absence ISS-1071's own F2 was filed for. What these cases prove is the ORDER of the two reads and the short-circuit, which is a property of this function and not of the database.
 /** A reader that records what it was asked and answers from a fixed set. */
 function reader(opts: { heldPrefixes?: string[]; issue?: { id: string } | undefined }): {
   dbi: IssueRefReader;

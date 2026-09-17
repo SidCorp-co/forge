@@ -67,7 +67,7 @@ function loadEnv(url: string): void {
 /** Registers the hooks in the calling `describe` and hands back the live state. */
 export function projectionGround(): ProjectionGround {
   const g: ProjectionGround = {
-    // Filled by the hooks below, before any `it` can read them.
+    // cm:why these six are filled by the hooks below and read only from inside an `it`, so a placeholder is what lets the whole object be typed without a cast that would hide a field the hooks forget to set.
     harness: undefined as unknown as TestDatabase,
     mods: undefined as unknown as Mods,
     projectId: '',
