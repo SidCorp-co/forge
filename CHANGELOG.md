@@ -5450,6 +5450,10 @@
 
 ### Changed
 
+- **A migration may now clear a sibling branch's timestamp.** The journal gate demanded exactly
+  one day above the last, so every open branch derived the same number and whichever merged first
+  silently skipped the rest. Whole days now pass.
+
 - **The issues list and the search send far less down the wire.** Both included the whole of
   every issue on the page — bodies, plans, criteria — which neither screen showed. Searching for
   a code identifier is also far quicker.
