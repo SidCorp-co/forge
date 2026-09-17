@@ -123,6 +123,15 @@
 - **A request that never reached the API is now reported.** The browser collapses CORS, DNS and
   TLS failures into one opaque error, and until now they reached nobody. A response the API
   answered stays the API's to report.
+
+- **Agents read and write your pull requests through Forge, not a personal GitHub account on a
+  build box** — diff, failing check log, comment, new pull request, review request, verdict. Off
+  until you grant it. Merging stays Forge's step.
+
+- **A review is one record instead of two.** A review left on GitHub, by a person or by an agent,
+  now appears as a comment on the Forge issue its branch names — once, however often GitHub
+  resends it.
+
 - **You can see the assistant think.** A turn now shows how long the model paused before answering,
   and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
 

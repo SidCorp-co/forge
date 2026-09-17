@@ -69,8 +69,11 @@ export interface ReviewPayload {
     submitted_at?: string | null;
     html_url?: string | null;
     user?: { login?: string } | null;
+    /** What the reviewer wrote. Nothing here reads it; `review-note.ts` records it (ISS-1074). */
+    body?: string | null;
   };
-  pull_request?: { number?: number };
+  // cm:guard the head REF is carried even though the projection writes only `number`, and ISS-1074 is why: a review's tracker record is written onto the issue the head branch names, and that resolution must not depend on a `repo_pull_requests` row — GitHub delivers unordered, so a review can arrive before the `pull_request` delivery that would have created one, and the first review on a pull request Forge has never seen is the case a record matters most for.
+  pull_request?: { number?: number; head?: { ref?: string } };
 }
 
 export interface PushPayload {

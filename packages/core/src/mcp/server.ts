@@ -19,6 +19,7 @@ import { forgeCommentsTool } from './tools/forge-comments.js';
 import { forgeConfigTool } from './tools/forge-config.js';
 import { forgeCoolifyDeployTool } from './tools/forge-coolify-deploy.js';
 import { forgeFeedbackTool } from './tools/forge-feedback.js';
+import { forgeGithubTool } from './tools/forge-github.js';
 import { forgeGoogleSheetsTool } from './tools/forge-google-sheets.js';
 import { forgeGuideTool } from './tools/forge-guide.js';
 import { forgeHealthTool } from './tools/forge-health.js';
@@ -224,6 +225,8 @@ export function createMcpServer(ctx: McpContext): Server {
     // cm:guard append new tools HERE, immediately above the last one — every position shifts the indices below it, so the tail is the only insertion point that leaves all existing tools where callers pinned them
     forgeJobsResumeTool(ctx),
     forgeMetricsSessionFailuresTool(ctx),
+    // ISS-1074 wave — `forge_github` is the agent face of the GitHub integration (ISS-1062 layer 5).
+    forgeGithubTool(ctx),
     // cm:guard keep this registration LAST — callers pin to `tools/list` ordering, so inserting above it shifts every index they rely on
     forgeGuideTool(ctx),
   ];

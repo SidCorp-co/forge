@@ -224,7 +224,22 @@ function unresolvableEdges() {
     return { declared, blocked: '.forge/archmap/archmap is not executable here' };
   // cm:guard match BOTH phrasings archmap has printed — `N unresolvable edges` (<=0.1.2) and `N unresolvable of M possible edges` (0.1.3+). A regex that stops matching yields measured:null, which FAILS this rule rather than passing it, so a wording change is loud rather than silent — but it also fails a repo whose gate is fine, which is why the pattern must track the tool.
   const m = /(\d+)\s+unresolvable(?:\s+of\s+\d+\s+possible)?\s+edges/.exec(r.stdout ?? '');
-  return { declared, measured: m ? Number(m[1]) : null };
+  if (m) return { declared, measured: Number(m[1]) };
+  // cm:guard a child that STARTED and then DIED is not a wording change, and reporting it as one
+  // sends a reader to this regex over a machine that ran out of memory. `couldNotStart` above
+  // catches only a spawn that never happened; a kill by signal, or a non-zero exit with no count in
+  // what it printed, is the tool failing to answer — `could not run`, which `verify` reports as
+  // exit 2, rather than a violation of the ceiling. The count is read FIRST, so an archmap that
+  // exits non-zero because it found violations is still measured on what it printed.
+  if (r.signal || r.status !== 0) {
+    const how = r.signal ? `was killed by ${r.signal}` : `exited ${r.status}`;
+    const said = (r.stderr ?? '').trim().split('\n').pop() ?? '';
+    return {
+      declared,
+      blocked: `archmap check --stats ${how} before printing a count${said ? ` — ${said.slice(0, 120)}` : ''}`,
+    };
+  }
+  return { declared, measured: null };
 }
 
 const resolution = unresolvableEdges();
