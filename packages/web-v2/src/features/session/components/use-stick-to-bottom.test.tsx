@@ -79,14 +79,18 @@ describe("a thread following a turn that is still being written", () => {
   it("asks for no animation while a turn is arriving, and keeps one outside a turn", () => {
     const { rerender } = render(<Harness itemCount={3} live streaming streamedChars={10} />);
 
+    let before = scrolls.length;
     act(() => {
       rerender(<Harness itemCount={3} live streaming streamedChars={48} />);
     });
+    expect(scrolls.length).toBeGreaterThan(before);
     expect(scrolls.at(-1)).toEqual({ block: "end" });
 
+    before = scrolls.length;
     act(() => {
       rerender(<Harness itemCount={4} live={false} streamedChars={48} />);
     });
+    expect(scrolls.length).toBeGreaterThan(before);
     expect(scrolls.at(-1)).toEqual({ behavior: "smooth", block: "end" });
   });
 
@@ -99,11 +103,17 @@ describe("a thread following a turn that is still being written", () => {
   // back to reading the changed dependency rather than whether a turn is arriving.
   it("does not animate a row queued while the reply is still streaming", () => {
     const { rerender } = render(<Harness itemCount={3} live streaming streamedChars={48} />);
+    // cm:guard the COUNT is asserted before the options, in this case and the one below, because
+    // the mount already recorded a `{block:"end"}` call: reading only `scrolls.at(-1)` passes
+    // whether the rerender scrolled or not, so a hook that stopped following rows mid-stream
+    // altogether — the opposite regression — would clear it (whole-set consult round 3).
+    const before = scrolls.length;
 
     act(() => {
       rerender(<Harness itemCount={4} live streaming streamedChars={48} />);
     });
 
+    expect(scrolls.length).toBeGreaterThan(before);
     expect(scrolls.at(-1)).toEqual({ block: "end" });
   });
 
@@ -114,11 +124,13 @@ describe("a thread following a turn that is still being written", () => {
     const { rerender } = render(
       <Harness itemCount={3} live={false} streaming streamedChars={10} />,
     );
+    const before = scrolls.length;
 
     act(() => {
       rerender(<Harness itemCount={3} live={false} streaming streamedChars={48} />);
     });
 
+    expect(scrolls.length).toBeGreaterThan(before);
     expect(scrolls.at(-1)).toEqual({ block: "end" });
   });
 
