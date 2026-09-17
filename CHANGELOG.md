@@ -120,6 +120,9 @@
   kept until the session records its transcript as final. Where that never happened, the sweep
   writes the transcript instead of letting them expire.
 
+- **A request that never reached the API is now reported.** The browser collapses CORS, DNS and
+  TLS failures into one opaque error, and until now they reached nobody. A response the API
+  answered stays the API's to report.
 - **You can see the assistant think.** A turn now shows how long the model paused before answering,
   and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
 
@@ -2301,6 +2304,20 @@
 
 ### Removed
 
+- **GitHub issues are no longer copied into your project, and no GitHub event changes or closes a
+  Forge issue.** A project that wants outside reports admits them once, through a setting that
+  starts closed everywhere:
+
+  ```
+  PATCH /api/projects/<projectId>/pipeline-config
+  { "githubIntake": { "enabled": true } }
+  ```
+
+  An organisation admin makes that request; `GET` the same path back and
+  `pipelineConfig.githubIntake.enabled` reads `true`. Opening it admits new reports only; the edit
+  and close copying is gone for every project and no setting restores it. Issues already copied are
+  untouched.
+
 - **Nine days of maintenance on prompts nothing could ever read, ended.** When the staged pipeline
   was removed, the instructions written for its nine stages were left behind: eight blocks of
   per-stage guidance and nine pieces of process knowledge, all addressed to steps that can no longer
@@ -2886,6 +2903,28 @@
   set is now 59.
 
 ### Fixed
+
+- **An assistant reply fits the panel it is in.** Two nested 85% caps left a blank column beside
+  every answer, growing as the panel shrank. One place now sets the measure: full width, up to a
+  readable line length.
+
+- **A tool card says what came back instead of dumping it.** It printed 240 characters of minified
+  JSON, cut mid-key. It now names the result's shape and size in one line, and opens onto the whole
+  of it.
+
+- **The typing cursor sits after the last word, not on the line below it.** It was an element after
+  the prose, so every streaming reply was a line taller than the reply it became.
+
+- **A turn says whether it is working, responding or failed.** A turn that had produced nothing
+  showed empty space, and a spinner sat under prose it had already written. The cursor now follows
+  only text that is still growing.
+
+- **Older turns fold their tool cards to one row that opens back.** The newest turn keeps
+  everything. Nothing folds while you are scrolled up or inside it, and new output you cannot see is
+  announced rather than scrolled to.
+
+- **A stuck issue now stands out on the Issues list.** A row that sat too long was meant to read
+  amber beside its clock, and the colour never reached the screen. It does now.
 
 - **A release job opens in the checkout, not the daemon's home directory.** A repo path that
   belongs to another box is skipped instead of silently becoming `$HOME`; a job with no checkout

@@ -1,4 +1,5 @@
-import { useEffect, useRef } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
+import type { ConversationItem } from "../types";
 
 /**
  * Auto-scroll a thread container to its newest message (ISS-522, ISS-728).
@@ -8,7 +9,30 @@ import { useEffect, useRef } from "react";
  *    items first load (one-shot via lastJumpedKeyRef);
  *  - stick to bottom (smooth) on new turn / stream change ONLY when the user
  *    is already near the bottom, so reading history isn't interrupted (AC3).
+ *
+ * Since ISS-1083 it also reports what it knows about the reader, because two
+ * behaviours outside this file turn on it: a reader who has scrolled up is TOLD
+ * there is new output (criterion 28) rather than left to find out by scrolling
+ * back, and history only folds its machinery while they are at the bottom
+ * (criterion 29).
  */
+/**
+ * How much the thread's newest turn currently holds, as a number that moves whenever it does.
+ */
+// cm:guard the session screen passed NO growth signal at all until ISS-1083, so it still carried the
+// defect PR #480 fixed for the chat panel: a turn's rows grow IN PLACE while it runs, so `itemCount`
+// does not move and `live` was already true — the thread followed the first frame and then stopped,
+// and a reader up the thread was never told the rest had arrived (scroll consult F3).
+//
+// cm:why the whole turn serialized rather than its text length: a tool result settling onto a card
+// adds height to the thread and no characters to its prose, and a signal that missed it would drop a
+// reader following a turn at the exact moment the turn got taller. It is the same derivation
+// `conversation-chat.tsx` makes over the progress entry, for the same reason.
+export function tailOutputSize(items: readonly ConversationItem[]): number {
+  const tail = items.length > 0 ? items[items.length - 1] : undefined;
+  return tail ? JSON.stringify(tail).length : 0;
+}
+
 export function useStickToBottom({
   conversationKey,
   ready,
@@ -45,11 +69,36 @@ export function useStickToBottom({
   const atBottomRef = useRef(true);
   const lastJumpedKeyRef = useRef<string | undefined>(undefined);
 
+  // cm:guard the ref stays and the state is BESIDE it rather than replacing it: every read below is
+  // inside an effect that must see the reader's position as it is at that instant, and a state
+  // variable captured in a closure is the position at the last render. The state exists only so a
+  // reader's position can change what is DRAWN, which a ref cannot do.
+  const [atBottom, setAtBottom] = useState(true);
+  const [newOutput, setNewOutput] = useState(false);
+  const lastOutputRef = useRef(`${itemCount}:${streamedChars}`);
+
   const onScroll = () => {
     const el = scrollRef.current;
     if (!el) return;
-    atBottomRef.current = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    const near = el.scrollHeight - el.scrollTop - el.clientHeight < 80;
+    atBottomRef.current = near;
+    // Both setters are no-ops where the value is unchanged, so a scroll gesture costs a render only
+    // when it crosses the threshold.
+    setAtBottom(near);
+    if (near) setNewOutput(false);
   };
+
+  /** Take the reader to the newest output, because they asked for it. */
+  // cm:guard INSTANT, for the reason the growth effect below gives at length: a smooth scroll
+  // animates through every position on the way down and each one fires `onScroll`, so one reading
+  // more than 80px short drops the reader mid-turn with nobody having touched the page. This is
+  // reached by a click, which is exactly when a turn is most likely to be streaming underneath it.
+  const toBottom = useCallback(() => {
+    atBottomRef.current = true;
+    setAtBottom(true);
+    setNewOutput(false);
+    bottomRef.current?.scrollIntoView({ block: "end" });
+  }, []);
 
   // Conversation switch: reset the one-shot guard and jump to bottom once the
   // freshly-resolved conversation's items have loaded.
@@ -58,12 +107,30 @@ export function useStickToBottom({
     if (lastJumpedKeyRef.current === conversationKey) return;
     lastJumpedKeyRef.current = conversationKey;
     atBottomRef.current = true;
+    setAtBottom(true);
+    setNewOutput(false);
     bottomRef.current?.scrollIntoView({ block: "end" });
   }, [conversationKey, ready]);
 
   // Growth / stream: keep pinned to latest only when already near the bottom.
   useEffect(() => {
-    if (!atBottomRef.current) return;
+    // cm:guard a reader who has scrolled up is not moved AND is not left uninformed, which are two
+    // halves of one behaviour: ISS-1078 built the first half and shipped the second as silence, so a
+    // person who scrolled up to re-read a tool result while an answer streamed had no way to know
+    // the answer had finished except to scroll down and look (ISS-1083 criterion 28).
+    // cm:guard the pill is raised only where OUTPUT moved, and never where a lifecycle dependency
+    // did: this effect also runs when `live` or `streaming` flips, which happens when a send
+    // resolves or a turn ends with nothing having arrived — and a reader up the thread was told
+    // there was new output when there was none (scroll consult F2). The scroll below still runs on
+    // any of the four, because a reader at the bottom follows the thread whatever moved it.
+    const output = `${itemCount}:${streamedChars}`;
+    const grew = output !== lastOutputRef.current;
+    lastOutputRef.current = output;
+    if (!atBottomRef.current) {
+      if (grew) setNewOutput(true);
+      return;
+    }
+    setNewOutput(false);
     // cm:guard NOTHING animates while a turn is arriving, and that covers the row as well as the
     // frame, because a smooth scroll feeds back into the guard above it. `scrollIntoView({behavior:"smooth"})`
     // animates through every position between here and the bottom, and each one fires `onScroll`;
@@ -87,5 +154,5 @@ export function useStickToBottom({
     );
   }, [itemCount, live, streaming, streamedChars]);
 
-  return { scrollRef, bottomRef, onScroll };
+  return { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom };
 }

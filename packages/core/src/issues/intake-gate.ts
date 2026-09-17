@@ -34,19 +34,59 @@ export interface IntakeGateDecision {
 export const INTAKE_LABEL_NAME = 'intake';
 const INTAKE_LABEL_COLOR = '#f59e0b';
 
-/** Read the project's intake-gate config (absent → disabled). */
-export async function resolveIntakeGate(projectId: string): Promise<IntakeGateConfig> {
+interface StoredPipelineConfig {
+  intakeGate?: { enabled?: unknown; notify?: unknown };
+  githubIntake?: { enabled?: unknown };
+}
+
+async function readPipelineConfig(projectId: string): Promise<StoredPipelineConfig> {
   const [row] = await db
     .select({ agentConfig: projects.agentConfig })
     .from(projects)
     .where(eq(projects.id, projectId))
     .limit(1);
-  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: { intakeGate?: unknown } };
-  const raw = ac.pipelineConfig?.intakeGate as { enabled?: unknown; notify?: unknown } | undefined;
+  const ac = (row?.agentConfig ?? {}) as { pipelineConfig?: StoredPipelineConfig };
+  return ac.pipelineConfig ?? {};
+}
+
+function intakeGateOf(cfg: StoredPipelineConfig): IntakeGateConfig {
   return {
-    enabled: raw?.enabled === true,
-    notify: raw?.notify !== false,
+    enabled: cfg.intakeGate?.enabled === true,
+    notify: cfg.intakeGate?.notify !== false,
   };
+}
+
+/** Read the project's intake-gate config (absent → disabled). */
+export async function resolveIntakeGate(projectId: string): Promise<IntakeGateConfig> {
+  return intakeGateOf(await readPipelineConfig(projectId));
+}
+
+/**
+ * ISS-1076 — the external door, and the whole of what the project decides about it.
+ *
+ * `pipelineConfig.githubIntake.enabled` says whether this project admits a report
+ * from outside at all; absent is closed, because the door used to be open on every
+ * project bound to the GitHub App with nobody having asked. Once open, the status
+ * the report lands at is `intakeGate`'s answer and not this door's, which is why
+ * both are read from one document here rather than decided at the webhook.
+ *
+ * Three answers, and the refusal is one of them rather than an empty create: a
+ * caller that cannot tell a closed door from a delivery that never arrived is the
+ * silence this returns a named reason to avoid.
+ */
+export type ExternalIntakeDecision =
+  | { admitted: false; reason: 'github-intake-closed' }
+  | { admitted: true; status: IssueStatus; gated: boolean };
+
+export async function admitGithubIssue(projectId: string): Promise<ExternalIntakeDecision> {
+  const cfg = await readPipelineConfig(projectId);
+  if (cfg.githubIntake?.enabled !== true) {
+    return { admitted: false, reason: 'github-intake-closed' };
+  }
+  const gate = intakeGateOf(cfg);
+  return gate.enabled
+    ? { admitted: true, status: 'draft', gated: true }
+    : { admitted: true, status: 'open', gated: false };
 }
 
 /**

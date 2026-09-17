@@ -12,9 +12,11 @@
 // reading history is never dragged down, which is the property that made this
 // hook conditional in the first place (ISS-728 AC3).
 
-import { act, cleanup, render } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { useStickToBottom } from "./use-stick-to-bottom";
+import type { ConversationItem, RenderBlock } from "../types";
+import { NewOutput } from "./new-output";
+import { tailOutputSize, useStickToBottom } from "./use-stick-to-bottom";
 
 afterEach(cleanup);
 
@@ -32,14 +34,19 @@ function Harness(props: {
   live: boolean;
   streaming?: boolean;
   streamedChars: number;
+  conversationKey?: string;
 }) {
-  const { scrollRef, bottomRef, onScroll } = useStickToBottom({
-    conversationKey: "c1",
+  const { scrollRef, bottomRef, onScroll, newOutput, toBottom } = useStickToBottom({
+    conversationKey: props.conversationKey ?? "c1",
     ready: true,
     ...props,
   });
+  // cm:guard the harness draws the PILL, so criterion 28's assertions are about the affordance a
+  // reader actually gets rather than about a boolean: the whole behaviour is "told there is new
+  // output, and taken to it when they ask", and only the two together are worth anything.
   return (
     <div ref={scrollRef} onScroll={onScroll} data-testid="scroller">
+      {newOutput && <NewOutput onGo={toBottom} />}
       <div ref={bottomRef} />
     </div>
   );
@@ -159,5 +166,206 @@ describe("a thread following a turn that is still being written", () => {
     });
 
     expect(scrolls.length).toBeGreaterThan(before);
+  });
+});
+
+// ISS-1083 criterion 28 — the other half of the rule above. ISS-1078 built "a reader who has
+// scrolled up is not moved" and shipped "and is told there is new output" as silence: a person who
+// scrolled up to re-read a tool result while an answer streamed had no way to know the answer had
+// finished except to scroll back down and look.
+describe("telling a reader there is output they cannot see", () => {
+  /** Scroll back into history, as a reader does. */
+  const intoHistory = (el: HTMLElement) =>
+    scrollIntoHistory(el, () => el.dispatchEvent(new Event("scroll", { bubbles: true })));
+
+  /** Put the container back at the bottom, as a reader does. */
+  const toTheBottom = (el: HTMLElement) => {
+    Object.defineProperty(el, "scrollHeight", { value: 2000, configurable: true });
+    Object.defineProperty(el, "clientHeight", { value: 500, configurable: true });
+    el.scrollTop = 1500;
+    el.dispatchEvent(new Event("scroll", { bubbles: true }));
+  };
+
+  it("says nothing to a reader who is already at the bottom", () => {
+    const { rerender } = render(<Harness itemCount={3} live streaming streamedChars={10} />);
+    act(() => {
+      rerender(<Harness itemCount={3} live streaming streamedChars={48} />);
+    });
+    expect(screen.queryByTestId("new-output")).toBeNull();
+  });
+
+  // cm:guard the two halves asserted TOGETHER, because either alone is a defect: the reader is told,
+  // and the reader is not moved. A version that told them by scrolling them there would pass the
+  // first assertion and fail the second, and that is the behaviour ISS-728 made this hook
+  // conditional to prevent.
+  it("tells a reader in history that output has arrived, without moving them", () => {
+    const view = render(<Harness itemCount={3} live streaming streamedChars={10} />);
+    intoHistory(view.getByTestId("scroller"));
+    const before = scrolls.length;
+
+    act(() => {
+      view.rerender(<Harness itemCount={3} live streaming streamedChars={48} />);
+    });
+
+    expect(screen.queryByTestId("new-output")).not.toBeNull();
+    expect(scrolls.length).toBe(before);
+  });
+
+  it("says nothing until something has actually arrived", () => {
+    const view = render(<Harness itemCount={3} live={false} streamedChars={0} />);
+    intoHistory(view.getByTestId("scroller"));
+    // Scrolling up is not news. Nothing has been said since they left.
+    expect(screen.queryByTestId("new-output")).toBeNull();
+  });
+
+  it("takes the reader to it when they ask, and stops saying it", () => {
+    const view = render(<Harness itemCount={3} live streaming streamedChars={10} />);
+    const el = view.getByTestId("scroller");
+    intoHistory(el);
+    act(() => {
+      view.rerender(<Harness itemCount={3} live streaming streamedChars={48} />);
+    });
+    const before = scrolls.length;
+
+    act(() => {
+      fireEvent.click(screen.getByTestId("new-output"));
+    });
+
+    expect(scrolls.length).toBeGreaterThan(before);
+    // cm:guard INSTANT, for the reason the growth effect gives: a smooth scroll fires `onScroll` at
+    // every position on the way down, and one reading short of the threshold drops the reader
+    // mid-turn. This click is most likely to happen while a turn is streaming underneath it.
+    expect(scrolls.at(-1)).toEqual({ block: "end" });
+    expect(screen.queryByTestId("new-output")).toBeNull();
+  });
+
+  // cm:guard and the pill follows a reader who takes themselves back rather than only one who
+  // clicks it: the affordance is about what they cannot see, and once they are at the bottom there
+  // is nothing they cannot see.
+  it("stops saying it once the reader scrolls back down themselves", () => {
+    const view = render(<Harness itemCount={3} live streaming streamedChars={10} />);
+    const el = view.getByTestId("scroller");
+    intoHistory(el);
+    act(() => {
+      view.rerender(<Harness itemCount={3} live streaming streamedChars={48} />);
+    });
+    expect(screen.queryByTestId("new-output")).not.toBeNull();
+
+    act(() => {
+      toTheBottom(el);
+    });
+
+    expect(screen.queryByTestId("new-output")).toBeNull();
+  });
+
+  // cm:guard a room switch is not new output in the room a reader arrives in, and the pill is state
+  // rather than a derived value — so without this it would follow them across the switch and point
+  // at the bottom of a thread they are already at.
+  it("says nothing in a conversation the reader has just opened", () => {
+    const view = render(<Harness itemCount={3} live streaming streamedChars={10} />);
+    intoHistory(view.getByTestId("scroller"));
+    act(() => {
+      view.rerender(<Harness itemCount={3} live streaming streamedChars={48} />);
+    });
+    expect(screen.queryByTestId("new-output")).not.toBeNull();
+
+    act(() => {
+      view.rerender(
+        <Harness conversationKey="c2" itemCount={9} live={false} streamedChars={0} />,
+      );
+    });
+
+    expect(screen.queryByTestId("new-output")).toBeNull();
+  });
+});
+
+// cm:guard the pill is about OUTPUT and the effect that raises it also runs on two lifecycle
+// dependencies, which is how it came to announce nothing at all: a send resolving or a turn ending
+// moves `live` and `streaming` with the thread's content untouched, and a reader up the thread was
+// told there was something new to see (scroll consult F2).
+describe("what counts as new output", () => {
+  const intoHistory = (el: HTMLElement) =>
+    scrollIntoHistory(el, () => el.dispatchEvent(new Event("scroll", { bubbles: true })));
+
+  it("says nothing when a send resolves with the thread unchanged", () => {
+    const view = render(<Harness itemCount={3} live streaming streamedChars={48} />);
+    intoHistory(view.getByTestId("scroller"));
+
+    act(() => {
+      view.rerender(<Harness itemCount={3} live={false} streaming={false} streamedChars={48} />);
+    });
+
+    expect(screen.queryByTestId("new-output")).toBeNull();
+  });
+
+  // cm:guard and the positive case is asserted in the SAME shape, so what separates them is the one
+  // thing that should: the content moved.
+  it("says so when the same lifecycle change carries output with it", () => {
+    const view = render(<Harness itemCount={3} live streaming streamedChars={48} />);
+    intoHistory(view.getByTestId("scroller"));
+
+    act(() => {
+      view.rerender(<Harness itemCount={3} live={false} streaming={false} streamedChars={96} />);
+    });
+
+    expect(screen.queryByTestId("new-output")).not.toBeNull();
+  });
+
+  it("says so for a new row as well as for a turn that grew", () => {
+    const view = render(<Harness itemCount={3} live streaming streamedChars={48} />);
+    intoHistory(view.getByTestId("scroller"));
+
+    act(() => {
+      view.rerender(<Harness itemCount={4} live streaming streamedChars={48} />);
+    });
+
+    expect(screen.queryByTestId("new-output")).not.toBeNull();
+  });
+});
+
+// cm:guard the SESSION screen's growth signal, which it did not have at all: its turn rows grow in
+// place, so `itemCount` does not move and `live` was already true, and it carried the defect
+// PR #480 fixed for the chat panel — the thread followed the first frame and then stopped, and a
+// reader up the thread was never told the rest had arrived (scroll consult F3). `tailOutputSize` has
+// exactly one caller, so what goes red here is what that screen passes.
+describe("the growth of a turn whose rows change in place", () => {
+  const turnOf = (blocks: RenderBlock[]): ConversationItem => ({
+    kind: "agent",
+    id: "a1",
+    turnId: "a1",
+    turnIndex: 1,
+    role: "assistant",
+    thinkingCount: 0,
+    text: "",
+    blocks,
+    attachments: [],
+    editedAt: null,
+  });
+  const tool = (result?: unknown): RenderBlock => ({
+    type: "tool",
+    tool: { id: "t1", name: "Read", ...(result === undefined ? {} : { result }) },
+  });
+
+  it("moves when the newest turn's prose grows", () => {
+    const before = tailOutputSize([turnOf([{ type: "text", text: "Two issues" }])]);
+    const after = tailOutputSize([turnOf([{ type: "text", text: "Two issues are left" }])]);
+    expect(after).toBeGreaterThan(before);
+  });
+
+  // cm:guard THE case a text-length signal would have missed: a result settling onto a card adds
+  // height to the thread and not one character to its prose, and a reader following the turn would
+  // have been dropped at the exact moment it got taller.
+  it("moves when a tool result settles onto a card, with no prose to show for it", () => {
+    const before = tailOutputSize([turnOf([{ type: "text", text: "Let me look" }, tool()])]);
+    const after = tailOutputSize([
+      turnOf([{ type: "text", text: "Let me look" }, tool({ open: 3 })]),
+    ]);
+    expect(after).not.toBe(before);
+  });
+
+  it("holds still where nothing moved, and is zero for a thread with no turns", () => {
+    const items = [turnOf([{ type: "text", text: "Two issues are left" }])];
+    expect(tailOutputSize(items)).toBe(tailOutputSize(items));
+    expect(tailOutputSize([])).toBe(0);
   });
 });

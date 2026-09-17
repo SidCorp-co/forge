@@ -2,9 +2,10 @@
  * Which of the four events writes what, and what each one then re-reads.
  *
  * The routing lives here rather than in `webhooks/github-adapter.ts` because
- * that file is the GitHub Issues mirror and has no other reason to know a pull
- * request exists; and rather than in `projection.ts`, which is deliberately
- * payload-only and holds no credential.
+ * that file is the intake door an outside contributor's report enters by
+ * (ISS-1076 replaced the GitHub Issues mirror it used to be) and has no other
+ * reason to know a pull request exists; and rather than in `projection.ts`,
+ * which is deliberately payload-only and holds no credential.
  */
 
 import { logger } from '../../logger.js';
