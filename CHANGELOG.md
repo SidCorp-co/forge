@@ -5377,6 +5377,32 @@
 
 ### Changed
 
+- **The background checks that watch for stuck work now do a fixed amount each time, and say when
+  there was more.** Several of them looked at everything that matched, every minute, which is fine
+  while nothing is wrong and grows with the backlog exactly when something is. Each pass now takes
+  a set number of items. The ones that fix what they find simply carry on from where the work ran
+  out; the ones that only raise a warning remember where they stopped and continue from there next
+  time, wrapping round at the end — otherwise a cap would mean the same items were reported forever
+  and the rest never mentioned at all. A pass that ran out of room says so, with the number it got
+  through, because a quiet minute and an overwhelmed one otherwise look the same. Nothing is
+  skipped and no alert is lost; some are simply raised a minute or two later than they would have
+  been.
+
+- **Announcements of a status change are picked up in batches, and the check backs off when there
+  is nothing to pick up.** It asked about once a second whatever was happening, and in practice
+  there was nothing to find — around 86,000 questions a day, each stepping over the same single
+  item that can never be handled. It now asks less often the longer it finds nothing, up to eight
+  seconds, and goes straight back to once a second the moment anything turns up. A change made
+  during a quiet spell can take up to eight seconds to be picked up instead of one.
+
+- **Lists of agent sessions no longer read every transcript to count it.** A page of sessions
+  pulled each session's entire conversation out of storage purely to report how long it was —
+  hundreds of kilobytes each, and some of them tens of megabytes. The length now comes from the
+  turn-by-turn record instead. Sessions from before that record existed, which is everything older
+  than July, show no length rather than a length of zero, because zero would say they were empty
+  when they are not. Opening one session still shows the last twenty messages and the true total,
+  but only those twenty are now fetched.
+
 - **The issues list and the search send far less down the wire.** Both included the whole of
   every issue on the page — bodies, plans, criteria — which neither screen showed. Searching for
   a code identifier is also far quicker.

@@ -1,0 +1,136 @@
+<!doctype html>
+<meta charset="utf-8">
+<meta name="flow-module" content="lifecycle-pipeline">
+<meta name="flow-answers" content="Why a repeating check that finds too much in one go must be bounded two different ways depending on whether it changes anything, what a truncated pass owes the reader, and why a check that keeps finding nothing should ask less often">
+<title>Flow · lifecycle-pipeline · repeating checks</title>
+<style>
+  :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
+          --acc:#1f6f4a; --accbg:#e6efe9; --bad:#8a3b52; --badbg:#f6ecef; --new:#5b3a8e; --newbg:#efeaf6; }
+  * { box-sizing:border-box }
+  body { margin:0; background:var(--bg); color:var(--fg);
+         font:15px/1.55 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif; }
+  code { font:12.5px/1.4 ui-monospace,SFMono-Regular,Menlo,monospace; background:#f0ece6; padding:.1em .35em; border-radius:3px; }
+
+  .bar { display:flex; align-items:baseline; gap:.9rem; flex-wrap:wrap;
+         padding:.85rem 1.4rem; background:var(--panel); border-bottom:1px solid var(--line); }
+  .bar h1 { font-size:1.05rem; margin:0; font-weight:650; letter-spacing:-.01em; }
+  .crumb { font:12px ui-monospace,Menlo,monospace; color:var(--faint); }
+  .crumb a { color:var(--faint); }
+  .pill { margin-left:auto; font-size:12px; padding:.22rem .6rem; border-radius:99px;
+          background:var(--badbg); color:var(--bad); border:1px solid #e6d3d9; font-weight:600; }
+
+  .cols { display:grid; grid-template-columns:minmax(0,1fr) 20rem; gap:1px; background:var(--line); }
+  @media (max-width:1100px){ .cols { grid-template-columns:minmax(0,1fr) } }
+  .canvas, .rail { background:var(--bg); padding:1.1rem 1.4rem; }
+  .board { background:var(--panel); border:1px solid var(--line); border-radius:6px; padding:.6rem; overflow-x:auto; }
+  .board svg { display:block; min-width:60rem; width:100%; height:auto; }
+  .cap { color:var(--mut); font-size:13px; margin:.7rem .2rem 0; }
+  .cap b { color:var(--fg) }
+
+  .rail h2 { font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; color:var(--faint);
+             margin:0 0 .5rem; font-weight:700; }
+  .rail section + section { margin-top:1.3rem }
+  .who { list-style:none; margin:0; padding:0; font-size:12.5px; }
+  .who li { display:flex; gap:.5rem; padding:.28rem 0; border-bottom:1px solid var(--line); }
+  .who li:last-child { border-bottom:0 }
+  .who b { flex:0 0 8.6rem; font:600 12px ui-monospace,Menlo,monospace; }
+  .who span { color:var(--mut) }
+  .who .rt b { color:var(--acc) } .who .pk b { color:var(--new) } .who .en b { color:var(--mut) }
+  .key { list-style:none; margin:0; padding:0; font-size:12.5px; color:var(--mut) }
+  .key li { display:flex; align-items:center; gap:.5rem; padding:.2rem 0 }
+  .sw { width:22px; height:13px; border-radius:3px; flex:0 0 auto }
+  .key.strip { display:flex; flex-wrap:wrap; gap:.35rem 1.3rem; margin:.7rem .2rem 0 }
+
+  .tabs { display:flex; gap:.3rem; padding:0 1.4rem; background:var(--panel); border-top:1px solid var(--line);
+          border-bottom:1px solid var(--line); }
+  .tabs button { appearance:none; border:0; background:none; padding:.6rem .85rem; cursor:pointer;
+                 font:600 13px inherit; color:var(--mut); border-bottom:2px solid transparent; }
+  .tabs button[aria-selected=true] { color:var(--fg); border-bottom-color:var(--acc) }
+  .pane { padding:1.4rem 1.4rem 1.8rem; border-top:1px solid var(--line); }
+  .pane h2 { font:600 12.5px ui-sans-serif,system-ui,sans-serif; text-transform:uppercase;
+             letter-spacing:.05em; color:var(--mut); margin:0 0 .8rem; }
+
+  table { border-collapse:collapse; width:100%; font-size:13.5px; }
+  th,td { text-align:left; padding:.45rem .7rem; border-bottom:1px solid var(--line); vertical-align:top; }
+  th { font-weight:600; color:var(--faint); font-size:11.5px; text-transform:uppercase; letter-spacing:.05em; }
+  td.n { white-space:nowrap; font:12px ui-monospace,Menlo,monospace; color:var(--mut) }
+
+  .mx { border-collapse:separate; border-spacing:2px; font-size:12px; width:auto }
+  .mx th { padding:3px 5px; border:0; font:600 11.5px ui-monospace,Menlo,monospace; color:var(--mut);
+           text-transform:none; letter-spacing:0 }
+  .mx th.rh { text-align:right; color:var(--fg) }
+  .mx td { border:0; padding:0 }
+  .mx i { display:block; width:26px; height:22px; line-height:22px; border-radius:3px; font-style:normal;
+          text-align:center; font-size:12px }
+  .y { background:var(--accbg); color:var(--acc); font-weight:700 }
+  .y.p { background:var(--newbg); color:var(--new) }
+  .x { background:#f4f1ec; color:#e2ddd5 }
+  .s { background:#ebe6df; color:var(--faint) }
+  .gone { color:var(--faint); text-decoration:line-through }
+  .note { background:var(--panel); border:1px solid var(--line); border-left:3px solid var(--bad);
+          padding:.6rem .9rem; border-radius:4px; margin:.9rem 0; font-size:13.5px }
+  .note.plan { border-left-color:var(--new) }
+  .foot { padding:1rem 1.4rem 2.5rem; font-size:13px; color:var(--mut) }
+</style>
+<header class="bar">
+  <span class="crumb"><a href="index.html">flows</a> / lifecycle-pipeline</span>
+  <h1>What a repeating check does when there is more to look at than one pass can hold</h1>
+  <span class="pill">a capped pass that changes nothing never reaches the bottom of the list</span>
+</header>
+
+<div class="cols">
+<div class="canvas">
+
+  <p class="stage"><b>1</b>Two kinds of repeating check, and only one of them empties its own list</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  S["a check runs on a timer and finds<br/>more than it can handle in one pass"] --> K{"does acting on an item<br/>take it OFF the list?"}
+  K -->|"yes — it ends the item"| R["<b>a repair.</b> Take the oldest handful<br/>each time. The list shrinks, so the<br/>next pass starts further down by itself"]
+  K -->|"no — it only tells somebody"| A["<b>a warning.</b> Telling someone changes<br/>nothing about the item, so it is still<br/>on the list next time"]
+  R --> RD["everything is reached,<br/>just later than it would have been"]
+  A --> AB{"take the oldest handful<br/>every time anyway?"}
+  AB -->|"the obvious thing"| BAD["<b>the same handful, forever.</b><br/>Item 201 is never mentioned<br/>to anyone, at all"]
+  AB -->|"what it does now"| GOOD["<b>remember where it stopped</b> and<br/>carry on from there next time,<br/>starting over when it reaches the end"]
+</pre></div>
+  <p class="cap">This is the whole reason there are two mechanisms instead of one. A capped repair is
+  a <b>delay</b>: it finishes each item it touches, so the list gets shorter and the next pass picks
+  up where the work ran out. A capped warning is a <b>blind spot</b>, because a warning leaves the
+  thing it warned about exactly as it found it — so the cap reads the same page every single time
+  and everything past it is never mentioned. That is worse than the uncapped version it replaced,
+  which at least got to the bottom eventually. Measured: with a plain cap and a list one page
+  longer than the cap, the overflow was surfaced <b>zero</b> times; with the remembered position it
+  is surfaced on the very next pass.</p>
+
+  <p class="stage"><b>2</b>A pass that ran out of room says so, with the number</p>
+  <div class="board"><pre class="mermaid">
+flowchart LR
+  P["a pass ends"] --> Q{"did it fill its cap?"}
+  Q -->|"no"| QUIET["say nothing.<br/>It saw everything there was"]
+  Q -->|"yes"| LOUD["<b>record the cap, what it examined,<br/>and where it will resume</b>"]
+  LOUD --> WHY["a quiet pass and a full one look<br/>identical from the outside —<br/>both just report what they did"]
+</pre></div>
+  <p class="cap">Without that line there is no way to tell a calm system from an overwhelmed one:
+  a check that looked at everything and a check that stopped early both come back saying how much
+  they handled. Naming the cap is what turns "it handled 200" into "it handled 200 <i>and there
+  was more</i>". The repairs report which of the four stages filled up, because they are capped
+  together and the one that filled is the one that is behind.</p>
+
+  <p class="stage"><b>3</b>A check that keeps finding nothing asks less often</p>
+  <div class="board"><pre class="mermaid">
+flowchart LR
+  T["look for queued announcements"] --> F{"anything there?"}
+  F -->|"yes"| DO["handle them, and go back to<br/>asking once a second"]
+  F -->|"no"| BK["wait twice as long before asking again,<br/>up to eight seconds"]
+  BK --> T
+  DO --> T
+</pre></div>
+  <p class="cap">This one ran once a second forever. In practice there was <b>one</b> item waiting
+  and it was one that can never be handled — so every one of roughly 86,400 questions a day stepped
+  over the same stuck item to find nothing. The cost of asking less often is paid only while there
+  is genuinely nothing to do: the first item that appears during a quiet spell waits up to eight
+  seconds instead of one, and the moment anything is handled the check goes straight back to asking
+  every second. A failure counts as something being there, so a subscriber that is struggling is
+  retried promptly rather than more and more slowly.</p>
+
+</div>
+</div>
