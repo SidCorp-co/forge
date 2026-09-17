@@ -5344,9 +5344,9 @@
 
 ### Changed
 
-- **The issues list and the search answer faster.** Both sent the whole of every issue on the page,
-  bodies and plans included, which neither screen showed. Searching for a code identifier now looks
-  it up rather than reading every issue.
+- **The issues list and the search send far less down the wire.** Both included the whole of
+  every issue on the page — bodies, plans, criteria — which neither screen showed. Searching for
+  a code identifier is also far quicker.
 
 - **Cost figures on sessions, issues and pipeline runs load faster.** Each read scanned the whole
   usage table; they now go straight to the rows for the session, and the run dashboards no longer
