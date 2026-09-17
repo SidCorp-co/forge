@@ -17,7 +17,7 @@
  * is recorded on the row rather than thrown.
  */
 
-import { and, eq, sql } from 'drizzle-orm';
+import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { logger } from '../../logger.js';
@@ -223,7 +223,8 @@ export async function markRefreshCapped(rowIds: string[]): Promise<number> {
   const rows = await db
     .update(repoPullRequests)
     .set({ refreshError: CAP_REACHED_REASON, refreshedAt: new Date(), updatedAt: new Date() })
-    .where(sql`${repoPullRequests.id} = ANY(${rowIds})`)
+    // cm:guard `inArray`, not a hand-written `= ANY(${rowIds})`: drizzle spreads a JS array into one placeholder PER ELEMENT, so that form reaches Postgres as `ANY(($1, $2))` and fails with 42809 for ANY length. It shipped that way and no test had ever run this function against a database — the unit suite only asserted the sentence it writes.
+    .where(inArray(repoPullRequests.id, rowIds))
     .returning({ id: repoPullRequests.id });
   return rows.length;
 }

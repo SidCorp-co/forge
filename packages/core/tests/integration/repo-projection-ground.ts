@@ -35,6 +35,10 @@ type Mods = {
   storeRefresh: typeof import('../../src/integrations/github/projection-refresh.js').storeRefresh;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   readPullRequestsForIssues: typeof import('../../src/integrations/repo-projection.js').readPullRequestsForIssues;
+  // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
+  applyProjectedEvent: typeof import('../../src/integrations/github/projection-events.js').applyProjectedEvent;
+  basePushCap: number;
+  capReason: string;
 };
 
 export interface ProjectionGround {
@@ -118,12 +122,16 @@ export function projectionGround(): ProjectionGround {
     const projection = await import('../../src/integrations/github/projection.js');
     const refresh = await import('../../src/integrations/github/projection-refresh.js');
     const read = await import('../../src/integrations/repo-projection.js');
+    const events = await import('../../src/integrations/github/projection-events.js');
     g.mods = {
       applyPullRequestEvent: projection.applyPullRequestEvent,
       applyCheckRunEvent: projection.applyCheckRunEvent,
       applyReviewEvent: projection.applyReviewEvent,
       storeRefresh: refresh.storeRefresh,
       readPullRequestsForIssues: read.readPullRequestsForIssues,
+      applyProjectedEvent: events.applyProjectedEvent,
+      basePushCap: refresh.BASE_PUSH_REFRESH_CAP,
+      capReason: refresh.CAP_REACHED_REASON,
     };
   }, 60_000);
 

@@ -61,14 +61,18 @@ describe('the repo projection as the admissible payload reads it', () => {
         SELECT id FROM repo_pull_requests WHERE binding_id = ${g.bindingId} AND number = 11
       `)) as unknown as Array<{ id: string }>;
 
-    await g.mods.storeRefresh(String(greenRow[0]?.id), { headSha: H1, baseRef: 'main' }, {
-      ok: true,
-      behindBy: 0,
-      aheadBy: 3,
-      mergeable: true,
-      mergeableState: 'clean',
-      baseSha: BASE,
-    });
+    await g.mods.storeRefresh(
+      String(greenRow[0]?.id),
+      { headSha: H1, baseRef: 'main' },
+      {
+        ok: true,
+        behindBy: 0,
+        aheadBy: 3,
+        mergeable: true,
+        mergeableState: 'clean',
+        baseSha: BASE,
+      },
+    );
     await g.mods.applyCheckRunEvent(g.ctx(), {
       check_run: {
         id: 1,
@@ -83,14 +87,18 @@ describe('the repo projection as the admissible payload reads it', () => {
       },
       repository: { full_name: 'SidCorp-co/forge' },
     });
-    await g.mods.storeRefresh(String(badRow[0]?.id), { headSha: H2, baseRef: 'main' }, {
-      ok: true,
-      behindBy: 12,
-      aheadBy: 1,
-      mergeable: false,
-      mergeableState: 'dirty',
-      baseSha: BASE,
-    });
+    await g.mods.storeRefresh(
+      String(badRow[0]?.id),
+      { headSha: H2, baseRef: 'main' },
+      {
+        ok: true,
+        behindBy: 12,
+        aheadBy: 1,
+        mergeable: false,
+        mergeableState: 'dirty',
+        baseSha: BASE,
+      },
+    );
 
     const projected = await g.mods.readPullRequestsForIssues([green, conflicted]);
     expect(projected.get(green)?.[0]).toMatchObject({
@@ -130,6 +138,45 @@ describe('the repo projection as the admissible payload reads it', () => {
       pull_request: { number: 77 },
     });
     const projected = await g.mods.readPullRequestsForIssues([issueId]);
-    expect(projected.get(issueId)?.[0]?.reviews).toEqual([{ reviewer: 'a', state: 'approved' }]);
+    expect(projected.get(issueId)?.[0]?.reviews).toEqual([
+      { id: '1', reviewer: 'a', state: 'approved', submittedAt: '2026-09-17T01:00:00Z' },
+    ]);
+  });
+
+  // cm:guard F6 of the whole-set consult. One reviewer may request changes and then approve without ever dismissing the first, and GitHub keeps both. Stripping the ids and the times left a master two contradictory entries with nothing saying which came second — neither the "last state" the docstring claimed nor a usable history. Both are returned, in submission order, and which one wins stays the reader's judgement.
+  it('carries both reviews by one person in submission order, with what orders them', async () => {
+    const issueId = await g.seedIssue(g.projectId, 4242);
+    await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
+    await g.mods.applyReviewEvent(g.ctx(), {
+      action: 'submitted',
+      review: {
+        id: 2,
+        state: 'APPROVED',
+        submitted_at: '2026-09-17T02:00:00Z',
+        user: { login: 'codex' },
+      },
+      pull_request: { number: 77 },
+    });
+    await g.mods.applyReviewEvent(g.ctx(), {
+      action: 'submitted',
+      review: {
+        id: 1,
+        state: 'CHANGES_REQUESTED',
+        submitted_at: '2026-09-17T01:00:00Z',
+        user: { login: 'codex' },
+      },
+      pull_request: { number: 77 },
+    });
+
+    const projected = await g.mods.readPullRequestsForIssues([issueId]);
+    expect(projected.get(issueId)?.[0]?.reviews).toEqual([
+      {
+        id: '1',
+        reviewer: 'codex',
+        state: 'changes_requested',
+        submittedAt: '2026-09-17T01:00:00Z',
+      },
+      { id: '2', reviewer: 'codex', state: 'approved', submittedAt: '2026-09-17T02:00:00Z' },
+    ]);
   });
 });

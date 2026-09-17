@@ -13,7 +13,8 @@
  * `repo-projection-read-e2e.test.ts`.
  */
 
-import { describe, expect, it } from 'vitest';
+import { generateKeyPairSync } from 'node:crypto';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { BASE, H1, H2, projectionGround } from './repo-projection-ground.js';
 
 // cm:guard the four describes are siblings rather than nested: the size budget measures the longest function, and one `describe` wrapping all four was 250 lines against a budget of 150. The hooks `projectionGround()` registers are file-scoped here, which truncates per test exactly as nesting them did.
@@ -98,14 +99,18 @@ describe('a pull_request delivery', () => {
   // cm:guard the `CASE WHEN head_sha = excluded.head_sha` arms. Without them a behind-by computed for H1 survives beside H2 and reads as current, which is the number this whole projection exists to stop being wrong.
   it('clears what described the previous head in the statement that moves the head', async () => {
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
-    await g.mods.storeRefresh(String((await g.row())?.id), { headSha: H1, baseRef: 'main' }, {
-      ok: true,
-      behindBy: 9,
-      aheadBy: 2,
-      mergeable: false,
-      mergeableState: 'dirty',
-      baseSha: BASE,
-    });
+    await g.mods.storeRefresh(
+      String((await g.row())?.id),
+      { headSha: H1, baseRef: 'main' },
+      {
+        ok: true,
+        behindBy: 9,
+        aheadBy: 2,
+        mergeable: false,
+        mergeableState: 'dirty',
+        baseSha: BASE,
+      },
+    );
     expect(await g.row()).toMatchObject({ behind_by: 9, mergeable_state: 'dirty' });
 
     await g.mods.applyPullRequestEvent(
@@ -124,14 +129,18 @@ describe('a pull_request delivery', () => {
 
   it('keeps a refresh that describes the head the payload also carries', async () => {
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
-    await g.mods.storeRefresh(String((await g.row())?.id), { headSha: H1, baseRef: 'main' }, {
-      ok: true,
-      behindBy: 4,
-      aheadBy: 1,
-      mergeable: true,
-      mergeableState: 'clean',
-      baseSha: BASE,
-    });
+    await g.mods.storeRefresh(
+      String((await g.row())?.id),
+      { headSha: H1, baseRef: 'main' },
+      {
+        ok: true,
+        behindBy: 4,
+        aheadBy: 1,
+        mergeable: true,
+        mergeableState: 'clean',
+        baseSha: BASE,
+      },
+    );
     await g.mods.applyPullRequestEvent(
       g.ctx(),
       g.prEvent({ title: 'renamed', updated_at: '2026-09-17T02:00:00Z' }),
@@ -310,17 +319,25 @@ describe('a refresh is fenced on the head it answered for', () => {
     );
 
     await expect(
-      g.mods.storeRefresh(id, { headSha: H1, baseRef: 'main' }, {
-        ok: true,
-        behindBy: 99,
-        aheadBy: 99,
-        mergeable: false,
-        mergeableState: 'dirty',
-        baseSha: BASE,
-      }),
+      g.mods.storeRefresh(
+        id,
+        { headSha: H1, baseRef: 'main' },
+        {
+          ok: true,
+          behindBy: 99,
+          aheadBy: 99,
+          mergeable: false,
+          mergeableState: 'dirty',
+          baseSha: BASE,
+        },
+      ),
     ).resolves.toBe(false);
     await expect(
-      g.mods.storeRefresh(id, { headSha: H1, baseRef: 'main' }, { ok: false, reason: 'a stale complaint' }),
+      g.mods.storeRefresh(
+        id,
+        { headSha: H1, baseRef: 'main' },
+        { ok: false, reason: 'a stale complaint' },
+      ),
     ).resolves.toBe(false);
 
     const r = await g.row();
@@ -334,11 +351,174 @@ describe('a refresh is fenced on the head it answered for', () => {
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
     const id = String((await g.row())?.id);
     await expect(
-      g.mods.storeRefresh(id, { headSha: H1, baseRef: 'main' }, { ok: false, reason: 'HTTP 403 on SidCorp-co/forge' }),
+      g.mods.storeRefresh(
+        id,
+        { headSha: H1, baseRef: 'main' },
+        { ok: false, reason: 'HTTP 403 on SidCorp-co/forge' },
+      ),
     ).resolves.toBe(true);
     const r = await g.row();
     expect(r?.refresh_error).toBe('HTTP 403 on SidCorp-co/forge');
     expect(r?.head_sha).toBe(H1);
     expect(r?.base_ref).toBe('main');
   });
+});
+
+describe('a refresh is fenced on the base as well as the head', () => {
+  // cm:guard the case F1 of the whole-set consult found. A retarget from `main` to `release` does NOT move the head, so a head-only fence lets a refresh computed against `main` land on a row that now says `release` — the same wrong behind-by a stale head would give, reached without anybody pushing anything.
+  it('writes nothing onto a row whose base has moved under the same head', async () => {
+    await g.seedIssue(g.projectId, 4242);
+    await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
+    const id = String((await g.row())?.id);
+    await g.mods.applyPullRequestEvent(
+      g.ctx(),
+      g.prEvent({ base: { ref: 'release', sha: BASE }, updated_at: '2026-09-17T02:00:00Z' }),
+    );
+
+    await expect(
+      g.mods.storeRefresh(
+        id,
+        { headSha: H1, baseRef: 'main' },
+        {
+          ok: true,
+          behindBy: 99,
+          aheadBy: 99,
+          mergeable: false,
+          mergeableState: 'dirty',
+          baseSha: BASE,
+        },
+      ),
+    ).resolves.toBe(false);
+    await expect(
+      g.mods.storeRefresh(
+        id,
+        { headSha: H1, baseRef: 'main' },
+        { ok: false, reason: 'a stale complaint' },
+      ),
+    ).resolves.toBe(false);
+
+    const r = await g.row();
+    expect(r?.behind_by).toBeNull();
+    expect(r?.refresh_error).toBeNull();
+  });
+
+  // cm:guard the upsert's own half of F1: the refresh columns describe one head ON ONE BASE, so a payload that moves the base must clear them in the statement that moves it.
+  it('clears the refresh facts when the base moves and the head does not', async () => {
+    await g.seedIssue(g.projectId, 4242);
+    await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
+    const id = String((await g.row())?.id);
+    await g.mods.storeRefresh(
+      id,
+      { headSha: H1, baseRef: 'main' },
+      {
+        ok: true,
+        behindBy: 9,
+        aheadBy: 2,
+        mergeable: true,
+        mergeableState: 'clean',
+        baseSha: BASE,
+      },
+    );
+    expect((await g.row())?.behind_by).toBe(9);
+
+    await g.mods.applyPullRequestEvent(
+      g.ctx(),
+      g.prEvent({ base: { ref: 'release', sha: BASE }, updated_at: '2026-09-17T02:00:00Z' }),
+    );
+    const r = await g.row();
+    expect(r?.base_ref).toBe('release');
+    expect(r?.behind_by).toBeNull();
+    expect(r?.mergeable_state).toBeNull();
+    expect(r?.refreshed_for_head).toBeNull();
+  });
+});
+
+describe('a delivery that cannot read at all says so on the rows', () => {
+  const noInstallation = {
+    config: { owner: 'SidCorp-co', repo: 'forge' },
+    secrets: { appId: '1', privateKey: 'unused — the refusal happens before any signing' },
+  };
+
+  // cm:guard F5 of the whole-set consult. A bare null left the row with null counts and nothing beside them, which says "nobody has asked yet" and "Forge cannot ask" in one breath — and only the second is something an operator can act on.
+  it('records the missing installation on the pull request it could not read for', async () => {
+    await g.seedIssue(g.projectId, 4242);
+    const ctx = { ...g.ctx(), ...noInstallation };
+    expect(await g.mods.applyProjectedEvent(ctx, 'pull_request', g.prEvent())).toBe(1);
+    const r = await g.row();
+    expect(String(r?.refresh_error)).toMatch(/install it on the account/i);
+    expect(r?.behind_by).toBeNull();
+  });
+
+  it('records it on every open pull request a base push invalidated, not on one', async () => {
+    const ctx = { ...g.ctx(), ...noInstallation };
+    for (const number of [10, 11, 12]) {
+      await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent({ number }));
+    }
+    expect(
+      await g.mods.applyProjectedEvent(ctx, 'push', {
+        ref: 'refs/heads/main',
+        repository: { full_name: 'SidCorp-co/forge' },
+      }),
+    ).toBe(3);
+    for (const number of [10, 11, 12]) {
+      expect(String((await g.row(number))?.refresh_error)).toMatch(/install it on the account/i);
+    }
+  });
+});
+
+describe('the cap a base push stops at, against real rows', () => {
+  const KEY = generateKeyPairSync('rsa', {
+    modulusLength: 2048,
+    privateKeyEncoding: { type: 'pkcs8', format: 'pem' },
+    publicKeyEncoding: { type: 'spki', format: 'pem' },
+  }).privateKey;
+
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  // cm:guard F4 of the whole-set consult. The first shape read `cap + 1` rows and marked the one extra, so a base with 27 open pull requests left two of them stale with no sentence on them — the silent truncation the cap's own message exists to prevent, hiding inside the mechanism meant to prevent it.
+  it('refreshes the cap and marks the WHOLE remainder, not one sentinel row', async () => {
+    vi.stubGlobal('fetch', async (url: string) => ({
+      ok: true,
+      status: 200,
+      json: async () =>
+        String(url).includes('/access_tokens')
+          ? { token: 'ghs_x', expires_at: '2099-01-01T00:00:00Z' }
+          : String(url).includes('/compare/')
+            ? { ahead_by: 1, behind_by: 4, base_commit: { sha: BASE } }
+            : {
+                head: { sha: H1 },
+                base: { ref: 'main' },
+                mergeable: true,
+                mergeable_state: 'clean',
+              },
+    }));
+
+    const cap = g.mods.basePushCap;
+    const numbers = Array.from({ length: cap + 2 }, (_, i) => 100 + i);
+    for (const number of numbers) {
+      await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent({ number }));
+    }
+
+    const ctx = {
+      ...g.ctx(),
+      config: { owner: 'SidCorp-co', repo: 'forge', installationId: 42 },
+      secrets: { appId: '1', privateKey: KEY },
+    };
+    await g.mods.applyProjectedEvent(ctx, 'push', {
+      ref: 'refs/heads/main',
+      repository: { full_name: 'SidCorp-co/forge' },
+    });
+
+    const refreshed: number[] = [];
+    const capped: number[] = [];
+    for (const number of numbers) {
+      const r = await g.row(number);
+      if (r?.refresh_error === g.mods.capReason) capped.push(number);
+      else if (r?.behind_by === 4) refreshed.push(number);
+    }
+    expect(refreshed).toHaveLength(cap);
+    expect(capped).toEqual(numbers.slice(cap));
+  }, 60_000);
 });
