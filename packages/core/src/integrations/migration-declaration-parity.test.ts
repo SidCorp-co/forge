@@ -6,8 +6,21 @@
  * container that has already replaced the code — so it carries the classification as a literal
  * `VALUES` list, and that list is a second copy of `capabilities.agentPath.kind`. The forward file
  * refuses a provider it cannot classify, which covers a provider ADDED after it; what nothing
- * covered is a provider whose declared kind CHANGES, because then the migration classifies it
- * confidently and wrongly, and a binding is granted or withheld against a rule nobody meant.
+ * covered is a provider whose declared kind CHANGES.
+ *
+ * ISS-1074 is that case, and it is answered the other way round from what this header used to
+ * imply. The migration is not a mirror of the registry, it is a RECORD OF WHAT WAS TRUE WHEN IT
+ * RUNS — and its `core-mediated` arm force-grants `agent_access = 'all'` for a reason the file
+ * states in full: those tools answered any project member's agent with no gate at all, so closing
+ * them would have taken away a path that was open. `forge_github` was gated from the moment it
+ * existed. Writing `('github','core-mediated')` into 0259 would therefore grant every GitHub
+ * binding a path ISS-1074 requires to be closed by default — on any database applying 0259 after
+ * this change, which is the one population the literal still decides for.
+ *
+ * So the drift is NAMED rather than the SQL rewritten, and the entry is loud in both directions:
+ * the migration going back to something else fails the first test, and the registry moving BACK
+ * onto the migration's own value fails the second. An entry is never a licence to differ — it is a
+ * dated statement that a provider moved, with the issue that moved it.
  *
  * The rollback carries its own copy for a harder reason: the forward file DROPS
  * `iss1071_provider_agent_path` at the end, so the table is not there to read on the way back. Both
@@ -79,7 +92,30 @@ function declaredPairs(file: string, start: RegExp): Record<string, string> {
 const FORWARD_BLOCK = /INSERT INTO iss1071_provider_agent_path \(provider, kind\) VALUES/;
 const ROLLBACK_BLOCK = /LEFT JOIN \(VALUES/;
 
+/**
+ * Providers whose declared kind has MOVED since 0259 was written, and the issue that moved each.
+ *
+ * `was` is what 0259 classifies the provider as, and it stays what 0259 classifies it as. Adding a
+ * row here is a decision about a migration that has already run in the field, so it carries the
+ * issue that took it.
+ */
+const MOVED_SINCE_0259: Record<string, { was: string; issue: string }> = {
+  // ISS-1074 gave github an agent path — `core-mediated`, reached through `forge_github`. 0259 keeps
+  // `none`: its core-mediated arm force-grants `all` on the ground that those tools were ungated
+  // already, and `forge_github` never was, so classifying github there would open every binding.
+  github: { was: 'none', issue: 'ISS-1074' },
+};
+
 let declared: Record<string, string>;
+
+/** What 0259 should say: the registry, with each moved provider held at the kind 0259 recorded. */
+function asOfMigration(current: Record<string, string>): Record<string, string> {
+  const out = { ...current };
+  for (const [provider, moved] of Object.entries(MOVED_SINCE_0259)) {
+    if (provider in out) out[provider] = moved.was;
+  }
+  return out;
+}
 
 beforeAll(() => {
   registerAllIntegrations();
@@ -90,11 +126,24 @@ beforeAll(() => {
 
 describe('the migration classifies every provider the way its declaration does', () => {
   it('the forward migration names exactly the registry, with the same kind for each', () => {
-    expect(declaredPairs(FORWARD, FORWARD_BLOCK)).toEqual(declared);
+    expect(declaredPairs(FORWARD, FORWARD_BLOCK)).toEqual(asOfMigration(declared));
   });
 
   it('the rollback carries the same table, because the forward run drops the real one', () => {
-    expect(declaredPairs(ROLLBACK, ROLLBACK_BLOCK)).toEqual(declared);
+    expect(declaredPairs(ROLLBACK, ROLLBACK_BLOCK)).toEqual(asOfMigration(declared));
+  });
+
+  // The other half of the allowance, and the one that keeps it from becoming a licence: an entry
+  // whose provider now declares the very kind 0259 gave it is an entry describing a drift that no
+  // longer exists, and it would silently excuse the next real one.
+  it('names no provider that has not actually moved', () => {
+    for (const [provider, moved] of Object.entries(MOVED_SINCE_0259)) {
+      expect(declared, `${provider} is not in the registry at all`).toHaveProperty(provider);
+      expect(
+        declared[provider],
+        `${provider} declares ${declared[provider]}, which is what 0259 already says — delete its MOVED_SINCE_0259 entry (${moved.issue})`,
+      ).not.toBe(moved.was);
+    }
   });
 
   // A kind the SQL does not know is worse than an unknown provider: the forward file refuses a

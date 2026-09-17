@@ -133,9 +133,32 @@ describe("GitHubSection", () => {
         projectId: "proj-1",
         role: "service",
         config: { owner: "other-org", repo: "codemap", installationId: 222 },
+        agentAccess: "none",
       },
     });
     expect(connectMutate).not.toHaveBeenCalled();
+  });
+
+  // cm:guard ISS-1074 made github `core-mediated`, so this form now carries the grant, and this
+  // pair of cases is what says the default did not move with it. A repository bound without
+  // touching the switch must reach the server as `none`: the previous shape sent no key at all and
+  // the column's own default answered, which stops being true the moment the key is present.
+  it("offers the agent grant and sends it closed unless the operator opens it", async () => {
+    connectionItems.mockReturnValue([{ id: "conn-1", provider: "github", active: true }]);
+    render(<GitHubSection projectId="proj-1" />);
+
+    const grant = screen.getByLabelText("Agents on this project may use this");
+    expect(grant).not.toBeChecked();
+    expect(screen.getByText(/Forge holds the credential and makes the call/)).toBeInTheDocument();
+
+    fireEvent.click(grant);
+    fireEvent.change(screen.getByLabelText("Repository"), {
+      target: { value: "other-org/codemap" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Connect repository" }));
+
+    await waitFor(() => expect(bindMutate).toHaveBeenCalledTimes(1));
+    expect(bindMutate.mock.calls[0]?.[0].body).toMatchObject({ agentAccess: "all" });
   });
 
   // cm:guard github binds as `service` and offers no stage choice, because
