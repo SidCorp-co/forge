@@ -253,6 +253,56 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
     expect(screen.getByText("two issues left")).toBeInTheDocument();
   });
 
+  // ISS-1079 criterion 8 — a stored turn's reasoning, off the row alone with no socket involved.
+  // This is the whole path: the blocks column, `asBlocks` on the way out of core, `parseMessages`
+  // here, and the line on the page.
+  it("draws a stored turn's reasoning from the blocks its payload carried", () => {
+    const withThinking: CanonicalBlock[] = [
+      { type: "thinking", thinking: "the release note is the gate", durationMs: 1_400 },
+      { type: "text", text: "two issues left" },
+    ];
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: withThinking })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.getByTestId("thinking-line")).toHaveTextContent("Thought for 1.4s");
+    expect(screen.getByText("two issues left")).toBeInTheDocument();
+    // cm:guard collapsed, so the reasoning is not on the page until a person asks for it: a turn
+    // that thought for a page and answered in a line must not read as a page of answer.
+    expect(screen.queryByText("the release note is the gate")).toBeNull();
+  });
+
+  // ISS-1079 criterion 5, and the web half of the round trip the whole-set read asked for: an
+  // encrypted pause reaches a REOPENED room off the stored blocks alone, and offers nothing to open.
+  // Before the correction this state lived on the live entry's `thinkingCount`, which the durable
+  // row has no column for — so the line was true for four seconds and gone on every reload.
+  it("draws a stored encrypted pause as a line with nothing to open", () => {
+    const encrypted: CanonicalBlock[] = [{ type: "thinking" }, { type: "text", text: "two issues left" }];
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: encrypted })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.getByTestId("thinking-line")).toHaveTextContent("Thought");
+    expect(screen.queryByTestId("thinking-line-toggle")).toBeNull();
+    expect(screen.getByText("two issues left")).toBeInTheDocument();
+  });
+
+  // ISS-1079 criterion 4 — the absence is the assertion. A renderer that drew an empty line for
+  // every turn would pass every case above.
+  it("draws no thinking line for a stored turn that did not pause", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: toolBlocks })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.queryByTestId("thinking-line")).toBeNull();
+  });
+
   // criterion 12 — every row stored before this change has `blocks` null, and they are most of them.
   it("renders a stored turn whose blocks is null as its text", () => {
     render(

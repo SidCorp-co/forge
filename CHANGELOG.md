@@ -111,8 +111,10 @@
   silently carry a consumer across a major. CodeQL code scanning and GitHub private vulnerability
   reporting were enabled on the repository in the same change.
 
-
 ### Added
+- **You can see the assistant think.** A turn now shows how long the model paused before answering,
+  and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
+
 - **The assistant's replies now stream.** Your question is confirmed as soon as it is filed, the
   answer appears as it is written, and each tool call shows as its own card — kept when the room is
   reopened.
@@ -2876,6 +2878,10 @@
   set is now 59.
 
 ### Fixed
+
+- **A release job opens in the checkout, not the daemon's home directory.** A repo path that
+  belongs to another box is skipped instead of silently becoming `$HOME`; a job with no checkout
+  here gives its hold back naming both paths.
 
 - **The Issues list opens again.** It failed on every project holding work: asking for each
   issue's cost sent the server a question it could not answer, so the page never loaded. Only

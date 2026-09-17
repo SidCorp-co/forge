@@ -43,6 +43,7 @@ const call = (id: string): ChatStreamEvent => ({
   arguments: '{"action":"list"}',
 });
 const resultOf = (id: string): ChatStreamEvent => ({ type: 'tool_result', id, result: 'ok' });
+const reason = (text: string): ChatStreamEvent => ({ type: 'reasoning', text });
 
 /** The publishes are chained, so a test reads the frames after the chain drains. */
 const drain = () => new Promise((r) => setTimeout(r, 0));
@@ -305,6 +306,59 @@ describe('the blocks a delivered reply is stored with', () => {
 
     expect(blocks?.map((b) => b.type)).toEqual(['tool', 'text']);
     expect(blocks?.at(-1)).toEqual({ type: 'text', text: 'ISS-1033 is still running.' });
+    expect(JSON.stringify(blocks)).not.toContain('shipped last week');
+  });
+
+  // cm:guard reasoning survives the rebuild for the same reason tool blocks do, and the reason the
+  // old filter did not keep it is that `type === 'tool'` was a list of one written before there was
+  // anything else worth keeping. What may not stand alone here is TEXT — the formatter reads
+  // `blocks` exclusively when non-empty, so an array with no delivered text renders a turn whose
+  // reply vanished. Thinking is not text either (ISS-1079, plan consult F2).
+  it('keeps the reasoning beside the tools when the delivered text is not the draft', () => {
+    const { progress } = watcher();
+
+    progress.onTurnEvent(reason('let me check the list'));
+    progress.onTurnEvent(chunk('Let me look.'));
+    progress.onTurnEvent(call('c1'));
+    progress.onTurnEvent(resultOf('c1'));
+    progress.onTurnEvent(chunk('ISS-1033 is running.'));
+
+    const blocks = progress.blocksForRecord('ISS-1033 is running.');
+
+    expect(blocks?.map((b) => b.type)).toEqual(['thinking', 'tool', 'text']);
+    expect(blocks?.[0]).toMatchObject({ thinking: 'let me check the list' });
+    expect(blocks?.at(-1)).toEqual({ type: 'text', text: 'ISS-1033 is running.' });
+    expect(JSON.stringify(blocks)).not.toContain('Let me look.');
+  });
+
+  // cm:guard the encrypted pause has to reach the RECORD, not just the socket, and this is the half
+  // of that round trip that lives in core: a textless thinking block survives the rebuild, and
+  // `asBlocks` reads it back (asserted in conversations/store.test.ts). The other half — that a
+  // stored block with no text draws a line and no expander — is web-v2's own test (whole-set F1).
+  it('keeps an encrypted pause in what the record is given', () => {
+    const { progress } = watcher();
+
+    progress.onTurnEvent({ type: 'reasoning', text: '', redacted: true });
+    progress.onTurnEvent(chunk('Let me look.'));
+    progress.onTurnEvent(call('c1'));
+    progress.onTurnEvent(resultOf('c1'));
+    progress.onTurnEvent(chunk('Two left.'));
+
+    const blocks = progress.blocksForRecord('Two left.');
+
+    expect(blocks?.map((b) => b.type)).toEqual(['thinking', 'tool', 'text']);
+    expect(blocks?.[0]).toEqual({ type: 'thinking' });
+  });
+
+  it('keeps the reasoning of a replaced reply that ran no tools at all', () => {
+    const { progress } = watcher();
+
+    progress.onTurnEvent(reason('hmm'));
+    progress.onTurnEvent(chunk('ISS-1033 shipped last week.'));
+
+    const blocks = progress.blocksForRecord('ISS-1033 is still running.');
+
+    expect(blocks?.map((b) => b.type)).toEqual(['thinking', 'text']);
     expect(JSON.stringify(blocks)).not.toContain('shipped last week');
   });
 

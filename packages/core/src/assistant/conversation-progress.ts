@@ -153,16 +153,20 @@ export function startConversationProgress(args: {
   // has vanished. Where the screen replaced the draft, the tool blocks are kept in order and ONE text
   // block carrying the delivered text is appended: the true interleaving of a reply nobody streamed is
   // unknown, and "it ran these, then said this" is the honest reading rather than an invented one.
-  // A turn with no tool blocks returns null, because then `content` alone is the whole answer and the
-  // formatter's null-blocks path draws it (ISS-1078, consult F3).
+  // A turn with nothing else to keep returns null, because then `content` alone is the whole answer
+  // and the formatter's null-blocks path draws it (ISS-1078, consult F3).
+  // cm:guard what may not stand alone here is TEXT, and the kept set is therefore everything that is
+  // not text — tool blocks and, since ISS-1079, thinking blocks. The filter read `type === 'tool'`
+  // while that was a list of one, which silently dropped every turn's reasoning the moment the shape
+  // grew a second non-text member (ISS-1079, plan consult F2).
   const blocksFor = (finalText: string): ContentBlock[] | null => {
     const blocks = acc.blocks();
     if (!blocks) return null;
     const draft = (acc.entry()?.content ?? '').trim();
     if (draft === finalText.trim()) return blocks;
-    const tools = blocks.filter((b) => b.type === 'tool');
-    if (tools.length === 0) return null;
-    return [...tools, { type: 'text', text: finalText }];
+    const kept = blocks.filter((b) => b.type === 'tool' || b.type === 'thinking');
+    if (kept.length === 0) return null;
+    return [...kept, { type: 'text', text: finalText }];
   };
 
   const flush = (): void => {
