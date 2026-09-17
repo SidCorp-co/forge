@@ -199,6 +199,19 @@ export interface IntegrationCapabilities {
    */
   webhookHeader?: string;
   /**
+   * The request header carrying the HMAC signature over an inbound delivery's raw body.
+   *
+   * Declared for the same reason `webhookHeader` is, and it was the half ISS-1071 left behind:
+   * `webhooks/inbound-routes.ts` derived the header→provider map from these declarations and then
+   * looked for the signature in a literal `['x-hub-signature-256', 'x-forge-signature-256']` in its
+   * own file. A provider signing with anything else — Sentry's `sentry-hook-signature`, ISS-1085
+   * slice 4 — therefore routed correctly to its adapter and was then refused `MISSING_SIGNATURE`,
+   * with nothing beside that array saying a second edit was owed. REQUIRED wherever
+   * `canReceiveWebhook` is true; `capabilities.test.ts` holds that, and the router refuses a matched
+   * provider that declares none by name rather than falling through to the generic path.
+   */
+  webhookSignatureHeader?: string;
+  /**
    * True where this provider's API can express a rollback as a structured action rather than as
    * prose for a human to carry out. Read by `release-batch/channel.ts`, which classified it with
    * `provider === 'coolify'` until ISS-1071.

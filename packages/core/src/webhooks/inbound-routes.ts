@@ -12,8 +12,8 @@ import type { IntegrationProvider } from '../integrations/types.js';
 import { logger } from '../logger.js';
 import { verifyHmacSignature } from './hmac.js';
 
-// cm:guard every header here belongs to a provider that actually SIGNS its webhooks — `x-coolify-signature-256` went with the Coolify inbound path (ISS-922) because Coolify sends no signature at all, and an entry for a provider that signs nothing only makes an unreachable branch look reachable.
-const PROVIDER_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
+// cm:guard THE GENERIC PATH'S PAIR, and only it. A provider-routed delivery is verified against the ONE header its own declaration names (`capabilities.webhookSignatureHeader`), so nothing is added here when a provider is added — that is what ISS-1085 slice 4 finished moving out of this file, and this array is what was left of the map ISS-1071 derived from the declarations. Every header here still belongs to something that actually SIGNS: `x-coolify-signature-256` went with the Coolify inbound path (ISS-922) because Coolify sends no signature at all, and an entry for a provider that signs nothing only makes an unreachable branch look reachable.
+const GENERIC_SIGNATURE_HEADERS = ['x-hub-signature-256', 'x-forge-signature-256'] as const;
 
 const badRequest = (details: unknown, code = 'BAD_REQUEST') =>
   new HTTPException(400, { message: 'Invalid input', cause: { code, details } });
@@ -31,10 +31,21 @@ const notFound = () =>
  * integration reporting healthy, and nothing in the array's neighbourhood said a second edit was
  * owed.
  */
-function providerHeaderMap(): Array<{ header: string; provider: IntegrationProvider }> {
+interface ProviderRoute {
+  header: string;
+  /** Absent only where a provider declares an inbound surface and forgets how it is signed. */
+  signatureHeader: string | undefined;
+  provider: IntegrationProvider;
+}
+
+function providerHeaderMap(): ProviderRoute[] {
   return listIntegrations()
     .filter((d) => d.capabilities.canReceiveWebhook && d.capabilities.webhookHeader)
-    .map((d) => ({ header: d.capabilities.webhookHeader as string, provider: d.provider }));
+    .map((d) => ({
+      header: d.capabilities.webhookHeader as string,
+      signatureHeader: d.capabilities.webhookSignatureHeader,
+      provider: d.provider,
+    }));
 }
 
 export const webhookInboundRoutes = new Hono();
@@ -65,9 +76,18 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
       throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
     }
 
-    const signatureHeader = PROVIDER_SIGNATURE_HEADERS.map((h) => c.req.header(h)).find(
-      (v): v is string => typeof v === 'string' && v.length > 0,
-    );
+    // cm:guard a matched provider that declares NO signature header is refused by name, never
+    // dropped through to the generic path below. Falling through would verify a provider's delivery
+    // against `projects.webhookSecret` and answer it `actions: 0` — a 200 for a payload nobody
+    // handled, which is the silent substitution the declaration was moved here to end.
+    if (!map.signatureHeader) {
+      throw badRequest({ provider: map.provider }, 'PROVIDER_DECLARES_NO_SIGNATURE_HEADER');
+    }
+    // cm:guard ONE header, the one this provider declares — not whichever of a set happens to be
+    // present. A delivery that carried the right bytes under the wrong header name is a delivery
+    // from something that is not this provider, and accepting it on the strength of a verifying
+    // HMAC would mean the header name stopped identifying anything.
+    const signatureHeader = c.req.header(map.signatureHeader);
     if (!signatureHeader) {
       throw unauthorized('MISSING_SIGNATURE');
     }
@@ -122,7 +142,9 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
   }
 
   const signatureHeader =
-    c.req.header('x-hub-signature-256') ?? c.req.header('x-forge-signature-256') ?? null;
+    GENERIC_SIGNATURE_HEADERS.map((h) => c.req.header(h)).find(
+      (v): v is string => typeof v === 'string' && v.length > 0,
+    ) ?? null;
   if (!verifyHmacSignature(project.secret, rawBody, signatureHeader)) {
     throw unauthorized('INVALID_SIGNATURE');
   }
