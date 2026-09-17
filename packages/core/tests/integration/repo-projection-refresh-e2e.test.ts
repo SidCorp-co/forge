@@ -198,6 +198,41 @@ describe('two refreshes for one row are ordered by when they started', () => {
   });
 });
 
+describe('a push to a base nothing is waiting on', () => {
+  // cm:guard `openPullRequestsOnBase`'s `base_ref` predicate is what this is about, and the plant
+  // that proves it is dropping that one `eq`: a base-blind read turns every push to any ref into a
+  // refresh of every open row, and the return value goes from 0 to 1 here. The `fetch` stub is the
+  // second half — a push nothing is based on must reach GitHub not at all, so a read attempted for
+  // rows that should not have been selected fails by its own name rather than by a count.
+  it('writes no row and makes no GitHub read', async () => {
+    await g.seedIssue(g.projectId, 4242);
+    await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
+    const before = await g.row();
+    const calls: string[] = [];
+    vi.stubGlobal('fetch', async (url: string) => {
+      calls.push(String(url));
+      throw new Error('a push nothing is based on must not read GitHub');
+    });
+    const ctx = {
+      ...g.ctx(),
+      config: { owner: 'SidCorp-co', repo: 'forge', installationId: 42 },
+      secrets: { appId: '1', privateKey: 'unused — no read should happen' },
+    };
+
+    expect(
+      await g.mods.applyProjectedEvent(ctx, 'push', {
+        ref: 'refs/heads/some-branch-no-pull-request-targets',
+        repository: { full_name: 'SidCorp-co/forge' },
+      }),
+    ).toBe(0);
+
+    expect(calls).toEqual([]);
+    const after = await g.row();
+    expect(after).toEqual(before);
+    vi.unstubAllGlobals();
+  });
+});
+
 describe('a delivery that cannot read at all says so on the rows', () => {
   const noInstallation = {
     config: { owner: 'SidCorp-co', repo: 'forge' },
