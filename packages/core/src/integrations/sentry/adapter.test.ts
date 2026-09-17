@@ -120,3 +120,25 @@ describe('sentryAdapter.healthcheck', () => {
     expect(res.message).toMatch(/no Sentry auth token/);
   });
 });
+
+describe('the Sentry declaration (ISS-1085)', () => {
+  it('declares canDispatch beside a dispatchOutbound that exists — criterion 1', async () => {
+    const { sentryIntegration } = await import('./adapter.js');
+    expect(sentryIntegration.capabilities.canDispatch).toBe(true);
+    expect(typeof sentryIntegration.adapter?.dispatchOutbound).toBe('function');
+  });
+
+  it('declares hasDeliveryLog, which is what puts the tab on the connection drawer — criterion 2', async () => {
+    const { sentryIntegration } = await import('./adapter.js');
+    expect(sentryIntegration.capabilities.hasDeliveryLog).toBe(true);
+  });
+
+  it('still refuses an inbound delivery by name', async () => {
+    await expect(
+      // biome-ignore lint/suspicious/noExplicitAny: handleInbound refuses before reading either argument
+      sentryAdapter.handleInbound({} as any, {} as any),
+    ).rejects.toThrow(
+      'sentry: handleInbound is not supported (this provider has no inbound surface)',
+    );
+  });
+});
