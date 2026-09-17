@@ -62,7 +62,46 @@ describe('a turn published while it runs', () => {
     // text, because every frame carries the whole entry — so a per-token implementation passes any
     // assertion about content and fails only this one.
     expect(frames).toHaveLength(1);
-    expect(frames[0]?.entry.content).toBe('The issue list says how long');
+    // cm:guard the frame holds the text as it stood WHEN IT WAS FLUSHED — the first token — and not
+    // the whole run. It read `'The issue list says how long'` until ISS-1078's review F1, and that
+    // was the defect rather than the contract: the frame carried the accumulator's own object, so
+    // it went on growing after the flush and reading it later showed the end of the turn.
+    expect(frames[0]?.entry.content).toBe('The ');
+  });
+
+  // cm:guard review F1. Publication is held open while more text arrives and each frame is
+  // serialized the moment it is published, which is the only way this is visible: the frames are
+  // chained behind `publishToConversationReaders` resolving a participant list, so in production
+  // every queued frame carried the latest text and the coalescing window bounded nothing at all.
+  // Text is the sequence that shows it — a tool result goes through `mergeMessages`, which returns a
+  // new object, so a live reference is invisible on the tool path.
+  it('freezes a frame at the boundary it was flushed on', async () => {
+    const serialized: string[] = [];
+    let release = (): void => undefined;
+    const held = new Promise<void>((r) => {
+      release = r;
+    });
+    const publish = vi.fn(async (_id: string, envelope: { event: string; data: unknown }) => {
+      serialized.push(JSON.stringify(envelope.data));
+      await held;
+      return 1;
+    });
+    const c = clock();
+    const progress = startConversationProgress({
+      conversationId: 'room-1',
+      entryId: 'entry-1',
+      publish,
+      now: c.now,
+    });
+
+    progress.onTurnEvent(chunk('the answer is '));
+    c.advance(200);
+    progress.onTurnEvent(chunk('forty'));
+    progress.onTurnEvent(chunk('-two'));
+    release();
+    await drain();
+
+    expect(JSON.parse(serialized[0] as string).entry.content).toBe('the answer is ');
   });
 
   it('publishes again once the window has passed', async () => {
