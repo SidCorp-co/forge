@@ -226,7 +226,7 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
     const auth = await authForVenue(parts.namespace, parts.rid, venue.projectId);
     if (!auth) return [];
     const messages = parts.tmid
-      ? await fetchThreadMessages(auth, parts.tmid, limit)
+      ? ((await fetchThreadMessages(auth, parts.tmid, limit)) ?? [])
       : await fetchRoomHistory(auth, parts.rid, { count: limit });
     return toHistory(messages, auth.userId);
   },

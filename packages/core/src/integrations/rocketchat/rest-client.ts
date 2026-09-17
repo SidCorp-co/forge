@@ -397,10 +397,11 @@ export async function fetchThreadMessages(
   auth: RocketChatRestAuth,
   tmid: string,
   count: number,
-): Promise<RocketChatRestMessage[]> {
+): Promise<RocketChatRestMessage[] | null> {
   const body = await rcGet(auth, 'chat.getThreadMessages', { tmid, count: String(count) });
   const raw = body?.messages;
-  if (!Array.isArray(raw)) return [];
+  // cm:guard null and not []: a thread with no replies yet and a thread the server refused to read are different answers, and the quote tool owes the model the difference (ISS-1087 criterion 30; whole-set review, round 6 F1).
+  if (!Array.isArray(raw)) return null;
   return raw
     .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
     .filter((m): m is RocketChatRestMessage => m !== null)

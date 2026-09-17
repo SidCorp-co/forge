@@ -4,7 +4,7 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchMessagesBeside, fetchUserProfile } from './rest-client.js';
+import { fetchMessagesBeside, fetchThreadMessages, fetchUserProfile } from './rest-client.js';
 
 const auth = { serverUrl: 'https://chat.example.com', authToken: 'tok', userId: 'bot' };
 
@@ -123,5 +123,14 @@ describe('fetchMessagesBeside (ISS-1087)', () => {
   it('is null, never an empty page, when every endpoint refuses', async () => {
     vi.stubGlobal('fetch', answer({}, false));
     expect(await fetchMessagesBeside(auth, 'R3', '2026-09-17T10:00:03Z', 'after', 2)).toBeNull();
+  });
+});
+
+describe('fetchThreadMessages (ISS-1087)', () => {
+  it('is null when the server refuses, and [] for a thread with no replies', async () => {
+    vi.stubGlobal('fetch', answer({}, false));
+    expect(await fetchThreadMessages(auth, 'T1', 50)).toBeNull();
+    vi.stubGlobal('fetch', answer({ messages: [] }));
+    expect(await fetchThreadMessages(auth, 'T1', 50)).toEqual([]);
   });
 });

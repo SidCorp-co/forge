@@ -394,6 +394,23 @@ describe('what rocketchat_quote_context says it could not read (ISS-1087)', () =
     expect(out.limitation).toMatch(/cut to fit this turn/);
   });
 
+  it('says a thread it could not read was refused, not that the reply lies past the page (criterion 30)', async () => {
+    serve({ t2: raw('t2', 12, { tmid: 'T1' }), T1: raw('T1', 1) });
+    const inner = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string) =>
+        new URL(input).pathname.endsWith('chat.getThreadMessages')
+          ? ({ ok: false, json: async () => ({}) } as unknown as Response)
+          : inner(input),
+      ),
+    );
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't2');
+    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['t2']);
+    expect(out.limitation).toMatch(/replies could not be read/);
+    expect(out.limitation).not.toMatch(/beyond the first/);
+  });
+
   it('names a root it could not read when the quoted reply is the thread’s first (criterion 30)', async () => {
     serve({ t2: raw('t2', 12, { tmid: 'T1' }) });
     const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't2');

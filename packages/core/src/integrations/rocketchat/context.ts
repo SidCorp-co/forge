@@ -90,7 +90,9 @@ export async function buildConversationContext(
   try {
     const [room, thread, threadRoot, permalink] = await Promise.all([
       fetchRoomHistory(auth, opts.rid, { count: SEED_MESSAGE_COUNT }),
-      opts.tmid ? fetchThreadMessages(auth, opts.tmid, HISTORY_MAX_PER_CALL) : Promise.resolve([]),
+      opts.tmid
+        ? fetchThreadMessages(auth, opts.tmid, HISTORY_MAX_PER_CALL).then((r) => r ?? [])
+        : Promise.resolve([]),
       // cm:why getThreadMessages returns REPLIES only — without the root message, "the task above" in a threaded mention resolves against unrelated room noise
       opts.tmid ? fetchMessage(auth, opts.tmid) : Promise.resolve(null),
       // cm:why the model can only cite the chat if the permalink is handed to it, so an issue the bot files carries a source link rather than a description of where it came from.
@@ -252,6 +254,15 @@ async function threadNeighbourhood(
     fetchMessage(auth, anchor.tmid),
     fetchThreadMessages(auth, anchor.tmid, QUOTE_THREAD_PAGE),
   ]);
+  // cm:guard a thread the server refused to read is said so, and never as "beyond the first replies": the page was not short, it was not there (whole-set review, round 6 F1).
+  if (replies === null) {
+    return {
+      before: [],
+      after: [],
+      limitation:
+        'the thread’s replies could not be read from the server, so the quoted message’s neighbours are missing',
+    };
+  }
   const thread = root ? [root, ...replies] : replies;
   const at = thread.findIndex((m) => m.id === anchor.id);
   if (at < 0) {
