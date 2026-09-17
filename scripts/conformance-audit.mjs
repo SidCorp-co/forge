@@ -23,6 +23,7 @@ import { spawnSync } from 'node:child_process';
 import { existsSync, readdirSync, readFileSync } from 'node:fs';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { readUnresolvableEdges } from './lib/archmap-stats.mjs';
 import { SIZE_RULES } from './lib/lint-budget.mjs';
 import { absentPrerequisites, couldNotStart, remedyLines } from './lib/prerequisite.mjs';
 
@@ -222,9 +223,13 @@ function unresolvableEdges() {
   });
   if (couldNotStart(r))
     return { declared, blocked: '.forge/archmap/archmap is not executable here' };
-  // cm:guard match BOTH phrasings archmap has printed — `N unresolvable edges` (<=0.1.2) and `N unresolvable of M possible edges` (0.1.3+). A regex that stops matching yields measured:null, which FAILS this rule rather than passing it, so a wording change is loud rather than silent — but it also fails a repo whose gate is fine, which is why the pattern must track the tool.
-  const m = /(\d+)\s+unresolvable(?:\s+of\s+\d+\s+possible)?\s+edges/.exec(r.stdout ?? '');
-  return { declared, measured: m ? Number(m[1]) : null };
+  // cm:guard a wording change stays LOUD — archmap renaming its stats line while a repo's graph
+  // quietly stops resolving is what this rule exists to catch, and `readUnresolvableEdges` answers
+  // `measured: null` for it, which FAILS. What it separates out (ISS-1085) is a spawn that never
+  // printed at all: that is `blocked`, because "the rule could not be evaluated" and "the repo
+  // fails its profile" are different claims and only one of them was true on a loaded box.
+  const read = readUnresolvableEdges(r);
+  return read.blocked ? { declared, blocked: read.blocked } : { declared, measured: read.measured };
 }
 
 const resolution = unresolvableEdges();
