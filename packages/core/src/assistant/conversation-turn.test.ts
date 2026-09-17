@@ -65,18 +65,31 @@ describe('toProviderMessages', () => {
   // and — where a picture was attached — content parts, and `blocks` is not read at all. Reasoning
   // rides `blocks`, so feeding a turn's thinking back as history would take a change to this
   // function and not merely a change to what a row holds. Asserted on the KEYS, because a filter
-  // that dropped reasoning could be removed without a single other test going red (ISS-1079).
+  // that dropped reasoning could be removed without a single other test going red; and asserted
+  // against a history entry that really holds a thinking block, so the absence is measured rather
+  // than assumed (ISS-1079).
   it('builds a provider message out of role and content alone, so no block can reach the model', () => {
     const out = toProviderMessages(
       turn(
         [
           stored({ content: 'earlier' }),
-          stored({ role: 'assistant', content: 'Two issues left.' }),
+          stored({
+            role: 'assistant',
+            content: 'Two issues left.',
+            // cm:why the history entry CARRIES reasoning rather than merely lacking it: a row with
+            // no `blocks` makes the two `not.toContain` assertions unfailable, and an assertion
+            // that cannot fail covers nothing.
+            blocks: [
+              { type: 'thinking', thinking: 'CANARY-REASONING', durationMs: 400 },
+              { type: 'text', text: 'Two issues left.' },
+            ],
+          }),
         ],
         [stored({ content: 'and now?' })],
       ),
     );
     for (const m of out) expect(Object.keys(m).sort()).toEqual(['content', 'role']);
+    expect(JSON.stringify(out)).not.toContain('CANARY-REASONING');
     expect(JSON.stringify(out)).not.toContain('thinking');
     expect(JSON.stringify(out)).not.toContain('blocks');
   });

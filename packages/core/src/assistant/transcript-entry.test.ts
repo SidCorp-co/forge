@@ -205,6 +205,23 @@ describe('reasoning becomes one thinking block', () => {
     expect(acc.entry()?.thinkingCount).toBeUndefined();
   });
 
+  // cm:guard TWO adjacent encrypted pauses are two blocks and not one. The count form this
+  // replaced would have said "Thought twice" from a single carrier; blocks carry no number, so
+  // coalescing them here would lose one pause with nothing saying so — and coalescing is exactly
+  // what the readable path does to consecutive reasoning events one branch away (ISS-1079).
+  it('keeps two adjacent encrypted pauses as two blocks', () => {
+    const acc = fold([
+      { type: 'reasoning', text: '', redacted: true },
+      { type: 'reasoning', text: '', redacted: true },
+      { type: 'chunk', text: 'ok' },
+    ]);
+    expect(acc.blocks()).toEqual([
+      { type: 'thinking' },
+      { type: 'thinking' },
+      { type: 'text', text: 'ok' },
+    ]);
+  });
+
   it('does not put an empty string where a reader could open it', () => {
     const acc = fold([{ type: 'reasoning', text: '', redacted: true }]);
     const block = acc.blocks()?.[0] as { thinking?: string };
