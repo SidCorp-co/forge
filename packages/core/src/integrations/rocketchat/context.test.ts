@@ -1,7 +1,8 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { ChatToolset } from '../../assistant/tools/mcp-adapter.js';
 import {
   buildRocketChatHistoryToolset,
+  buildRocketChatQuoteContextToolset,
   extractQuotedMessageIds,
   formatConversationLines,
 } from './context.js';
@@ -164,5 +165,170 @@ describe('buildRocketChatHistoryToolset', () => {
     const out = await body(set.execute('rocketchat_history', '{nope'));
     expect(out.error).toMatch(/valid JSON/);
     expect(out.isError).toBe(true);
+  });
+});
+
+describe('buildRocketChatQuoteContextToolset (ISS-1087)', () => {
+  const auth = { serverUrl: 'https://chat.example.com', authToken: 't', userId: 'bot' };
+  const ts = (n: number) => `2026-09-17T10:00:${String(n).padStart(2, '0')}.000Z`;
+  const raw = (id: string, n: number, over: Record<string, unknown> = {}) => ({
+    _id: id,
+    rid: 'R1',
+    msg: `text of ${id}`,
+    ts: ts(n),
+    u: { _id: 'u1', username: 'alice' },
+    ...over,
+  });
+  /** The room: m1..m9 at one second apart; A5 is the anchor most cases quote. */
+  const room = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => raw(`m${n}`, n));
+  const calls: string[] = [];
+  const serve = (
+    messages: Record<string, Record<string, unknown>> = {},
+    beside: (side: 'before' | 'after', t: string, count: number) => Record<string, unknown>[] = (
+      side,
+      t,
+      count,
+    ) =>
+      side === 'after'
+        ? room.filter((m) => m.ts > t).slice(0, count)
+        : room.filter((m) => m.ts < t).slice(-count),
+  ) => {
+    calls.length = 0;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string) => {
+        const url = new URL(input);
+        const path = url.pathname.replace('/api/v1/', '');
+        calls.push(path);
+        const ok = (body: unknown) => ({ ok: true, json: async () => body }) as unknown as Response;
+        if (path === 'chat.getMessage') {
+          const m = messages[url.searchParams.get('msgId') ?? ''];
+          return m
+            ? ok({ message: m })
+            : ({ ok: false, json: async () => ({}) } as unknown as Response);
+        }
+        if (path === 'channels.messages') {
+          const q = JSON.parse(url.searchParams.get('query') ?? '{}') as {
+            ts: Record<string, { $date: string }>;
+          };
+          const side = '$gt' in q.ts ? 'after' : 'before';
+          const t = (q.ts.$gt ?? q.ts.$lt)?.$date ?? '';
+          return ok({ messages: beside(side, t, Number(url.searchParams.get('count'))) });
+        }
+        if (path === 'chat.getThreadMessages') {
+          return ok({
+            messages: [
+              raw('t2', 12, { tmid: 'T1' }),
+              raw('t3', 13, { tmid: 'T1' }),
+              raw('t4', 14, { tmid: 'T1' }),
+              raw('t5', 15, { tmid: 'T1' }),
+              raw('t6', 16, { tmid: 'T1' }),
+            ],
+          });
+        }
+        return { ok: false, json: async () => ({}) } as unknown as Response;
+      }),
+    );
+  };
+  const body = async (set: ChatToolset, id: string): Promise<Record<string, unknown>> => {
+    const r = await set.execute('rocketchat_quote_context', JSON.stringify({ messageId: id }));
+    const parsed = JSON.parse((r.content[0] as { text: string }).text) as Record<string, unknown>;
+    return { ...parsed, isError: r.isError };
+  };
+
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('advertises rocketchat_quote_context (criterion 24)', () => {
+    const set = buildRocketChatQuoteContextToolset(auth, 'R1');
+    expect(set.tools.map((t) => t.function.name)).toEqual(['rocketchat_quote_context']);
+  });
+
+  it('returns the anchor with two before and two after, oldest first (criterion 25)', async () => {
+    serve({ m5: raw('m5', 5) });
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'm5');
+    expect(out.isError).toBeUndefined();
+    expect(out.anchor).toBe('m5');
+    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual([
+      'm3',
+      'm4',
+      'm5',
+      'm6',
+      'm7',
+    ]);
+    expect((out.messages as Array<Record<string, unknown>>)[0]).toEqual({
+      id: 'm3',
+      user: 'alice',
+      ts: ts(3),
+      text: 'text of m3',
+    });
+  });
+
+  // cm:guard neighbours come from the THREAD when the anchor sits in one: the room stream around the same instant is other people's conversation (criterion 26).
+  it('takes a thread anchor’s neighbours from the thread, not the room (criterion 26)', async () => {
+    serve({ t4: raw('t4', 14, { tmid: 'T1' }), T1: raw('T1', 11) });
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't4');
+    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual([
+      't2',
+      't3',
+      't4',
+      't5',
+      't6',
+    ]);
+    expect(calls).not.toContain('channels.messages');
+  });
+
+  it('refuses a third distinct target naming the cap (criterion 27)', async () => {
+    serve({ m3: raw('m3', 3), m5: raw('m5', 5), m7: raw('m7', 7) });
+    const set = buildRocketChatQuoteContextToolset(auth, 'R1');
+    await body(set, 'm3');
+    await body(set, 'm5');
+    const out = await body(set, 'm7');
+    expect(out.isError).toBe(true);
+    expect(out.error).toMatch(/capped at 2 quoted messages per turn/);
+  });
+
+  it('refuses once the ten-message budget is spent, naming it (criterion 28)', async () => {
+    serve({ m5: raw('m5', 5) });
+    const set = buildRocketChatQuoteContextToolset(auth, 'R1');
+    expect((await body(set, 'm5')).messages).toHaveLength(5);
+    expect((await body(set, 'm5')).messages).toHaveLength(5);
+    const out = await body(set, 'm5');
+    expect(out.isError).toBe(true);
+    expect(out.error).toMatch(/10-message \/ 2000-token budget/);
+  });
+
+  it('refuses an anchor outside the pinned room by name and returns nothing of it (criterion 29)', async () => {
+    serve({ x1: raw('x1', 5, { rid: 'OTHER' }) });
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'x1');
+    expect(out.isError).toBe(true);
+    expect(out.error).toMatch(/message x1 is not in this room/);
+    expect(out.messages).toBeUndefined();
+    expect(calls).not.toContain('channels.messages');
+  });
+
+  it('reports a message it cannot fetch as not found (criterion 30)', async () => {
+    serve({});
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'gone');
+    expect(out.isError).toBe(true);
+    expect(out.error).toMatch(/message gone was not found, or the bot cannot see it/);
+  });
+
+  it('does not expand a neighbour’s own quote (criterion 31)', async () => {
+    const quoting = raw('m4', 4, { msg: '[ ](https://chat.example.com/channel/dev?msg=zz9) hm' });
+    serve({ m5: raw('m5', 5) }, (side, t, count) =>
+      side === 'before' ? [quoting, raw('m3', 3)] : room.filter((m) => m.ts > t).slice(0, count),
+    );
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'm5');
+    expect((out.messages as Array<{ text: string }>).some((m) => m.text.includes('?msg=zz9'))).toBe(
+      true,
+    );
+    expect(calls.filter((c) => c === 'chat.getMessage')).toHaveLength(1);
+  });
+
+  it('states the limitation when a thread anchor lies past the fetched page', async () => {
+    serve({ t99: raw('t99', 59, { tmid: 'T1' }), T1: raw('T1', 11) });
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't99');
+    expect(out.limitation).toMatch(/beyond the first 50 replies/);
+    expect((out.messages as unknown[]).length).toBe(1);
   });
 });

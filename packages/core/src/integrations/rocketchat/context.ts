@@ -10,6 +10,7 @@ import type { CallToolResult } from '../../mcp/tool-result.js';
 import {
   buildMessagePermalink,
   fetchMessage,
+  fetchMessagesBeside,
   fetchRoomHistory,
   fetchThreadMessages,
   type RocketChatRestAuth,
@@ -208,6 +209,177 @@ export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: str
       oldestTs: messages[0]?.ts ?? null,
     };
     return { content: [{ type: 'text', text: JSON.stringify(page) }] };
+  }
+
+  return { tools: [tool], execute };
+}
+
+/** The quote-neighbour tool's bounds, every one enforced here and none by the model (ISS-1087). */
+export const QUOTE_CONTEXT_TOOL_NAME = 'rocketchat_quote_context';
+export const QUOTE_TARGETS_PER_TURN = 2;
+export const QUOTE_NEIGHBOURS_EACH_SIDE = 2;
+export const QUOTE_MESSAGES_PER_TURN = 10;
+export const QUOTE_TOKENS_PER_TURN = 2000;
+/** Replies fetched for a thread anchor; an anchor past this page is a stated limitation. */
+const QUOTE_THREAD_PAGE = 50;
+
+const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
+
+interface QuoteNeighbourhood {
+  before: RocketChatRestMessage[];
+  after: RocketChatRestMessage[];
+  limitation: string | null;
+}
+
+// cm:guard the THREAD is preferred when the anchor sits in one: "this is still wrong" quoted from a thread means the two replies before it in that thread, and the room stream around the same instant is other people's conversation. The root is put first so an anchor that is the first reply still has a neighbour before it.
+async function threadNeighbourhood(
+  auth: RocketChatRestAuth,
+  anchor: RocketChatRestMessage & { tmid: string },
+): Promise<QuoteNeighbourhood> {
+  const [root, replies] = await Promise.all([
+    fetchMessage(auth, anchor.tmid),
+    fetchThreadMessages(auth, anchor.tmid, QUOTE_THREAD_PAGE),
+  ]);
+  const thread = root ? [root, ...replies] : replies;
+  const at = thread.findIndex((m) => m.id === anchor.id);
+  if (at < 0) {
+    return {
+      before: [],
+      after: [],
+      limitation: `the quoted message lies beyond the first ${QUOTE_THREAD_PAGE} replies of its thread, so its neighbours could not be read`,
+    };
+  }
+  return {
+    before: thread.slice(Math.max(0, at - QUOTE_NEIGHBOURS_EACH_SIDE), at),
+    after: thread.slice(at + 1, at + 1 + QUOTE_NEIGHBOURS_EACH_SIDE),
+    limitation: null,
+  };
+}
+
+async function roomNeighbourhood(
+  auth: RocketChatRestAuth,
+  anchor: RocketChatRestMessage,
+  rid: string,
+): Promise<QuoteNeighbourhood> {
+  const [before, after] = await Promise.all([
+    fetchMessagesBeside(auth, rid, anchor.ts, 'before', QUOTE_NEIGHBOURS_EACH_SIDE),
+    fetchMessagesBeside(auth, rid, anchor.ts, 'after', QUOTE_NEIGHBOURS_EACH_SIDE),
+  ]);
+  return { before, after, limitation: null };
+}
+
+/**
+ * Expand a quoted message to the two messages either side of it, bounded per turn.
+ */
+// cm:guard a TOOL and not automatic inclusion, with every bound enforced HERE: two targets a turn, two neighbours a side, ten messages and ~2000 estimated tokens across all expansions, no expansion of a neighbour's own quotes, and an anchor outside the pinned room refused by name. A bound the model is asked to keep is not a bound, and unavailable material is a stated limitation and never a guessed neighbour (ISS-1087 criteria 25-31, 36).
+export function buildRocketChatQuoteContextToolset(
+  auth: RocketChatRestAuth,
+  rid: string,
+): ChatToolset {
+  const tool: ChatTool = {
+    type: 'function',
+    function: {
+      name: QUOTE_CONTEXT_TOOL_NAME,
+      description: `Read the two messages before and after a QUOTED message in THIS room (the quote itself is already in your context). Use when a quote like "this is still wrong" only makes sense with what was said around it. At most ${QUOTE_TARGETS_PER_TURN} quoted messages per turn and ${QUOTE_MESSAGES_PER_TURN} messages in total; neighbours' own quotes are not expanded.`,
+      parameters: {
+        type: 'object',
+        properties: {
+          messageId: {
+            type: 'string',
+            description: 'The id of the quoted message — the `msg=` value of its quote link.',
+          },
+        },
+        required: ['messageId'],
+        additionalProperties: false,
+      },
+    },
+  };
+
+  const targets = new Set<string>();
+  let messagesUsed = 0;
+  let tokensUsed = 0;
+
+  async function execute(name: string, argsJson: string): Promise<CallToolResult> {
+    if (name !== QUOTE_CONTEXT_TOOL_NAME) return toolError(`unknown tool "${name}"`);
+    let args: { messageId?: unknown } = {};
+    try {
+      args = argsJson.trim() ? (JSON.parse(argsJson) as typeof args) : {};
+    } catch {
+      return toolError('arguments were not valid JSON');
+    }
+    const messageId = typeof args.messageId === 'string' ? args.messageId.trim() : '';
+    if (!messageId) return toolError(`${QUOTE_CONTEXT_TOOL_NAME} needs a \`messageId\``);
+    if (!targets.has(messageId) && targets.size >= QUOTE_TARGETS_PER_TURN) {
+      return toolError(
+        `${QUOTE_CONTEXT_TOOL_NAME} is capped at ${QUOTE_TARGETS_PER_TURN} quoted messages per turn — answer with what you have`,
+      );
+    }
+    if (messagesUsed >= QUOTE_MESSAGES_PER_TURN || tokensUsed >= QUOTE_TOKENS_PER_TURN) {
+      return toolError(
+        `${QUOTE_CONTEXT_TOOL_NAME} has spent its ${QUOTE_MESSAGES_PER_TURN}-message / ${QUOTE_TOKENS_PER_TURN}-token budget for this turn — answer with what you have`,
+      );
+    }
+    targets.add(messageId);
+
+    const anchor = await fetchMessage(auth, messageId);
+    if (!anchor) {
+      return toolError(`message ${messageId} was not found, or the bot cannot see it`);
+    }
+    // cm:guard the anchor's room is checked on EVERY fetch and an outsider is refused by name with nothing of it returned: a message id is global on a Rocket.Chat server, and a quote link pasted from another room would otherwise read that room's text into this one (ISS-1087 criterion 29).
+    if (anchor.rid !== undefined && anchor.rid !== rid) {
+      return toolError(
+        `message ${messageId} is not in this room; only this room's messages can be expanded`,
+      );
+    }
+    const hood = anchor.tmid
+      ? await threadNeighbourhood(auth, { ...anchor, tmid: anchor.tmid })
+      : await roomNeighbourhood(auth, anchor, rid);
+
+    const shape = (m: RocketChatRestMessage) => ({
+      id: m.id,
+      user: m.username,
+      ts: m.ts,
+      text: clip(m.text, MESSAGE_CHAR_CAP),
+    });
+    // cm:guard the anchor is admitted first and the neighbours nearest it next, so a budget that cuts the set cuts the FARTHEST ones, and the result says it was cut rather than presenting a narrower neighbourhood as the whole (ISS-1087 criterion 28).
+    const ranked = [
+      anchor,
+      ...[...hood.before].reverse().flatMap((b, i) => (hood.after[i] ? [b, hood.after[i]] : [b])),
+      ...hood.after.slice(hood.before.length),
+    ] as RocketChatRestMessage[];
+    const kept: RocketChatRestMessage[] = [];
+    let cut = false;
+    for (const m of ranked) {
+      const cost = estimateTokens(clip(m.text, MESSAGE_CHAR_CAP));
+      if (
+        messagesUsed + kept.length >= QUOTE_MESSAGES_PER_TURN ||
+        tokensUsed + cost > QUOTE_TOKENS_PER_TURN
+      ) {
+        cut = true;
+        continue;
+      }
+      kept.push(m);
+      tokensUsed += cost;
+    }
+    messagesUsed += kept.length;
+    const messages = kept.sort((a, b) => a.ts.localeCompare(b.ts)).map(shape);
+    const limitation =
+      hood.limitation ??
+      (cut
+        ? `the neighbourhood was cut to fit this turn's budget of ${QUOTE_MESSAGES_PER_TURN} messages / ${QUOTE_TOKENS_PER_TURN} tokens`
+        : null);
+    return {
+      content: [
+        {
+          type: 'text',
+          text: JSON.stringify({
+            anchor: anchor.id,
+            messages,
+            ...(limitation ? { limitation } : {}),
+          }),
+        },
+      ],
+    };
   }
 
   return { tools: [tool], execute };

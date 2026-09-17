@@ -27,6 +27,8 @@ const LINES: readonly string[] = [
   // cm:ignore CM001 — the literal must carry the Vietnamese first-person pronouns being resolved
   '- The message you are answering was sent by user @{authorUsername}. When they say "tôi/mình/my/me", they mean @{authorUsername} — use that username when filtering tasks/items by person.', // i18n-allow: quotes the Vietnamese first-person pronouns the prompt must resolve
   '- Read the conversation context first; if it references older discussion, call rocketchat_history before concluding.',
+  // cm:guard named here beside `rocketchat_history` for the same reason that one is: it is this adapter's own tool, and a door that never mentions it leaves the model to discover a capped tool by trial (ISS-1087 criterion 24).
+  '- A quoted message that only makes sense with what was said around it can be expanded with rocketchat_quote_context, at most two per turn.',
   '- Your reply is the ONLY message the user receives — there is no follow-up turn, so do not promise a later one.',
   '- Plain chat text, no markdown headers.',
   // cm:guard a TOKEN line and not a fixed sentence, because the composer drops a line whose value is null and that is the whole mechanism: a window that closed on quiet passes null and this line is not in the prompt at all, while one cut by the hold or split for overflow passes the instruction below. Two copies of the room lines — one per case — would be the second copy that drifts (ISS-1086 criteria 14-16).
