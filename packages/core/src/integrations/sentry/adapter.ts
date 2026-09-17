@@ -1,23 +1,22 @@
 /**
- * ISS-524 — Sentry integration adapter.
+ * ISS-524 / ISS-1085 — Sentry integration adapter.
  *
- * Sentry's role in Forge is read-only log access for the project's agents,
- * delivered entirely by the official `@sentry/mcp-server` injected into the
- * runner (see `resolver.ts`). Core therefore does NOT implement outbound/inbound
- * delivery for this provider — the only direct REST call core makes is the
- * test-connection `GET /api/0/organizations/`, which validates the auth token
- * and surfaces the accessible orgs back to the config UI. Mirrors the postman
- * adapter (MCP-injection archetype).
+ * Sentry reaches Forge's agents through the official `@sentry/mcp-server` injected into the runner
+ * (see `resolver.ts`), and core reaches Sentry through two outbound calls of its own: read one
+ * issue, set one issue's status (`issues.ts`). Those two are the half of the Forge/Sentry loop that
+ * lets a Forge issue closed with a merged SHA tell Sentry `resolvedInNextRelease` — not bare
+ * `resolved`, because merged is not serving. Core also makes the test-connection call
+ * `GET /api/0/organizations/`, which validates the auth token and surfaces the accessible orgs to
+ * the config UI.
  *
- * ISS-532 adoption point: Sentry event payloads are untrusted, but today they
- * reach the agent only via the runner-injected `@sentry/mcp-server` — they do
- * NOT pass through any core serializer, so there is no prompt-assembly
- * chokepoint to harden here. IF core ever ingests Sentry event text into an
- * issue/comment/prompt (e.g. an auto-file-issue-from-event path), route that
- * text through `markUntrusted()` from `prompt/sanitize.ts` at the point of
- * ingestion — same as the issue/comment/attachment chokepoints.
+ * There is still NO inbound surface, and the omission is deliberate. Sentry event text is untrusted
+ * — an error message usually carries whatever a user typed into the app that crashed — so ingesting
+ * it into an issue, a comment or a prompt is a prompt-injection chokepoint of exactly the kind
+ * `prompt/sanitize.ts` exists for. The outbound read already char-strips the free text it brings
+ * back (`sanitizeUntrusted`, see the `cm:guard` on `SentryIssueDetail`); a path that renders any of
+ * it into an agent's prompt owes `markUntrusted()` at that projection, the way
+ * `mcp/tools/forge-issues.ts` does. Until such a path exists, `handleInbound` refuses by name.
  */
-
 import { logger } from '../../logger.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { updateConnection } from '../store.js';
@@ -27,6 +26,7 @@ import {
   type IntegrationAdapterMethods,
 } from '../types.js';
 import { sentryRestBase } from './endpoints.js';
+import { dispatchSentryOutbound } from './issues.js';
 import { buildSentryMcpEntry } from './resolver.js';
 import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
 import { renderSentryTargetsLine, resolveSentryTargets } from './targets.js';
@@ -42,8 +42,8 @@ interface SentryOrg {
 }
 
 const notSupported = (op: string): never => {
-  // Sentry is MCP-injection-only; no webhook/dispatch surface exists.
-  throw new Error(`sentry: ${op} is not supported (MCP-injection-only provider)`);
+  // There is no inbound surface, on purpose — see this file's header.
+  throw new Error(`sentry: ${op} is not supported (this provider has no inbound surface)`);
 };
 
 const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecrets> = {
@@ -160,6 +160,10 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
     }
   },
 
+  // The generic door (`registry.ts:dispatchThrough`) lands here; the work is in `issues.ts` so this
+  // file stays the declaration rather than becoming the client.
+  dispatchOutbound: dispatchSentryOutbound,
+
   async handleInbound() {
     return notSupported('handleInbound');
   },
@@ -174,11 +178,14 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
 export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>({
   provider: 'sentry',
   capabilities: {
-    canDispatch: false,
+    canDispatch: true,
     canReceiveWebhook: false,
     canDeploy: false,
     liveConfirmGate: false,
-    hasDeliveryLog: false,
+    // cm:why true follows `canDispatch`: every outbound call writes an `integration_deliveries` row,
+    // and a provider whose rows exist while its declaration says the log is meaningless is a state
+    // that lies — the connection drawer would hide deliveries an operator has to be able to read.
+    hasDeliveryLog: true,
     multiBinding: false,
     structuredRollback: false,
     agentPath: {

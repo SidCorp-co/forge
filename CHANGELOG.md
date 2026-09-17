@@ -113,6 +113,10 @@
 
 ### Added
 
+- **Forge can now close a Sentry issue from this side.** It reads an issue and sets its status on
+  a Sentry project you named. One you did not name is refused, and every call shows in the
+  delivery log.
+
 - **A request that never reached the API is now reported.** The browser collapses CORS, DNS and
   TLS failures into one opaque error, and until now they reached nobody. A response the API
   answered stays the API's to report.

@@ -37,14 +37,14 @@ const listConnectionsForOwner = vi.fn();
 const listActiveBindingsForProjectProvider = vi.fn();
 const listAgentGrantedBindings = vi.fn();
 const findDeliveryById = vi.fn();
-const enqueueCoolifyDispatch = vi.fn();
+const enqueueOutboundDispatch = vi.fn();
 
 vi.mock('./deliveries.js', () => ({
   findDeliveryById: (id: string) => findDeliveryById(id),
 }));
 
 vi.mock('./queue.js', () => ({
-  enqueueCoolifyDispatch: (job: unknown) => enqueueCoolifyDispatch(job),
+  enqueueOutboundDispatch: (job: unknown) => enqueueOutboundDispatch(job),
 }));
 
 vi.mock('./agent-access-store.js', () => ({
@@ -818,15 +818,15 @@ describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/
       eventName: 'release.deploy',
       payload: { runId: 'run-1', issueId: 'iss-1' },
     });
-    enqueueCoolifyDispatch.mockResolvedValueOnce('job-1');
+    enqueueOutboundDispatch.mockResolvedValueOnce('job-1');
 
     const res = await retryReq(token, 'bind-1', 'del-1');
     expect(res.status).toBe(202);
     const body = (await res.json()) as { requestId: string; queued: boolean };
     expect(body.queued).toBe(true);
     expect(body.requestId).toMatch(/^retry_/);
-    expect(enqueueCoolifyDispatch).toHaveBeenCalledTimes(1);
-    const job = enqueueCoolifyDispatch.mock.calls[0]?.[0] as {
+    expect(enqueueOutboundDispatch).toHaveBeenCalledTimes(1);
+    const job = enqueueOutboundDispatch.mock.calls[0]?.[0] as {
       bindingId: string;
       eventName: string;
       requestId: string;
@@ -838,6 +838,40 @@ describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/
     expect(job.requestId).toMatch(/^retry_/);
     expect(job.runId).toBe('run-1');
     expect(job.issueId).toBe('iss-1');
+  });
+
+  // cm:guard the retry carries the RECORDED payload, not a rebuild of it: a Sentry status update
+  // names a target label and a status that `{ runId, issueId }` cannot carry, so a rebuild would
+  // re-dispatch a different request under a button that says it repeats the failed one (ISS-1085).
+  it('202 — replays the recorded request whole, including a sentry target label and status', async () => {
+    const token = await signUserToken(USER_ID);
+    mockOwnerMembership();
+    findBindingWithConnectionById.mockResolvedValueOnce({
+      binding: { id: 'bind-2', projectId: PROJECT_ID, provider: 'sentry' },
+      connection: ownedConnection({ provider: 'sentry' }),
+    });
+    findDeliveryById.mockResolvedValueOnce({
+      id: 'del-9',
+      bindingId: 'bind-2',
+      direction: 'outbound',
+      status: 'failed',
+      eventName: 'sentry.issue.set-status',
+      payload: { issueId: '4411', targetLabel: 'forge-core', status: 'resolvedInNextRelease' },
+    });
+    enqueueOutboundDispatch.mockResolvedValueOnce('job-9');
+
+    const res = await retryReq(token, 'bind-2', 'del-9');
+    expect(res.status).toBe(202);
+    const job = enqueueOutboundDispatch.mock.calls[0]?.[0] as {
+      eventName: string;
+      payload: Record<string, unknown>;
+    };
+    expect(job.eventName).toBe('sentry.issue.set-status');
+    expect(job.payload).toEqual({
+      issueId: '4411',
+      targetLabel: 'forge-core',
+      status: 'resolvedInNextRelease',
+    });
   });
 
   it('409 — refuses a non-failed (ok) outbound delivery', async () => {
@@ -857,7 +891,7 @@ describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code: string };
     expect(body.code).toBe('NOT_RETRYABLE');
-    expect(enqueueCoolifyDispatch).not.toHaveBeenCalled();
+    expect(enqueueOutboundDispatch).not.toHaveBeenCalled();
   });
 
   it('409 — refuses an inbound delivery', async () => {
@@ -875,7 +909,7 @@ describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/
 
     const res = await retryReq(token, 'bind-1', 'del-3');
     expect(res.status).toBe(409);
-    expect(enqueueCoolifyDispatch).not.toHaveBeenCalled();
+    expect(enqueueOutboundDispatch).not.toHaveBeenCalled();
   });
 
   it('404 — delivery belongs to a different binding', async () => {
@@ -893,7 +927,7 @@ describe('POST /api/projects/:projectId/integrations/:id/deliveries/:deliveryId/
 
     const res = await retryReq(token, 'bind-1', 'del-4');
     expect(res.status).toBe(404);
-    expect(enqueueCoolifyDispatch).not.toHaveBeenCalled();
+    expect(enqueueOutboundDispatch).not.toHaveBeenCalled();
   });
 });
 
