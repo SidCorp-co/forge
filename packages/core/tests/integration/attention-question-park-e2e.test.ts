@@ -17,7 +17,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestOrgMember,
   createTestProject,
@@ -27,18 +27,6 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-
-// cm:why ISS-1063 — this file is about what the DETECTOR writes, not about the emission
-// switch, and while the old notification surface is off the switch would suppress every
-// type this file asserts. Mocking it here rather than relaxing the assertions keeps the
-// detector's coverage intact for the whole of the silence; `src/notifications/emission-switch.test.ts`
-// is what covers the switch itself, including that ops_alert is the one exception.
-// cm:edge lockstep -> packages/core/src/notifications/emission-switch.ts — these mocks come out in the change that empties SUPPRESSED_TYPES; one left behind is a test asserting a surface nobody has turned back on
-vi.mock('../../src/notifications/emission-switch.js', () => ({
-  SUPPRESSED_TYPES: new Set<string>(),
-  emissionAllowed: () => true,
-  noteSuppressed: () => {},
-}));
 
 const JWT_SECRET = 'test-secret-at-least-32-chars-long-abcdef-123456';
 
@@ -267,10 +255,16 @@ describe('the park notification', () => {
   async function inbox(
     userId: string,
   ): Promise<Array<{ key: string | null; resolved: boolean; severity: string }>> {
+    // ISS-1063 — "this person's inbox" is a join now: the record says what is true, the
+    // delivery says who was told. A query still going straight at `notifications.user_id`
+    // would be asking the old question.
     const rows = await harness.db.execute(sql`
-      SELECT resolution_key, resolved_at, severity FROM notifications
-      WHERE user_id = ${userId} AND type = 'issue_status_changed'
-      ORDER BY created_at
+      SELECT n.resolution_key, n.resolved_at, n.severity
+        FROM notification_deliveries d
+        JOIN notification_delivery_members m ON m.delivery_id = d.id
+        JOIN notifications n ON n.id = m.notification_id
+       WHERE d.user_id = ${userId} AND n.type = 'issue_status_changed'
+       ORDER BY n.created_at
     `);
     return rows.map((r) => ({
       key: (r as { resolution_key: string | null }).resolution_key,
@@ -282,36 +276,35 @@ describe('the park notification', () => {
   it('writes a notification to the human who filed the issue the driver parked', async () => {
     const issueId = await issueFiledBy(ownerId, 'in_progress');
     await move(issueId, 'in_progress', 'needs_info');
-    expect(await inbox(ownerId)).toEqual([
-      { key: `issue:${issueId}:question`, resolved: false, severity: 'warning' },
-    ]);
+    expect(await inbox(ownerId)).toEqual([{ key: null, resolved: false, severity: 'warning' }]);
   });
 
-  it('leaves it unresolved while the issue is still parked', async () => {
-    const issueId = await issueFiledBy(ownerId, 'in_progress');
-    await move(issueId, 'in_progress', 'needs_info');
-    expect((await inbox(ownerId))[0]?.resolved).toBe(false);
-  });
-
-  // cm:guard the answer restarts the driver at AUTONOMOUS_ENTRY_STATUS (`open`), which is NOT in HEALTHY_STATUSES and never becomes healthy on its own — so a health-gated resolve leaves the question lit from the answer all the way to `developed`, on exactly the issues someone did reply to.
-  it('resolves it on the answer, which lands on `open` and is not a healthy status', async () => {
+  /*
+   * ISS-1063 — three cases that used to live here are GONE, and what they asserted is worth
+   * stating rather than quietly dropping.
+   *
+   * They held that a park notification carried `issue:<id>:question`, that answering the
+   * question stamped it resolved, and that a `waiting` park on the same issue kept its own
+   * key so one answer did not retire the other. All three were about a `resolution_key` on
+   * an `issue_status_changed` row, and that type is now a `signal`: an issue moved, and an
+   * event cannot stop having happened. The record layer refuses the key structurally (a
+   * CHECK constraint) and `deliver.ts` refuses it by name, so there is no state left for
+   * those cases to assert.
+   *
+   * What replaced the behaviour: the park reaches its human through `GET /me/attention`'s
+   * `awaitingInput` bucket, which derives from the issue's LIVE status and self-clears on
+   * the answer — no read flag, no key, nothing to leave lit. The cases below this comment
+   * still hold the two things that survive: the filer is told, and the actor is not.
+   */
+  it('carries no resolution key, because a status change is an event and cannot resolve', async () => {
     const issueId = await issueFiledBy(ownerId, 'in_progress');
     await move(issueId, 'in_progress', 'needs_info');
     await move(issueId, 'needs_info', 'open');
-    expect((await inbox(ownerId))[0]?.resolved).toBe(true);
-  });
-
-  // cm:guard a `waiting` park and a `needs_info` park on ONE issue must not share a resolution key: `statusResolutionKey` is per-issue, so answering the question would stamp the `waiting` row too and silently retire a park no human ever addressed.
-  it('answering the question leaves a waiting park on the same issue lit', async () => {
-    const issueId = await issueFiledBy(ownerId, 'in_progress');
-    await move(issueId, 'in_progress', 'waiting');
-    await move(issueId, 'waiting', 'needs_info');
-    await move(issueId, 'needs_info', 'open');
+    // `open` is not in NOTIFY_ON_STATUS, so the answer writes no second row: what is asserted
+    // is that the park's own row carries no key and is still unresolved after the answer.
     const rows = await inbox(ownerId);
-    const waiting = rows.find((r) => r.key === `issue:${issueId}:status`);
-    const question = rows.find((r) => r.key === `issue:${issueId}:question`);
-    expect(question?.resolved).toBe(true);
-    expect(waiting?.resolved).toBe(false);
+    expect(rows.map((r) => r.key)).toEqual([null]);
+    expect(rows.every((r) => !r.resolved)).toBe(true);
   });
 
   it('does not notify the actor about their own move', async () => {

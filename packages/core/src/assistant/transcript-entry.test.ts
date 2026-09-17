@@ -1,7 +1,9 @@
+import { readdirSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import type { ContentBlock, ToolCall } from '../lib/agent-stream-parser.js';
 import type { ChatStreamEvent } from './providers/types.js';
-import { createTranscriptAccumulator } from './transcript-entry.js';
+import { createTranscriptAccumulator, ENTRY_FLUSH_MS } from './transcript-entry.js';
 
 function fold(events: ChatStreamEvent[]) {
   const acc = createTranscriptAccumulator({ id: 'e1', now: () => 1_000 });
@@ -134,5 +136,151 @@ describe('the assistant turn accumulates one canonical entry', () => {
 
   it('reads an empty argument string as no arguments', () => {
     expect(toolOf(fold([call({ args: '' })]).blocks(), 0).input).toEqual({});
+  });
+});
+
+// cm:guard reasoning gets the SAME treatment prose does, for the same reason: it arrives on the same
+// wire at the same rate, and one block per delta would put one block per token in the column. What
+// differs is the close — prose is closed by a tool call, reasoning by the first event of any other
+// kind at all, because "it thought, then it said this" is the order a reader is owed (ISS-1079).
+describe('reasoning becomes one thinking block', () => {
+  it('coalesces consecutive reasoning deltas into a single block', () => {
+    const acc = fold([
+      { type: 'reasoning', text: 'let ' },
+      { type: 'reasoning', text: 'me ' },
+      { type: 'reasoning', text: 'check' },
+    ]);
+    expect(acc.blocks()).toEqual([{ type: 'thinking', thinking: 'let me check' }]);
+  });
+
+  it('closes the block on the first prose chunk and stamps how long it was open', () => {
+    let t = 1_000;
+    const acc = createTranscriptAccumulator({ id: 'e1', now: () => t });
+    acc.apply({ type: 'reasoning', text: 'hmm' });
+    t = 1_400;
+    acc.apply({ type: 'chunk', text: 'Two left.' });
+    expect(acc.blocks()).toEqual([
+      { type: 'thinking', thinking: 'hmm', durationMs: 400 },
+      { type: 'text', text: 'Two left.' },
+    ]);
+  });
+
+  it('opens a second block when reasoning resumes after prose', () => {
+    const acc = fold([
+      { type: 'reasoning', text: 'first' },
+      { type: 'chunk', text: 'a' },
+      { type: 'reasoning', text: 'second' },
+      { type: 'chunk', text: 'b' },
+    ]);
+    expect(acc.blocks()?.map((b) => b.type)).toEqual(['thinking', 'text', 'thinking', 'text']);
+    expect(acc.entry()?.content).toBe('ab');
+  });
+
+  it('keeps reasoning out of the turn content', () => {
+    const acc = fold([
+      { type: 'reasoning', text: 'thinking out loud' },
+      { type: 'chunk', text: 'Two left.' },
+    ]);
+    expect(acc.entry()?.content).toBe('Two left.');
+  });
+
+  it('produces an entry for a turn that only thought', () => {
+    const acc = fold([{ type: 'reasoning', text: 'hmm' }]);
+    expect(acc.entry()).not.toBeNull();
+    expect(acc.blocks()).toEqual([{ type: 'thinking', thinking: 'hmm' }]);
+  });
+
+  // cm:guard an encrypted block becomes a thinking block with NO TEXT, and never one holding the
+  // empty string: a block with no text is what "the model paused and left nothing readable" means,
+  // and the renderer draws it as a line with no expander, where a block holding "" would give a
+  // reader a control that opens onto nothing. It is a block rather than a count on the entry because
+  // the durable row has a column for blocks and none for a count — the count form was true while the
+  // socket carried the live entry and gone the moment the stored row replaced it (whole-set read F1).
+  it('records an encrypted block as a thinking block carrying no text', () => {
+    const acc = fold([
+      { type: 'reasoning', text: '', redacted: true },
+      { type: 'chunk', text: 'ok' },
+    ]);
+    expect(acc.blocks()).toEqual([{ type: 'thinking' }, { type: 'text', text: 'ok' }]);
+    expect(acc.entry()?.thinkingCount).toBeUndefined();
+  });
+
+  // cm:guard TWO adjacent encrypted pauses are two blocks and not one. The count form this
+  // replaced would have said "Thought twice" from a single carrier; blocks carry no number, so
+  // coalescing them here would lose one pause with nothing saying so — and coalescing is exactly
+  // what the readable path does to consecutive reasoning events one branch away (ISS-1079).
+  it('keeps two adjacent encrypted pauses as two blocks', () => {
+    const acc = fold([
+      { type: 'reasoning', text: '', redacted: true },
+      { type: 'reasoning', text: '', redacted: true },
+      { type: 'chunk', text: 'ok' },
+    ]);
+    expect(acc.blocks()).toEqual([
+      { type: 'thinking' },
+      { type: 'thinking' },
+      { type: 'text', text: 'ok' },
+    ]);
+  });
+
+  it('does not put an empty string where a reader could open it', () => {
+    const acc = fold([{ type: 'reasoning', text: '', redacted: true }]);
+    const block = acc.blocks()?.[0] as { thinking?: string };
+    expect('thinking' in block).toBe(false);
+  });
+
+  it('closes an open block before recording an encrypted one, and opens a new one after', () => {
+    let t = 1_000;
+    const acc = createTranscriptAccumulator({ id: 'e1', now: () => t });
+    acc.apply({ type: 'reasoning', text: 'readable' });
+    t = 1_250;
+    acc.apply({ type: 'reasoning', text: '', redacted: true });
+    acc.apply({ type: 'reasoning', text: 'more' });
+    expect(acc.blocks()).toEqual([
+      { type: 'thinking', thinking: 'readable', durationMs: 250 },
+      { type: 'thinking' },
+      { type: 'thinking', thinking: 'more' },
+    ]);
+  });
+
+  it('keeps an encrypted pause out of the turn content', () => {
+    const acc = fold([
+      { type: 'reasoning', text: '', redacted: true },
+      { type: 'chunk', text: 'ok' },
+    ]);
+    expect(acc.entry()?.content).toBe('ok');
+  });
+
+  it('closes the block on a turn that ends without prose', () => {
+    let t = 1_000;
+    const acc = createTranscriptAccumulator({ id: 'e1', now: () => t });
+    acc.apply({ type: 'reasoning', text: 'hmm' });
+    t = 1_900;
+    acc.apply({ type: 'done' });
+    expect(acc.blocks()).toEqual([{ type: 'thinking', thinking: 'hmm', durationMs: 900 }]);
+  });
+});
+
+// cm:guard the coalescing window is ONE constant, and this test is the only thing that keeps it
+// one. It scans the directory rather than importing the two callers, because the failure it defends
+// against is a third caller nobody thought to import: `run-turn.ts` and `conversation-progress.ts`
+// each held their own `= 120` for one commit, with a comment on one of them saying to raise or
+// lower both or neither. A comment is not a constraint. The decision that fixed the window stated
+// its undo as raising or lowering a single shared constant, so a second declaration of one IS the
+// defect, whatever value it carries (ISS-1078).
+describe('the coalescing window is declared once', () => {
+  const dir = join(import.meta.dirname, '.');
+
+  it('is declared in transcript-entry.ts and nowhere else under assistant/', () => {
+    const declared = readdirSync(dir)
+      .filter((f) => f.endsWith('.ts') && !f.endsWith('.test.ts'))
+      .filter((f) =>
+        /^\s*(?:export\s+)?const\s+\w*FLUSH_MS\s*=/m.test(readFileSync(join(dir, f), 'utf8')),
+      );
+
+    expect(declared).toEqual(['transcript-entry.ts']);
+  });
+
+  it('is the window both streaming paths read', () => {
+    expect(ENTRY_FLUSH_MS).toBe(120);
   });
 });

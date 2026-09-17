@@ -255,6 +255,14 @@ export const pipelineConfigSchema = z
       })
       .strict()
       .optional(),
+    // cm:guard ISS-1076 — absent means CLOSED, and that is the whole content of the setting: this door admits an issue reported by somebody with no Forge account, from a repository whose issue tracker this project may not even use. It ran on every project bound to the GitHub App with nobody having asked for it, which is why the default is the closed one and why enabling it is a per-project act. `enabled` decides only whether the door admits AT ALL; whether an admitted report waits for a human is `intakeGate`'s answer, and the two are separate keys because a project may want either without the other.
+    // cm:edge contract -> packages/core/src/issues/intake-gate.ts — `admitGithubIssue` is the only reader; a field renamed here arrives there as undefined, which reads as closed and silently shuts a door somebody opened
+    githubIntake: z
+      .object({
+        enabled: z.boolean(),
+      })
+      .strict()
+      .optional(),
     // cm:guard absent means OFF, and that is the whole point of the field: this producer ran on every project from a pg-boss cron nobody could see, and the owner who owns the fleet could not say what it was doing. Enabling it costs runner capacity — each proposal is an `open` issue that auto-triages into a pipeline run — so a project opts in, and `candidatesPerRun` is the only thing bounding the first night on a project with a large eligible pool (1,014 fleet-wide on 2026-09-05).
     // cm:edge contract -> packages/core/src/memory/consolidation.ts — `proposeKnowledgePromotions` is the only reader; it runs inside the nightly `memory-consolidation` job, so a project that never flips this never sees a promotion issue
     knowledgePromotion: z

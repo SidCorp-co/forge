@@ -51,6 +51,32 @@ export const WEB_CONVERSATION_EVENT = 'conversation.message';
 export const WEB_CONVERSATION_SETTLED_EVENT = 'conversation.settled';
 
 /**
+ * The event a browser draws a turn IN FLIGHT from.
+ */
+// cm:guard a THIRD event and not a payload on the first two, which keep their names and their shapes
+// so a tab running older code is untouched by this: the two above are answered with an invalidation,
+// and a frame that arrived per token under either name would refetch the whole room per token. This
+// one carries the growing entry and is answered by writing it into the cache (ISS-1078).
+// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts — the other half is the case that
+// writes this frame's entry under `["conversations", id, "progress"]`; the payload is settled in
+// `conversation-progress.ts` as `ConversationProgressFrame`, and a rename on either side leaves a
+// turn that streams to nowhere.
+export const WEB_CONVERSATION_PROGRESS_EVENT = 'conversation.progress';
+
+/**
+ * The event that says a typed message is now a durable row.
+ */
+// cm:guard published BEFORE the turn is routed, which is the whole of its value: the row is committed
+// by `collectInboundMessage` and the send route then answers nothing until the answer exists, so
+// without this the person who pressed enter watched their own question read "Sending…" for the length
+// of a model turn. It carries the client's own token so the tab that sent it can match the row to the
+// one it is holding, and every other reader learns a message arrived (ISS-1078).
+// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts — the other half clears the outbox
+// row's label; it does NOT drop the row, because this frame carries ids and not the message, and a
+// room whose cache predates the send would have nothing to show in its place.
+export const WEB_CONVERSATION_ACCEPTED_EVENT = 'conversation.accepted';
+
+/**
  * Whose sockets may be shown this room, right now.
  */
 // cm:guard a participant row is not a permission and must not be used as one: a person keeps their row after losing the project access the room derives its scope from, and the reads refuse them while a push addressed by kind alone would hand them the whole answer. The check is the SAME one `conversation-routes.ts` applies — `assertConversationReadable` — rather than a second, weaker copy of it here (ISS-1004 step 5, review F1).

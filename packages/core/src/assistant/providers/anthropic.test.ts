@@ -167,68 +167,72 @@ describe('toRequestBody', () => {
   });
 });
 
+// cm:why the frame list is hoisted out of the case: this file's longest function is measured
+// against a 150-line budget, and a wire fixture is data rather than a step of the test. The
+// assertions stay in the case where a reader looks for them.
+const FULL_STREAM = [
+  frame({
+    type: 'message_start',
+    message: {
+      usage: {
+        input_tokens: 10,
+        cache_read_input_tokens: 90,
+        cache_creation_input_tokens: 0,
+      },
+    },
+  }),
+  frame({
+    type: 'content_block_start',
+    index: 0,
+    content_block: { type: 'thinking', thinking: '' },
+  }),
+  frame({
+    type: 'content_block_delta',
+    index: 0,
+    delta: { type: 'thinking_delta', thinking: 'hmm' },
+  }),
+  frame({ type: 'content_block_stop', index: 0 }),
+  frame({ type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } }),
+  frame({
+    type: 'content_block_delta',
+    index: 1,
+    delta: { type: 'text_delta', text: 'Hel' },
+  }),
+  frame({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'lo' } }),
+  frame({ type: 'content_block_stop', index: 1 }),
+  frame({
+    type: 'content_block_start',
+    index: 2,
+    content_block: { type: 'tool_use', id: 't1', name: 'get', input: {} },
+  }),
+  frame({
+    type: 'content_block_delta',
+    index: 2,
+    delta: { type: 'input_json_delta', partial_json: '{"ci' },
+  }),
+  frame({
+    type: 'content_block_delta',
+    index: 2,
+    delta: { type: 'input_json_delta', partial_json: 'ty":"Hanoi"}' },
+  }),
+  frame({ type: 'content_block_stop', index: 2 }),
+  frame({
+    type: 'message_delta',
+    delta: { stop_reason: 'tool_use' },
+    usage: { output_tokens: 7 },
+  }),
+  frame({ type: 'message_stop' }),
+  'data: [DONE]\n\n',
+];
+
 describe('anthropic provider — stream', () => {
-  it('emits text chunks, reassembled tool calls, usage and done, and ignores thinking blocks', async () => {
-    const fetchImpl = vi.fn(async () =>
-      ok([
-        frame({
-          type: 'message_start',
-          message: {
-            usage: {
-              input_tokens: 10,
-              cache_read_input_tokens: 90,
-              cache_creation_input_tokens: 0,
-            },
-          },
-        }),
-        frame({
-          type: 'content_block_start',
-          index: 0,
-          content_block: { type: 'thinking', thinking: '' },
-        }),
-        frame({
-          type: 'content_block_delta',
-          index: 0,
-          delta: { type: 'thinking_delta', thinking: 'hmm' },
-        }),
-        frame({ type: 'content_block_stop', index: 0 }),
-        frame({ type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } }),
-        frame({
-          type: 'content_block_delta',
-          index: 1,
-          delta: { type: 'text_delta', text: 'Hel' },
-        }),
-        frame({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'lo' } }),
-        frame({ type: 'content_block_stop', index: 1 }),
-        frame({
-          type: 'content_block_start',
-          index: 2,
-          content_block: { type: 'tool_use', id: 't1', name: 'get', input: {} },
-        }),
-        frame({
-          type: 'content_block_delta',
-          index: 2,
-          delta: { type: 'input_json_delta', partial_json: '{"ci' },
-        }),
-        frame({
-          type: 'content_block_delta',
-          index: 2,
-          delta: { type: 'input_json_delta', partial_json: 'ty":"Hanoi"}' },
-        }),
-        frame({ type: 'content_block_stop', index: 2 }),
-        frame({
-          type: 'message_delta',
-          delta: { stop_reason: 'tool_use' },
-          usage: { output_tokens: 7 },
-        }),
-        frame({ type: 'message_stop' }),
-        'data: [DONE]\n\n',
-      ]),
-    );
+  it('emits reasoning, text chunks, reassembled tool calls, usage and done', async () => {
+    const fetchImpl = vi.fn(async () => ok(FULL_STREAM));
     const events = await collect(
       provider(fetchImpl).stream({ model: 'claude', messages: [{ role: 'user', content: 'hi' }] }),
     );
     expect(events).toEqual([
+      { type: 'reasoning', text: 'hmm' },
       { type: 'chunk', text: 'Hel' },
       { type: 'chunk', text: 'lo' },
       { type: 'tool_call', id: 't1', name: 'get', arguments: '{"city":"Hanoi"}' },
@@ -243,6 +247,51 @@ describe('anthropic provider — stream', () => {
     expect((init.headers as Record<string, string>)['x-api-key']).toBe('ak');
     expect((init.headers as Record<string, string>)['anthropic-version']).toBe('2023-06-01');
     expect(sentBody(fetchImpl).max_tokens).toBe(8192);
+  });
+
+  // cm:guard an ENCRYPTED thinking block carries no readable text, so it becomes one event marked
+  // `redacted` with an empty string rather than a `reasoning` event nobody can read or an empty
+  // thinking block. The accumulator turns it into a thinking block with no text; nothing downstream
+  // builds an expander from it
+  // (ISS-1079).
+  it('turns an encrypted thinking block into one marked reasoning event carrying no text', async () => {
+    const fetchImpl = vi.fn(async () =>
+      ok([
+        frame({
+          type: 'content_block_start',
+          index: 0,
+          content_block: { type: 'redacted_thinking', data: 'EncRypTed==' },
+        }),
+        frame({ type: 'content_block_stop', index: 0 }),
+        frame({ type: 'content_block_start', index: 1, content_block: { type: 'text', text: '' } }),
+        frame({ type: 'content_block_delta', index: 1, delta: { type: 'text_delta', text: 'ok' } }),
+        frame({ type: 'content_block_stop', index: 1 }),
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const events = await collect(
+      provider(fetchImpl).stream({ model: 'claude', messages: [{ role: 'user', content: 'hi' }] }),
+    );
+    expect(events).toEqual([
+      { type: 'reasoning', text: '', redacted: true },
+      { type: 'chunk', text: 'ok' },
+      { type: 'done' },
+    ]);
+  });
+
+  it('yields no reasoning event for a stream that carries none', async () => {
+    const fetchImpl = vi.fn(async () =>
+      ok([
+        frame({ type: 'content_block_start', index: 0, content_block: { type: 'text', text: '' } }),
+        frame({ type: 'content_block_delta', index: 0, delta: { type: 'text_delta', text: 'ok' } }),
+        frame({ type: 'content_block_stop', index: 0 }),
+        'data: [DONE]\n\n',
+      ]),
+    );
+    const events = await collect(
+      provider(fetchImpl).stream({ model: 'claude', messages: [{ role: 'user', content: 'hi' }] }),
+    );
+    expect(events.filter((e) => e.type === 'reasoning')).toEqual([]);
   });
 
   it('a tool_use with no arguments yields `{}`, and a stream that ends without content_block_stop still flushes it', async () => {

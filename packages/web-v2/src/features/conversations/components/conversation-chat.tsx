@@ -12,7 +12,6 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
-  AgentWorking,
   EmptyState,
   ErrorState,
   IconButton,
@@ -20,13 +19,22 @@ import {
 } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { Composer, ReadOnlyComposerNote } from "@/features/session/components/composer";
+import {
+  TurnStage,
+  turnStageOf,
+} from "@/features/session/components/turn-stage";
+import { NewOutput } from "@/features/session/components/new-output";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
+import { parseMessages } from "@/features/session/types";
 import { formatApiError } from "@/lib/api/error";
 import {
   useConversation,
   useDraftAgentMode,
   useOpenConversation,
+  useAcceptedMessages,
+  useConversationProgress,
   useSendMessage,
+  useWithdrawnDrafts,
 } from "../hooks";
 import { composerRefusal } from "../membership";
 import { type ConversationMode, type OutboxMessage, conversationTitle } from "../types";
@@ -73,6 +81,15 @@ export function ConversationChat({
   const canWrite = projectsQ.data?.find((p) => p.id === projectId)?.role !== "viewer";
 
   const roomQ = useConversation(resolvedId);
+  // cm:guard both are WRITTEN by `lib/ws/event-router.ts` and fetched by nothing — they are what the
+  // socket puts where this component can read it (ISS-1078).
+  const accepted = useAcceptedMessages(resolvedId);
+  const progress = useConversationProgress(resolvedId);
+  const withdrawn = useWithdrawnDrafts(resolvedId);
+  // cm:guard the rendered LENGTH of the live turn, which is the only thing that moves while it
+  // streams: it is what the scroller below follows, and it changes on every frame including the
+  // ones that only settle a tool result onto its card (ISS-1078 review F6).
+  const streamedChars = useMemo(() => JSON.stringify(progress?.entry ?? null).length, [progress]);
   const open = useOpenConversation();
   const send = useSendMessage();
 
@@ -89,9 +106,57 @@ export function ConversationChat({
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
+
+  // cm:guard TWO steps and not one, which is consult F4: the accepted frame carries ids and not the
+  // message, and an already-open room's cache predates the send — so a row dropped on acceptance
+  // leaves the question nowhere until a later delivery, settlement or the POST's own return. It is
+  // marked `sent` here, which costs it its label, and let go of only once the durable row it names is
+  // actually in the room.
+  useEffect(() => {
+    const seen = new Set(messages.map((m) => m.id));
+    setOutbox((o) => {
+      let moved = false;
+      const next = o.flatMap((m) => {
+        const ack = accepted[m.id];
+        if (ack && seen.has(ack.messageId)) {
+          moved = true;
+          return [];
+        }
+        if (ack && m.state !== "sent") {
+          moved = true;
+          return [{ ...m, state: "sent" as const, messageId: ack.messageId }];
+        }
+        return [m];
+      });
+      return moved ? next : o;
+    });
+  }, [accepted, messages]);
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
   const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
   const busy = send.isPending || open.isPending;
+  // cm:guard a turn is ARRIVING whenever frames are landing or a send of this browser's is still
+  // out — the two are not the same, and neither alone is the signal: `busy` is false for the second
+  // person in the room, who can nonetheless see the turn, and `progress` is null in the gap between
+  // the send and the first frame. While either holds, the thread follows without animating
+  // (ISS-1078 review F6, whole-set consult round 2).
+  const streaming = busy || progress != null;
+
+  // What the turn in flight is doing, in the one line that replaced the `AgentWorking` card
+  // (ISS-1083).
+  // cm:guard `progress` alone makes a turn live, not just `busy`: in a group room the frames
+  // arriving are often for somebody else's question, and reading only this browser's own pending
+  // send would leave the thread silent for every turn a person did not start themselves.
+  // cm:guard `replaced` ends the turn here as it ends the caret in `LiveTurn`: the correction frame
+  // is the last one of the turn, so a stage line still running past it would say a reply was being
+  // written when it was already whole and withdrawn.
+  // cm:why the entry goes back through `parseMessages` rather than reading `entry.blocks` directly:
+  // a progress entry often carries `content` and no blocks at all, and the converter is the one
+  // place that turns either shape into the render blocks the rule reads a tail off.
+  const stage = turnStageOf({
+    // `streaming` above is `busy || progress != null` and says the same thing for the same reason.
+    live: streaming && !progress?.replaced,
+    ...(progress ? { blocks: parseMessages([progress.entry])[0]?.blocks } : {}),
+  });
 
   // cm:guard the control is live while the room is EMPTY and by no other test: a room whose column
   // is still null but which already holds a transcript was opened before ISS-1039 and answers in
@@ -111,11 +176,16 @@ export function ConversationChat({
   // cm:guard the composer is CLOSED before a person types rather than after they press enter, because the server refuses a turn in a room about more than one project by name — and a person who has written a paragraph into a box that was never going to send it has lost the paragraph and learned nothing. The reason and the way out below are the same ones that refusal carries (ISS-1011 criterion 33).
   const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;
 
-  const { scrollRef, bottomRef, onScroll } = useStickToBottom({
+  const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: resolvedId,
     ready: roomQ.isSuccess,
     itemCount: messages.length + outbox.length,
     live: busy,
+    streaming,
+    // cm:guard the streaming turn's own growth, because nothing else above moves while it arrives:
+    // `itemCount` counts rows and the live turn is not one, and `busy` was already true. Without it
+    // the thread follows the first frame and then stops (ISS-1078 review F6).
+    streamedChars,
   });
 
   // cm:guard the send is AWAITED and a failure rejects up into the composer, which is what keeps the typed text for a retry: resolving on a failure clears the box and the words are gone (ISS-462's contract, kept across the port).
@@ -163,7 +233,14 @@ export function ConversationChat({
           conversationId: id,
           content: next.content,
           ...(fresh ? { mode: pick } : {}),
+          // cm:guard the row's OWN id is the token, so `conversation.accepted` comes back naming the
+          // row it belongs to and another tab's acceptance cannot clear this one (ISS-1078).
+          clientToken: next.id,
         });
+        // cm:guard the row is dropped HERE only as a backstop for a socket that never delivered the
+        // accepted frame — by the time this resolves the turn is over, and in the ordinary case the
+        // frame cleared its label a whole model turn ago. The effect below is what usually lets go of
+        // it, once the durable message is in the room's own read (ISS-1078).
         setOutbox((o) => o.filter((m) => m.id !== next.id));
       } catch (err) {
         setOutbox((o) =>
@@ -270,18 +347,32 @@ export function ConversationChat({
             </div>
           ) : (
             <ConversationThread
+              atBottom={atBottom}
               messages={messages}
               windows={windows}
               outbox={outbox}
+              progress={progress}
+              withdrawn={withdrawn}
               agentTurns={agentTurns}
               onRetry={retry}
             />
           )}
-          {busy && (
-            <div className="mt-6">
-              <AgentWorking label="Agent is working…" />
+          {/* cm:guard ONE line for the whole turn, in ONE position at the end of the thread,
+              whether the turn has streamed prose or nothing yet (ISS-1083 criterion 17). What was
+              here was a mascot card reading "Agent is working…", silenced the moment frames
+              arrived — because under a reply being typed it said the turn had produced nothing
+              directly beneath the words it had produced (ISS-1078). Silencing it left the rest of
+              the turn saying nothing at all; this line says which stage it is in instead. */}
+          {stage && (
+            <div className="mt-4">
+              <TurnStage stage={stage} />
             </div>
           )}
+          {/* cm:guard drawn INSIDE the scroller, which is the only element that knows where its own
+              viewport's bottom is (`new-output.tsx`). The other half of ISS-1078's scroll rule was
+              shipped as silence: a reader who scrolled up to re-read a card while an answer streamed
+              had no way to know it had finished (ISS-1083 criterion 28). */}
+          {newOutput && <NewOutput onGo={toBottom} />}
           <div ref={bottomRef} />
         </div>
       </div>

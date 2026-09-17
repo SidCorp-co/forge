@@ -20,6 +20,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import { canonicalUuidText, orgHandleText } from './column-checks.js';
 import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
@@ -150,7 +151,8 @@ export const userPreferences = pgTable('user_preferences', {
   theme: text('theme').notNull().default('system'),
   language: text('language').notNull().default('en'),
   /**
-   * False suppresses in-app `mention` notifications (gated in `createNotification`).
+   * False suppresses in-app `mention` deliveries (gated in `notifications/deliver.ts#wantsDelivery`,
+   * ISS-1063: the record is the system's account of what happened and stands either way).
    * `mention` is the only user-initiated type produced, so it is the only opt-out
    * offered — no controls for channels that do not exist.
    */
@@ -256,10 +258,7 @@ export const organizationMembers = pgTable(
     orgHandleUnique: uniqueIndex('organization_members_org_handle_uniq')
       .on(t.orgId, t.handle)
       .where(sql`handle IS NOT NULL`),
-    handleShape: check(
-      'organization_members_handle_shape',
-      sql`${t.handle} IS NULL OR ${t.handle} ~ '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'`,
-    ),
+    handleShape: check('organization_members_handle_shape', orgHandleText(t.handle)),
   }),
 );
 
@@ -1155,7 +1154,22 @@ export const issues = pgTable(
     projectSourceExternalIdUq: uniqueIndex('issues_project_source_external_id_uq')
       .on(t.projectId, t.source, t.externalId)
       .where(sql`external_id IS NOT NULL`),
+    // cm:guard ISS-1016 — this index was 14 MB with `idx_scan = 0` on the beta database for as long as the counters had run, and it could not be otherwise: the search predicate ORs it with four leading-`%` ILIKEs, and an OR is index-served only when EVERY arm is. The four `_trgm_idx` below are what make the arms indexable, and therefore what makes THIS index reachable. Dropping any of them puts it back to never being planned.
     identSearchIdx: index('issues_ident_search_idx').using('gin', t.identSearch),
+    // cm:edge lockstep -> packages/core/src/issues/search-predicate.ts — one trigram index per name in `ISSUE_SEARCH_FIELDS`; a field added there without one here goes back to being the arm that forces a sequential scan for the whole predicate
+    titleTrgmIdx: index('issues_title_trgm_idx').using('gin', sql`${t.title} gin_trgm_ops`),
+    descriptionTrgmIdx: index('issues_description_trgm_idx').using(
+      'gin',
+      sql`${t.description} gin_trgm_ops`,
+    ),
+    planTrgmIdx: index('issues_plan_trgm_idx').using('gin', sql`${t.plan} gin_trgm_ops`),
+    acceptanceCriteriaTrgmIdx: index('issues_acceptance_criteria_trgm_idx').using(
+      'gin',
+      sql`${t.acceptanceCriteria} gin_trgm_ops`,
+    ),
+    // cm:guard ISS-1016 — ASCENDING deliberately, for both. Postgres walks a btree backwards at the same cost, and `ORDER BY created_at DESC LIMIT 50` under a project filter plans as an Index Scan Backward reading 52 buffers, against 516 and a top-N sort with no index at all. A descending declaration would buy nothing and would say the sort direction matters.
+    projectCreatedAtIdx: index('issues_project_created_at_idx').on(t.projectId, t.createdAt),
+    projectUpdatedAtIdx: index('issues_project_updated_at_idx').on(t.projectId, t.updatedAt),
     releaseBatchRunIdIdx: index('issues_release_batch_run_id_idx')
       .on(t.releaseBatchRunId)
       .where(sql`release_batch_run_id IS NOT NULL`),
@@ -1953,6 +1967,7 @@ export const usageRecords = pgTable(
     // cm:guard ISS-1022 — the admin spend readers (`admin/aggregate-routes.ts`, `admin/metric-series.ts`, `admin/alert-queries.ts` A4) are cross-tenant and constrain `recorded_at` alone, which leaves the composite above with an unbound leading column: Postgres then scans the whole of it (cost 1,010 on beta, 2026-09-15) instead of a range. A4 runs on the 5-minute sweeper as well as the GET.
     recordedAtIdx: index('usage_records_recorded_at_idx').on(t.recordedAt),
     sessionIdIdx: index('usage_records_session_id_idx').on(t.sessionId),
+    sessionIdChk: check('usage_records_session_id_uuid_chk', canonicalUuidText(t.sessionId)),
     jobIdUq: uniqueIndex('usage_records_job_id_key').on(t.jobId).where(sql`job_id IS NOT NULL`),
   }),
 );
@@ -1997,86 +2012,8 @@ export const chatLogs = pgTable(
   }),
 );
 
-// cm:edge lockstep -> packages/contracts/src/notifications.ts — NOTIFICATION_TYPES + NOTIFICATION_CONTRACT carry the same taxonomy; core validates the column against THIS list while every emitter is typed against the contracts one, so a value added here alone is insertable but untyped, and one added there alone typechecks then fails at the column
-export const notificationTypes = [
-  'issue_status_changed',
-  'comment_added',
-  'agent_completed',
-  'mention',
-  'pm_escalation',
-  // ISS-452 (ISS-442 C6 / I7) — a loop-monitor hop miss / non-progressing
-  // pipeline state surfaced to the project owner (see pipeline/wedge.ts).
-  'pipeline_wedge',
-  // ISS-597 — pending project/org invitation surfaced to the invitee's bell.
-  'invitation_received',
-  // ISS-606 — intake gate parked a new issue at draft; owner must approve.
-  'intake_pending',
-  // ISS-618 — a script-kind schedule's ctx.notify() payload delivered to the
-  // owner (report/API-check results with no LLM involved).
-  'schedule_report',
-  'reconcile_gate_pending',
-  // cm:why ISS-762 — `waiting` + merged code is the one issue state that contradicts itself, and nothing else surfaces it
-  'issue_stranded',
-  'retry_rescue_threshold',
-  'ops_alert',
-] as const;
-export type NotificationType = (typeof notificationTypes)[number];
-
-export const notifications = pgTable(
-  'notifications',
-  {
-    id: uuid('id').primaryKey().defaultRandom(),
-    userId: uuid('user_id')
-      .notNull()
-      .references(() => users.id, { onDelete: 'cascade' }),
-    projectId: uuid('project_id').references(() => projects.id, { onDelete: 'cascade' }),
-    type: text('type', { enum: notificationTypes }).notNull(),
-    title: text('title').notNull(),
-    body: text('body'),
-    read: boolean('read').notNull().default(false),
-    // ISS-510 — per-event severity (from the `@forge/contracts` notification
-    // contract) drives toast tone + bell hue. Nullable: legacy rows predate it.
-    severity: text('severity'),
-    // cm:guard `resolvedAt IS NULL` is what "still happening" means, and every reader must use it — NOT `read = false`, which only says whether a human has looked. resolveNotifications clears by key on that predicate alone (this comment claimed "unread" until main corrected the code); an ops_alert additionally has a partial unique index over the same predicate, so a row left unstamped blocks its own recurrence forever.
-    resolutionKey: text('resolution_key'),
-    resolvedAt: timestamp('resolved_at', { withTimezone: true }),
-    issueId: uuid('issue_id').references(() => issues.id, { onDelete: 'set null' }),
-    // ISS-619 — a second, distinct issue reference for notifications whose
-    // actionable target differs from `issueId` (e.g. a dependency-stall wedge:
-    // `issueId` stays the wedged issue for interventions-metric attribution,
-    // `secondaryIssueId` is the blocker/child the user actually needs to act on).
-    secondaryIssueId: uuid('secondary_issue_id').references(() => issues.id, {
-      onDelete: 'set null',
-    }),
-    agentSessionId: uuid('agent_session_id'),
-    createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
-    // cm:why ISS-849 redelivery guard (`transition:<outboxId>`) — deliberately NOT `resolutionKey`, which answers "is the condition still true"; one key says do-not-send-twice, the other says the incident is over, and collapsing them would resolve an alert the moment it was redelivered
-    dedupeKey: text('dedupe_key'),
-  },
-  (t) => ({
-    userReadCreatedIdx: index('notifications_user_read_created_idx').on(
-      t.userId,
-      t.read,
-      t.createdAt,
-    ),
-    // cm:guard ISS-1022 — NOT a narrowing of `notifications_user_read_created_idx` above: `read` sits between the two columns the unfiltered bell list uses, so that index answers the `user_id` lookup and then leaves the `ORDER BY created_at DESC` to a sort. This one serves the list route's default (every notification of one user, newest first) and `read` stays for the unread-only arm.
-    userCreatedIdx: index('notifications_user_created_idx').on(t.userId, t.createdAt),
-    projectCreatedIdx: index('notifications_project_created_idx').on(t.projectId, t.createdAt),
-    // ISS-510 — resolver lookup: unread rows for a given resolution key.
-    resolutionKeyIdx: index('notifications_resolution_key_read_idx').on(t.resolutionKey, t.read),
-    // cm:guard alert-sweeper.ts's `INSERT ... ON CONFLICT (user_id, resolution_key) WHERE ...` infers THIS index, so its predicate must match verbatim or the insert throws; and the `type = 'ops_alert'` scope must stay, because notify-transitions.ts legitimately leaves several active rows under one `issue:<id>:status` key (waiting + reopen) that an unscoped unique index would refuse to create over and then silently drop
-    opsAlertActiveUq: uniqueIndex('notifications_ops_alert_active_uq')
-      .on(t.userId, t.resolutionKey)
-      .where(sql`resolved_at IS NULL AND resolution_key IS NOT NULL AND type = 'ops_alert'`),
-    dedupeKeyIdx: index('notifications_dedupe_key_idx').on(t.dedupeKey),
-  }),
-);
-
-export const notificationsRelations = relations(notifications, ({ one }) => ({
-  user: one(users, { fields: [notifications.userId], references: [users.id] }),
-  project: one(projects, { fields: [notifications.projectId], references: [projects.id] }),
-  issue: one(issues, { fields: [notifications.issueId], references: [issues.id] }),
-}));
+// cm:edge lockstep -> packages/core/src/db/schema-notifications.ts — the notification tables live there, split out only because this file's size budget may not move up; every importer still says `from '../db/schema.js'` and drizzle-kit still sees one schema
+export * from './schema-notifications.js';
 
 export const agentSchedules = ['off', 'weekly', 'biweekly', 'monthly'] as const;
 export type AgentSchedule = (typeof agentSchedules)[number];

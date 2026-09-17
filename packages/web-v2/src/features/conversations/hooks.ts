@@ -2,6 +2,7 @@
 
 // cm:guard every key here starts with `['conversations']`, which is the exact prefix `lib/ws/event-router.ts` invalidates on `conversation.message` and on `replayOnReconnect`. A key under any other prefix looks live on screen and silently never refreshes — the rule `features/sessions/hooks.ts` states for its own prefix, and the reason it states it (ISS-291).
 import { useMutation, useQueries, useQuery, useQueryClient } from "@tanstack/react-query";
+import { useCallback, useSyncExternalStore } from "react";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import { conversationsApi, type OpenConversationArgs } from "./api";
@@ -9,6 +10,7 @@ import type {
   ConversationDetail,
   ConversationMembership,
   ConversationMode,
+  ConversationProgressEntry,
   ConversationRow,
 } from "./types";
 
@@ -199,12 +201,15 @@ export function useSendMessage() {
       conversationId,
       content,
       mode,
+      clientToken,
     }: {
       conversationId: string;
       content: string;
       /** Sent on the FIRST message of a room and never again; the server refuses it after that. */
       mode?: ConversationMode | undefined;
-    }) => conversationsApi.send(conversationId, content, mode),
+      /** This browser's own id for the message, echoed on `conversation.accepted` (ISS-1078). */
+      clientToken?: string | undefined;
+    }) => conversationsApi.send(conversationId, content, mode, clientToken),
     onSuccess: async (result) => {
       await qc.cancelQueries({ queryKey: ["conversations", result.conversationId] });
       // cm:guard the room's own `mode` and its `agentTurns` are written with the messages, because
@@ -268,4 +273,85 @@ export function useArchiveConversation() {
         tone: "error",
       }),
   });
+}
+
+
+/**
+ * A key the socket writes and nothing fetches.
+ */
+// cm:guard read off the query CACHE through `useSyncExternalStore`, and not through `useQuery`. Two
+// ways of doing this are both wrong and neither says so: a `useQuery` with `enabled: false` never
+// observes a `setQueryData` at all — it returns its `initialData` for the life of the component, so
+// the frames pile up in the cache and the screen shows none of them (watched failing, ISS-1078 step
+// 16); and giving it a `queryFn` makes the key fetchable, so the invalidation the accepted frame
+// itself schedules over the `["conversations", id]` prefix refetches this key and wipes the live turn
+// off the screen mid-answer. With no observer registered there is no query to refetch, and the value
+// is what the socket last wrote and nothing else.
+// cm:guard `empty` must be the SAME reference on every call, which is why both callers below pass a
+// module constant: a fresh `{}` per render makes the snapshot a new object each time and
+// `useSyncExternalStore` re-renders forever.
+function useSocketWrittenKey<T>(key: readonly unknown[], empty: T): T {
+  const qc = useQueryClient();
+  const flat = JSON.stringify(key);
+  const subscribe = useCallback(
+    (onChange: () => void) =>
+      qc.getQueryCache().subscribe((event) => {
+        if (JSON.stringify(event.query.queryKey) === flat) onChange();
+      }),
+    [qc, flat],
+  );
+  const read = useCallback(
+    () => (qc.getQueryData(JSON.parse(flat) as unknown[]) as T | undefined) ?? empty,
+    [qc, flat, empty],
+  );
+  return useSyncExternalStore(subscribe, read, read);
+}
+
+/** Nothing has arrived yet — one reference, for the guard above. */
+const NO_PROGRESS = null;
+const NO_ACCEPTED: Record<string, { messageId: string; seq: number }> = {};
+const NO_WITHDRAWN: Record<string, string> = {};
+
+/**
+ * The turn running in this room right now, as the socket's frames have it.
+ */
+// cm:guard there is no `queryFn` and there must not be one: nothing fetches a turn in flight — the
+// value is WRITTEN by `lib/ws/event-router.ts` from `conversation.progress` and cleared on
+// `conversation.settled`. A fetcher here would ask the server for a thing the server does not serve.
+// The key sits under `["conversations", id]` so the prefix's invalidations still reach it (ISS-1078).
+export function useConversationProgress(id: string | undefined) {
+  return useSocketWrittenKey<ConversationProgressEntry | null>(
+    ["conversations", id, "progress"],
+    NO_PROGRESS,
+  );
+}
+
+/**
+ * Which of this tab's outbox messages the server has confirmed are rows.
+ */
+// cm:guard keyed by the CLIENT's token and not by seq: two tabs may each have a message in flight in
+// the same room, and a tab that cleared its row on the other's acceptance would drop somebody else's
+// message from its own screen. Written by the event router, read here (ISS-1078).
+export function useAcceptedMessages(id: string | undefined) {
+  return useSocketWrittenKey<Record<string, { messageId: string; seq: number }>>(
+    ["conversations", id, "accepted"],
+    NO_ACCEPTED,
+  );
+}
+
+/**
+ * The drafts the reply screen refused in this room, by the entry that replaced each.
+ */
+// cm:guard it is NOT cleared on `conversation.settled` and it is NOT durable, which is the whole
+// point of it living here: the correction frame and the settle land within milliseconds of each
+// other, so a marker drawn off the progress entry was on screen for 13 ms — measured in Chrome on a
+// local walk, 2026-09-17. This key outlives the settle and dies with the page, so the withdrawal is
+// shown to whoever was in the room and the stored transcript still holds only the sentence that went
+// out. The price and the condition that ends it are on the `web-chat-reply` row in core's
+// `messaging/doors.ts` (ISS-1078).
+export function useWithdrawnDrafts(id: string | undefined) {
+  return useSocketWrittenKey<Record<string, string>>(
+    ["conversations", id, "withdrawn"],
+    NO_WITHDRAWN,
+  );
 }

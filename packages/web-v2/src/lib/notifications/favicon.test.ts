@@ -72,21 +72,21 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("setTitleUnread", () => {
+describe("setTitleOpenCount", () => {
   it("prefixes the count, caps at 99+, and restores the bare title at 0", async () => {
     installDom();
-    const { setTitleUnread } = await freshFavicon();
-    setTitleUnread(3);
+    const { setTitleOpenCount } = await freshFavicon();
+    setTitleOpenCount(3);
     expect((globalThis as { document: { title: string } }).document.title).toBe("(3) Forge");
-    setTitleUnread(150);
+    setTitleOpenCount(150);
     expect((globalThis as { document: { title: string } }).document.title).toBe("(99+) Forge");
-    setTitleUnread(0);
+    setTitleOpenCount(0);
     expect((globalThis as { document: { title: string } }).document.title).toBe("Forge");
   });
 
   it("never throws when document is absent (SSR)", async () => {
-    const { setTitleUnread } = await freshFavicon();
-    expect(() => setTitleUnread(5)).not.toThrow();
+    const { setTitleOpenCount } = await freshFavicon();
+    expect(() => setTitleOpenCount(5)).not.toThrow();
   });
 });
 

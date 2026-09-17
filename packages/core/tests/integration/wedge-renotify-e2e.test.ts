@@ -10,7 +10,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
   createTestUser,
@@ -19,26 +19,13 @@ import {
   truncateAll,
 } from '../helpers/index.js';
 
-// cm:why ISS-1063 — this file is about what the DETECTOR writes, not about the emission
-// switch, and while the old notification surface is off the switch would suppress every
-// type this file asserts. Mocking it here rather than relaxing the assertions keeps the
-// detector's coverage intact for the whole of the silence; `src/notifications/emission-switch.test.ts`
-// is what covers the switch itself, including that ops_alert is the one exception.
-// cm:edge lockstep -> packages/core/src/notifications/emission-switch.ts — these mocks come out in the change that empties SUPPRESSED_TYPES; one left behind is a test asserting a surface nobody has turned back on
-vi.mock('../../src/notifications/emission-switch.js', () => ({
-  SUPPRESSED_TYPES: new Set<string>(),
-  emissionAllowed: () => true,
-  noteSuppressed: () => {},
-}));
-
 type Mods = {
   emitPipelineWedge: typeof import('../../src/pipeline/wedge.js').emitPipelineWedge;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   resolvePipelineWedge: typeof import('../../src/pipeline/wedge.js').resolvePipelineWedge;
-  WEDGE_RENOTIFY_MS: typeof import('../../src/pipeline/wedge.js').WEDGE_RENOTIFY_MS;
 };
 
-describe('emitPipelineWedge re-notify floor', () => {
+describe('emitPipelineWedge dedup: one record per unresolved entity', () => {
   let harness: TestDatabase;
   let mods: Mods;
   let projectId: string;
@@ -99,25 +86,23 @@ describe('emitPipelineWedge re-notify floor', () => {
     expect(await countWedges()).toBe(1);
   });
 
-  // cm:guard marking a wedge READ must not re-arm the emitter — this is the exact loop that produced 721 rows on forge-beta (2026-08-14). If this assertion ever reads 2, the dedupe has drifted back onto the `read` column.
+  // cm:guard marking a wedge READ must not re-arm the emitter — this is the exact loop that produced 721 rows on forge-beta (2026-08-14). If this assertion ever reads 2, the dedupe has drifted back onto the read state, which since ISS-1063 is not even on this table.
   it('stays suppressed after the operator reads it', async () => {
     await emit();
-    await harness.db.execute(
-      sql`UPDATE notifications SET read = true WHERE type = 'pipeline_wedge'`,
-    );
+    await harness.db.execute(sql`UPDATE notification_deliveries SET read_at = now()`);
     await emit();
     expect(await countWedges()).toBe(1);
   });
 
-  // cm:guard the floor must EXPIRE — keying on `resolved_at IS NULL` alone would emit a wedge once and never again for the same entity, which is the opposite failure and just as silent, since no caller resolves most keys
-  it('re-notifies once the floor has elapsed', async () => {
+  // cm:guard ISS-1063 deleted the 24-hour re-notify FLOOR, and this case is what holds the decision: a wedge stays ONE record for as long as it is unresolved, however old it gets. The floor existed because a read row left the unread count and so had to come back; a firing condition never leaves the open count, so a second record for a condition that never stopped being true would be the 2161-rows-for-2037-conditions shape this issue removed. What re-derives it is `reevaluate-conditions.ts`, not the clock.
+  it('writes no second record however old the first one is', async () => {
     await emit();
-    const past = new Date(Date.now() - mods.WEDGE_RENOTIFY_MS - 60_000).toISOString();
     await harness.db.execute(
-      sql`UPDATE notifications SET created_at = ${past} WHERE type = 'pipeline_wedge'`,
+      sql`UPDATE notifications SET created_at = now() - interval '30 days'
+                                 , last_seen_at = now() - interval '30 days'`,
     );
     await emit();
-    expect(await countWedges()).toBe(2);
+    expect(await countWedges()).toBe(1);
   });
 
   it('re-notifies immediately once the wedge is resolved — a NEW occurrence is news', async () => {

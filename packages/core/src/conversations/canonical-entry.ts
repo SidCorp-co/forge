@@ -12,13 +12,19 @@ import type { StoredConversationMessage } from './store.js';
 // cm:guard validated on the way OUT for the same reason `asImages` is, and a row whose column holds
 // something this cannot read comes back null — which `toCanonicalEntry` answers from `content`,
 // so an illegible column degrades to the legacy reading rather than to an empty turn.
+// cm:guard this list is NOT derived from `ContentBlock` and cannot be: the value is `unknown`, so a
+// member added to that shape and not to this line is dropped here, on the way out of the database,
+// with nothing on either side failing. `thinking` was that member for the length of one plan
+// consult (ISS-1079). Anything added to `ContentBlock['type']` belongs on this line in the same
+// change, and `store.test.ts` asserts each member by name for exactly that reason.
 export function asBlocks(value: unknown): ContentBlock[] | null {
   if (!Array.isArray(value)) return null;
   const out: ContentBlock[] = [];
   for (const b of value) {
     if (!b || typeof b !== 'object') continue;
     const type = (b as { type?: unknown }).type;
-    if (type === 'text' || type === 'tool' || type === 'todos') out.push(b as ContentBlock);
+    if (type === 'text' || type === 'tool' || type === 'todos' || type === 'thinking')
+      out.push(b as ContentBlock);
   }
   return out.length > 0 ? out : null;
 }

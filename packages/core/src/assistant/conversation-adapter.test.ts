@@ -35,7 +35,12 @@ vi.mock('../conversations/scope.js', () => ({
   assertConversationReadable: (...args: unknown[]) => assertConversationReadable(...args),
 }));
 
-const { WEB_CONVERSATION_EVENT, webConversationPorts } = await import('./conversation-adapter.js');
+const {
+  WEB_CONVERSATION_EVENT,
+  WEB_CONVERSATION_PROGRESS_EVENT,
+  publishToConversationReaders,
+  webConversationPorts,
+} = await import('./conversation-adapter.js');
 
 const venue = {
   adapter: 'web' as const,
@@ -108,6 +113,33 @@ describe('the Forge UI adapter · deliver', () => {
       webConversationPorts.deliver(venue, { text: 'hello', problems: [] }),
     ).resolves.toMatchObject({ messageId: expect.any(String) });
     expect(published).toEqual([]);
+  });
+});
+
+// cm:guard ISS-1078 criterion 14. A turn in flight is published many times a second, and it is the
+// SAME fan-out `deliver` uses — so the authorization is the same too. Asserted on the progress frame
+// in its own right rather than inferred from the delivery case above, because "progress is authorized
+// exactly as delivery is" is the claim this change makes and an untested claim is the way that stops
+// being true.
+describe('a turn in flight is published to exactly whom the room may be shown to', () => {
+  const frame = {
+    event: WEB_CONVERSATION_PROGRESS_EVENT,
+    data: { conversationId: 'conv-1', rev: 1 },
+  };
+
+  it('reaches every person the room may be shown to, and no handle and no stranger', async () => {
+    const sockets = await publishToConversationReaders('conv-1', frame);
+    expect(published.map((p) => p.room)).toEqual(['user:alice', 'user:bob']);
+    expect(sockets).toBe(2);
+  });
+
+  it('reaches nobody whose access to the room has gone', async () => {
+    assertConversationReadable.mockImplementation(async (_id: string, userId: string) => {
+      if (userId === 'bob') throw new Error('no role on this project any more');
+      return ['project-1'];
+    });
+    await publishToConversationReaders('conv-1', frame);
+    expect(published.map((p) => p.room)).toEqual(['user:alice']);
   });
 });
 

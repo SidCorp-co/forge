@@ -22,8 +22,8 @@ import { registerAgentCronTicker, unregisterAgentCronTicker } from './agents/cro
 import { agentRoutes } from './agents/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
+import { registerWebConversationAdapter } from './assistant/conversation-drain.js';
 import { conversationRoutes } from './assistant/conversation-routes.js';
-import { registerWebConversationAdapter } from './assistant/conversation-send.js';
 import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/identity/routes.js';
 import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
 import { chatRoutes } from './assistant/routes.js';
@@ -92,7 +92,6 @@ import { transitionRoutes } from './issues/transition.js';
 import { jobEventsListRoutes, jobEventsRoutes } from './jobs/events-routes.js';
 import { jobLifecycleDeviceRoutes, jobLifecycleUserRoutes } from './jobs/lifecycle-routes.js';
 import { registerPgBossHealthProbe } from './jobs/pgboss-health.js';
-import { registerRetentionSweeper } from './jobs/retention-sweeper.js';
 import { jobProjectRoutes, jobRoutes } from './jobs/routes.js';
 import { registerStaleDetector } from './jobs/stale-detector.js';
 import { knowledgeIngestRoutes } from './knowledge/ingest-routes.js';
@@ -144,6 +143,7 @@ import { phaseRoutes } from './pipeline/phase-routes.js';
 import { registerReconciler } from './pipeline/reconciler.js';
 import { pipelineRegistryRoutes } from './pipeline/registry-routes.js';
 import { registerReleaseCompletedSubscriber } from './pipeline/release-coolify.js';
+import { registerRetentionSweeper } from './pipeline/retention/sweep.js';
 import { pipelineRunProjectRoutes, pipelineRunReadRoutes } from './pipeline/runs-read-routes.js';
 import { pipelineRunRoutes } from './pipeline/runs-routes.js';
 import { stepHandoffRoutes } from './pipeline/step-handoff-routes.js';
@@ -166,6 +166,7 @@ import { promptRoutes } from './prompt/routes.js';
 import { questionRoutes } from './questions/routes.js';
 import { startBoss, stopBoss } from './queue/boss.js';
 import { releaseBatchRoutes } from './release-batch/routes.js';
+import { registerReleaseUnstartedRecovery } from './release-batch/unstarted-recovery.js';
 import { bootstrapRunnerAdapters } from './runners/bootstrap.js';
 import { registerGhostRunnerReaper } from './runners/ghost-reaper.js';
 import { runnerRoutes } from './runners/routes.js';
@@ -198,12 +199,20 @@ app.use('*', requestId());
 app.use('*', requestLogger());
 
 // cm:guard an explicit origin from the `CORS_ORIGINS` allow-list, NEVER `*` — cookie-based browser auth needs Access-Control-Allow-Credentials, which the spec refuses alongside a wildcard origin, so widening this silently logs every browser client out
-const CORS_ORIGINS = env.CORS_ORIGINS.split(',')
-  .map((s) => s.trim())
-  .filter((s) => s.length > 0);
+// cm:guard read on the FIRST REQUEST, never at module scope: this file is imported by tests and by
+// anything that reaches `app`, and a module-scope `env.CORS_ORIGINS` made that import validate the
+// whole environment and throw on a missing variable (ISS-1067). The list is memoised, so the split
+// still happens once rather than per request.
+let corsOrigins: string[] | undefined;
+function allowedOrigins(): string[] {
+  corsOrigins ??= env.CORS_ORIGINS.split(',')
+    .map((s) => s.trim())
+    .filter((s) => s.length > 0);
+  return corsOrigins;
+}
 // cm:why `/mcp` is mounted below with the same allow-list because it is reached from a BROWSER, not only by CLIs — the settings/mcp Test Connection panel calls it — and `X-Forge-Project-Slug` is in `allowHeaders` for that panel's preflight, alongside the bearer PAT (ISS-161).
 const corsMiddleware = cors({
-  origin: (origin) => (CORS_ORIGINS.includes(origin) ? origin : null),
+  origin: (origin) => (allowedOrigins().includes(origin) ? origin : null),
   credentials: true,
   allowHeaders: ['Content-Type', 'Authorization', 'X-Device-Token', 'X-Forge-Project-Slug'],
   allowMethods: ['GET', 'POST', 'PUT', 'PATCH', 'DELETE', 'OPTIONS'],
@@ -482,6 +491,7 @@ if (isMain) {
   await registerGhostRunnerReaper();
   await registerRetentionSweeper();
   await registerPipelineSweeper();
+  await registerReleaseUnstartedRecovery();
   await registerPhaseJournalBackfill();
   await registerPgBossHealthProbe();
   await registerOutboundDeliveryWorker();

@@ -182,6 +182,20 @@ const CHECKS = [
     needs: ['deps'],
     unit: 'providers',
   },
+  // cm:guard this holds a property that is invisible in a green run: `config/env.ts` and `db/client.ts`
+  // are lazy, and one new module-scope read of `env` or `db` restores the import-time side effect for
+  // every module downstream of the file that does it — breaking nothing that day. The failure it
+  // comes back as names no test and carries no assertion (ISS-1067, CI on PR #457). Node plus the
+  // TypeScript AST, so it needs node_modules; the rule and the two limits it cannot hold are in the
+  // checker's own header.
+  {
+    axis: 'form',
+    label: 'lazy-module-init',
+    // cm:edge naming -> scripts/check-lazy-module-init.mjs — parses that script's success line
+    cmd: ['node', 'scripts/check-lazy-module-init.mjs', '--all'],
+    scanned: /^lazy-module-init: (\d+) file\(s\) scanned/m,
+    needs: ['deps'],
+  },
   // cm:guard the checkers in `scripts/` hold every other axis and were themselves held by nothing — no lint, no typecheck, because `turbo run lint` only fans out to workspace packages and this directory is in none. Measured 2026-08-25 the day it got a config: 21 diagnostics, one of them a real `useIterableCallbackReturn`. Fixed rather than frozen, so this check has no baseline and none is wanted.
   {
     axis: 'form',
@@ -256,6 +270,7 @@ const CI_COVERAGE = {
   'node scripts/check-lint-budget.mjs --all': 'verify',
   'node scripts/check-provider-literals.mjs --all': 'verify',
   'node scripts/check-integration-declarations.mjs --all': 'verify',
+  'node scripts/check-lazy-module-init.mjs --all': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',

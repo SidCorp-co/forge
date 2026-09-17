@@ -1,6 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import {
@@ -11,12 +10,12 @@ import {
   AttachmentError as CommentAttachmentError,
   persistCommentAttachment,
 } from '../comments/attachment-service.js';
-import { env } from '../config/env.js';
 import {
   AttachmentError as IssueAttachmentError,
   persistIssueAttachment,
 } from '../issues/attachment-service.js';
 import { contentDisposition } from '../lib/attachment-headers.js';
+import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { getStorage } from '../storage/index.js';
 import { loadAttachmentBytesTarget } from './attachment-bytes.js';
 import { resolveDownloadTicket } from './download-ticket-service.js';
@@ -48,11 +47,8 @@ export const uploadRoutes = new Hono();
 
 uploadRoutes.put(
   '/:uploadId',
-  bodyLimit({
-    maxSize: env.UPLOADS_MAX_BYTES,
-    onError: () => {
-      throw badRequest('file too large', 'FILE_TOO_LARGE');
-    },
+  uploadBodyLimit(() => {
+    throw badRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', uploadIdParamSchema, (r) => {
     if (!r.success) throw badRequest('invalid uploadId', 'BAD_REQUEST');

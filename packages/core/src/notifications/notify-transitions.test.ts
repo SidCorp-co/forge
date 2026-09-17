@@ -19,7 +19,7 @@ vi.mock('../db/client.js', () => ({
 const createNotification = vi.fn(async (_input: Record<string, unknown>) => ({ id: 'notif-1' }));
 vi.mock('./routes.js', () => ({ createNotification }));
 
-const resolveNotifications = vi.fn(async () => 0);
+const resolveNotifications = vi.fn(async (_key: string) => 0);
 vi.mock('./auto-resolve.js', () => ({ resolveNotifications }));
 
 const { registerTransitionNotifications } = await import('./notify-transitions.js');
@@ -104,7 +104,12 @@ describe('notify-transitions', () => {
     expect(createNotification).not.toHaveBeenCalled();
   });
 
-  it('sets error severity + a status resolution key on reopen', async () => {
+  // ISS-1063 — this asserted `resolutionKey: issue:<id>:status` until the record model
+  // named `issue_status_changed` a signal. The severity is unchanged; the key is gone,
+  // and `null` rather than absent is the assertion that matters: `deliver.ts` refuses a
+  // signal carrying a key by name, so a key reintroduced here throws rather than writing
+  // the 1771 unresolvable rows this replaced.
+  it('sets error severity and NO resolution key on reopen', async () => {
     queueIssue({
       assigneeId: ASSIGNEE_ID,
       createdById: CREATOR_ID,
@@ -114,10 +119,7 @@ describe('notify-transitions', () => {
     const bus = makeBus();
     await bus.emit('transition', transition('reopen') as never);
     expect(createNotification).toHaveBeenCalledWith(
-      expect.objectContaining({
-        severity: 'error',
-        resolutionKey: `issue:${ISSUE_ID}:status`,
-      }),
+      expect.objectContaining({ severity: 'error', resolutionKey: null }),
     );
   });
 
@@ -130,12 +132,16 @@ describe('notify-transitions', () => {
     );
   });
 
-  it('auto-resolves the status problem notification on a healthy transition', async () => {
-    // `developed` is healthy but NOT in NOTIFY_ON_STATUS: it clears the problem
-    // notification without creating a new one.
+  // ISS-1063 — a healthy transition used to clear `issue:<id>:status`. That clearer is
+  // deleted with the key it cleared: a status ping is an event, and what tells a human the
+  // question was answered is `GET /me/attention`'s `awaitingInput` bucket, which derives
+  // from live issue state. The stranded alarm IS a condition and is still cleared here,
+  // which is what makes this test about the deletion rather than about a dead subscriber.
+  it('clears no status key on a healthy transition, and still clears the stranded alarm', async () => {
     const bus = makeBus();
     await bus.emit('transition', transition('developed') as never);
-    expect(resolveNotifications).toHaveBeenCalledWith(`issue:${ISSUE_ID}:status`);
+    const cleared = resolveNotifications.mock.calls.map(([key]) => key);
+    expect(cleared).toEqual([`issue:${ISSUE_ID}:stranded`]);
     expect(createNotification).not.toHaveBeenCalled();
   });
 

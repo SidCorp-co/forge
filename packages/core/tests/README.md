@@ -117,6 +117,16 @@ Rules:
   only source of schema changes.
 - Do not import `src/db/client.ts` in integration tests (it reads
   `DATABASE_URL`, not the test-scoped URL). Use `harness.db`.
+- **Reaching production code that imports it — a mounted router, an exported
+  query builder — is the one exception, and it has a shape.** Assign
+  `process.env.DATABASE_URL = harness.url` first, then reach the module by
+  `await import(...)` inside `beforeAll`. A static `import` is evaluated before
+  any hook runs, so it binds `db` to whatever `DATABASE_URL` the shell carried
+  and the case then passes or fails against a database that is not the fixture.
+  `usage-session-index.test.ts:mountAgentSessions` and
+  `issues-list-cost-index.test.ts:loadRollupQuery` are the worked examples.
+  Assert through `harness.db` as before; this only governs how the module under
+  test is loaded.
 
 ## CI wiring
 

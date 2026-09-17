@@ -12,6 +12,7 @@
 // `@forge/contracts` has no agent-session-turn types yet, so these are re-typed
 // locally (same note as ISS-291's `features/sessions/types.ts`).
 
+import { decodeToolOutput } from "./result-summary";
 import type { ModelTier } from "@forge/contracts";
 
 export type { ModelTier };
@@ -61,7 +62,12 @@ export interface CanonicalToolCall {
 export type CanonicalBlock =
   | { type: "text"; text?: string }
   | { type: "tool"; toolCall?: CanonicalToolCall }
-  | { type: "todos"; todos?: AgentTodo[] };
+  | { type: "todos"; todos?: AgentTodo[] }
+  // cm:edge contract -> packages/core/src/lib/agent-stream-parser.ts — `ContentBlock`, whose
+  // `thinking` member this mirrors (ISS-1079). A member added there and not here is a block the
+  // browser's own type cannot represent; one added here and not to that file's `asBlocks` whitelist
+  // is a block the database drops on the way out.
+  | { type: "thinking"; thinking?: string; durationMs?: number };
 
 /**
  * A message entry. Two shapes coexist:
@@ -154,7 +160,15 @@ export const MODEL_TIERS = Object.keys(MODEL_TIER_LABELS) as ModelTier[];
 export type RenderBlock =
   | { type: "text"; text: string }
   | { type: "tool"; tool: ToolCallData }
-  | { type: "todos"; todos: AgentTodo[] };
+  | { type: "todos"; todos: AgentTodo[] }
+  // cm:why ONE render member for three shapes, so the reader is shown the same line by all of them:
+  // `text` where the provider sent readable reasoning; neither `text` nor `count` where a provider
+  // encrypted it, which is a thinking block carrying no text at all; and `count` where all there is
+  // is the number of times the model paused, which is the Claude Code derive's `thinkingCount` and
+  // nothing else's. The renderer collapses every one of them to a line and offers an expander only
+  // where there is text, because an expander that opens onto nothing is the affordance defect this
+  // shape exists to refuse (ISS-1079).
+  | { type: "thinking"; text?: string; durationMs?: number; count?: number };
 
 /**
  * A flattened, render-ready conversation entry. Each persisted turn maps to
@@ -296,7 +310,12 @@ function toToolCallData(tc: CanonicalToolCall): ToolCallData {
     id: tc.id,
     name: tc.name,
     input: tc.input,
-    result: tc.result ?? tc.output,
+    // cm:guard `result` is read by KEY and `output` is DECODED, and both halves matter. `??` used to
+    // skip an explicit `result: null` — a call that answered nothing — and hand the card `undefined`,
+    // which the summary reads as still running. And `output` arrives serialized on every path, so
+    // passing it through made every card say `Text · N characters` (ISS-1083, implementation consult
+    // F1).
+    result: tc.result !== undefined ? tc.result : decodeToolOutput(tc.output),
     durationMs: tc.durationMs,
     isError: tc.isError,
   };
@@ -313,6 +332,12 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
         out.push(tool.name === "TodoWrite" ? todoWriteToTodos(tool.input) : { type: "tool", tool });
       } else if (b.type === "todos") {
         out.push({ type: "todos", todos: b.todos ?? [] });
+      } else if (b.type === "thinking") {
+        out.push({
+          type: "thinking",
+          ...(b.thinking ? { text: b.thinking } : {}),
+          ...(b.durationMs !== undefined ? { durationMs: b.durationMs } : {}),
+        });
       } else if (b.type === "text" && b.text) {
         out.push({ type: "text", text: b.text });
       }
@@ -323,7 +348,7 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
         out.push(
           b.tool.name === "TodoWrite"
             ? todoWriteToTodos(b.tool.input)
-            : { type: "tool", tool: b.tool },
+            : { type: "tool", tool: toToolCallData(b.tool) },
         );
       } else if (b.type === "todos") {
         out.push({ type: "todos", todos: b.todos });
@@ -333,14 +358,45 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
     }
   } else {
     if (entry.toolCalls?.length) {
+      // cm:guard EVERY tool call reaches a card through `toToolCallData`, these two v1 paths
+      // included. They used to hand their calls through untouched, which was harmless while the
+      // card only previewed `result`: a CLI-derived entry carries its output on `output`, so
+      // `result` was undefined and the card showed nothing. Since ISS-1083 the card reads an absent
+      // result as `Running…`, and a settled turn in history claiming a call is still in flight is
+      // worse than showing nothing. Found by asking what bypasses the decoder rather than by a
+      // failing test, which is why the assertion below it exists.
       for (const tc of entry.toolCalls) {
-        out.push(tc.name === "TodoWrite" ? todoWriteToTodos(tc.input) : { type: "tool", tool: tc });
+        out.push(
+          tc.name === "TodoWrite"
+            ? todoWriteToTodos(tc.input)
+            : { type: "tool", tool: toToolCallData(tc) },
+        );
       }
     }
     const text = entryText(entry.content);
     if (text) out.push({ type: "text", text });
   }
-  return dedupeTodos(out);
+  return withPauseCount(entry, dedupeTodos(out));
+}
+
+/**
+ * The turn's pauses that carried no readable text, as the same render block.
+ */
+// cm:why PREPENDED rather than placed: a count is a property of the turn and not a member of its
+// block order, so it has no position to preserve and this renderer CHOOSES one. The choice is not a
+// claim about chronology — the count cannot support one — it is that a turn's pauses read better
+// before its output than after it. Before ISS-1079 nothing drew `thinkingCount` outside the run
+// report, so every Claude Code turn's pauses were invisible in the thread and a turn that held
+// nothing else was dropped as empty.
+// cm:edge contract -> packages/core/src/lib/agent-stream-parser.ts — `thinkingCount` is the Claude
+// Code derive's and nobody else's. The assistant providers put a pause in `blocks` instead, with no
+// text where the provider encrypted it, because a block survives the durable row and a count does
+// not. A turn carrying both a count and thinking blocks is therefore a mixed transcript rather than
+// a double count, and drawing both is correct.
+function withPauseCount(entry: MessageEntry, blocks: RenderBlock[]): RenderBlock[] {
+  const count = entry.thinkingCount ?? 0;
+  if (count <= 0) return blocks;
+  return [{ type: "thinking", count }, ...blocks];
 }
 
 /** Role decision for an entry: prefer the explicit `role`, else the canonical

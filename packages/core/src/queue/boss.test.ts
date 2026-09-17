@@ -72,9 +72,20 @@ describe('queue/boss', () => {
     expect(isBossStarted()).toBe(false);
   });
 
-  it('throws at import time when DATABASE_URL is missing', async () => {
+  // cm:guard this case used to read "throws at import time", and it passed for a reason that was not
+  // about this module: `config/env.ts` threw while being imported. That is gone (ISS-1067), and what
+  // is left is the property boss.ts's own header claims — "importing this module side-effect free".
+  // The refusal is unchanged; it arrives at first use, which is where this module always meant it to.
+  it('does not throw at import when DATABASE_URL is missing', async () => {
     delete process.env.DATABASE_URL;
 
-    await expect(import('./boss.js')).rejects.toThrow(/DATABASE_URL/);
+    await expect(import('./boss.js')).resolves.toBeDefined();
+  });
+
+  it('throws on first use when DATABASE_URL is missing', async () => {
+    delete process.env.DATABASE_URL;
+    const { startBoss } = await import('./boss.js');
+
+    await expect(startBoss()).rejects.toThrow(/DATABASE_URL/);
   });
 });

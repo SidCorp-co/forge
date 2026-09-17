@@ -32,6 +32,25 @@ const summaryQuerySchema = z
   })
   .strict();
 
+/**
+ * cm:guard the shape every cost rollup relies on, and the only place it is enforced before the
+ * database. `usage_records.session_id` is an `agent_sessions.id`, and since ISS-1015 the rollups
+ * reach it by plain text equality on `usage_records_session_id_idx` — so a stored value that is not
+ * a canonical lowercase uuid is not an error anyone sees, it is a row every cost figure silently
+ * omits. Refusing it here is what makes the equality safe; widening this back to a free string
+ * restores the silent omission and nothing will report it.
+ */
+const sessionIdField = z
+  .uuid({
+    error: (iss) =>
+      `${iss.path?.join('.') || 'sessionId'} must be an agent_sessions.id — a canonical uuid, like ` +
+      `0f9e6d2a-4b1c-4f77-9a3e-2c5b81d7e004 — or null; got ` +
+      JSON.stringify(String(iss.input).slice(0, 64)),
+  })
+  // A uuid is the same id in either case, so an uppercase spelling is canonicalised rather than
+  // refused; anything that is not a uuid at all is the caller's contract break and is refused.
+  .transform((v) => v.toLowerCase());
+
 const recordCreateSchema = z
   .object({
     projectId: z.uuid().nullable().optional(),
@@ -42,7 +61,7 @@ const recordCreateSchema = z
     cacheReadTokens: z.number().int().min(0).default(0),
     cacheCreationTokens: z.number().int().min(0).default(0),
     requestCount: z.number().int().min(1).default(1),
-    sessionId: z.string().min(1).max(500).nullable().optional(),
+    sessionId: sessionIdField.nullable().optional(),
     projectName: z.string().max(500).nullable().optional(),
     recordedAt: z.coerce.date(),
     estimatedCost: z.number().min(0).optional(),

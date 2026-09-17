@@ -15,6 +15,10 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import {
+  type IssuePullRequest,
+  readPullRequestsForIssues,
+} from '../integrations/repo-projection.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -42,6 +46,13 @@ export type AdmissibleIssue = {
   /** Raw evidence fields (`pipeline/status-assertions.ts`). Facts, not a verdict. */
   mergedAt: string | null;
   branch: string | null;
+  /**
+   * What the repository says about this issue, as events reported it: every pull request linked to
+   * it, open first. Empty where none is held, and empty on a project whose repository Forge is not
+   * bound to — the same shape, because a master that has to tell those two apart reads the project's
+   * integrations rather than guessing from a null here.
+   */
+  pullRequests: IssuePullRequest[];
 };
 
 /** Statuses this project admits, and how many rows it lets a master read. */
@@ -124,6 +135,7 @@ const RELATIONS = sql`
  * no gain.
  */
 // cm:guard the exclusions are "work is OPEN on this issue right now" and NOTHING else — no dependency filter, no priority ordering, no cap beyond the project's own declared `limit`. Same rule `readPool` carries and for the same reason: those are the master's judgements, and a list that pre-decides them is the kernel routing again through a second door. Read as "has ever been opened" it excludes on history, which is the ISS-933 measurement below.
+// cm:guard `pullRequests` is subject to this same rule and to the one above it: a row whose pull request conflicts, is red or is behind is STILL OFFERED. What the projection buys the master is the ability to tell "green and waiting" from "conflicts" before it spends a session; what it must never buy the kernel is a second place to decide. No WHERE clause here reads `repo_pull_requests` (ISS-1062).
 // cm:guard a row carrying `mergedAt` is NOT excluded here, and adding such a filter is the wrong repair. `merged_at` is caller-asserted — any hop out of the base merge state stamps it, merge or not — so it is a fact to show the master, never grounds for the kernel to hide the row. Measured 2026-09-06: ISS-931 sat at `open` with its code on `origin/main` and was still offered as work (ISS-940).
 export async function readAdmissibleIssues(args: {
   deviceId: string;
@@ -176,6 +188,9 @@ export async function readAdmissibleIssues(args: {
       LIMIT ${a.limit}
     `)) as unknown as Array<Record<string, unknown>>;
 
+    // cm:why one read for the page rather than one per row: the projection is keyed on the issue and a master reads twenty at a time, so a per-row lookup would turn one admissible call into twenty-one queries.
+    const byIssue = await readPullRequestsForIssues(rows.map((r) => String(r.id)));
+
     for (const row of rows) {
       out.push({
         issueId: String(row.id),
@@ -193,6 +208,7 @@ export async function readAdmissibleIssues(args: {
         relations: (row.relations as PoolRelation[] | null) ?? [],
         mergedAt: row.merged_at == null ? null : new Date(row.merged_at as string).toISOString(),
         branch: (row.branch as string | null) || null,
+        pullRequests: byIssue.get(String(row.id)) ?? [],
       });
     }
   }

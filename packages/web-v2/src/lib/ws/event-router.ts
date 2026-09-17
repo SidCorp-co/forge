@@ -84,10 +84,77 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			return;
 		}
 		// cm:edge contract -> packages/core/src/assistant/conversation-adapter.ts — the `deliver` half of the Forge UI's conversation transport publishes this into each person's own user room; the name and the payload are settled there, and a rename on either side leaves the open thread correct only after a reload. `conversation.settled` is the second half of the pair and arrives after the row is durable, which is why both invalidate rather than either one appending (ISS-1004 step 5).
+		// cm:edge contract -> packages/core/src/assistant/conversation-progress.ts — the frame's shape is
+		// `ConversationProgressFrame` there and `ConversationProgressEntry` in
+		// `features/conversations/types.ts`; a rename on any of the three leaves a turn that streams to
+		// nowhere.
+		// cm:guard WRITTEN and never invalidated, which is the one exception to this file's head rule and
+		// the reason the rule is stated there: these frames arrive many times a second and each carries
+		// the whole entry, so an invalidation per frame would refetch the entire conversation per token.
+		// The key still sits under `["conversations", id]`, so every invalidation of that prefix still
+		// reaches it (ISS-1078).
+		case "conversation.progress": {
+			if (!data?.conversationId || typeof data.rev !== "number") return;
+			// cm:guard a withdrawal is recorded under its own key and NOT left on the progress entry,
+			// because the progress key is cleared on `conversation.settled` — which lands within a few
+			// milliseconds of the correction frame. Measured on a local walk in Chrome, 2026-09-17: the
+			// marker was on screen for 13 ms, which is not "shown as replaced" by any reading. Here it
+			// outlives the settle and stays beside the turn for as long as the reader is in the room. It
+			// is deliberately NOT durable: the record holds the sentence that went out, and this is the
+			// socket's amnesty, which `messaging/doors.ts` prices (ISS-1078).
+			if (data.replaced && data.entry?.id) {
+				qc.setQueryData(
+					["conversations", data.conversationId, "withdrawn"],
+					(prev: Record<string, unknown> | undefined) => ({
+						...prev,
+						[data.entry.id]: data.replaced.draft,
+					}),
+				);
+			}
+			const key = ["conversations", data.conversationId, "progress"];
+			qc.setQueryData(key, (prev: { rev: number; entry?: { id?: string } } | undefined) => {
+				// cm:guard a frame BELOW the highest already drawn is dropped, and only within one entry:
+				// every frame carries the whole entry, so an older one landing late would visibly rewind
+				// the text a reader is watching. A new entry id is a new turn and starts the count again.
+				if (prev && prev.entry?.id === data.entry?.id && prev.rev >= data.rev) return prev;
+				return data;
+			});
+			return;
+		}
+		// cm:guard the accepted frame is written rather than applied, because the outbox it answers is
+		// component state and not cache: `conversation-chat.tsx` states why ISS-1031 put it there — the
+		// first message of a room is sent before any cache entry for that room exists. This key is where
+		// the composer reads that its message is now a durable row (ISS-1078).
+		case "conversation.accepted": {
+			if (!data?.conversationId || !data?.clientToken) {
+				// cm:guard a frame with no token is still somebody's message arriving, so the room is
+				// refreshed — it just belongs to no outbox row this tab is holding.
+				if (data?.conversationId) {
+					scheduleInvalidation(qc, ["conversations", data.conversationId]);
+				}
+				return;
+			}
+			qc.setQueryData(
+				["conversations", data.conversationId, "accepted"],
+				(prev: Record<string, unknown> | undefined) => ({
+					...prev,
+					[data.clientToken]: { messageId: data.messageId, seq: data.seq },
+				}),
+			);
+			scheduleInvalidation(qc, ["conversations", data.conversationId]);
+			return;
+		}
 		case "conversation.settled":
 		case "conversation.message": {
 			if (data?.conversationId) {
 				scheduleInvalidation(qc, ["conversations", data.conversationId]);
+				// cm:guard the in-flight entry is CLEARED on the settle, because from here the durable row
+				// is the answer and the two drawn together would be one turn rendered twice. The settle is
+				// published after core has drained the progress chain, so no frame can arrive behind this
+				// and resurrect it (ISS-1078, and `conversation-progress.ts:close` for the other half).
+				if (event === "conversation.settled") {
+					qc.setQueryData(["conversations", data.conversationId, "progress"], null);
+				}
 			}
 			scheduleInvalidation(qc, ["conversations", "list"]);
 			return;
@@ -237,7 +304,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "notification.created":
 		case "notification.read": {
 			scheduleInvalidation(qc, ["notifications"]);
-			scheduleInvalidation(qc, ["notifications-unread"]);
+			scheduleInvalidation(qc, ["notifications-open"]);
 			// ISS-307 — unread @-mentions feed Attention's mentions bucket.
 			scheduleInvalidation(qc, ["attention"]);
 			scheduleInvalidation(qc, ["pulse"]);
@@ -270,7 +337,7 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 			// Web `usePmEscalations` is derived off `useNotifications`, so the
 			// notifications invalidation is the only key that matters here.
 			scheduleInvalidation(qc, ["notifications"]);
-			scheduleInvalidation(qc, ["notifications-unread"]);
+			scheduleInvalidation(qc, ["notifications-open"]);
 			return;
 		}
 		case "integration.changed": {
@@ -331,9 +398,9 @@ const REPLAY_PREFIXES: readonly (readonly unknown[])[] = [
 	["integration-connections"],
 	// cm:guard the ONE recovery an empty decision panel has. `features/questions` polls only once an issue already carries a question — `agent_questions` has no index on `issue_id` — so a screen open across a dropped connection learns of its first question here or not until the next navigation (ISS-980).
 	["questions"],
-	// cm:guard the three notification keys are HERE because `refetchOnWindowFocus` is off since ISS-1019: `routeEvent` reaches them on every `notification.created`, but a notification arriving while the socket was down was repaired by returning to the tab and by nothing else, so without these the unread badge stays wrong until something unrelated refetches.
+	// cm:guard the three notification keys are HERE because `refetchOnWindowFocus` is off since ISS-1019: `routeEvent` reaches them on every `notification.created`, but a notification arriving while the socket was down was repaired by returning to the tab and by nothing else, so without these the bell badge stays wrong until something unrelated refetches.
 	["notifications"],
-	["notifications-unread"],
+	["notifications-open"],
 	["invitations-pending"],
 ];
 

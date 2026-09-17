@@ -111,8 +111,43 @@
   silently carry a consumer across a major. CodeQL code scanning and GitHub private vulnerability
   reporting were enabled on the repository in the same change.
 
-
 ### Added
+- **Six tables that only ever grew now have a retention rule and a nightly sweep.** The operator
+  sets each window, and the sweep reports what it removed and kept. The runner Activity
+  panel says how long that history lasts.
+
+- **A job's events are no longer deleted before the transcript they rebuild is written.** Events are
+  kept until the session records its transcript as final. Where that never happened, the sweep
+  writes the transcript instead of letting them expire.
+
+- **A request that never reached the API is now reported.** The browser collapses CORS, DNS and
+  TLS failures into one opaque error, and until now they reached nobody. A response the API
+  answered stays the API's to report.
+
+- **Agents read and write your pull requests through Forge, not a personal GitHub account on a
+  build box** — diff, failing check log, comment, new pull request, review request, verdict. Off
+  until you grant it. Merging stays Forge's step.
+
+- **A review is one record instead of two.** A review left on GitHub, by a person or by an agent,
+  now appears as a comment on the Forge issue its branch names — once, however often GitHub
+  resends it.
+
+- **You can see the assistant think.** A turn now shows how long the model paused before answering,
+  and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
+
+- **The assistant's replies now stream.** Your question is confirmed as soon as it is filed, the
+  answer appears as it is written, and each tool call shows as its own card — kept when the room is
+  reopened.
+- **A long streaming reply keeps scrolling into view**, instead of stopping after the first few
+  words and growing off the bottom of the screen.
+
+- **Forge now holds what GitHub says about an issue's pull request** — branch, head, how far behind
+  it is, whether it conflicts, which checks passed, which reviews are open. Work on a green build
+  reads differently from work that conflicts.
+
+- **Reads Forge makes to GitHub are the app acting for the project, never a person's account.**
+  A project with no repository bound, or whose app was never installed, is told which.
+
 - **The assistant benchmark's judge now reads the live project.** Each judged turn carries a brief
   of the real counts, pipeline and filing rules, so a confident wrong answer fails. A question the
   project cannot be asked is recorded, not failed.
@@ -2282,6 +2317,20 @@
   word as an ordinary rule on the Knowledge screen, fetched when a change touches the UI
   instead of pasted into every briefing.
 
+- **GitHub issues are no longer copied into your project, and no GitHub event changes or closes a
+  Forge issue.** A project that wants outside reports admits them once, through a setting that
+  starts closed everywhere:
+
+  ```
+  PATCH /api/projects/<projectId>/pipeline-config
+  { "githubIntake": { "enabled": true } }
+  ```
+
+  An organisation admin makes that request; `GET` the same path back and
+  `pipelineConfig.githubIntake.enabled` reads `true`. Opening it admits new reports only; the edit
+  and close copying is gone for every project and no setting restores it. Issues already copied are
+  untouched.
+
 - **Nine days of maintenance on prompts nothing could ever read, ended.** When the staged pipeline
   was removed, the instructions written for its nine stages were left behind: eight blocks of
   per-stage guidance and nine pieces of process knowledge, all addressed to steps that can no longer
@@ -2867,6 +2916,60 @@
   set is now 59.
 
 ### Fixed
+
+- **A finished release no longer holds a job slot.** Two ended release batches held a runner's
+  whole pane budget for four hours, stopping every project on that box. The box now learns when a
+  job is over.
+
+- **An assistant reply fits the panel it is in.** Two nested 85% caps left a blank column beside
+  every answer, growing as the panel shrank. One place now sets the measure: full width, up to a
+  readable line length.
+
+- **A tool card says what came back instead of dumping it.** It printed 240 characters of minified
+  JSON, cut mid-key. It now names the result's shape and size in one line, and opens onto the whole
+  of it.
+
+- **The typing cursor sits after the last word, not on the line below it.** It was an element after
+  the prose, so every streaming reply was a line taller than the reply it became.
+
+- **A turn says whether it is working, responding or failed.** A turn that had produced nothing
+  showed empty space, and a spinner sat under prose it had already written. The cursor now follows
+  only text that is still growing.
+
+- **Older turns fold their tool cards to one row that opens back.** The newest turn keeps
+  everything. Nothing folds while you are scrolled up or inside it, and new output you cannot see is
+  announced rather than scrolled to.
+
+- **A stuck issue now stands out on the Issues list.** A row that sat too long was meant to read
+  amber beside its clock, and the colour never reached the screen. It does now.
+
+- **A release job opens in the checkout, not the daemon's home directory.** A repo path that
+  belongs to another box is skipped instead of silently becoming `$HOME`; a job with no checkout
+  here gives its hold back naming both paths.
+
+- **The Issues list opens again.** It failed on every project holding work: asking for each
+  issue's cost sent the server a question it could not answer, so the page never loaded. Only
+  empty projects opened. Costs are back.
+
+- **A release now reaches a machine.** Batch releases, skill checks, reconciles and smoke runs sat
+  in a queue no machine read — one batch held its issues at *releasing* for sixteen hours.
+  Machines now take these jobs and run them.
+
+- **A release nobody picked up gives its issues back.** After thirty minutes with no machine, the
+  batch is cancelled, every issue returns to *awaiting release*, and the project is told. One that
+  promoted anything is left alone.
+
+- **A release waiting for a labelled machine says so.** With no machine carrying the project's
+  release label, the job claimed every check had passed. It now names the label, and the
+  *no machine can take this work* alert counts it.
+
+- **Per-job cost and tokens no longer read zero.** A job's history row and its prompt details
+  priced the job by the wrong id, so every job showed nothing spent. They now read the session
+  that ran it.
+
+- **A missing server setting is now reported by name, instead of breaking a test file before any
+  test runs.** Settings and the database are read when something needs them, not when the code
+  loads. Nothing accepted before is refused now.
 
 - **An edit you make while an agent is running an issue no longer vanishes.** Status, priority,
   complexity and the description go read-only on the issue, in the list and in bulk, each saying
@@ -5339,6 +5442,17 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **The issues list and the search send far less down the wire.** Both included the whole of
+  every issue on the page — bodies, plans, criteria — which neither screen showed. Searching for
+  a code identifier is also far quicker.
+
+- **Cost figures on sessions, issues and pipeline runs load faster.** Each read scanned the whole
+  usage table; they now go straight to the rows for the session, and the run dashboards no longer
+  re-read costs once per step.
+- **The bell counts what is still true, not what you have not opened.** One condition told to six
+  people is one record. Fifteen parks in a sweep are one line, and interrupt once. A silence is
+  yours alone, and expires.
 - **Forge has gone quiet.** Every notification type except ops alerts stops arriving, on purpose,
   until the new model lands: two thirds of what the bell said could not be acted on.
 

@@ -20,7 +20,7 @@ import {
   type ExternalMcpToolsets,
 } from '../../assistant/tools/external-mcp.js';
 import { type ConversationVenue, codeAuthored } from '../../conversations/ports.js';
-import type { WindowTurnInputs } from '../../conversations/route-window.js';
+import type { WindowCut, WindowTurnInputs } from '../../conversations/route-window.js';
 import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
@@ -72,6 +72,8 @@ export interface RocketChatTurnArgs {
   connectionId: string;
   shape: RoomShape;
   webBaseUrl: string | undefined;
+  /** Why the window stopped collecting — a turn cut before quiet is told so in its persona (ISS-1086). */
+  cut: WindowCut;
   /**
    * Make this turn's right to answer durable before a dispatch somebody else finishes.
    */
@@ -137,6 +139,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         projectSlug: route.projectSlug,
         webBaseUrl: args.webBaseUrl,
         botName: bot.botName,
+        cut: args.cut.reason,
       }),
     };
     return seed;
@@ -176,10 +179,22 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
       });
       // cm:guard send NOTHING when the dispatch started: only a genuinely slow turn gets an interim ack, scheduled by startAgentChat itself (scheduleDelayedAck). Acking here would put a promise in front of an answer that usually arrives first.
       if (started.started) return { send: false, reason: 'agent-chat-dispatched' };
+      // cm:guard `screenReplaced: false` because this hook runs BEFORE the turn: no model text was
+      // produced, so there is nothing a watcher could have been shown and nothing to correct. The
+      // field is required rather than defaulted so a hook like this answers it rather than inheriting
+      // an answer (ISS-1078).
       if (started.reason === 'deduped')
-        return { send: true, message: codeAuthored(AGENT_CHAT_DEDUP_REPLY(bot.botName)) };
+        return {
+          send: true,
+          message: codeAuthored(AGENT_CHAT_DEDUP_REPLY(bot.botName)),
+          screenReplaced: false,
+        };
       if (started.reason === 'no-device')
-        return { send: true, message: codeAuthored(AGENT_CHAT_NO_DEVICE_REPLY(bot.botName)) };
+        return {
+          send: true,
+          message: codeAuthored(AGENT_CHAT_NO_DEVICE_REPLY(bot.botName)),
+          screenReplaced: false,
+        };
       // cm:guard 'dispatch-failed' sends nothing either — the session was created then marked failed, so the completion bridge already delivers the one honest fallback over REST; replying here too double-posts.
       return { send: false, reason: 'agent-chat-dispatch-failed' };
     },
@@ -233,12 +248,29 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         shape: args.shape,
         principalUserId,
       });
+      // cm:guard `screenReplaced: true` on all three, because this hook runs AFTER the turn: the model
+      // answered by calling `escalate`, and each of these code-authored lines goes out in place of
+      // whatever it said. Rocket.Chat drives no progress watcher today, so nothing reads this — it is
+      // true of the turn rather than of the audience, which is the only way it stays true if a watcher
+      // is ever attached to this door (ISS-1078).
       if (started.started)
-        return { send: true, message: codeAuthored(ESCALATION_ACK(bot.botName)) };
+        return {
+          send: true,
+          message: codeAuthored(ESCALATION_ACK(bot.botName)),
+          screenReplaced: true,
+        };
       if (started.reason === 'deduped')
-        return { send: true, message: codeAuthored(ESCALATION_DEDUP_REPLY(bot.botName)) };
+        return {
+          send: true,
+          message: codeAuthored(ESCALATION_DEDUP_REPLY(bot.botName)),
+          screenReplaced: true,
+        };
       if (started.reason === 'no-device')
-        return { send: true, message: codeAuthored(ESCALATION_NO_DEVICE_REPLY(bot.botName)) };
+        return {
+          send: true,
+          message: codeAuthored(ESCALATION_NO_DEVICE_REPLY(bot.botName)),
+          screenReplaced: true,
+        };
       // cm:guard same as agent mode: on 'dispatch-failed' the bridge delivers the single fallback, so this turn must post nothing.
       return { send: false, reason: 'escalation-dispatch-failed' };
     },

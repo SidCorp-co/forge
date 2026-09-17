@@ -15,8 +15,10 @@ function sound(overrides = {}) {
         multiBinding: 'boolean',
       },
       canDeploy: true,
+      canDispatch: true,
       agentPath: { present: true, kind: 'core-mediated', toolsType: 'array' },
     },
+    adapter: { present: true, dispatchOutboundType: 'function' },
     schemas: {
       present: true,
       declaredKeys: [
@@ -261,6 +263,70 @@ describe('declarationFaults — canDeploy across the package boundary', () => {
     expect(reasons(sound({ capabilities: caps }), {})).toEqual([
       'capabilities.canDeploy is missing',
     ]);
+  });
+});
+
+// ISS-1062 — a capability is declared or it is absent, never declared and unimplemented. Before this
+// rule, `canDispatch` had no reader anywhere in core and six of seven adapters satisfied a REQUIRED
+// `dispatchOutbound` with a stub that threw by name, so github could have declared `true` beside its
+// throwing stub and all 22 verify checks would have stayed green.
+describe('declarationFaults — canDispatch against what the adapter implements', () => {
+  it('passes a provider that declares dispatch and implements it', () => {
+    expect(
+      declarationFaults({ providers: [sound()], contractCanDeploy: { coolify: true } }),
+    ).toEqual([]);
+  });
+
+  it('passes a provider that declares no dispatch and implements none', () => {
+    const decl = sound();
+    decl.capabilities.canDispatch = false;
+    decl.adapter = { present: true, dispatchOutboundType: 'undefined' };
+    expect(declarationFaults({ providers: [decl], contractCanDeploy: { coolify: true } })).toEqual(
+      [],
+    );
+  });
+
+  it('fails a provider that declares dispatch it does not implement', () => {
+    const decl = sound();
+    decl.adapter = { present: true, dispatchOutboundType: 'undefined' };
+    const [fault] = declarationFaults({
+      providers: [decl],
+      contractCanDeploy: { coolify: true },
+    });
+    expect(fault.reasons.join(' ')).toContain('canDispatch is true and the adapter implements no');
+  });
+
+  // cm:guard the OTHER direction is not pedantry: a provider implementing a dispatch it declares false has a capability every generic path is told it does not have, so the method is reachable by nothing.
+  it('fails a provider that implements a dispatch it declares false', () => {
+    const decl = sound();
+    decl.capabilities.canDispatch = false;
+    const [fault] = declarationFaults({
+      providers: [decl],
+      contractCanDeploy: { coolify: true },
+    });
+    expect(fault.reasons.join(' ')).toContain('canDispatch is false and the adapter implements');
+  });
+
+  it('makes no dispatch claim where canDispatch is not a boolean — the missing field is the fault', () => {
+    const decl = sound();
+    decl.capabilities.types = { ...decl.capabilities.types, canDispatch: 'undefined' };
+    decl.capabilities.canDispatch = undefined;
+    decl.adapter = { present: true, dispatchOutboundType: 'undefined' };
+    const [fault] = declarationFaults({
+      providers: [decl],
+      contractCanDeploy: { coolify: true },
+    });
+    expect(fault.reasons).toEqual(['capabilities.canDispatch is missing']);
+  });
+
+  it('fails a declaration with no adapter at all that still claims dispatch', () => {
+    const decl = sound();
+    decl.adapter = { present: false, dispatchOutboundType: 'undefined' };
+    const [fault] = declarationFaults({
+      providers: [decl],
+      contractCanDeploy: { coolify: true },
+    });
+    expect(fault.reasons.join(' ')).toContain('canDispatch is true and the adapter implements no');
   });
 });
 

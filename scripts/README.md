@@ -2,7 +2,7 @@
 
 Project-level utilities. Each script has a comment header explaining its contract. A checker whose verdict is worth testing keeps that half in `lib/` — the CLI spawns, reads the tree and exits, none of which a test can call.
 
-## Thirteen gates, six axes
+## Fourteen gates, six axes
 
 Each gate sits in `ci-passed`'s `needs` **and** is named in its result loop. Both halves are
 load-bearing: `ci-passed` runs `if: always()`, so a job listed in `needs` but absent from the loop
@@ -33,6 +33,7 @@ passed, because the external record of what shipped belonged to none of them.
 | size | `check-size-budget` — `conformance` | file & function length, frozen per file | which rules exist — biome declares them |
 | lint debt | `check-lint-budget` — `conformance` | per (file, rule) biome violations in `web-v2` and `core`, frozen; drained on touch where a scope asks for it | which rules exist — each package's `biome.json` declares them |
 | checkers | `biome check scripts` — `conformance` | the files in `scripts/` that implement every other gate | anything under `packages/` |
+| lazy init | `check-lazy-module-init` — `conformance` | whether a read of `env` or `db` runs when a core module is merely IMPORTED | what the value is once read, or whether a caller should be reading it at all |
 | provider literals | `check-provider-literals` — `conformance` | whether a provider's name (`coolify`, `postman`, …) is written outside the locations `.forge/conformance.json` allows WITH a reason: that provider's own directory, the registry, the schema and contracts vocabularies | whether a name allowed there is USED correctly; and `agent`, which this repo also spells as an actor, an author and a principal — excluded by name, with its reason and its retirement condition printed on every run |
 | declarations | `check-integration-declarations` — `conformance` | whether every provider in the live registry carries the capability, schema and agent-path fields the generic paths read — including a non-empty `justification` on a `direct-mcp` arm, since that arm puts a project's credential on a runner box | which archetype a provider SHOULD be — that is the declaration's author's, and review's |
 | injected docs | `check-injected-doc-modes` — `injected-docs` | that a status transition in a guide body or a mandatory fact names the pipeline mode it belongs to | whether the prose around a qualified transition is true; a project's own knowledge entries, which live in the DB |
@@ -532,6 +533,52 @@ Exit codes: `0` clean, `1` violations found, `2` invalid invocation.
 ### Bypass
 
 `SKIP_LANG_CHECK=1 git commit ...` skips the pre-commit hook locally. CI cannot be bypassed — translate the offending strings or add an `i18n-allow:` directive with a reason.
+
+## check-lazy-module-init.mjs — importing a core module does no work
+
+`packages/core/src/config/env.ts` validates the whole environment on the first READ of `env`, and
+`packages/core/src/db/client.ts` constructs the postgres pool on the first read of `db`. Both used
+to do it at module scope, so importing anything whose graph reached either did that work — and on a
+missing variable, threw inside the import.
+
+That failure has no test in it. CI on PR #457 reported `1 file failed` with the file itself reading
+`3 tests | 3 skipped`, no assertion anywhere in the job, and a three-frame stack: `env.ts:137` →
+`db/client.ts:3` → `knowledge/service.ts:3`. The unit suite is floored by `vitest.setup.ts`;
+`vitest.integration.config.ts` carries no `setupFiles`, which is where it bit.
+
+This checker is what keeps the two lazy, because the property is invisible in a green run: one new
+module-scope read puts the side effect back for every module downstream of the file that does it,
+and breaks nothing on the day it lands. No type can hold it — `env.UPLOADS_MAX_BYTES` is legal
+wherever `env` is in scope, which is what an import is for — so the rule is a walk over the
+TypeScript AST.
+
+**The rule is "does this read run when the file is imported", which is not "is this read outside a
+function".** Three consequences, each with its own fixture in
+`check-lazy-module-init.test.mjs`:
+
+| Shape | Caught | Why |
+|---|---|---|
+| `const n = env.PORT` at module scope | yes | runs at import |
+| `(() => env.PORT)()` at module scope | yes | an IIFE body runs at import — the first version of the checker climbed one parent and missed this, because `(…)` puts a `ParenthesizedExpression` between the arrow and the call |
+| `import * as config` then `config.env.PORT` | yes | a namespace import reads the same value; a checker that understood only named imports would report the file clean |
+| `class C { [env.PORT]() {} }` | yes | a computed member name is evaluated where the class is, not where the body is called |
+| `cors({ origin: (o) => env.CORS_ORIGINS.includes(o) })` | no | a callback the caller invokes later, which is the shape the fix introduced on purpose |
+| `Pick<typeof db, 'select'>` | no | a type query erases at compile time; 24 of core's 26 module-scope mentions of `db` are this, and counting them would make the gate 92% noise on its first run |
+| a read in the THEN branch of `if (isMain) { … }` | no | the entrypoint guard is false precisely when another module is importing the file |
+| a read in that guard's ELSE branch | yes | the else branch runs on every import, which is the case the guard is meant to be about not doing |
+| `if (import.meta.url === import.meta.url) { … }` | yes | the comparison must name `process.argv` on its other side, or an always-true test would be a two-token way of silencing the gate |
+| a read in `index.ts` OUTSIDE that guard | yes | the guard is a block, never a whole-file exemption |
+
+The last four rows were holes this checker had on its first version, found by the whole-set review
+of the change that added it and each now carrying a fixture that goes red when its fix is removed.
+
+**What it cannot hold**, stated here because a gate whose limit is unwritten gets read as holding
+more than it does: a NAMED function called at module scope runs at import, and a syntactic walk does
+not follow that call. Nothing in core does this today.
+
+`--all` is the only mode, and the checker refuses anything else by name. A run that can narrow its
+own scope reports clean on a tree that is not — which is also why the checker exports
+`importTimeReads` for its test to call with fixture text rather than taking a `--scan-root` flag.
 
 ## check-test-signal.mjs — low-signal test guard
 

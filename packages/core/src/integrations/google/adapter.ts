@@ -200,10 +200,6 @@ const googleAdapterMethods: IntegrationAdapterMethods<GoogleConfig, GoogleSecret
     }
   },
 
-  async dispatchOutbound() {
-    return notSupported('dispatchOutbound');
-  },
-
   async handleInbound() {
     return notSupported('handleInbound');
   },

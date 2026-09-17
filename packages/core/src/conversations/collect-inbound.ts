@@ -49,7 +49,14 @@ export interface InboundCollection<Frame> {
  */
 // cm:guard `venue-unresolved` is the ONLY ending before anything is written: a frame nobody could place has no conversation to write into. An unlinked speaker is NOT one of them any more — the message is collected and `route-window.ts` refuses it under the window's delivery key, which is the only arrangement that sends the refusal exactly once. Refusing here first meant a transport that accepted the text and then dropped the connection got a second refusal from the window (ISS-1004, review pass 1 F3 and the plan's own read).
 export type CollectOutcome =
-  | { kind: 'collected'; conversationId: string; windowId: string; seq: number }
+  | {
+      kind: 'collected';
+      conversationId: string;
+      windowId: string;
+      seq: number;
+      /** The row this message became, so a caller can name it before the turn runs (ISS-1078). */
+      messageId: string;
+    }
   | { kind: 'venue-unresolved' };
 
 /**
@@ -105,6 +112,7 @@ export async function collectInboundMessage<Frame>(
       conversationId: conversation.id,
       windowId: window.id,
       seq: row.seq,
+      messageId: row.id,
     };
   });
 }

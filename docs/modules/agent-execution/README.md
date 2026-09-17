@@ -13,8 +13,11 @@ flowchart LR
     MA --> RUN[runner<br/>capability handle]
     RUN --> CC[claude CLI]
     CC --> WT[git worktree]
+    DEV --> DAEMON[forge-runner daemon]
+    DAEMON --> JP[job pane<br/>one per issue-less job]
   end
-  MA -->|claim| POOL
+  MA -->|claims issues| POOL
+  DAEMON -->|claims the rest| POOL
   CC -->|job_events| WS --> EV[(job_events)]
   POOL --> SESS[(agent_sessions)]
   SESS --> INBOX[session_inbox<br/>work · answer · inject · checkpoint · cancel]
@@ -36,6 +39,7 @@ flowchart LR
 | Device pairing, revocation, binding | `core/src/devices/`, `schema.ts:devices`, `schema.ts:pairingCodes` |
 | Runner capability and selection | `core/src/runners/`, `schema.ts:runners` (`capabilities` jsonb) |
 | The claimable job pool | `core/src/devices/pool.ts`, `core/src/devices/claim.ts`, `schema.ts:jobs.heldBy` |
+| The box's reader of that pool, for the jobs no issue is behind | `packages/runner/crates/forge-runner-core/src/transport/pool.rs` (the four calls), `.../daemon/pool_jobs.rs` (the pane, the supervision, the restart) |
 | The run session a master opens over a group of issues | `core/src/devices/run-session.ts`, `packages/runner/crates/forge-runner-core/src/runner/run_session.rs` |
 | Job preparation and event stream | `core/src/jobs/`, `schema.ts:jobEvents`, `schema.ts:jobEventKinds` |
 | Agent sessions and their inbox | `core/src/agent-sessions/`, `schema.ts:agentSessions`, `schema.ts:sessionInbox` |
@@ -47,7 +51,7 @@ flowchart LR
 | Worktree and git work | `core/src/git/` |
 | Git credential for a checkout | `core/src/git/github-app-credential.ts` (mint), `packages/runner` `cmd/git_credential.rs` (helper) |
 | The daemon itself | `packages/runner` (crates `forge-runner`, `forge-runner-core`) |
-| Evidence retention | `core/src/jobs/retention-sweeper.ts` |
+| Evidence retention | `core/src/pipeline/retention/` (`policy.ts` states the rules, `sweep.ts` enforces them) |
 | UI | web `features/runners/`, `pairing/`, `sessions/`, `session/`, `conversations/`, `agents/` |
 
 ## Vocabulary
@@ -78,8 +82,19 @@ flowchart LR
 - **One run session is one worktree, one pane and one ledger row — for a GROUP of issues.** A group
   of one takes the same path as a group of three; a scalar entry point is how "one run, one issue"
   returns, measured as two sessions in one worktree.
-- **`job_events` are pruned at 30 days** for jobs in terminal states. Anything that must outlive
-  that belongs in `activity_log` or memory, not in the event stream.
+- **A job pane is not a run session, and the master does not open one.** `release_batch`, `smoke`,
+  `reconcile` and `verify_skill` have no issue behind them, so no lease, no worktree of their own
+  and no ledger row describe them; the daemon claims each from the pool and opens a pane it
+  supervises directly. The two lanes share only the box. How many such panes a box will hold is the
+  BOX's number (`[runner] max_job_panes`) and core cannot see it — core bounds the WAIT instead, not
+  the box, because a hold nothing enforces is worse than none (`runner_full`, removed 2026-09-05).
+  The pane is the only record that job is running, so a restart reconciles what this box started
+  against what it is still running rather than re-launching or trusting an in-memory map.
+- **`job_events` are pruned at 30 days** for jobs in terminal states, and never before that job's
+  session records its transcript as finalised — the transcript is what survives, and these rows are
+  what rebuild it. A session whose finalisation never completed has its events held, and the sweep
+  finalises it rather than expiring them (ISS-1027). Anything that must outlive the window belongs
+  in `activity_log` or memory, not in the event stream.
 
 ## Boundaries
 

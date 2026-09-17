@@ -398,9 +398,15 @@ function RunnerActivityPanel({ runnerId }: { runnerId: string }) {
 	}
 	const events = activity.data?.events ?? [];
 	const sessions = activity.data?.sessions ?? [];
+	const retentionDays = activity.data?.retentionDays;
 	if (events.length === 0 && sessions.length === 0) {
 		return (
-			<p className="fg-body-sm text-subtle">No recorded activity yet.</p>
+			<p className="fg-body-sm text-subtle">
+				No recorded activity yet.
+				{typeof retentionDays === "number"
+					? ` Status history is kept for ${retentionDays} days.`
+					: null}
+			</p>
 		);
 	}
 

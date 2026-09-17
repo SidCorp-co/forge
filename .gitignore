@@ -96,3 +96,10 @@ packages/*/AGENTS.md
 
 # Local-only scratch renders — the committed architecture lives in docs/proposals/
 docs/local/
+
+# scripts/check-integration-declarations.mjs writes its probe into
+# `mkdtempSync(join(pkgRoot, '.forge-declarations-'))` — a random-suffixed directory INSIDE
+# packages/core — and removes it in a finally. A run that is killed leaves one behind, and until
+# this line any `git add packages/core` swept it into a commit: ISS-1067 shipped
+# `packages/core/.forge-declarations-6Y8eNh/probe.mts` to a PR that way before anyone noticed.
+packages/*/.forge-declarations-*

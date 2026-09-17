@@ -4,14 +4,7 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import {
-  comments,
-  issues,
-  notifications,
-  pmConfig,
-  pmDecisions,
-  pmPolicies,
-} from '../db/schema.js';
+import { comments, issues, pmConfig, pmDecisions, pmPolicies } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -23,6 +16,7 @@ import {
   restActor,
   restAuthored,
 } from '../middleware/auth.js';
+import { closeEscalationTasks } from '../notifications/close-escalation.js';
 import { hooks } from '../pipeline/hooks.js';
 import { type SpawnPmSessionResult, spawnPmSession } from './spawner.js';
 
@@ -206,21 +200,10 @@ pmRoutes.post(
       });
     }
 
-    const readRows = await db
-      .update(notifications)
-      .set({ read: true })
-      .where(
-        and(
-          eq(notifications.type, 'pm_escalation'),
-          eq(notifications.projectId, projectId),
-          eq(notifications.read, false),
-          sql`(${notifications.body}::jsonb->>'decisionId') = ${decisionId}`,
-        ),
-      )
-      .returning({ id: notifications.id, userId: notifications.userId });
-    for (const row of readRows) {
-      await hooks.emit('notificationRead', { notificationId: row.id, userId: row.userId });
-    }
+    // cm:edge protocol -> packages/core/src/notifications/close-escalation.ts — what an
+    // answered escalation does to its record is the notifications module's to decide; this
+    // route says only that the question was answered.
+    await closeEscalationTasks(projectId, decisionId);
 
     const spawn = await spawnPmSession({
       projectId,

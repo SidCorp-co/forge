@@ -257,6 +257,13 @@ export async function* runTurnEvents(
         if (event.type === 'chunk') {
           turnText += event.text;
           yield event;
+        } else if (event.type === 'reasoning') {
+          // cm:guard reasoning is forwarded and NOT added to `turnText`: `turnText` becomes the
+          // turn's answer and the reply the door screens, and a model's thinking is neither. The arm
+          // exists at all because this chain has no final `else yield event` — a member of the union
+          // with no arm here is dropped between the adapter and every observer, silently, which is
+          // how the whole of ISS-1079 could have passed its adapter tests and shown nothing.
+          yield event;
         } else if (event.type === 'tool_call') {
           // cm:guard a tool call arriving on the terminal round is dropped, not forwarded and not recorded — that round is invoked with NO tool schemas, so nothing will execute it and no `tool_result` can ever follow: yielding it hands the SSE client exactly the dangling pair this cap exists to prevent, and putting it in `toolCalls` tells external-chat.ts an `escalate` ran when nothing ran. The round's prose is still the answer; a round that emitted only this is an empty answer, and that is the model's fact to own rather than the loop's to hide
           if (!offered) continue;

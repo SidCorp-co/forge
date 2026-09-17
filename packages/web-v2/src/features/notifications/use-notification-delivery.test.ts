@@ -27,18 +27,15 @@ describe("planNotificationDelivery channel routing (ISS-510)", () => {
     expect(plan.tone).toBe("error");
   });
 
-  it("keeps bell-only types off the transient surfaces", () => {
-    // comment_added → bell only.
-    const plan = planNotificationDelivery({ type: "comment_added", severity: "info" });
-    expect(plan.toast).toBe(false);
-    expect(plan.browser).toBe(false);
-  });
-
+  // cm:why the bell-only case used `comment_added`, which ISS-1063 deleted as a type with
+  // no emitter anywhere. Every surviving type reaches at least `toast`, so the only thing
+  // left that is bell-only is a type the contract does not know — which the unknown/legacy
+  // case below already covers, and which is what `channelsFor`'s fallback is for.
   it("defaults severity from the contract when none is supplied", () => {
-    // agent_completed default severity is success → success tone.
-    const plan = planNotificationDelivery({ type: "agent_completed" });
+    // issue_status_changed's contract severity is info → info tone.
+    const plan = planNotificationDelivery({ type: "issue_status_changed" });
     expect(plan.toast).toBe(true);
-    expect(plan.tone).toBe("success");
+    expect(plan.tone).toBe("info");
   });
 
   it("treats an unknown/legacy type as bell-only with info tone", () => {
@@ -53,11 +50,13 @@ describe("shouldPlaySound (ISS-513)", () => {
   it("plays for toast/browser-channel high-signal types", () => {
     expect(shouldPlaySound(planNotificationDelivery({ type: "pipeline_wedge" }))).toBe(true);
     expect(shouldPlaySound(planNotificationDelivery({ type: "issue_status_changed" }))).toBe(true);
-    expect(shouldPlaySound(planNotificationDelivery({ type: "agent_completed" }))).toBe(true);
+    expect(shouldPlaySound(planNotificationDelivery({ type: "issue_stranded" }))).toBe(true);
   });
 
   it("stays silent for bell-only and unknown types", () => {
-    expect(shouldPlaySound(planNotificationDelivery({ type: "comment_added" }))).toBe(false);
+    expect(shouldPlaySound(planNotificationDelivery({ type: "an_unknown_bell_only_type" }))).toBe(
+      false,
+    );
     expect(shouldPlaySound(planNotificationDelivery({ type: "totally_new_type" }))).toBe(false);
   });
 });

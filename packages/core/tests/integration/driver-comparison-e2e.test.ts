@@ -96,9 +96,9 @@ describe('driver comparison E2E', () => {
 
   async function wedge(issueId: string): Promise<void> {
     await harness.db.execute(sql`
-      INSERT INTO notifications (id, user_id, project_id, issue_id, type, title, created_at)
-      VALUES (${randomUUID()}, ${ownerId}, ${projectId}, ${issueId}, 'pipeline_wedge',
-              'wedged', now())
+      INSERT INTO notifications (id, project_id, issue_id, type, kind, tier, state, title, created_at)
+      VALUES (${randomUUID()}, ${projectId}, ${issueId}, 'pipeline_wedge',
+              'condition', 'ticket', 'firing', 'wedged', now())
     `);
   }
 

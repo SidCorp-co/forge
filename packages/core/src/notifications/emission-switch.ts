@@ -1,60 +1,59 @@
 /**
- * ISS-1063 — the priced silence, and the mechanism that outlives it.
+ * ISS-1063 — the emission switch: the one seam where a notification type can be
+ * turned off, and the record of the silence it carried.
  *
- * WHAT IS TRADED. While a type is suppressed here, Forge tells nobody anything
- * about it. No bell row, no toast, no browser notification, no row in the
- * table a later reader could count. A condition that becomes true during the
- * silence is never announced, and it is not queued for announcement later.
+ * WHAT IT IS NOW. {@link SUPPRESSED_TYPES} is EMPTY, so this module suppresses
+ * nothing: every declared type emits. What survives is the mechanism — one
+ * checked seam, three callers, and a test holding them as a closed inventory —
+ * so that turning a type off is a one-line diff somebody can read, rather than
+ * nine emitters edited by hand.
  *
- * WHAT THAT COSTS, AND WHY IT WAS PAID. Measured on the beta replica
- * 2026-09-16: 11037 notification rows over 14 users; the owner's own account
- * holds 7441 of them and reads 36 unread against 5663 unresolved. 3333 of his
- * 5663 open rows are `issue_status_changed`, a type that cannot resolve by its
- * nature, and 2023 are `pipeline_wedge`, a condition with no re-evaluation
- * loop. 69% of the pile is unactionable and it buries the 24 `ops_alert` rows
- * that are each an agent standing still. The owner's instruction, recorded on
- * ISS-1063 at 2026-09-16 15:55:28Z: the current notifications are spam, and
- * losing them entirely for a while costs less than continuing to read them.
+ * WHAT IT CARRIED, AND WHY THAT IS WRITTEN DOWN RATHER THAN DELETED. Between
+ * the two landings of ISS-1063 this set held every type but `ops_alert`, and
+ * for that window Forge told nobody anything else: no bell row, no toast, no
+ * row in the table a later reader could count, and nothing queued to be said
+ * afterwards. A gap in the notification history between 2026-09-16 21:48Z and
+ * the deploy of the record-kind model is that silence and not a data loss.
  *
- * THE CONDITION THAT ENDS IT. The three-record-kind model shipping — signal,
+ * WHAT IT COST AND WHY IT WAS PAID. Measured on the beta replica 2026-09-16:
+ * 11037 rows over 14 users; the owner's own account held 7441 of them and read
+ * 36 unread against 5663 unresolved. 3333 of his 5663 open rows were
+ * `issue_status_changed`, a type that cannot resolve by its nature, and 2023
+ * were `pipeline_wedge`, a condition with no re-evaluation loop. 69% of the
+ * pile was unactionable and it buried the 24 `ops_alert` rows that are each an
+ * agent standing still. The owner's instruction, recorded on ISS-1063 at
+ * 2026-09-16 15:55:28Z: the current notifications are spam, and losing them
+ * entirely for a while costs less than continuing to read them.
+ *
+ * THE CONDITION THAT ENDED IT, MET. The three-record-kind model — signal,
  * condition and task, with a count over what is still true rather than over
- * what has been looked at. When that lands, {@link SUPPRESSED_TYPES} empties
- * and this module keeps only its second job.
+ * what has been looked at — is what this file shipped beside. The set emptied
+ * in the same change that landed it.
  *
- * THE CARVE-OUT, AND IT IS THE ONLY ONE. `ops_alert` keeps emitting, exactly
- * as loud as it is today. At 92% resolve it is the one surface reporting that
- * an agent asked a question no channel can deliver; silencing it would hide
- * the only work this system currently does correctly rather than reduce noise.
- * The owner was offered a third option — keep it on AND raise it to a page
- * tier while the rest is silent — and did not take it, so nothing here makes
- * it louder either.
+ * THE CARVE-OUT, KEPT AS A DECISION EVEN THOUGH THE SET IS EMPTY. `ops_alert`
+ * was never suppressed, and it is still not louder than it was: it is recorded
+ * at the `ticket` tier in `notifications/kinds.ts`, not `page`. The owner was
+ * offered a third option — keep it on AND raise it to a page tier while the
+ * rest was silent — and did not take it.
+ *
+ * A PER-READER silence, bounded and expiring, is a different mechanism and
+ * lives in `notification_silences` (`notifications/silences-routes.ts`). This
+ * switch is the operator's blunt one: deployment-wide, in code, visible in a
+ * diff.
  */
-
 import type { NotificationType } from '../db/schema.js';
 import { logger } from '../logger.js';
 
 /**
- * The types this deployment does not emit.
+ * The types this deployment does not emit. EMPTY — see the header.
  *
  * This is a code constant and not configuration on purpose: an amnesty whose
  * extent is read from a database is an amnesty nobody can see in the diff that
- * ends it.
+ * ends it. That property is why the set is still here now that it is empty —
+ * the next operator who needs a type off adds one line, and the reviewer of
+ * that line sees exactly what goes quiet.
  */
-// cm:hack ISS-1063 until:the record/kind model ships and the open count is over conditions and tasks rather than over unread rows — every type but `ops_alert` is suppressed at the single emission seam, which is the priced trade the header states
-export const SUPPRESSED_TYPES: ReadonlySet<NotificationType> = new Set<NotificationType>([
-  'issue_status_changed',
-  'comment_added',
-  'agent_completed',
-  'mention',
-  'pm_escalation',
-  'pipeline_wedge',
-  'invitation_received',
-  'intake_pending',
-  'schedule_report',
-  'reconcile_gate_pending',
-  'issue_stranded',
-  'retry_rescue_threshold',
-]);
+export const SUPPRESSED_TYPES: ReadonlySet<NotificationType> = new Set<NotificationType>([]);
 
 /**
  * Whether a notification of this type may be written at all.
@@ -81,13 +80,13 @@ export function emissionAllowed(type: NotificationType): boolean {
  * The refusal, logged rather than silent.
  *
  * A suppressed emission is a thing that happened and was not told to anybody,
- * so the log line is the only record it existed. It is `info` because during
- * the silence this is the expected path for twelve of thirteen types and a
- * warning per suppressed notification would be the same flood one layer down.
+ * so the log line is the only record it existed. It stays `info`: with the set
+ * empty this line cannot be reached at all, and the operator who puts a type
+ * back into the set is choosing a flood of these over a flood of bells.
  */
 export function noteSuppressed(type: NotificationType, title: string): void {
   logger.info(
     { type, title, reason: 'ISS-1063 emission switch' },
-    'notifications: suppressed — the old surface is off until the record-kind model ships',
+    'notifications: suppressed by the emission switch — nobody is told, now or later',
   );
 }

@@ -6,6 +6,11 @@
 //! are the master's own subagents and never reach this process. Interactive
 //! chat (`agent:start` / `agent:send` / `agent:abort`) is handled out-of-band
 //! by `chat`, under its own concurrency budget (ISS-321).
+//!
+//! The four job kinds with no issue to rank — `release_batch`, `smoke`,
+//! `reconcile`, `verify_skill` — do NOT go to a master. They sit in the JOBS
+//! pool and reach this box through `pool_jobs`, which opens a pane per job and
+//! supervises it here (ISS-1080).
 
 pub mod agent_activity;
 pub mod chat;
@@ -18,6 +23,7 @@ pub mod inbox;
 pub mod master;
 pub mod master_exit;
 pub mod master_limit;
+pub mod pool_jobs;
 pub mod recovery;
 pub mod recovery_ports;
 pub mod run_exit;
@@ -43,6 +49,10 @@ use crate::transport::ws::{self, RunnerRegistration, WsConfig};
 use crate::transport::{heartbeat, lifecycle, CoreClient};
 
 use dispatch::resolve_repo;
+
+/// How often this box checks on the pool jobs it is running.
+// cm:guard comfortably inside core's `RESULT_QUIET_MINUTES` (60), because this tick is what keeps `jobs/loop-monitor.ts:reapResultMisses` off a healthy release: that hop fails a `dispatched` job whose newest evidence is older than the hour, and a release runs longer than that. It is deliberately not tighter — each tick is one `POST /api/jobs/:id/events` per live job, and the value it carries is liveness, not detail.
+const POOL_SUPERVISE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// RAII counter for in-flight work (pipeline jobs + interactive chat turns).
 /// Incremented when a unit of work is spawned, decremented on drop — so the
@@ -623,6 +633,54 @@ pub async fn run(
 
     // cm:guard ONE map, shared by the socket that records and every reader that acts on it. A second instance would give the control socket somewhere to write that no liveness reader ever looks at, which is the shape of the bug this whole channel exists to close.
     let activity = Arc::new(agent_activity::Activities::new());
+
+    // cm:guard ONE registry, shared by the master sweep that CLAIMS pool jobs and the tick below that supervises them. It also carries the id this box holds a job as, so a second instance would claim under a different `held_by` and supervise a set the claim arm never fills — every job would be reported dead on the first tick.
+    let job_panes = Arc::new(pool_jobs::JobPanes::new());
+    // cm:guard a directory this box cannot resolve is ANNOUNCED and named for what it costs, rather than a quiet `None` a reader would have to infer. Everything else about pool jobs still works without it; what is lost is only the restart half of the supervision.
+    let job_records: Arc<dyn pool_jobs::Records> = match pool_jobs::FileRecords::default_dir() {
+        Some(dir) => Arc::new(pool_jobs::FileRecords { dir }),
+        None => {
+            tracing::error!(
+                "[pool] no config directory to record started jobs in — a job whose pane dies with this daemon will wait out core's result timeout instead of being reported dead"
+            );
+            Arc::new(pool_jobs::NoRecords)
+        }
+    };
+    // cm:guard the claim arm waits for adoption, and the barrier is not tidiness. Adoption compares what this box RECORDED against what it is RUNNING, and a claim landing between those two reads looks to it exactly like a job whose pane did not survive — so the box would report a job core had just stamped as dead, and the release would end before its agent had spoken. A `watch` and not a `Notify`, because the master loop may reach its first sweep either side of this and a missed notification is the same bug wearing a different hat.
+    let (adopted_tx, adopted_rx) = tokio::sync::watch::channel(false);
+    {
+        let client = (*client).clone();
+        let job_panes = job_panes.clone();
+        let job_records = job_records.clone();
+        let mut cancel_rx = cancel_rx.clone();
+        tokio::spawn(async move {
+            // cm:guard adoption runs BEFORE the first tick and before any claim. A pane that outlived the last daemon is a job still working, and a supervisor that had not adopted it would find the registry empty, report nothing, and let core reap a healthy release at the 60-minute result hop while the agent kept going. It is also where a job whose pane did NOT survive is reported dead, which nothing else on this box can do.
+            let report = pool_jobs::CoreReport { client: &client };
+            pool_jobs::adopt(
+                &pool_jobs::TmuxPanes,
+                &report,
+                job_records.as_ref(),
+                &job_panes,
+            )
+            .await;
+            // cm:guard sent even when adoption found nothing, and ALWAYS — a barrier that only opened on a successful pass would leave a box with no panes to adopt claiming nothing for the rest of its life.
+            let _ = adopted_tx.send(true);
+            let mut tick = tokio::time::interval(POOL_SUPERVISE_INTERVAL);
+            loop {
+                tokio::select! {
+                    _ = tick.tick() => {
+                        pool_jobs::supervise(
+                            &pool_jobs::TmuxPanes,
+                            &report,
+                            job_records.as_ref(),
+                            &job_panes,
+                        ).await;
+                    }
+                    _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
+                }
+            }
+        });
+    }
     // cm:guard the whole control-socket arm is gated `unix`, because the socket IS a
     // `UnixListener`: `control::serve` and every verb it dispatches are `#[cfg(unix)]`, so calling
     // it unconditionally here fails to COMPILE on windows rather than failing at run time. A unix
@@ -679,8 +737,22 @@ pub async fn run(
         let cancel_rx = cancel_rx.clone();
         let masters = masters.clone();
         let activity = activity.clone();
+        let job_panes = job_panes.clone();
+        let job_records = job_records.clone();
+        let adopted_rx = adopted_rx.clone();
         tokio::spawn(async move {
-            master::run(client, cfg, masters, activity, cancel_rx, wake_rx).await
+            master::run(
+                client,
+                cfg,
+                masters,
+                activity,
+                job_panes,
+                job_records,
+                adopted_rx,
+                cancel_rx,
+                wake_rx,
+            )
+            .await
         });
     }
 
@@ -850,6 +922,27 @@ async fn sweep_plugins(client: &CoreClient, cfg: &Config) {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    /// A supervision tick has to fit inside core's result hop, with room to spare.
+    ///
+    /// `jobs/loop-monitor.ts:reapResultMisses` fails a `dispatched` job whose
+    /// newest evidence is older than `RESULT_QUIET_MINUTES` (60), computed as
+    /// the greatest of its last job event, its last phase row and `dispatched_at`
+    /// — and a release runs longer than that. This tick is the only thing that
+    /// refreshes the first of those for a pool job, so an interval anywhere near
+    /// the hour would let a healthy release be reaped between two beats.
+    #[test]
+    fn a_healthy_job_outlives_cores_quiet_threshold_between_two_beats() {
+        const CORE_RESULT_QUIET: std::time::Duration = std::time::Duration::from_secs(60 * 60);
+        assert!(
+            POOL_SUPERVISE_INTERVAL.as_secs() > 0,
+            "a zero interval is a busy loop against core, not supervision"
+        );
+        assert!(
+            POOL_SUPERVISE_INTERVAL * 4 < CORE_RESULT_QUIET,
+            "leave room for missed beats: three ticks may fail against an unreachable core and the job must still outlive the hop"
+        );
+    }
 
     /// Counts the calls and reports how many sessions it "closed".
     fn spy(closed: usize) -> (Arc<AtomicUsize>, impl FnOnce() -> std::future::Ready<usize>) {

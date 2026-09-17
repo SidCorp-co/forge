@@ -1,7 +1,7 @@
 /**
  * ISS-1068 — the retirement migration, applied against real Postgres.
  *
- * The subject is `drizzle/migrations/0260_retire_ux_contract.sql` itself, read off disk and
+ * The subject is `drizzle/migrations/0265_retire_ux_contract.sql` itself, read off disk and
  * executed statement by statement, because what is under test is what the container runs at boot
  * and not a TypeScript restatement of it. A test that inspected the SQL text would pass on a file
  * Postgres refuses.
@@ -27,7 +27,7 @@ import {
 
 const MIGRATION_PATH = resolvePath(
   dirname(fileURLToPath(import.meta.url)),
-  '../../drizzle/migrations/0260_retire_ux_contract.sql',
+  '../../drizzle/migrations/0265_retire_ux_contract.sql',
 );
 
 const MIGRATION_STATEMENTS = readFileSync(MIGRATION_PATH, 'utf8')

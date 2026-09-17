@@ -62,6 +62,13 @@ export function shouldPlaySound(plan: { toast: boolean; browser: boolean }): boo
 /** The subset of the WS `notification.created` payload this bridge consumes. */
 export interface DeliveryNotification {
   notificationId: string;
+  /**
+   * Whether this event may interrupt. ISS-1063 — records sharing a group key
+   * reach a reader as ONE bell row, and the server sets this false for the
+   * ones that joined a delivery it already announced. Absent means yes, which
+   * is what every ungrouped notification and every older server means.
+   */
+  announce?: boolean;
   type: string;
   title: string;
   body?: string | null;
@@ -89,6 +96,13 @@ export function useNotificationDelivery(
       if (env.event !== "notification.created") return;
       const d = env.data as DeliveryNotification;
       if (!d || typeof d.type !== "string") return;
+
+      // cm:guard the bell refreshes on every event (the router invalidates on the
+      // event name alone); only the interrupting channels are gated here. A grouped
+      // delivery of fifteen parked issues is one toast, one sound and one browser
+      // notification, because being told fifteen times about one cause is the thing
+      // the grouping exists to stop.
+      if (d.announce === false) return;
 
       const plan = planNotificationDelivery(d);
 

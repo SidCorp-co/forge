@@ -48,9 +48,18 @@ const ADAPTER_FACING = [
 // message-and-no-mode are both unreachable — plus the read-back that says which mode won a race.
 // Neither is reachable through the adapter-facing set, because no adapter before this one had a
 // property of the room that its own first message settles (ISS-1039).
+// cm:guard `assistant/conversation-agent-offer.ts` is the ninth name, and the argument is the sixth
+// name's exactly: `conversation-routes.ts` reached its 500-line budget, and what came out of it is
+// one question the Forge UI asks — whether a room may still be opened in Agent mode — which reads
+// `effectiveConversationMode` for the sentence it has to say when the answer is no. It is NOT a new
+// coupling: the same import stood in the routes file this list already holds, and the alternative
+// was landing it beside its probe in `agent-sessions/conversation-agent.ts`, which would have made
+// the session dispatcher a store reader and widened this set for a line budget rather than for an
+// argument (ISS-1078).
 const STORE_READERS_OUTSIDE = [
   'assistant/conversation-access.ts',
   'assistant/conversation-adapter.ts',
+  'assistant/conversation-agent-offer.ts',
   'assistant/conversation-member-routes.ts',
   'assistant/conversation-routes.ts',
   'assistant/conversation-send.ts',

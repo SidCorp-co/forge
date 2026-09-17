@@ -12,9 +12,9 @@
 // decision, and a close is a claim about shipped work that a pass which
 // cannot read the repository must not make.
 
-import { and, eq, gte, isNotNull, isNull, lt, notInArray, or, sql } from 'drizzle-orm';
+import { and, eq, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { issueStatuses, issues, notifications, projects } from '../db/schema.js';
+import { issueStatuses, issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
@@ -31,17 +31,22 @@ import { isTerminalPlacement } from './status-assertions.js';
  */
 export const STRANDED_GRACE_MS = 6 * 60 * 60 * 1000;
 
-/**
- * How long a surfaced park stays surfaced before it may ping again.
+/*
+ * ISS-1063 — `STRANDED_RENOTIFY_MS` was DELETED here, and so was the lookup it bounded.
  *
- * The dedupe below keys on an UNREAD notification, so reading one re-arms it —
- * intended, because a park still unresolved a day later is still owed a
- * decision. What makes that safe is this window: the sweep runs every 60s, so
- * without it "read" means "pinged again within the minute", every minute, for
- * the life of the park.
+ * It was a 24-hour cooldown, and what it existed to stop was real: the dedupe keyed on an
+ * UNREAD notification, so a human glancing at the bell re-armed the alarm and the 60-second
+ * sweep pinged them again within the minute, every minute, for the life of the park.
+ *
+ * Read state is not on the record any more — that is the whole of ISS-1063 — so nothing a
+ * reader does re-arms anything, and the cooldown had no storm left to prevent. What replaced
+ * it is the delivery layer's own dedup: `deliver.ts:activeRecord` makes a second emission of
+ * one identity the SAME condition rather than a new one, and `deliverTo` writes no delivery
+ * for a person who already holds a member link for that record. So this pass now re-emits
+ * every strand on every tick and tells nobody twice — which is what it takes to promote a
+ * `pending` record, to stamp the `last_seen_at` that `pipeline/reevaluate-conditions.ts`
+ * reads for staleness, and to deliver a record whose telling a silence held back.
  */
-// cm:guard this MUST stay wider than the sweep interval (`pipeline/sweeper.ts`, 60s) by a large margin, and it is what bounds the predicate below: that predicate matches EVERY `waiting` park past the grace window, i.e. roughly the number of parked issues on the fleet, rather than the rare merged-and-parked contradiction the deleted staged arm needed. A cooldown at or below the sweep interval reintroduces exactly the per-tick storm.
-export const STRANDED_RENOTIFY_MS = 24 * 60 * 60 * 1000;
 
 export interface StrandedIssuesResult {
   /** Issues matching the stranded predicate this tick. */
@@ -54,19 +59,35 @@ export function strandedResolutionKey(issueId: string): string {
   return `issue:${issueId}:stranded`;
 }
 
+/**
+ * ISS-1063 — the grouping key: one evaluation of one detector.
+ *
+ * Alertmanager's `group_by`. Every strand this sweep tick finds shares it, so a reader is
+ * told once about the sweep rather than once per issue it named. The tick is truncated to
+ * the evaluation interval so the passes inside one `runPipelineSweep` agree on it without
+ * having to pass a value between them.
+ */
+export function sweepGroupKey(detector: string, now: Date): string {
+  return `sweep:${detector}:${Math.floor(now.getTime() / 60_000)}`;
+}
+
 // cm:edge lockstep -> packages/core/src/notifications/notify-transitions.ts — the key is cleared when the issue reaches a terminal placement, and a key nothing clears is an alarm that stays lit after the close it asked for
 export function owedCloseResolutionKey(issueId: string): string {
   return `issue:${issueId}:owed-close`;
 }
 
 /**
- * Insert one `issue_stranded` notification per project admin, unless this
- * strand is already surfaced. Returns how many were written, and `-1` when the
- * project has no admin at all — nobody was reachable, which is the one case a
- * `notified` count of zero cannot distinguish from "nothing to say".
+ * Emit one `issue_stranded` condition for this strand and return how many people were NEWLY
+ * told about it — 0 when everybody who can act already holds it, and `-1` when the project
+ * has no admin at all, which is the one case a `notified` count of zero cannot distinguish
+ * from "nothing to say".
  */
-// cm:guard `resolved_at IS NULL` is the OUTER condition and must stay outside the `or` — it is what "this strand is still the one we alarmed about" means (db/schema.ts says every reader owes this column, never `read`). A resolved row is a strand that ENDED: the condition cleared and `notifications/auto-resolve.ts` stamped it. Suppressing on that row would mute a genuine RE-strand for the rest of the window — ~16h of silence indistinguishable from no strand, in the module whose whole job is breaking silence.
-// cm:guard inside the `or`, unread **or** recently sent, never existence alone — existence alone surfaces a strand once and never again, and unread alone re-pings every 60s tick from the moment a human reads it. Reading means "seen", not "resolved", so it stops suppressing; {@link STRANDED_RENOTIFY_MS} is what stops "seen" meaning "tell me again this minute".
+// cm:guard ISS-1063 — "already surfaced" is the DELIVERY layer's question now, and it is not
+// asked here. A strand that ends is stamped `resolved_at` by `notifications/auto-resolve.ts`,
+// and `deliver.ts:activeRecord` reads exactly that column: a re-emission joins the record
+// that is still active and creates a new one once the old strand has ended. That is what
+// makes a genuine RE-strand loud on the tick it happens rather than muted for the rest of a
+// window, in the module whose whole job is breaking silence.
 async function surfaceOnce(args: {
   now: Date;
   projectId: string;
@@ -74,38 +95,39 @@ async function surfaceOnce(args: {
   resolutionKey: string;
   title: string;
   body: string;
+  groupKey: string;
+  groupTitle: string;
 }): Promise<number> {
-  const [existing] = await db
-    .select({ id: notifications.id })
-    .from(notifications)
-    .where(
-      and(
-        eq(notifications.type, 'issue_stranded'),
-        eq(notifications.resolutionKey, args.resolutionKey),
-        isNull(notifications.resolvedAt),
-        or(
-          eq(notifications.read, false),
-          gte(notifications.createdAt, new Date(args.now.getTime() - STRANDED_RENOTIFY_MS)),
-        ),
-      ),
-    )
-    .limit(1);
-  if (existing) return 0;
-
+  // cm:guard ISS-1063 — this pass no longer asks whether the strand was already surfaced,
+  // and the deletion is the point rather than an omission. `emitNotification` returns who was
+  // NEWLY told, which is 0 for a record everybody already holds, and three things need the
+  // re-emission that a short-circuit here made impossible: a `pending` record is promoted to
+  // `firing` by a LATER emission of the same identity, `last_seen_at` is what stops that
+  // pending record going stale, and a record whose delivery a silence held back is delivered
+  // when the silence expires. Do not put a producer-level "already exists" guard back: it
+  // would make all three unreachable while looking like a saved query.
   const adminIds = await projectAdminUserIds(args.projectId);
   if (adminIds.length === 0) return -1;
-  for (const userId of adminIds) {
-    await emitNotification({
-      userId,
-      projectId: args.projectId,
-      issueId: args.issueId,
-      type: 'issue_stranded',
-      title: args.title,
-      body: args.body,
-      resolutionKey: args.resolutionKey,
-    });
-  }
-  return adminIds.length;
+  // cm:why ISS-1063 — ONE record, a delivery per admin, where this used to write one row
+  // per admin: 2997 `issue_stranded` rows on the replica were 545 conditions wearing
+  // their recipients' names. The `groupKey` is the sweep tick, so every strand one
+  // evaluation finds reaches each admin as one notification naming the cause — the 11:21
+  // burst of 2026-09-16 was 15 conditions and the owner was told fifteen times.
+  // cm:guard what comes back is who was NEWLY told, and the caller reports that as
+  // `notified`. Returning `adminIds.length` here would count a pending record nobody was
+  // told about as two notifications, which is a detector reporting work it did not do.
+  const sent = await emitNotification({
+    recipients: adminIds,
+    projectId: args.projectId,
+    issueId: args.issueId,
+    type: 'issue_stranded',
+    title: args.title,
+    body: args.body,
+    resolutionKey: args.resolutionKey,
+    groupKey: args.groupKey,
+    groupTitle: args.groupTitle,
+  });
+  return sent?.delivered ?? 0;
 }
 
 /**
@@ -155,6 +177,8 @@ export async function detectStrandedIssues(
 
       const sent = await surfaceOnce({
         now,
+        groupKey: sweepGroupKey('stranded', now),
+        groupTitle: 'Issues are parked with nothing coming for them',
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: strandedResolutionKey(row.id),
@@ -234,6 +258,8 @@ export async function detectOwedCloses(
       const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
       const sent = await surfaceOnce({
         now,
+        groupKey: sweepGroupKey('owed-close', now),
+        groupTitle: 'Issues whose code shipped and whose close was never written',
         projectId: row.projectId,
         issueId: row.id,
         resolutionKey: owedCloseResolutionKey(row.id),

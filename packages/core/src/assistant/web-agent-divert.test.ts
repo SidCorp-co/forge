@@ -7,6 +7,18 @@
 // can trace (ISS-1039, commit consult F4).
 
 import { describe, expect, it, vi } from 'vitest';
+import { startConversationProgress } from './conversation-progress.js';
+
+// cm:guard a REAL watcher with its publish discarded, rather than `progress` being made optional on
+// `webConversationTurn`: a caller that may omit it is a caller that can lose a turn's streaming
+// silently, and these files are about the door's persona rather than about the socket (ISS-1078).
+function discardedProgress() {
+  return startConversationProgress({
+    conversationId: 'conversation-1',
+    entryId: 'entry-1',
+    publish: async () => 0,
+  });
+}
 
 vi.mock('../conversations/collect-inbound.js', () => ({ collectInboundMessage: () => undefined }));
 vi.mock('../conversations/route-window.js', () => ({ routeWindow: () => undefined }));
@@ -47,6 +59,7 @@ const turn = (over: { mode: 'assistant' | 'agent'; conversationContext?: string 
       conversationContext: async () => over.conversationContext ?? null,
       reserve: async () => true,
     },
+    progress: discardedProgress(),
   });
 
 const divert = (t: ReturnType<typeof webConversationTurn>) =>

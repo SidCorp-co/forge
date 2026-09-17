@@ -263,10 +263,6 @@ const epodsystemAdapterMethods: IntegrationAdapterMethods<EpodsystemConfig, Epod
     }
   },
 
-  async dispatchOutbound() {
-    return notSupported('dispatchOutbound');
-  },
-
   async handleInbound() {
     return notSupported('handleInbound');
   },

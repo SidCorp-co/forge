@@ -1,10 +1,5 @@
 import { z } from 'zod';
 
-// cm:why empty strings from `${VAR}` in docker-compose collapse to "" not undefined, so treat empty as missing or an optional field trips on coercion of a variable the operator never set
-const cleanedEnv = Object.fromEntries(
-  Object.entries(process.env).map(([k, v]) => [k, v === '' ? undefined : v]),
-);
-
 const EnvSchema = z.object({
   DATABASE_URL: z.url(),
   JWT_SECRET: z.string().min(32),
@@ -43,6 +38,8 @@ const EnvSchema = z.object({
   RATE_LIMIT_DEVICE_LOGIN_APPROVE_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_WRITE_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_WRITE_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  /** How long a collector window may keep collecting before it is due regardless of quiet (ISS-1086). */
+  CONVERSATION_WINDOW_HOLD_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_SEARCH_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_SEARCH_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_KNOWLEDGE_SEARCH_MAX: z.coerce.number().int().positive().optional(),
@@ -117,24 +114,63 @@ const RETIRED_ENV_VARS: Record<string, string> = {
   RATE_LIMIT_PAT_WINDOW_MS: 'RATE_LIMIT_PAT_READ_WINDOW_MS and RATE_LIMIT_PAT_WRITE_WINDOW_MS',
 };
 
-const retired = Object.entries(RETIRED_ENV_VARS).filter(([name]) => cleanedEnv[name] !== undefined);
-if (retired.length > 0) {
-  const lines = retired.map(([name, replacement]) => `  - ${name} is retired; set ${replacement}`);
-  throw new Error(
-    `[@forge/core] Retired environment variable(s) set:\n${lines.join('\n')}\n` +
-      'The per-token PAT rate limit is two buckets now, one for reads and one for writes ' +
-      '(ISS-961), so the old single value has no meaning to carry over.',
-  );
-}
-
 export type Env = z.infer<typeof EnvSchema>;
 
-const parsed = EnvSchema.safeParse(cleanedEnv);
-if (!parsed.success) {
-  const issues = parsed.error.issues
-    .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
-    .join('\n');
-  throw new Error(`[@forge/core] Invalid environment:\n${issues}`);
+// cm:guard the whole of this function runs on the FIRST PROPERTY READ of `env` and never at import
+// — including the `cleanedEnv` snapshot, which used to sit at module scope. Leaving the snapshot up
+// there makes the laziness cosmetic: the parse would still be measured against the environment as
+// it stood when the module was first pulled into the graph, so a caller that set a variable between
+// the import and the read would be refused for a value it had already supplied. Nothing above this
+// line touches `process.env` (ISS-1067).
+function loadEnv(): Env {
+  // cm:why empty strings from `${VAR}` in docker-compose collapse to "" not undefined, so treat empty as missing or an optional field trips on coercion of a variable the operator never set
+  const cleanedEnv = Object.fromEntries(
+    Object.entries(process.env).map(([k, v]) => [k, v === '' ? undefined : v]),
+  );
+
+  const retired = Object.entries(RETIRED_ENV_VARS).filter(
+    ([name]) => cleanedEnv[name] !== undefined,
+  );
+  if (retired.length > 0) {
+    const lines = retired.map(
+      ([name, replacement]) => `  - ${name} is retired; set ${replacement}`,
+    );
+    throw new Error(
+      `[@forge/core] Retired environment variable(s) set:\n${lines.join('\n')}\n` +
+        'The per-token PAT rate limit is two buckets now, one for reads and one for writes ' +
+        '(ISS-961), so the old single value has no meaning to carry over.',
+    );
+  }
+
+  const parsed = EnvSchema.safeParse(cleanedEnv);
+  if (!parsed.success) {
+    const issues = parsed.error.issues
+      .map((i) => `  - ${i.path.join('.') || '(root)'}: ${i.message}`)
+      .join('\n');
+    throw new Error(`[@forge/core] Invalid environment:\n${issues}`);
+  }
+
+  return parsed.data;
 }
 
-export const env: Env = parsed.data;
+let loaded: Env | undefined;
+
+function currentEnv(): Env {
+  loaded ??= loadEnv();
+  return loaded;
+}
+
+// cm:guard a Proxy rather than a `getEnv()` function so that all 42 importers keep reading `env.X`:
+// the point of ISS-1067 is that an IMPORT does no work, not that every caller is rewritten. All four
+// traps route through `currentEnv`, because a lazy value is lazy at every reader or the laziness is
+// a lie — a `Object.keys(env)` that answered off the empty target would report the environment as
+// having no variables rather than loading it.
+export const env: Env = new Proxy({} as Env, {
+  get: (_target, prop) => currentEnv()[prop as keyof Env],
+  has: (_target, prop) => prop in currentEnv(),
+  ownKeys: () => Reflect.ownKeys(currentEnv()),
+  getOwnPropertyDescriptor: (_target, prop) => {
+    const descriptor = Reflect.getOwnPropertyDescriptor(currentEnv(), prop);
+    return descriptor === undefined ? undefined : { ...descriptor, configurable: true };
+  },
+});

@@ -17,6 +17,7 @@
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
+import type { ConversationProgress } from '../../src/assistant/conversation-progress.js';
 import { LEGACY_ISSUE_PREFIX } from '../../src/lib/issue-ref.js';
 import {
   createTestProject,
@@ -26,6 +27,25 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
+
+// cm:guard a hand-built watcher that does nothing, rather than `progress` being made optional on
+// `webConversationTurn`: a caller that may omit it is a caller that can lose a turn's streaming
+// silently, and this file is about the door's persona rather than about the socket (ISS-1078).
+// cm:guard NOT the real `startConversationProgress`, and this is the trap `conversation-send.ts`
+// names about its own late import: that module reaches `conversation-adapter.js` →
+// `conversations/participants.js` → `db/client.js`, which reads DATABASE_URL at module load — so a
+// static import of it here made this whole FILE fail to collect under the integration runner, with
+// every case in it gone rather than one assertion red. Caught by the integration suite, which the
+// unit runner does not collect this file for (ISS-1078).
+function discardedProgress(): ConversationProgress {
+  return {
+    entryId: 'entry-1',
+    onTurnEvent: () => undefined,
+    onSettled: () => undefined,
+    blocksForRecord: () => null,
+    close: async () => undefined,
+  };
+}
 
 let harness: TestDatabase;
 let screenReplyAtDoor: typeof import('../../src/messaging/reply-screen.js').screenReplyAtDoor;
@@ -67,6 +87,7 @@ describe('the Forge UI reply door, against a real database', () => {
         conversationContext: async () => null,
         reserve: async () => true,
       },
+      progress: discardedProgress(),
     }).door;
 
   let nextSeq = 500;

@@ -136,6 +136,7 @@ export interface ModuleRollupResponse {
 }
 
 // cm:edge contract -> packages/core/src/issues/routes.ts — `serializeIssue` is what adds `displayId` on top of the stored row, and `agentSessions`/`agentStatus` arrive ONLY under `?withAgentSessions=1` (ISS-128); no database row carries any of the three, so a client that reads them off a plain issue row gets `undefined` and no type error.
+// cm:guard this is the SINGLE-ISSUE shape — `GET /api/issues/:id` and the writes that answer with the row they wrote. The two LIST endpoints answer with `IssueListRow` below and not with this (ISS-1016): reading `description` or `plan` off a list row gets `undefined`, and typing one as `Issue` is how that goes unnoticed.
 export type Issue = typeof schema.issues.$inferSelect & {
   displayId: string;
   agentSessions?: Array<{
@@ -154,6 +155,25 @@ export type Issue = typeof schema.issues.$inferSelect & {
    *  attributions, primary first, `[]` when it has none. */
   modules?: ModuleAttribution[];
   pipelineHealth: PipelineHealth;
+};
+
+// cm:edge lockstep -> packages/core/src/issues/list-projection.ts — `REST_ISSUE_LIST_OMITTED` names
+// these same seven, and the two REST list handlers select everything but them. A column dropped from
+// that projection and not from here is a field this type promises and no response carries.
+/** ISS-1016 — one row of `GET /api/projects/:id/issues` or `…/issues/search`: an `Issue` without the
+ *  six body columns or the generated search vector, none of which a list reads off disk. */
+export type IssueListRow = Omit<
+  Issue,
+  | 'description'
+  | 'descriptionFormat'
+  | 'plan'
+  | 'acceptanceCriteria'
+  | 'sessionContext'
+  | 'releaseNotes'
+  | 'identSearch'
+> & {
+  /** ISS-960 — present only when the query carried `q`; `[]` on an identifier-only match. */
+  matchedFields?: Array<'title' | 'description' | 'plan' | 'acceptanceCriteria'>;
 };
 
 export type Comment = typeof schema.comments.$inferSelect;

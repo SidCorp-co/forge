@@ -177,6 +177,113 @@ describe("parseMessages (canonical CLI-runner shape)", () => {
   });
 });
 
+// cm:guard the thinking block and the bare count are ONE render member with three shapes behind it,
+// and these cases are what keep them one: the assistant providers send readable reasoning as a
+// block, they send an encrypted pause as a block with no text at all, and the Claude Code derive
+// sends a number and no block. A reader is shown the same line by all three (ISS-1079).
+describe("parseMessages — thinking", () => {
+  it("maps a canonical thinking block, keeping its text, its duration and its place", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        content: "Two left.",
+        blocks: [
+          { type: "thinking", thinking: "let me check the list", durationMs: 420 },
+          { type: "text", text: "Two left." },
+        ],
+      },
+    ]);
+    expect(item.blocks.map((b) => b.type)).toEqual(["thinking", "text"]);
+    expect(item.blocks[0]).toEqual({ type: "thinking", text: "let me check the list", durationMs: 420 });
+  });
+
+  it("keeps a thinking block between the prose and the tool it sat between", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        blocks: [
+          { type: "text", text: "Let me look." },
+          { type: "thinking", thinking: "which list?" },
+          { type: "tool", toolCall: { id: "t1", name: "Read", input: {} } },
+          { type: "text", text: "Two left." },
+        ],
+      },
+    ]);
+    expect(item.blocks.map((b) => b.type)).toEqual(["text", "thinking", "tool", "text"]);
+  });
+
+  // cm:why the count is PREPENDED: a count has no position — it is a property of the turn and not a
+  // block in its order — and the pause it records came before the output in every case either
+  // producer can emit. Saying so here rather than leaving the choice to be read off the code.
+  it("turns a bare thinkingCount into the same block, with no text to expand", () => {
+    const [item] = parseMessages([
+      { type: "assistant", content: "done", thinkingCount: 3, blocks: [{ type: "text", text: "done" }] },
+    ]);
+    expect(item.blocks.map((b) => b.type)).toEqual(["thinking", "text"]);
+    expect(item.blocks[0]).toEqual({ type: "thinking", count: 3 });
+  });
+
+  it("reports a readable pause and an encrypted one on the same turn", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        thinkingCount: 1,
+        blocks: [
+          { type: "thinking", thinking: "readable" },
+          { type: "text", text: "done" },
+        ],
+      },
+    ]);
+    expect(item.blocks.map((b) => b.type)).toEqual(["thinking", "thinking", "text"]);
+    expect(item.blocks[0]).toEqual({ type: "thinking", count: 1 });
+    expect(item.blocks[1]).toMatchObject({ text: "readable" });
+  });
+
+  // cm:guard a turn whose only content was a pause is DROPPED today — `parseMessages` skips an entry
+  // whose blocks come back empty, and a count was never a block. Every Claude Code turn that thought
+  // and then called nothing was invisible (ISS-1079 criterion 17).
+  it("renders a turn that holds nothing but a pause", () => {
+    const items = parseMessages([{ type: "assistant", thinkingCount: 2 }]);
+    expect(items).toHaveLength(1);
+    expect(items[0]?.blocks).toEqual([{ type: "thinking", count: 2 }]);
+  });
+
+  it("maps an encrypted pause to a block with no text and no count", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        blocks: [{ type: "thinking" }, { type: "text", text: "ok" }],
+      },
+    ]);
+    expect(item.blocks[0]).toEqual({ type: "thinking" });
+  });
+
+  // cm:guard two encrypted pauses are two lines, not one line saying twice: each redacted event
+  // appends its own block, and the order of the blocks is the record of what the turn did. Noted as
+  // untested by the whole-set read, so it is tested.
+  it("keeps two encrypted pauses as two separate lines", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        blocks: [
+          { type: "thinking" },
+          { type: "text", text: "half" },
+          { type: "thinking" },
+          { type: "text", text: "and half" },
+        ],
+      },
+    ]);
+    expect(item.blocks.map((b) => b.type)).toEqual(["thinking", "text", "thinking", "text"]);
+  });
+
+  it("renders no thinking block for a turn that paused not at all", () => {
+    const [item] = parseMessages([
+      { type: "assistant", content: "done", blocks: [{ type: "text", text: "done" }] },
+    ]);
+    expect(item.blocks.map((b) => b.type)).toEqual(["text"]);
+  });
+});
+
 describe("file diffs", () => {
   it("buildFileDiff counts added/removed lines for an Edit", () => {
     const diff = buildFileDiff({ id: "x", name: "Edit", input: { file_path: "f.ts", old_string: "a\nb", new_string: "a\nc\nd" } });
@@ -379,5 +486,56 @@ describe("parseMessages over an assistant conversation row", () => {
     ]);
     expect(items.map((i) => i.kind)).toEqual(["prompt", "agent"]);
     expect(items[0]?.text).toBe("how many open issues?");
+  });
+});
+
+// cm:guard the two v1 paths reach a card through `toToolCallData` like the canonical one does. They
+// used to hand their calls through untouched, which was invisible while the card only previewed
+// `result` — a CLI-derived entry carries its output on `output`, so `result` was undefined and the
+// card drew nothing. Since ISS-1083 an absent result reads `Running…`, and a settled turn in
+// history claiming a call is still out is worse than drawing nothing.
+describe("every tool call is decoded, whichever shape the entry is in", () => {
+  it("decodes a v1 toolCalls entry's output instead of leaving it unread", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        content: "done",
+        toolCalls: [
+          { id: "t1", name: "Read", input: {}, output: '{"a":1,"b":2}' },
+        ],
+      } as never,
+    ]);
+    const block = item?.blocks.find((b) => b.type === "tool");
+    expect(block).toBeDefined();
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.result).toEqual({ a: 1, b: 2 });
+  });
+
+  it("decodes a v1 contentBlocks tool_use output too", () => {
+    const [item] = parseMessages([
+      {
+        role: "assistant",
+        content: "done",
+        contentBlocks: [
+          { type: "tool_use", tool: { id: "t2", name: "Read", input: {}, output: "[]" } },
+        ],
+      } as never,
+    ]);
+    const block = item?.blocks.find((b) => b.type === "tool");
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.result).toEqual([]);
+  });
+
+  it("leaves a v1 call's own `result` exactly as it stands", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        content: "done",
+        toolCalls: [{ id: "t3", name: "Read", input: {}, result: "plain words" }],
+      } as never,
+    ]);
+    const block = item?.blocks.find((b) => b.type === "tool");
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.result).toBe("plain words");
   });
 });

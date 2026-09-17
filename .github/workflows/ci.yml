@@ -147,6 +147,14 @@ jobs:
       # credential into a runner box's MCP config and puts Forge outside the call path, and the
       # field is the only place that decision is written down.
       - run: node scripts/check-integration-declarations.mjs --all
+      # Lazy module init (ISS-1067): `config/env.ts` validates the environment and `db/client.ts`
+      # constructs the postgres pool on the first READ of their exports, never at import. One new
+      # module-scope read of either puts the side effect back for every module downstream of that
+      # file, and it breaks nothing on the day it lands — the failure arrives later as a stack with
+      # no assertion in it, which is what PR #457's `core-integration` job reported: three frames,
+      # three skipped cases and no test name. No type can hold it, so the rule is an AST walk.
+      # Needs node_modules for the TypeScript parser, hence this job rather than lang-check.
+      - run: node scripts/check-lazy-module-init.mjs --all
       # Conformance levels: runs each axis's checker and fails when what it
       # actually does disagrees with the level .forge/conformance.json claims
       # for it. Every gate this repo lost was lost by staying documented while

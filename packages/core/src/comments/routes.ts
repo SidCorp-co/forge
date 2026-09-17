@@ -1,10 +1,8 @@
 import { zValidator } from '@hono/zod-validator';
 import { asc, count, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
-import { bodyLimit } from 'hono/body-limit';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
-import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { commentAttachments, commentMentions, comments, issues } from '../db/schema.js';
 import type { ActorRef } from '../issues/actor-identity.js';
@@ -12,6 +10,7 @@ import { resolveActors } from '../issues/actor-resolution.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
+import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { logger } from '../logger.js';
 import {
   type AuthVars,
@@ -434,11 +433,8 @@ commentRoutes.post(
   requireAnyAuth(),
   // Reject the request before parseBody buffers the entire payload — this
   // caps memory regardless of file size.
-  bodyLimit({
-    maxSize: env.UPLOADS_MAX_BYTES,
-    onError: () => {
-      throw attachmentBadRequest('file too large', 'FILE_TOO_LARGE');
-    },
+  uploadBodyLimit(() => {
+    throw attachmentBadRequest('file too large', 'FILE_TOO_LARGE');
   }),
   zValidator('param', commentIdParamSchema, (r) => {
     if (!r.success)

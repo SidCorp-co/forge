@@ -66,14 +66,21 @@ export interface CreatePatInput {
   boundProjectId?: string | null;
 }
 
+// ISS-1063 — `GET /api/notifications` returns one row per DELIVERY. `id` is the
+// delivery's id, `readAt` is when this person opened it, and `openMembers` counts
+// the records it carries that are still true.
 export interface NotificationRow {
   id: string;
-  userId: string;
+  notificationId: string;
   projectId: string | null;
   type: string;
+  kind: string;
   title: string;
   body: string | null;
-  read: boolean;
+  readAt: string | null;
+  members: number;
+  openMembers: number;
+  resolvedNotice: boolean;
   issueId: string | null;
   agentSessionId: string | null;
   createdAt: string;

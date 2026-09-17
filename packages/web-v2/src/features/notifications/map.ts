@@ -1,4 +1,4 @@
-// Maps a core NotificationRow onto the design `NotificationItem` shape the
+// Maps a core delivery row onto the design `NotificationItem` shape the
 // header bell renders. Keeps the presentation concerns (hue, short label,
 // relative time) out of both the API layer and the layout.
 import type { NotificationAction, NotificationItem } from "@/design";
@@ -14,10 +14,6 @@ function typeLabel(type: string): string {
       return "WEDGE";
     case "mention":
       return "MENTION";
-    case "comment_added":
-      return "COMMENT";
-    case "agent_completed":
-      return "AGENT";
     case "invitation_received":
       return "INVITE";
     case "reconcile_gate_pending":
@@ -60,12 +56,18 @@ export function toNotificationItem(
 ): NotificationItem {
   return {
     id: row.id,
-    label: typeLabel(row.type),
+    label: row.resolvedNotice ? "RESOLVED" : typeLabel(row.type),
     text: row.title,
     sub: row.body ?? undefined,
     time: formatRelativeTime(row.createdAt),
-    unread: !row.read,
+    // ISS-1063 — unread is the DELIVERY's read state and nothing else. Whether the
+    // thing is still true is `openMembers`, shown by the group summary below; the two
+    // used to be one boolean, which is the defect this issue is about.
+    unread: row.readAt === null,
     hue: hueFor(row),
+    // A delivery carrying one record is a plain row; one carrying several names the
+    // cause, says how many are still true, and expands to them.
+    group: row.members > 1 ? { total: row.members, open: row.openMembers } : undefined,
     actions,
   };
 }

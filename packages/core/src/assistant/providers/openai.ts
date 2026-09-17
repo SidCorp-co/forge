@@ -30,6 +30,11 @@ interface OpenAIToolCallDelta {
 interface OpenAIDelta {
   content?: string | null;
   role?: string;
+  // cm:guard `reasoning_content` and nothing else. Some endpoints spell this `reasoning`; that is a
+  // spelling nobody here has measured, and reading a field on the strength of having read about it
+  // is a guess. The way in when one is measured is a second read on this line and the fixture
+  // beside it (ISS-1079 decision 6).
+  reasoning_content?: string | null;
   tool_calls?: OpenAIToolCallDelta[];
 }
 
@@ -136,6 +141,14 @@ export function createOpenAIProvider(cfg: OpenAIConfig): ChatProvider {
             continue;
           }
           const choice = chunk.choices?.[0];
+          // cm:why reasoning is yielded BEFORE the prose of the same chunk: a chunk carrying both is
+          // a model that finished thinking and started answering in one frame, and thinking came
+          // first. The accumulator closes the thinking block on the first non-reasoning event, so
+          // the order here is the order of the blocks a reader sees.
+          const reasoning = choice?.delta?.reasoning_content;
+          if (typeof reasoning === 'string' && reasoning.length > 0) {
+            yield { type: 'reasoning', text: reasoning };
+          }
           const text = choice?.delta?.content;
           if (typeof text === 'string' && text.length > 0) {
             yield { type: 'chunk', text };

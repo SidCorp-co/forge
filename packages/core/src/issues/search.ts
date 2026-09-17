@@ -20,14 +20,15 @@ import {
   issuePriorities,
   issueStatuses,
   issues,
+  type JobType,
   jobs,
   usageRecords,
 } from '../db/schema.js';
 import { loadProjectAccess } from '../lib/authz.js';
-import { formatIssueRef } from '../lib/issue-ref.js';
 import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { usageSessionMatch } from '../usage-records/rollup.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import {
   buildCreatedByCondition,
@@ -37,8 +38,9 @@ import {
 import { loadIssueDependencyEdgesForIssues } from './dependency-read.js';
 import { activeIssuePrefix } from './issue-prefix-read.js';
 import { listModulesForIssues, resolveModuleIdsTolerant } from './label-service.js';
+import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
-import { buildIssueSearchCondition, issueSearchMatchedFields } from './search-predicate.js';
+import { buildIssueSearchCondition, matchedSearchFieldsSql } from './search-predicate.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 
 export interface IssueBuckets {
@@ -124,7 +126,7 @@ const searchQuerySchema = z
     withBuckets: z.coerce.boolean().optional().default(false),
     // cm:why opt-in like withCost/withFailureInfo: ONE grouped read of `issue_dependencies` over the page replaced the list row's per-row `GET /issues/:id/dependencies` — 25 requests a page at ISSUES_PAGE_SIZE (ISS-1017)
     withDependencies: z.coerce.boolean().optional().default(false),
-    // cm:why ISS-594 — the ONLY way a list row learns its modules: this response serializes the raw `issues` row, which has no label columns, and the alternative for web-v2's module cell was one `GET /issues/:id` per row
+    // cm:why ISS-594 — the ONLY way a list row learns its modules: this response serializes a projection of the `issues` row, which has no label columns, and the alternative for web-v2's module cell was one `GET /issues/:id` per row
     withModules: z.coerce.boolean().optional().default(false),
   })
   .strict();
@@ -144,28 +146,71 @@ const forbidden = () =>
  * then `usage_records.estimated_cost` summed over those session ids per issue
  * — the DISTINCT keeps a session that backed several jobs of the same issue
  * from multiplying its cost (the fan-out the cost-summary route fixed in
- * ISS-308 B4). `usage_records.session_id` is a uuid-shaped TEXT column; the
- * regex guards the cast so a stray non-uuid value can't 500 the rollup.
+ * ISS-308 B4). `usage_records.session_id` is TEXT holding a canonical lowercase
+ * uuid, so the `uuid` side carries the `::text` and the indexed column is
+ * compared as it is stored (ISS-1015).
+ *
+ * Exported so the plan assertion in `tests/integration/usage-session-index.test.ts`
+ * explains the statement this route sends rather than a likeness of it. That is
+ * not a convenience: ISS-1015's own criterion was taken against a hand-written
+ * predicate whose `p.session_id` was qualified, so a green plan-shape assertion
+ * sat beside a statement Postgres refused on every execution (ISS-1081).
  */
-async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> {
-  if (issueIds.length === 0) return new Map();
+// cm:guard the subquery selects `jobs.agentSessionId` ITSELF and the `::text` rides on the join, rather than the subquery aliasing a cast expression. An `sql`.as('session_id') field renders in the outer query as the BARE alias, so the ON clause emitted `"usage_records"."session_id" = "session_id"` — a name both tables carry, which Postgres refuses as ambiguous, and which took the Issues list down on every non-empty project (ISS-1081). A real column is qualified by drizzle to `"issue_sessions"."agent_session_id"`. Renaming the alias would end the ambiguity and leave the reference unqualified, which is the same defect waiting for the next column of that name.
+export function issueCostRollupQuery(issueIds: string[]) {
   const pairs = db
-    .selectDistinct({ issueId: jobs.issueId, sessionId: jobs.agentSessionId })
+    .selectDistinct({
+      issueId: jobs.issueId,
+      sessionId: jobs.agentSessionId,
+    })
     .from(jobs)
     .where(and(inArray(jobs.issueId, issueIds), isNotNull(jobs.agentSessionId)))
     .as('issue_sessions');
-  const rows = await db
+  return db
     .select({
       issueId: pairs.issueId,
       estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
     })
     .from(pairs)
-    .innerJoin(
-      usageRecords,
-      sql`${usageRecords.sessionId} ~ '^[0-9a-fA-F-]{36}$' AND ${usageRecords.sessionId}::uuid = ${pairs.sessionId}`,
-    )
+    .innerJoin(usageRecords, usageSessionMatch(sql`= ${pairs.sessionId}::text`))
     .groupBy(pairs.issueId);
+}
+
+async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> {
+  if (issueIds.length === 0) return new Map();
+  const rows = await issueCostRollupQuery(issueIds);
   return new Map(rows.map((r) => [r.issueId as string, r.estimatedCost]));
+}
+
+/**
+ * ISS-1015 — one step's job history for an issue, with the tokens and cost each
+ * job actually spent. The usage is keyed on `jobs.agent_session_id`, never on
+ * the job id: `usage_records.session_id` holds an `agent_sessions.id`, and the
+ * route that joined it to `jobs.id` priced every job at zero. TEXT column,
+ * canonical lowercase uuid, so the right-hand side renders as text and the join
+ * is plain equality on the indexed column.
+ *
+ * It lives here rather than in `routes.ts` because that file is at its
+ * module-reach ceiling (`no-coordinator-blob`): the query belongs to the module
+ * that owns the reading, not to the file that serves it.
+ */
+export async function jobHistoryForStep(issueId: string, step: JobType) {
+  return db
+    .select({
+      jobId: jobs.id,
+      status: jobs.status,
+      model: jobs.modelUsed,
+      startedAt: jobs.dispatchedAt,
+      finishedAt: jobs.finishedAt,
+      estTokens: jobs.promptInputTokenEst,
+      tokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
+      cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
+    })
+    .from(jobs)
+    .leftJoin(usageRecords, usageSessionMatch(sql`= ${jobs.agentSessionId}::text`))
+    .where(and(eq(jobs.issueId, issueId), eq(jobs.type, step)))
+    .groupBy(jobs.id)
+    .orderBy(sql`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt}) desc`);
 }
 
 /**
@@ -301,24 +346,21 @@ searchRoutes.get(
 
     const buckets = q.withBuckets ? await countBuckets(axisFree) : null;
 
-    const orderBy = buildIssueOrderBy(q.sort);
-
-    const rows = await db
-      .select()
-      .from(issues)
-      .where(where)
-      .orderBy(orderBy)
-      .limit(q.limit)
-      .offset(q.offset);
+    // cm:why ISS-960 — `matchedFields` appears ONLY when `q` was sent, so a caller can tell "this row matched on its acceptance criteria" from "this row was not searched for at all". ISS-1016 moved it into the query: this route no longer selects `description`, `plan` or `acceptanceCriteria`, so the only honest way to name the match is to have Postgres name it, with the same `ISSUE_SEARCH_FIELDS` order and the same wildcard escaping the predicate itself uses.
+    // cm:why ISS-1016 — the page comes from `issueListPageQuery` and not from a `db.select()` here, so the plan `issue-list-index-plan-e2e.test.ts` EXPLAINs is the plan this handler runs
+    const rows = await issueListPageQuery({
+      where,
+      orderBy: buildIssueOrderBy(q.sort),
+      limit: q.limit,
+      offset: q.offset,
+      matchedFields: q.q ? matchedSearchFieldsSql(q.q) : null,
+    });
 
     const total = Number(n);
 
-    // cm:why ISS-960 — `matchedFields` appears ONLY when `q` was sent, so a caller can tell "this row matched on its acceptance criteria" from "this row was not searched for at all"; the fields are already on `r` (the select is whole-row), so naming them costs no second read
     const searchPrefix = await activeIssuePrefix(projectId);
     let serialized: Record<string, unknown>[] = rows.map((r) => ({
-      ...r,
-      displayId: formatIssueRef(searchPrefix, (r as { issSeq: number }).issSeq),
-      ...(q.q ? { matchedFields: issueSearchMatchedFields(q.q, r) } : {}),
+      ...serializeRestListRow(r, searchPrefix),
     }));
 
     // cm:guard an issue with no usage rows carries `estimatedCost: 0` and never a missing key — under `withCost=1` the field is always numeric, so a client cannot read "never ran" as "cost unknown" (ISS-437)

@@ -14,10 +14,12 @@ import { useRouter } from "next/navigation";
 import { ConfirmDialog, NotificationsMenu } from "@/design";
 import { useProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
+import { formatRelativeTime } from "@/lib/utils/format";
 import { useToast } from "@/providers/toast-provider";
 import {
   useNotifications,
-  useUnreadCount,
+  useNotificationMembers,
+  useOpenCount,
   useMarkRead,
   useMarkAllRead,
   usePendingInvitations,
@@ -27,7 +29,7 @@ import {
 import { toNotificationItem, toInvitationItem } from "../map";
 import type { PendingInvitation } from "../types";
 import { type DeliveryNotification, useNotificationDelivery } from "../use-notification-delivery";
-import { useUnreadIndicator } from "../use-unread-indicator";
+import { useOpenIndicator } from "../use-open-indicator";
 
 export interface NotificationsBellProps {
   /** Dropdown visibility — toggled by the TopBar bell button in the layout. */
@@ -40,10 +42,10 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
   const { toast } = useToast();
   const { data: projects } = useProjects();
 
-  // cm:guard the list and the unread count are scoped to the current user SERVER-side, and realtime is free because the WS event-router invalidates these exact query keys on `notification.created` — pick another key and the bell stops updating with nothing red to say so (ISS-504).
+  // cm:guard the list and the open count are scoped to the current user SERVER-side, and realtime is free because the WS event-router invalidates these exact query keys on `notification.created` — pick another key and the bell stops updating with nothing red to say so (ISS-504).
   // cm:guard both list queries are gated on `open` because the menu they feed renders only under `open` — the component itself must stay MOUNTED while closed, which is what the header comment is about, and that is a different thing from fetching while closed (ISS-1019).
   const notificationsQuery = useNotifications(open);
-  const { data: unread } = useUnreadCount();
+  const { data: openCount } = useOpenCount();
   const markRead = useMarkRead();
   const markAllRead = useMarkAllRead();
 
@@ -93,7 +95,7 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
 
   // Actionable invite items prepended to the bell; passive invitation_received
   // rows are filtered out so each invite appears once (as the actionable item).
-  // The passive rows still count toward the unread badge via the unread-count API.
+  // The passive rows still count toward the bell badge via the open-count API.
   const pendingItems = useMemo(
     () =>
       (pendingQuery.data ?? []).map((inv) =>
@@ -150,7 +152,7 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
   const onSelectNotification = useCallback(
     (id: string) => {
       const row = notificationRows.find((n) => n.id === id);
-      if (row && !row.read) markRead.mutate(id);
+      if (row && row.readAt === null) markRead.mutate(id);
       onClose();
       if (!row?.projectId) return; // mark-read only, no dead-end
       const target = projects?.find((p) => p.id === row.projectId);
@@ -163,6 +165,37 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
       router.push(`/projects/${target.slug}/issues/${row.issueId}`);
     },
     [notificationRows, markRead, projects, router, onClose],
+  );
+
+  // ISS-1063 — a grouped delivery expands to the records it carries. The fetch is
+  // deferred to the expansion so the common case (one member) costs no request, and
+  // a member click deep-links the same way a plain row does.
+  const [expandedId, setExpandedId] = useState<string | null>(null);
+  const membersQuery = useNotificationMembers(expandedId);
+  const expandedMembers = useMemo(
+    () =>
+      (membersQuery.data ?? []).map((m) => ({
+        id: m.id,
+        text: m.title,
+        time: formatRelativeTime(m.createdAt),
+        open: m.open,
+      })),
+    [membersQuery.data],
+  );
+  const onToggleGroup = useCallback(
+    (id: string) => setExpandedId((prev) => (prev === id ? null : id)),
+    [],
+  );
+  const onSelectMember = useCallback(
+    (memberId: string) => {
+      const member = membersQuery.data?.find((m) => m.id === memberId);
+      if (!member?.projectId || !member.issueId) return;
+      const target = projects?.find((p) => p.id === member.projectId);
+      if (!target) return;
+      onClose();
+      router.push(`/projects/${target.slug}/issues/${member.issueId}`);
+    },
+    [membersQuery.data, projects, router, onClose],
   );
 
   // Realtime delivery bridge (ISS-510): toast + browser channels for incoming
@@ -186,11 +219,12 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
   );
   useNotificationDelivery(onDeliveryNavigate);
 
-  // Always-visible unread indicator (ISS-523): mirror the unread count onto the
-  // favicon (a dot) + document title (`(N) Forge`). Same source as the bell, so
-  // they never disagree — and it covers the focused-tab case the background-only
-  // native notification channel intentionally skips.
-  useUnreadIndicator(unread?.count ?? 0);
+  // Always-visible indicator (ISS-523): mirror the OPEN count onto the favicon (a
+  // dot) + document title (`(N) Forge`). Same source as the bell, so they never
+  // disagree — and it covers the focused-tab case the background-only native
+  // notification channel intentionally skips. ISS-1063: reading a notification no
+  // longer changes this number; the thing being no longer true is what changes it.
+  useOpenIndicator(openCount?.count ?? 0);
 
   // Esc closes the notifications dropdown (AC11 — always dismissable).
   useEffect(() => {
@@ -224,6 +258,11 @@ export function NotificationsBell({ open, onClose }: NotificationsBellProps) {
               }}
               onSelect={onSelectNotification}
               onMarkAllRead={() => markAllRead.mutate()}
+              expandedId={expandedId}
+              expandedMembers={expandedMembers}
+              expandedLoading={membersQuery.isLoading}
+              onToggleGroup={onToggleGroup}
+              onSelectMember={onSelectMember}
             />
           </div>
         </>

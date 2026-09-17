@@ -341,6 +341,44 @@ describe('fields the transcript used to drop', () => {
     expect(r.messages[0]?.blocks?.every((b) => b.type !== 'text' || b.text === 'done')).toBe(true);
   });
 
+  // cm:guard an encrypted thinking block fell through every branch of this loop until ISS-1079 and
+  // was counted as nothing, so a turn spent entirely on encrypted reasoning read as a turn spent on
+  // nothing at all. Both shapes mean the same thing to this counter: the model paused and left
+  // nothing readable.
+  it('counts an encrypted thinking block as a pause', () => {
+    const r = parseStreamMessages(
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: '', signature: 'sig-a' },
+            { type: 'redacted_thinking', data: 'EncRypTed==' },
+            { type: 'text', text: 'done' },
+          ],
+        },
+      },
+      makeId(),
+    );
+    expect(r.messages[0]?.thinkingCount).toBe(2);
+  });
+
+  it('emits no thinking block of its own, whichever shape the pause took', () => {
+    const r = parseStreamMessages(
+      {
+        type: 'assistant',
+        message: {
+          content: [
+            { type: 'thinking', thinking: '' },
+            { type: 'redacted_thinking', data: 'x' },
+            { type: 'text', text: 'done' },
+          ],
+        },
+      },
+      makeId(),
+    );
+    expect(r.messages[0]?.blocks?.map((b) => b.type)).toEqual(['text']);
+  });
+
   it('emits an assistant message for a turn that is thinking-only', () => {
     const r = parseStreamMessages(
       {

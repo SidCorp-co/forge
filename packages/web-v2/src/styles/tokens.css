@@ -162,3 +162,15 @@
 .fg-overline { font-family: var(--font-mono); font-weight: 600; font-size: 11px; line-height: 1.2; letter-spacing: 0.10em; text-transform: uppercase; color: var(--fg-subtle); }
 .fg-mono { font-family: var(--font-mono); font-weight: 500; font-size: 13px; line-height: 1.5; letter-spacing: -0.01em; color: var(--fg-default); }
 .fg-code { font-family: var(--font-mono); font-weight: 500; font-size: 12.5px; background: var(--bg-sunken); border: 1px solid var(--border-subtle); border-radius: var(--r-xs); padding: 1px 6px; color: var(--ink-700); }
+
+/* The stale mark on the issues list's Waiting column, declared HERE and not as
+   Tailwind utilities on the element. Every rule above is UNLAYERED and Tailwind
+   v4 wraps its utilities in `@layer utilities`, so an unlayered `.fg-*` beats
+   `font-semibold` and `text-[color:var(--amber-600)]` spelled on the same span
+   regardless of specificity — the reason `@layer base` exists in globals.css.
+   ISS-1033 shipped the stale row wearing exactly those two utilities and they
+   were swallowed: measured on beta at d0389485c, a row that had not moved in 2d
+   computed to rgb(118,125,138) at weight 500, pixel-identical to a row that
+   moved 2h ago. This rule sits after `.fg-caption`, same specificity, so source
+   order decides and the mark survives. */
+.fg-caption-stale { font-weight: 600; color: var(--amber-600); }

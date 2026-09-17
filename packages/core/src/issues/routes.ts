@@ -1,5 +1,5 @@
 import { zValidator } from '@hono/zod-validator';
-import { and, count, eq, sql } from 'drizzle-orm';
+import { and, count, eq } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -15,10 +15,8 @@ import {
   issuePriorities,
   issueStatuses,
   issues,
-  jobs,
   jobTypes,
   projectMembers,
-  usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
@@ -40,10 +38,12 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from './label-service.js';
+import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
+import { jobHistoryForStep } from './search.js';
 import { sessionContextExpectSchema, sessionContextSchema } from './session-context.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 import {
@@ -357,20 +357,19 @@ issueProjectRoutes.get(
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
 
-    const orderBy = buildIssueOrderBy(q.sort);
-
-    const rows = await db
-      .select()
-      .from(issues)
-      .where(where)
-      .orderBy(orderBy)
-      .limit(q.limit)
-      .offset(q.offset);
+    // cm:why ISS-1016 — the page comes from `issueListPageQuery` and not from a `db.select()` here, so the plan the index tests EXPLAIN is the plan this handler runs. `sort=createdAt:desc` and `updatedAt:desc` are served by `issues_project_created_at_idx` / `issues_project_updated_at_idx`; the two `priority` sorts order by a CASE expression, which no btree serves, and still sort.
+    const rows = await issueListPageQuery({
+      where,
+      orderBy: buildIssueOrderBy(q.sort),
+      limit: q.limit,
+      offset: q.offset,
+    });
 
     const total = Number(n);
 
     const listPrefix = await activeIssuePrefix(projectId);
-    const serialized = rows.map((r) => serializeIssue(r as IssueRow, listPrefix));
+    // cm:guard `serializeRestListRow` and NOT `serializeIssue`: the latter also grafts `descriptionNodes`, parsed from a column this projection no longer reads, and its body columns are OPTIONAL — so a projected row type-checks through it and answers `descriptionNodes: null` on every row of every page. A list that says nothing about a body beats one that says the body is empty (ISS-1016).
+    const serialized = rows.map((r) => serializeRestListRow(r, listPrefix));
     if (serialized.length === 0) {
       return c.json(listResponse(c, serialized, total, q));
     }
@@ -467,7 +466,7 @@ issueRoutes.get(
   },
 );
 
-// cm:edge contract -> packages/core/src/jobs/routes.ts — the rollup joins `usage_records` on the same `session_id::uuid = jobs.id` cast `loadActualUsage` uses; let the two spellings drift and one surface prices a job the other reports at zero (ISS-202)
+// cm:edge contract -> packages/core/src/jobs/routes.ts — the rollup joins `usage_records` on `session_id = jobs.agent_session_id::text`, the same link `loadActualUsage` uses; let the two spellings drift and one surface prices a job the other reports at zero (ISS-202). Until ISS-1015 both spelled it `session_id::uuid = jobs.id`, which is a JOB id where the column holds an `agent_sessions.id`: measured on beta 2026-09-17, 0 of 24,085 usage rows matched any job id and 24,085 matched an agent session, so both surfaces priced every job at zero. The edge held the two in step and the step was wrong; it is the column this names, not merely that the two agree.
 // cm:guard the LEFT JOIN is what keeps queued and running jobs in the history at tokens=0/cost=0 — an inner join drops every job that has not produced a usage row yet, and a step in flight vanishes from its own history
 const jobHistoryQuerySchema = z.object({
   step: z.enum(jobTypes),
@@ -490,24 +489,7 @@ issueRoutes.get(
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const rows = await db
-      .select({
-        jobId: jobs.id,
-        status: jobs.status,
-        model: jobs.modelUsed,
-        startedAt: jobs.dispatchedAt,
-        finishedAt: jobs.finishedAt,
-        estTokens: jobs.promptInputTokenEst,
-        tokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-        cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-      })
-      .from(jobs)
-      .leftJoin(usageRecords, sql`${usageRecords.sessionId}::uuid = ${jobs.id}::uuid`)
-      .where(and(eq(jobs.issueId, id), eq(jobs.type, step)))
-      .groupBy(jobs.id)
-      .orderBy(sql`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt}) desc`);
-
-    return c.json(rows);
+    return c.json(await jobHistoryForStep(id, step));
   },
 );
 

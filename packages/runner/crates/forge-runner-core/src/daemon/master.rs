@@ -30,6 +30,7 @@ use crate::daemon::dispatch::resolve_repo;
 use crate::daemon::held_report;
 use crate::daemon::master_exit::{self, Verdict};
 use crate::daemon::master_limit;
+use crate::daemon::pool_jobs::{self, JobPanes, Records};
 use crate::daemon::recovery;
 use crate::daemon::recovery_ports::{CoreBeat, CoreRunState, PaneMasters, SignalProbe};
 use crate::daemon::run_exit;
@@ -323,6 +324,9 @@ pub async fn run(
     cfg: Config,
     masters: Arc<Masters>,
     activity: Arc<agent_activity::Activities>,
+    job_panes: Arc<JobPanes>,
+    job_records: Arc<dyn Records>,
+    adopted: tokio::sync::watch::Receiver<bool>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
     mut wake: mpsc::Receiver<Wake>,
 ) {
@@ -341,7 +345,7 @@ pub async fn run(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &activity, &mut ledger, &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -351,7 +355,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &activity, &mut ledger, &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -400,6 +404,9 @@ async fn sweep(
     cfg: &Config,
     masters: &Arc<Masters>,
     activity: &agent_activity::Activities,
+    job_panes: &Arc<JobPanes>,
+    job_records: &dyn Records,
+    adopted: &tokio::sync::watch::Receiver<bool>,
     ledger: &mut Option<Ledger>,
     account_limit_said: &mut Option<String>,
 ) -> Duration {
@@ -458,6 +465,16 @@ async fn sweep(
             continue;
         }
         supervise(client, masters, &runner.project_id, &runner.slug).await;
+        take_pool_job(
+            client,
+            cfg,
+            &served,
+            job_panes,
+            job_records,
+            adopted,
+            runner,
+        )
+        .await;
 
         // cm:guard an unreadable read is EMPTY, not fatal — this project goes quiet for a pass rather than the box going quiet on every project at once. It is now the ONLY thing that tells the daemon a project has work, so a failure here must cost one pass and never a master.
         let admissible = admissible::admissible(client, Some(&runner.project_id))
@@ -702,6 +719,55 @@ async fn report_account_limit(
                 "[master] could not lift this box's account limit at core: {e} — trying again next sweep"
             ),
         },
+    }
+}
+
+/// Take one pool job for this project, if there is one and this box has room.
+///
+/// The four kinds with no issue — `release_batch`, `smoke`, `reconcile`,
+/// `verify_skill` — never reach a master: core mints them into the JOBS pool and
+/// `pool_jobs` opens a pane per job here. Until ISS-1080 nothing read that pool
+/// at all, and a release sat `queued` while its whole roster waited at
+/// `releasing`.
+// cm:guard the pool is read on every sweep of a runner that accepts work, INDEPENDENTLY of whether anything is admissible. The two sets do not overlap — `devices/pool.ts:readPool` serves the issue-less kinds and `admissible` serves issues — so gating this on a non-empty admissible set would leave a project whose only work is a release with its pool unread forever, which is the defect rather than the fix.
+// cm:guard this deliberately does NOT feed `retire_if_idle`. A pool job runs in a pane of its own and needs no master, so counting the pool as work would keep a resident `claude` process up for something it does not do — against the residency bound one guard above, and against the ~$0.18-per-nudge spend that bound exists for.
+// cm:guard the drained branch above returns before this call, so a runner core has taken off work claims nothing new here while a pane already open still finishes. That is the same split `supervise` makes, and for the same reason: a drain stops the START of work, never the watching of it.
+async fn take_pool_job(
+    client: &CoreClient,
+    cfg: &Config,
+    served: &[runners::MeRunner],
+    job_panes: &Arc<JobPanes>,
+    job_records: &dyn Records,
+    adopted: &tokio::sync::watch::Receiver<bool>,
+    runner: &runners::MeRunner,
+) {
+    // cm:guard nothing is claimed until adoption has run, and the reason is in `pool_jobs::adopt`: it reads what this box recorded and what it is running as two snapshots, and a claim landing between them looks to it exactly like a job whose pane died. Claiming first would make a fresh release the most likely thing this box reports dead.
+    if !*adopted.borrow() {
+        return;
+    }
+    let bound = cfg.runner.max_job_panes.max(1) as usize;
+    // cm:guard the local binding is the FALLBACK only, exactly as the guard on the project list says: core's `repoPath` on the prepared job is the answer, and a box with no binding for a project core says it serves is a real configuration this fleet runs. `take_one` refuses by name when neither exists rather than opening a pane in the daemon's own directory.
+    let fallback = resolve_repo(served, cfg, &runner.project_id)
+        .ok()
+        .map(|r| r.repo_path);
+    let took = pool_jobs::take_one(
+        &pool_jobs::CorePool { client, limit: 20 },
+        &pool_jobs::TmuxPanes,
+        &pool_jobs::CoreReport { client },
+        job_records,
+        job_panes,
+        &runner.project_id,
+        job_panes.session_id(),
+        fallback.as_deref(),
+        bound,
+    )
+    .await;
+    if let pool_jobs::Took::AtBound = took {
+        tracing::info!(
+            "[master] {}: {} job pane(s) already open on this box (max_job_panes = {bound}) — taking no more this pass",
+            runner.slug,
+            job_panes.count()
+        );
     }
 }
 
@@ -1520,7 +1586,7 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
 // cm:guard the queue is NOT embedded here, and that absence is what let the quiet gate go. Dispatch reads it itself with its own ranking verb, so a snapshot typed at the master is a second copy already stale by the time the turn reaches it — and a prompt that queued behind a turn then acted on that copy is exactly what the deleted quiet gate existed to prevent (ISS-933 criterion 17).
 // cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill hands every pass to `forge:dispatch`, and this prompt is what must not contradict it by naming a phase, a width or a queue of its own (ISS-964 criterion 29).
 fn nudge() -> String {
-    "Pass. Hand it to the dispatch skill, and say what you dispatched and what you did not.".into()
+    "Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.".into()
 }
 
 /// Tell a master there is something to look at.
@@ -1663,6 +1729,99 @@ mod tests {
         assert!(
             body.contains("master_exit::children("),
             "the wiring must read the children out of the ledger — a caller that passed an empty slice would satisfy `verdict` and retire a master over live runs, which is criterion 19's failure arriving through the call site rather than the decision (ISS-933 criteria 19 and 20)"
+        );
+    }
+
+    /// The four issue-less kinds are claimed on every sweep, not only when the
+    /// admissible set has something in it.
+    ///
+    /// The two sets do not overlap: `devices/pool.ts:readPool` serves
+    /// `release_batch`, `smoke`, `reconcile` and `verify_skill`, and
+    /// `admissible` serves issues. A claim gated on a non-empty admissible set
+    /// would leave a project whose only work is a release with its pool unread
+    /// for ever — which is the whole of ISS-1080, arriving through the call site
+    /// rather than the reader.
+    #[test]
+    fn the_pool_is_read_before_the_sweep_can_decide_there_is_nothing_to_do() {
+        let body = THIS_SOURCE
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        let claim = body
+            .find("take_pool_job(")
+            .expect("the sweep must claim from the JOBS pool");
+        let admissible_empty = body
+            .find("if admissible.is_empty()")
+            .expect("the sweep still has its admissible branch");
+        assert!(
+            claim < admissible_empty,
+            "the pool claim has to run BEFORE the branch that gives up on a project with nothing admissible, or a release is the one job kind no box ever reads (ISS-1080)"
+        );
+    }
+
+    /// A drained runner claims nothing new.
+    ///
+    /// `accepts_new_work` is the box's answer to core taking a project off it,
+    /// and a pool job is new work like any other. What a drain must NOT stop is
+    /// the supervision of a pane already open, which lives on its own tick in
+    /// `daemon/mod.rs` and never reads this flag.
+    #[test]
+    fn a_drained_runner_takes_no_pool_job() {
+        let body = THIS_SOURCE
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        let drain = body
+            .find("if !accepts_new_work(&runner.status)")
+            .expect("the sweep still has its drain branch");
+        let claim = body
+            .find("take_pool_job(")
+            .expect("the sweep must claim from the JOBS pool");
+        assert!(
+            drain < claim,
+            "the drain branch `continue`s before the claim, so a runner core has taken off work must reach it first"
+        );
+    }
+
+    /// Nothing is claimed before adoption has run.
+    ///
+    /// `pool_jobs::adopt` compares what this box recorded against what it is
+    /// running, as two snapshots. A claim landing between them looks to it like
+    /// a job whose pane did not survive, so a box that claimed first would make
+    /// a fresh release the likeliest thing it reports dead.
+    #[test]
+    fn no_pool_job_is_claimed_before_adoption_has_run() {
+        let body = THIS_SOURCE
+            .split("async fn take_pool_job(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        let barrier = body
+            .find("if !*adopted.borrow()")
+            .expect("the claim is gated on adoption having run");
+        let claim = body
+            .find("pool_jobs::take_one(")
+            .expect("the claim is here");
+        assert!(
+            barrier < claim,
+            "the barrier has to precede the claim, or it gates nothing (ISS-1080)"
+        );
+    }
+
+    /// The claim is bounded by the box's own number and by nothing core said.
+    // cm:guard core has NO capacity signal and must not grow one: `runner_full` was a hold nothing enforced and was removed on 2026-09-05. This asserts the bound is read from config here, which is what makes the box the only place that knows it.
+    #[test]
+    fn the_job_pane_bound_comes_from_this_boxs_own_config() {
+        let body = THIS_SOURCE
+            .split("async fn take_pool_job(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        assert!(
+            body.contains("cfg.runner.max_job_panes"),
+            "the ceiling is the operator's `[runner] max_job_panes`, read here — a constant would make every box on the fleet identical and unfixable without a release"
         );
     }
 

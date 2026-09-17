@@ -22,7 +22,7 @@ flowchart LR
 |---|---|
 | Live event stream, replay | `schema.ts:jobEvents`, `core/src/ws/` |
 | Durable audit trail | `schema.ts:activityLog` |
-| Evidence retention policy | `core/src/jobs/retention-sweeper.ts` |
+| Evidence retention policy | `core/src/pipeline/retention/policy.ts` (the stated rules), `core/src/pipeline/retention/sweep.ts` (the nightly sweep) |
 | Attachments and artefacts | `core/src/uploads/`, `core/src/storage/` |
 | Metrics and analytics | `core/src/metrics/`, `core/src/pipeline/analytics-routes.ts` |
 | Cost and usage | `core/src/usage-records/` |
@@ -35,11 +35,20 @@ flowchart LR
 
 | Surface | Lives | Use it for |
 |---|---|---|
-| `job_events` | pruned 30 days after the job goes terminal | what a run did, moment by moment |
+| `job_events` | 30 days after the job goes terminal, and not before its transcript is recorded as finalised | what a run did, moment by moment |
+| `queue_snapshots`, `runner_events`, `kernel_transitions`, `retrieval_analytics` | 90 days | the operational record the metrics read |
+| `mcp_audit_log` | no window — see `pipeline/retention/policy.ts` for why | lifetime per-tool call counts |
 | `activity_log` | durable | who changed what, and when |
 | `uploads` | durable | evidence a human or agent must be able to re-open later |
 
 Anything that must outlive 30 days does **not** belong in the event stream.
+
+**Every append-only table takes an entry in `core/src/pipeline/retention/policy.ts`, including the ones that
+are never swept.** A table with no rule and a table whose rule is "keep it all" look identical from
+the outside, which is how six of them reached production with the deletion question deferred and
+invisible (ISS-1027). Each entry carries its window, the environment variable that moves it, the
+floor an override may not cross, and the reason. The nightly sweep reports what it removed and what
+its predicates held back, per table, on every tick.
 
 ## The interventions metric, defined by the event and not by the recorder
 
