@@ -1,6 +1,6 @@
 {
-  "id": "4e0a79cc-27e2-4b90-8aea-11e27769f33f",
-  "prevId": "d0c34750-1cc6-4ac2-b288-733e77f67b0c",
+  "id": "95de287e-2c25-47bd-aab9-ac470a7d2128",
+  "prevId": "a0346b72-5c22-40aa-8bf8-3213ac5f3db6",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2767,6 +2767,13 @@
           "notNull": true,
           "default": true
         },
+        "agent_access": {
+          "name": "agent_access",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
         "instructions": {
           "name": "instructions",
           "type": "text",
@@ -2893,6 +2900,10 @@
         "integration_bindings_role_stages_chk": {
           "name": "integration_bindings_role_stages_chk",
           "value": "(role = 'service' AND cardinality(stages) = 0) OR (role = 'deploy' AND array_ndims(stages) = 1 AND cardinality(stages) BETWEEN 1 AND 2 AND stages <@ ARRAY['preview', 'live'] AND (cardinality(stages) = 1 OR stages[1] <> stages[2]))"
+        },
+        "integration_bindings_agent_access_chk": {
+          "name": "integration_bindings_agent_access_chk",
+          "value": "agent_access IN ('none', 'all')"
         }
       },
       "isRLSEnabled": false
