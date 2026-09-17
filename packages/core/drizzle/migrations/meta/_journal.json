@@ -1823,17 +1823,24 @@
       "breakpoints": true
     },
     {
-      "idx": 266,
+      "idx": 268,
       "version": "7",
-      "when": 1796342400000,
-      "tag": "0266_agent_session_events",
+      "when": 1797724800000,
+      "tag": "0268_sentry_admission_thresholds",
       "breakpoints": true
     },
     {
-      "idx": 267,
+      "idx": 269,
       "version": "7",
-      "when": 1796428800000,
-      "tag": "0267_backfill_markers",
+      "when": 1799452800000,
+      "tag": "0269_agent_session_events",
+      "breakpoints": true
+    },
+    {
+      "idx": 270,
+      "version": "7",
+      "when": 1799539200000,
+      "tag": "0270_backfill_markers",
       "breakpoints": true
     }
   ]

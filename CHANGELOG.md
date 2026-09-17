@@ -120,6 +120,13 @@
   says where it stopped instead of ending mid-sentence and looking finished. A turn cannot report
   complete while anything it said is undelivered.
 
+- **Sentry errors can become Forge issues on a schedule.** Forge files the ones clearing an
+  admission bar you set on the Ops Console, as drafts. Everything it turns away is named in the
+  run's record, and a repeat sighting comments.
+
+- **A release-batch schedule's run history is readable again.** Its outcomes were stored and then
+  shown as an empty list. Both kinds of schedule that run inside Forge now answer with what they did.
+
 - **Six tables that only ever grew now have a retention rule and a nightly sweep.** The operator
   sets each window, and the sweep reports what it removed and kept. The runner Activity
   panel says how long that history lasts.
@@ -5454,6 +5461,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **A migration may now clear a sibling branch's timestamp.** The journal gate demanded exactly
+  one day above the last, so every open branch derived the same number and whichever merged first
+  silently skipped the rest. Whole days now pass.
 
 - **The issues list and the search send far less down the wire.** Both included the whole of
   every issue on the page — bodies, plans, criteria — which neither screen showed. Searching for

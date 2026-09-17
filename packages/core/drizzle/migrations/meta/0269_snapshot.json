@@ -1,6 +1,6 @@
 {
-  "id": "7e9e9aac-3d68-43f1-bb6e-ec7453231e6e",
-  "prevId": "1adb1539-27f0-4503-9910-155db7acdbbc",
+  "id": "c99b4b18-ab9f-45dd-b992-69eb08275435",
+  "prevId": "5f8f1963-c63f-4870-833f-79e929016900",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -127,115 +127,6 @@
           "tableTo": "issues",
           "columnsFrom": [
             "issue_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
-    "public.agent_session_events": {
-      "name": "agent_session_events",
-      "schema": "",
-      "columns": {
-        "id": {
-          "name": "id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true,
-          "default": "gen_random_uuid()"
-        },
-        "agent_session_id": {
-          "name": "agent_session_id",
-          "type": "uuid",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "ts": {
-          "name": "ts",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        },
-        "kind": {
-          "name": "kind",
-          "type": "text",
-          "primaryKey": false,
-          "notNull": true
-        },
-        "data": {
-          "name": "data",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "seq": {
-          "name": "seq",
-          "type": "integer",
-          "primaryKey": false,
-          "notNull": true
-        }
-      },
-      "indexes": {
-        "agent_session_events_session_id_seq_idx": {
-          "name": "agent_session_events_session_id_seq_idx",
-          "columns": [
-            {
-              "expression": "agent_session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "seq",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": true,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        },
-        "agent_session_events_session_id_ts_idx": {
-          "name": "agent_session_events_session_id_ts_idx",
-          "columns": [
-            {
-              "expression": "agent_session_id",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            },
-            {
-              "expression": "ts",
-              "isExpression": false,
-              "asc": true,
-              "nulls": "last"
-            }
-          ],
-          "isUnique": false,
-          "concurrently": false,
-          "method": "btree",
-          "with": {}
-        }
-      },
-      "foreignKeys": {
-        "agent_session_events_agent_session_id_agent_sessions_id_fk": {
-          "name": "agent_session_events_agent_session_id_agent_sessions_id_fk",
-          "tableFrom": "agent_session_events",
-          "tableTo": "agent_sessions",
-          "columnsFrom": [
-            "agent_session_id"
           ],
           "columnsTo": [
             "id"
@@ -13137,6 +13028,20 @@
           "notNull": true,
           "default": 14
         },
+        "sentry_min_event_count": {
+          "name": "sentry_min_event_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 10
+        },
+        "sentry_min_user_count": {
+          "name": "sentry_min_user_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 2
+        },
         "updated_by": {
           "name": "updated_by",
           "type": "uuid",
@@ -13174,6 +13079,14 @@
         "admin_thresholds_singleton_ck": {
           "name": "admin_thresholds_singleton_ck",
           "value": "\"admin_thresholds\".\"id\" = 'singleton'"
+        },
+        "admin_thresholds_sentry_min_event_count_ck": {
+          "name": "admin_thresholds_sentry_min_event_count_ck",
+          "value": "\"admin_thresholds\".\"sentry_min_event_count\" >= 1 AND \"admin_thresholds\".\"sentry_min_event_count\" <= 1000000"
+        },
+        "admin_thresholds_sentry_min_user_count_ck": {
+          "name": "admin_thresholds_sentry_min_user_count_ck",
+          "value": "\"admin_thresholds\".\"sentry_min_user_count\" >= 1 AND \"admin_thresholds\".\"sentry_min_user_count\" <= 1000000"
         }
       },
       "isRLSEnabled": false
@@ -14284,6 +14197,115 @@
           "value": "num_nonnulls(\"rocketchat_question_threads\".\"question_id\", \"rocketchat_question_threads\".\"issue_id\") = 1"
         }
       },
+      "isRLSEnabled": false
+    },
+    "public.agent_session_events": {
+      "name": "agent_session_events",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "agent_session_id": {
+          "name": "agent_session_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ts": {
+          "name": "ts",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        },
+        "kind": {
+          "name": "kind",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "data": {
+          "name": "data",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "seq": {
+          "name": "seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        }
+      },
+      "indexes": {
+        "agent_session_events_session_id_seq_idx": {
+          "name": "agent_session_events_session_id_seq_idx",
+          "columns": [
+            {
+              "expression": "agent_session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "agent_session_events_session_id_ts_idx": {
+          "name": "agent_session_events_session_id_ts_idx",
+          "columns": [
+            {
+              "expression": "agent_session_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "ts",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "agent_session_events_agent_session_id_agent_sessions_id_fk": {
+          "name": "agent_session_events_agent_session_id_agent_sessions_id_fk",
+          "tableFrom": "agent_session_events",
+          "tableTo": "agent_sessions",
+          "columnsFrom": [
+            "agent_session_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.session_inbox": {

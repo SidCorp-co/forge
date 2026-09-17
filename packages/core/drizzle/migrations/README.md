@@ -39,8 +39,14 @@ emits a snapshot under `meta/`.
    journal's existing `max(when)` (those are hand-picked, spaced a day apart).
    Drizzle reads the single highest `created_at` in the target DB and skips
    lower entries silently, forever — the container then serves new code against
-   an old schema. Raise the generated `when` to `max(when) + 86400000` by hand;
-   `db/migrations-journal.test.ts` is the gate.
+   an old schema. Raise the generated `when` by hand to a whole number of days
+   above the journal's `max(when)` — `+ 86400000` where yours is the only
+   migration open, and enough to clear the highest `when` any unmerged sibling
+   holds where it is not. Read the siblings immediately before the push that
+   lands it: every branch deriving `+ 86400000` from one `main` lands on the
+   same number, and the gate reads only your own journal, so it is green on a
+   value a sibling is about to take. `db/migrations-journal.test.ts` holds the
+   shape — whole days, strictly above, at most 30 ahead — not the collision.
 2. It does not re-emit an index that Postgres dropped with the column. If your
    change drops and re-adds a column (the only way to alter a generated
    column's expression), every index on that column goes with it and drizzle's

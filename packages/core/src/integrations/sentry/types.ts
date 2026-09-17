@@ -68,7 +68,7 @@ export type SentryIssueStatus = (typeof SENTRY_ISSUE_STATUSES)[number];
  * enum — and is safe to render or compare. The last three are text a Sentry EVENT carried, which
  * is usually text some user typed into the app that crashed.
  */
-// cm:guard the three free-text fields are already char-stripped by `sanitizeUntrusted` on the way in, which removes invisible/bidi smuggling and unwraps HTML comments — it does NOT frame them as data. Any path that renders one of them into an agent's prompt owes `markUntrusted()` from `prompt/sanitize.ts` at that projection, the way `mcp/tools/forge-issues.ts` and `forge-comments.ts` do; slice 2 adds no such path, which is the whole reason this is the low-risk slice.
+// cm:guard the three free-text fields are already char-stripped by `sanitizeUntrusted` on the way in, which removes invisible/bidi smuggling and unwraps HTML comments — it does NOT frame them as data. The projection that renders them to an agent is a Forge issue filed by `sentry/intake.ts` (slice 3), and the frame is applied THERE-ward rather than at the write: `prompt/user.ts` frames `issue.title` and `issue.description` for the pipeline prompt and `mcp/tools/forge-issues.ts:serialize` frames both for the MCP single-issue projection. Do NOT store a frame with the text — `markUntrusted` runs `stripFrameTokens` over its own input, so a stored frame is destroyed by the projection frame and the text ends up bare. The one agent-facing projection that does not frame is `serializeListRow`, by the priced decision in its own `cm:why` (the token cap), recorded at `docs/proposals/an-mcp-list-title-is-char-stripped-and-not-framed.md`.
 export interface SentryIssueDetail {
   id: string;
   shortId: string | null;
