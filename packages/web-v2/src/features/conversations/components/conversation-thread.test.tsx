@@ -9,7 +9,7 @@
 import { Conversation } from "@/features/session/components/conversation";
 import { type CanonicalBlock, type MessageEntry, parseMessages } from "@/features/session/types";
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
   AgentTurn,
@@ -246,7 +246,12 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
       />,
     );
     expect(screen.getByText("Read release.md")).toBeInTheDocument();
-    expect(screen.getByText("three issues, one blocked")).toBeInTheDocument();
+    // cm:guard the output is one click away rather than inline since ISS-1083 — the card summarizes
+    // what came back and opens onto it — so this asserts the same property through the new
+    // affordance rather than being dropped: the stored block's OUTPUT reaches the screen.
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Text · 25 characters");
+    fireEvent.click(screen.getByTestId("tool-result-toggle"));
+    expect(screen.getByTestId("tool-result-body")).toHaveTextContent("three issues, one blocked");
     // cm:guard the text either SIDE of the tool call, in order: a renderer that appended the cards
     // after the prose would satisfy an assertion on the card alone while losing what ISS-348 fixed.
     expect(screen.getByText("let me look")).toBeInTheDocument();
@@ -504,5 +509,61 @@ describe("the assistant column, drawn through the chat wrapper", () => {
     expect(capped.filter((c) => c.includes("max-w-[72ch]"))).toHaveLength(1);
     expect(capped.filter((c) => c.includes("max-w-[88%]"))).toHaveLength(1);
     for (const cls of capped) expect(cls).not.toContain("sm:max-w-");
+  });
+});
+
+// cm:guard the wire's OWN shape, end to end, because the unit tests around `summarizeResult` fed it
+// objects and every real path hands it a string: the accumulator writes
+// `JSON.stringify(ev.result ?? '')` into `output` and the CLI path lifts the stream-json result's
+// text. A summary that met only objects read `Text · N characters` on every card in the product
+// while 31 assertions stayed green (ISS-1083, implementation consult F1).
+describe("a tool's output as the wire actually carries it", () => {
+  const replied = (over: Partial<ConversationMessage> = {}): ConversationMessage => ({
+    ...asked,
+    id: "m1",
+    seq: 1,
+    role: "assistant",
+    authorUserId: null,
+    authorLabel: null,
+    content: "two issues left",
+    createdAt: "2026-09-14T00:00:01.000Z",
+    ...over,
+  });
+
+  const withOutput = (output: string): CanonicalBlock[] => [
+    { type: "tool", toolCall: { id: "t9", name: "forge_projects_get", input: { slug: "erp" }, output } },
+  ];
+
+  it("summarizes a serialized object as the object, and opens onto it pretty-printed", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: withOutput('{"project":{"slug":"erp"}}') })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Object · 1 field");
+    fireEvent.click(screen.getByTestId("tool-result-toggle"));
+    expect(screen.getByTestId("tool-result-body").textContent).toContain('\n  "project"');
+  });
+
+  it("summarizes a serialized empty array as an empty array", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: withOutput("[]") })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Array · 0 items");
+  });
+
+  it("summarizes what the accumulator writes for a null result as no result", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: withOutput('""') })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("No result");
+    expect(screen.queryByTestId("tool-result-toggle")).toBeNull();
   });
 });

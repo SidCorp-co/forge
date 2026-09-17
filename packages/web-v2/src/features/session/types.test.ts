@@ -488,3 +488,54 @@ describe("parseMessages over an assistant conversation row", () => {
     expect(items[0]?.text).toBe("how many open issues?");
   });
 });
+
+// cm:guard the two v1 paths reach a card through `toToolCallData` like the canonical one does. They
+// used to hand their calls through untouched, which was invisible while the card only previewed
+// `result` — a CLI-derived entry carries its output on `output`, so `result` was undefined and the
+// card drew nothing. Since ISS-1083 an absent result reads `Running…`, and a settled turn in
+// history claiming a call is still out is worse than drawing nothing.
+describe("every tool call is decoded, whichever shape the entry is in", () => {
+  it("decodes a v1 toolCalls entry's output instead of leaving it unread", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        content: "done",
+        toolCalls: [
+          { id: "t1", name: "Read", input: {}, output: '{"a":1,"b":2}' },
+        ],
+      } as never,
+    ]);
+    const block = item?.blocks.find((b) => b.type === "tool");
+    expect(block).toBeDefined();
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.result).toEqual({ a: 1, b: 2 });
+  });
+
+  it("decodes a v1 contentBlocks tool_use output too", () => {
+    const [item] = parseMessages([
+      {
+        role: "assistant",
+        content: "done",
+        contentBlocks: [
+          { type: "tool_use", tool: { id: "t2", name: "Read", input: {}, output: "[]" } },
+        ],
+      } as never,
+    ]);
+    const block = item?.blocks.find((b) => b.type === "tool");
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.result).toEqual([]);
+  });
+
+  it("leaves a v1 call's own `result` exactly as it stands", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        content: "done",
+        toolCalls: [{ id: "t3", name: "Read", input: {}, result: "plain words" }],
+      } as never,
+    ]);
+    const block = item?.blocks.find((b) => b.type === "tool");
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.result).toBe("plain words");
+  });
+});

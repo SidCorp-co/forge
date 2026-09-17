@@ -184,7 +184,7 @@ function AgentTurn({ item, streamingTail, busy, readOnly, onRegenerate, onFork }
               />
             );
           }
-          return <ToolCard key={block.tool.id ?? i} tool={block.tool} />;
+          return <ToolCard key={block.tool.id ?? i} tool={block.tool} live={streamingTail} />;
         })}
       </div>
       {!readOnly && <TurnActions item={item} busy={busy} onRegenerate={onRegenerate} onFork={onFork} />}
