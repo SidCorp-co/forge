@@ -56,6 +56,30 @@ describe('403 is three different things and is never guessed between', () => {
     expect(refusal.message).toContain('reconnecting will not change this');
   });
 
+  // cm:guard the two kinds of evidence can arrive together, and the ORDER decides what an operator is told. Read the headers first and this answer says "No permission is missing; nothing needs granting" — a positive claim about a permission nothing checked, which sends the operator to wait out a reset that changes nothing.
+  it('keeps the permission diagnosis when a spent quota arrives on the same answer', () => {
+    const refusal = describeRefusal(
+      err({
+        status: 403,
+        headers: headers({ 'x-ratelimit-remaining': '0', 'x-ratelimit-reset': '1789000000' }),
+        detail: '{"message":"Resource not accessible by integration"}',
+      }),
+    );
+    expect(refusal.cause).toBe('permission-missing');
+    expect(refusal.message).toContain('`checks: write`');
+    expect(refusal.message).toContain('both may apply');
+    expect(refusal.message).not.toContain('No permission is missing');
+  });
+
+  it('says a quota-only 403 carried no permission evidence, rather than that none is missing', () => {
+    const refusal = describeRefusal(
+      err({ status: 403, headers: headers({ 'x-ratelimit-remaining': '0' }), detail: '{}' }),
+    );
+    expect(refusal.cause).toBe('rate-limited');
+    expect(refusal.message).toContain('sent nothing saying a permission was refused');
+    expect(refusal.message).not.toContain('`checks: write`');
+  });
+
   it('refuses a 403 carrying none of the three tells as exactly that', () => {
     const refusal = describeRefusal(err({ status: 403, headers: headers({}) }));
     expect(refusal.cause).toBe('access-refused');

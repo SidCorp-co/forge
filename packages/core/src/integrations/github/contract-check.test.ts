@@ -192,6 +192,27 @@ describe('the skips, each named in its own row', () => {
   });
 });
 
+describe('the binding a caller was authorised for', () => {
+  // cm:guard a stored pull request is addressed by its own uuid and carries its OWN binding, so a dispatch holding a context for binding A and a row belonging to binding B would validate A and then publish to B's repository on B's credential — a write nobody authorised, reported as a success.
+  it('refuses a pull request stored under a different binding, naming both', async () => {
+    await expect(
+      publishForStoredPullRequest(PR_ID, '99999999-9999-4999-8999-999999999999'),
+    ).rejects.toThrow(BINDING_ID);
+    expect(recordDelivery).not.toHaveBeenCalled();
+    expect(publish).not.toHaveBeenCalled();
+  });
+
+  it('publishes where the caller named the binding the row is stored under', async () => {
+    expect(await publishForStoredPullRequest(PR_ID, BINDING_ID)).toMatchObject({
+      kind: 'published',
+    });
+  });
+
+  it('publishes where the caller named no binding, which is what an event does', async () => {
+    expect(await publishForStoredPullRequest(PR_ID)).toMatchObject({ kind: 'published' });
+  });
+});
+
 describe('a refusal from GitHub itself', () => {
   it('records it FAILED, with the sentence `check-refusal.ts` wrote', async () => {
     publish.mockRejectedValue(

@@ -276,6 +276,28 @@ describe('one request on the publish path', () => {
     expect(err.op).toBe('create');
   });
 
+  // cm:guard the BODY read is inside the wrapper too. GitHub can answer 200 and then stall the stream until the abort fires, and a raw `AbortError` escaping here reaches a caller with no idea which operation it came from — `contract-check.ts` labels anything unrecognised `create`, so a stalled LOOKUP would be reported as a write of unknown outcome that never happened.
+  it('keeps the operation when a successful response`s body stalls to the timeout', async () => {
+    mintOk();
+    const abort = new Error('The operation was aborted due to timeout');
+    abort.name = 'TimeoutError';
+    fetchMock.mockResolvedValueOnce({
+      ok: true,
+      status: 200,
+      headers: new Headers(),
+      json: async () => {
+        throw abort;
+      },
+    });
+    const client = buildRepoClient(args());
+    const err = await publishErr(() =>
+      client.publish({ op: 'lookup', method: 'GET', path: '/repos/x/y/check-runs' }),
+    );
+    expect(err.op).toBe('lookup');
+    expect(err.timedOut).toBe(true);
+    expect(err.message).toContain('body could not be read');
+  });
+
   it('survives a refusal whose body cannot be read, rather than throwing over it', async () => {
     mintOk();
     fetchMock.mockResolvedValueOnce({

@@ -51,11 +51,9 @@ describe('the answer is derived from the declaration for the status the issue st
   it('asks the tracker`s own reader, for this issue at this status', async () => {
     readStrict.mockResolvedValue({ declared: ['plan'], met: ['plan'], unmet: [] });
     const answer = await contractAnswerForIssue(ISSUE_ID);
-    expect(readStrict).toHaveBeenCalledWith({
-      projectId: PROJECT_ID,
-      issueId: ISSUE_ID,
-      status: 'developed',
-    });
+    expect(readStrict).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: PROJECT_ID, issueId: ISSUE_ID, status: 'developed' }),
+    );
     expect(answer.kind).toBe('judged');
     expect(answer).toMatchObject({ status: 'developed' });
   });
@@ -131,6 +129,15 @@ describe('the answer never costs the check run', () => {
     for (const answer of [judged, unreadable]) {
       expect(answer.computedAt.getTime()).toBeGreaterThanOrEqual(before);
     }
+  });
+});
+
+describe('which connection the reads run on', () => {
+  // cm:guard the caller's executor reaches EVERY read here. `check-run.ts` hands this the transaction holding the advisory lock, and a read that went to the pool instead would need a second connection while the first is held across three HTTP calls — ten concurrent publishes would then be the whole pool waiting on itself.
+  it('runs the issue read and the criteria read on the executor it was given', async () => {
+    const tx = { select } as never;
+    await contractAnswerForIssue(ISSUE_ID, tx);
+    expect(readStrict).toHaveBeenCalledWith(expect.objectContaining({ executor: tx }));
   });
 });
 

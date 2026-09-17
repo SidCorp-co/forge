@@ -81,7 +81,7 @@ describe('the declaration and the implementation agree', () => {
       payload: { pullRequestId: PR_ID },
     });
     expect(result).toMatchObject({ deliveryId: 'delivery-2', externalId: '42' });
-    expect(publishForStoredPullRequest).toHaveBeenCalledWith(PR_ID);
+    expect(publishForStoredPullRequest).toHaveBeenCalledWith(PR_ID, 'binding-1');
   });
 });
 

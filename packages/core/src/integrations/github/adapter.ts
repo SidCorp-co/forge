@@ -212,7 +212,10 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       );
     }
 
-    const outcome = await publishForStoredPullRequest(pullRequestId);
+    // cm:guard the binding the context authorised is carried INTO the publish. Without it the
+    // caller's authorisation and the repository written to are resolved independently, and a
+    // dispatch for one project's binding could publish on another's.
+    const outcome = await publishForStoredPullRequest(pullRequestId, ctx.bindingId);
     if (!outcome) {
       throw new Error(
         `github: no stored pull request ${pullRequestId} — nothing on this project's projection has that id`,

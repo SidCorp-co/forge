@@ -83,7 +83,11 @@ export async function publishContractCheck(
       sql`SELECT pg_advisory_xact_lock(${ADVISORY_NAMESPACE}, hashtext(${`${client.bindingId}:${args.headSha}`}))`,
     );
 
-    const answer = await contractAnswerForIssue(args.issueId);
+    // cm:guard the answer's reads go through `tx`, never the pool. This transaction already holds
+    // one of ten pooled connections and is about to hold it across up to three HTTP calls; a read
+    // on the pool from in here needs a SECOND connection, so ten concurrent publishes would each
+    // hold one and each wait for another until `idle_in_transaction_session_timeout` broke them.
+    const answer = await contractAnswerForIssue(args.issueId, tx);
     const body = checkRunBody(answer);
     const output = { title: body.title, summary: body.summary, text: body.text };
 

@@ -35,7 +35,7 @@
  */
 
 import { eq } from 'drizzle-orm';
-import { db } from '../../db/client.js';
+import { type Db, db } from '../../db/client.js';
 import { type IssueStatus, issues } from '../../db/schema.js';
 import { readEntryCriteriaStrict } from '../../issues/entry-criteria.js';
 import type { EntryCriterionKey } from '../../issues/entry-criteria-keys.js';
@@ -59,8 +59,9 @@ export type ContractAnswer =
 /** The status and project of one issue, or null where the row is gone. */
 async function issueStanding(
   issueId: string,
+  executor: Pick<Db, 'select'>,
 ): Promise<{ status: IssueStatus; projectId: string } | null> {
-  const [row] = await db
+  const [row] = await executor
     .select({ status: issues.status, projectId: issues.projectId })
     .from(issues)
     .where(eq(issues.id, issueId))
@@ -77,11 +78,14 @@ async function issueStanding(
  * the only honest thing the check can do about that input is say when it looked.
  */
 // cm:guard this function does not throw. Every failure becomes an `unreadable` answer, because the caller is mid-publish to GitHub and a throw there costs the check run rather than the criterion — and a missing check run is the silence this whole change exists to remove.
-export async function contractAnswerForIssue(issueId: string): Promise<ContractAnswer> {
+export async function contractAnswerForIssue(
+  issueId: string,
+  executor: Pick<Db, 'select'> = db,
+): Promise<ContractAnswer> {
   const computedAt = new Date();
   let status: IssueStatus | null = null;
   try {
-    const standing = await issueStanding(issueId);
+    const standing = await issueStanding(issueId, executor);
     if (!standing) {
       return { kind: 'unreadable', status: null, reason: 'no issue row was found', computedAt };
     }
@@ -90,6 +94,7 @@ export async function contractAnswerForIssue(issueId: string): Promise<ContractA
       projectId: standing.projectId,
       issueId,
       status: standing.status,
+      executor,
     });
     if (reading.declared.length === 0) {
       return { kind: 'none-declared', status: standing.status, computedAt };

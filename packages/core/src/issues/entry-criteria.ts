@@ -163,11 +163,18 @@ export async function readEntryCriteriaStrict(args: {
   status: IssueStatus;
   executor?: CriterionExecutor;
 }): Promise<EntryCriteriaReading> {
-  const config = await readPipelineConfig(args.projectId);
-  const declared = config?.statusEntryCriteria?.[args.status] ?? [];
-  if (declared.length === 0) return { declared: [], met: [], unmet: [] };
-
   const executor = args.executor ?? db;
+  const config = await readPipelineConfig(args.projectId, executor);
+  // cm:guard `null` is REFUSED here and read as `[]` by the gate above. `readPipelineConfig`
+  // answers null for a project that is missing and for a stored config that does not parse, and
+  // for neither of those is "this project declares no records" a true sentence — a valid config
+  // declaring nothing parses to an object, so the two cases stay apart. Reading null as the
+  // empty declaration is criterion 7's exact failure, published on a pull request.
+  if (!config) {
+    throw new Error(`the pipeline configuration for project ${args.projectId} could not be read`);
+  }
+  const declared = config.statusEntryCriteria?.[args.status] ?? [];
+  if (declared.length === 0) return { declared: [], met: [], unmet: [] };
   const [record] = await executor
     .select({
       plan: issues.plan,

@@ -127,16 +127,35 @@ async function credentialFor(
 /**
  * Publish `forge/issue-contract` for one stored pull request.
  *
- * Never throws: every way out is an outcome with a delivery row behind it. The
- * caller is a hooks subscriber or a webhook delivery handler, and throwing at
- * either would cost the thing that called it — a hook subscriber's failure or a
- * 200 turned into a 500 that has GitHub redeliver a payload to retry a write.
+ * Never throws for the event-driven callers: every way out is an outcome with a
+ * delivery row behind it. Those callers are a hooks subscriber or a webhook
+ * delivery handler, and throwing at either would cost the thing that called it —
+ * a hook subscriber's failure, or a 200 turned into a 500 that has GitHub
+ * redeliver a payload in order to retry a write.
+ *
+ * The ONE throw is `expectBindingId` disagreeing with the row, and it is reached
+ * only from `dispatchOutbound`, whose own contract is to refuse a bad call by
+ * name. It is deliberately not a delivery row: nothing was attempted against any
+ * repository, and a row scoped to either binding would name a repository this
+ * call has no business associating with the other.
  */
+// cm:guard `expectBindingId` is how a caller that was authorised for ONE binding says so. A stored
+// pull request is addressed by its own uuid and carries its own binding, so a dispatch holding a
+// context for binding A and a row belonging to binding B would validate A and then publish to B's
+// repository on B's credential — a write nobody authorised, on the wrong repository, reported as a
+// success. The event-driven callers name no binding because the row IS what they resolved from.
 export async function publishForStoredPullRequest(
   pullRequestId: string,
+  expectBindingId?: string,
 ): Promise<ContractCheckOutcome | null> {
   const row = await storedRow(pullRequestId);
   if (!row) return null;
+  if (expectBindingId !== undefined && row.bindingId !== expectBindingId) {
+    throw new GitHubClientError(
+      'no_binding',
+      `pull request ${pullRequestId} is stored under GitHub binding ${row.bindingId}, and this dispatch was authorised for ${expectBindingId} — Forge will not publish a check run on a repository the caller did not name`,
+    );
+  }
 
   const deliveryId = await openDelivery(row);
 

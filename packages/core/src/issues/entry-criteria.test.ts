@@ -228,7 +228,39 @@ describe('readEntryCriteriaStrict', () => {
     expect(select).not.toHaveBeenCalled();
   });
 
-  // cm:guard the config read is NOT swallowed here, and this is the assertion that says so. `resolveDeclaredEntryCriteria` turns the same throw into `[]`, which the caller would publish as "this project declares nothing" — a sentence about a project, made out of a failure to read one.
+  // cm:guard `readPipelineConfig` answers NULL both for a project that is gone and for a stored config that does not parse, and neither is "this project declares no records". A valid config declaring nothing parses to an object, so refusing null here keeps the two apart — reading null as the empty declaration is criterion 7's exact failure, published on a pull request.
+  it('refuses a config that could not be read, where the gate reads it as `[]`', async () => {
+    readPipelineConfigMock.mockResolvedValue(null);
+    await expect(
+      readEntryCriteriaStrict({ projectId: PROJECT_ID, issueId: ISSUE_ID, status: 'developed' }),
+    ).rejects.toThrow('could not be read');
+    expect(await resolveDeclaredEntryCriteria(PROJECT_ID, 'developed')).toEqual([]);
+  });
+
+  it('still answers "nothing declared" for a VALID config that declares nothing', async () => {
+    readPipelineConfigMock.mockResolvedValue({ enabled: true });
+    expect(
+      await readEntryCriteriaStrict({
+        projectId: PROJECT_ID,
+        issueId: ISSUE_ID,
+        status: 'developed',
+      }),
+    ).toEqual({ declared: [], met: [], unmet: [] });
+  });
+
+  // cm:guard the config read runs on the caller's executor, so a caller inside a transaction does not need a second pooled connection to ask what the project declared.
+  it('reads the declaration through the executor it was given', async () => {
+    const executor = { select } as never;
+    readPipelineConfigMock.mockResolvedValue({ statusEntryCriteria: { developed: ['plan'] } });
+    await readEntryCriteriaStrict({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'developed',
+      executor,
+    });
+    expect(readPipelineConfigMock).toHaveBeenCalledWith(PROJECT_ID, executor);
+  });
+
   it('lets a failed config read OUT, where the gate turns it into `[]`', async () => {
     readPipelineConfigMock.mockRejectedValue(new Error('connection terminated'));
     await expect(

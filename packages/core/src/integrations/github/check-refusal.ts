@@ -83,16 +83,14 @@ function saysPermission(err: GitHubPublishError): boolean {
   return PERMISSION_TELLS.some((tell) => detail.includes(tell));
 }
 
+// cm:guard the BODY's own words outrank the headers, and the order is the whole of what this
+// function decides. Read the headers first and a 403 saying "Resource not accessible by
+// integration" that happens to arrive on a spent quota is reported as a rate limit — carrying the
+// sentence "No permission is missing; nothing needs granting", which is a positive claim about a
+// permission nobody checked. The operator waits for a reset that changes nothing. The headers are
+// evidence about a quota and never evidence that a permission is held.
 function forbidden(err: GitHubPublishError): CheckRefusal {
   const quota = rateLimitNote(err);
-  if (quota) {
-    return {
-      cause: 'rate-limited',
-      op: err.op,
-      status: 403,
-      message: `GitHub rate-limited Forge while ${WHERE[err.op]} — ${quota}. No permission is missing; nothing needs granting.`,
-    };
-  }
   if (saysPermission(err)) {
     return {
       cause: 'permission-missing',
@@ -102,7 +100,16 @@ function forbidden(err: GitHubPublishError): CheckRefusal {
         `GitHub refused Forge while ${WHERE[err.op]} because the App has no \`checks: write\` ` +
         'permission. Set Checks to "Read and write" on the App, then approve the resulting ' +
         'request on the installation — reconnecting will not change this, because the credential ' +
-        'is not what is wrong.',
+        'is not what is wrong.' +
+        (quota ? ` The same answer also reports a rate limit — ${quota} — so both may apply.` : ''),
+    };
+  }
+  if (quota) {
+    return {
+      cause: 'rate-limited',
+      op: err.op,
+      status: 403,
+      message: `GitHub rate-limited Forge while ${WHERE[err.op]} — ${quota}. GitHub sent nothing saying a permission was refused.`,
     };
   }
   return {

@@ -282,7 +282,22 @@ export function buildRepoClient(args: {
           message: `${args.method} ${args.path} on ${fullName} returned HTTP ${res.status}`,
         });
       }
-      return (await res.json()) as T;
+      // cm:guard reading the BODY is inside the wrapper too, because it is a second place the
+      // timeout fires: GitHub can answer 200 and then stall the stream until the abort, and a raw
+      // `AbortError` escaping here reaches a caller that has no idea which operation it came from
+      // — `contract-check.ts` labels anything unrecognised `create`, so a stalled LOOKUP would be
+      // reported as a write of unknown outcome that never happened.
+      try {
+        return (await res.json()) as T;
+      } catch (err) {
+        throw new GitHubPublishError({
+          op: args.op,
+          status: res.status,
+          headers: res.headers,
+          timedOut: isAbort(err),
+          message: `${args.method} ${args.path} on ${fullName} answered HTTP ${res.status} and its body could not be read: ${err instanceof Error ? err.message : String(err)}`,
+        });
+      }
     },
   };
 }
