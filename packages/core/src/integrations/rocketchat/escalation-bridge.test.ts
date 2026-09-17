@@ -52,7 +52,7 @@ vi.mock('./outbound.js', () => ({
 
 const rocketChatPersona = vi.fn((..._args: unknown[]) => 'PERSONA');
 vi.mock('./connection-manager.js', () => ({
-  webBaseUrl: 'https://forge.example.co',
+  webBaseUrl: () => 'https://forge.example.co',
 }));
 vi.mock('../../conversations/store.js', () => ({
   findConversation: async () => null,
