@@ -17,7 +17,7 @@
  * is recorded on the row rather than thrown.
  */
 
-import { and, eq, inArray } from 'drizzle-orm';
+import { and, eq, inArray, isNull, lte, or } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { logger } from '../../logger.js';
@@ -40,7 +40,7 @@ interface PullRead {
   mergeable?: boolean | null;
   mergeable_state?: string | null;
   head?: { sha?: string };
-  base?: { ref?: string };
+  base?: { ref?: string; sha?: string };
 }
 
 interface CompareRead {
@@ -90,6 +90,9 @@ export async function readRefreshFacts(
     const cmp = await client.get<CompareRead>(
       `/repos/${client.fullName}/compare/${encodeURIComponent(args.baseRef)}...${encodeURIComponent(args.headSha)}`,
     );
+    // cm:guard the two reads are not one snapshot, and this is the only evidence that they saw the same base. A push landing between them pairs mergeability computed against one base revision with counts computed against another, and the row would then carry a `clean` from before the push beside a behind-by from after it — a mixture no single moment ever produced.
+    const moved = baseMoved(pull, cmp);
+    if (moved) return { ok: false, reason: moved };
     return {
       ok: true,
       behindBy: typeof cmp.behind_by === 'number' ? cmp.behind_by : null,
@@ -104,6 +107,16 @@ export async function readRefreshFacts(
     }
     return { ok: false, reason: err instanceof Error ? err.message : String(err) };
   }
+}
+
+/** Whether the base moved between the two reads, and what to say if it did. */
+function baseMoved(pull: PullRead, cmp: CompareRead): string | null {
+  const before = pull.base?.sha;
+  const after = cmp.base_commit?.sha;
+  if (before && after && before !== after) {
+    return `not refreshed: ${pull.base?.ref ?? 'the base'} moved from ${before} to ${after} between the two reads, so mergeability and behind-by would not describe one moment — the delivery for that push asks again`;
+  }
+  return null;
 }
 
 /** Whether GitHub's answer is about the target asked about, and why not if it is not. */
@@ -131,12 +144,20 @@ function targetMismatch(args: RefreshTarget, pull: PullRead): string | null {
  * `main` to `release` on the same commits — and a behind-by computed against
  * `main` landing on a row that says `release` is the same wrong number a stale
  * head would give, reached without anybody pushing anything.
+ *
+ * `startedAt` is the third half of it, and it is when the read STARTED rather
+ * than when it finished. Two pushes to one base start two refreshes for the same
+ * row at the same target, and they may finish in either order; the row keeps the
+ * answer of the one that started last, whichever returned first. Keying on the
+ * finish time would make the loser's completion look newer and let a read of an
+ * older base overwrite a read of a newer one.
  */
 export async function storeRefresh(
   rowId: string,
-  target: { headSha: string; baseRef: string },
+  target: { headSha: string; baseRef: string; startedAt?: Date },
   outcome: RefreshOutcome,
 ): Promise<boolean> {
+  const startedAt = target.startedAt ?? new Date();
   const set = outcome.ok
     ? {
         behindBy: outcome.behindBy,
@@ -145,13 +166,13 @@ export async function storeRefresh(
         mergeableState: outcome.mergeableState,
         ...(outcome.baseSha ? { baseSha: outcome.baseSha } : {}),
         refreshedForHead: target.headSha,
-        refreshedAt: new Date(),
+        refreshedAt: startedAt,
         refreshError: null,
         updatedAt: new Date(),
       }
     : {
         refreshedForHead: target.headSha,
-        refreshedAt: new Date(),
+        refreshedAt: startedAt,
         refreshError: outcome.reason,
         updatedAt: new Date(),
       };
@@ -163,6 +184,7 @@ export async function storeRefresh(
         eq(repoPullRequests.id, rowId),
         eq(repoPullRequests.headSha, target.headSha),
         eq(repoPullRequests.baseRef, target.baseRef),
+        or(isNull(repoPullRequests.refreshedAt), lte(repoPullRequests.refreshedAt, startedAt)),
       ),
     )
     .returning({ id: repoPullRequests.id });
@@ -191,11 +213,12 @@ export async function refreshStoredPullRequest(
     .where(eq(repoPullRequests.id, rowId))
     .limit(1);
   if (!row) return false;
+  const startedAt = new Date();
   const outcome = await readRefreshFacts(client, row);
   if (!outcome.ok) {
     logger.info({ rowId, reason: outcome.reason }, 'repo projection: refresh could not answer');
   }
-  return storeRefresh(rowId, row, outcome);
+  return storeRefresh(rowId, { ...row, startedAt }, outcome);
 }
 
 /**

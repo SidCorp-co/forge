@@ -145,6 +145,59 @@ describe('a refresh is fenced on the base as well as the head', () => {
   });
 });
 
+describe('two refreshes for one row are ordered by when they started', () => {
+  // cm:guard TWO pushes to one base start two refreshes for one row at the same head and the same base, so head and base cannot tell them apart. They may finish in either order, and the row must keep the answer of the one that started LAST — keying on the finish time instead would let a read of an older base overwrite a read of a newer one whenever the older read happened to be slower.
+  it('keeps the later-started answer when the earlier-started read finishes last', async () => {
+    await g.seedIssue(g.projectId, 4242);
+    await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
+    const id = String((await g.row())?.id);
+    const earlier = new Date('2026-09-17T01:00:00Z');
+    const later = new Date('2026-09-17T01:00:05Z');
+    const target = { headSha: H1, baseRef: 'main' };
+    const facts = (behindBy: number) => ({
+      ok: true as const,
+      behindBy,
+      aheadBy: 1,
+      mergeable: true,
+      mergeableState: 'clean',
+      baseSha: BASE,
+    });
+
+    await expect(g.mods.storeRefresh(id, { ...target, startedAt: later }, facts(2))).resolves.toBe(
+      true,
+    );
+    await expect(
+      g.mods.storeRefresh(id, { ...target, startedAt: earlier }, facts(99)),
+    ).resolves.toBe(false);
+    expect((await g.row())?.behind_by).toBe(2);
+  });
+
+  it('takes the later-started answer when the reads finish in the order they started', async () => {
+    await g.seedIssue(g.projectId, 4242);
+    await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
+    const id = String((await g.row())?.id);
+    const target = { headSha: H1, baseRef: 'main' };
+    const facts = (behindBy: number) => ({
+      ok: true as const,
+      behindBy,
+      aheadBy: 1,
+      mergeable: true,
+      mergeableState: 'clean',
+      baseSha: BASE,
+    });
+
+    await g.mods.storeRefresh(
+      id,
+      { ...target, startedAt: new Date('2026-09-17T01:00:00Z') },
+      facts(9),
+    );
+    await expect(
+      g.mods.storeRefresh(id, { ...target, startedAt: new Date('2026-09-17T01:00:05Z') }, facts(3)),
+    ).resolves.toBe(true);
+    expect((await g.row())?.behind_by).toBe(3);
+  });
+});
+
 describe('a delivery that cannot read at all says so on the rows', () => {
   const noInstallation = {
     config: { owner: 'SidCorp-co', repo: 'forge' },

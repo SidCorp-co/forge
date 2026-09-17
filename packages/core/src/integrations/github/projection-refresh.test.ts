@@ -140,6 +140,39 @@ describe('the two reads an event invalidated', () => {
     ).resolves.toMatchObject({ ok: true, behindBy: 2, mergeableState: 'clean' });
   });
 
+  // cm:guard the two reads are not one snapshot. A push landing between them pairs a mergeability computed against one base revision with counts computed against another, and neither the database fence nor the head check can see it — the row's head and base are both still right.
+  it('refuses the pair when the base moved between the two reads', async () => {
+    const get = (async (path: string) =>
+      path.includes('/compare/')
+        ? { ahead_by: 1, behind_by: 5, base_commit: { sha: 'd'.repeat(40) } }
+        : {
+            head: { sha: HEAD },
+            base: { ref: 'main', sha: 'c'.repeat(40) },
+            mergeable: true,
+            mergeable_state: 'clean',
+          }) as unknown as GitHubRepoClient['get'];
+    const out = await readRefreshFacts(client(get), { number: 5, baseRef: 'main', headSha: HEAD });
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.reason).toMatch(
+      /main moved from c+ to d+ between the two reads/,
+    );
+  });
+
+  it('accepts the pair when the base is the same commit in both reads', async () => {
+    const get = (async (path: string) =>
+      path.includes('/compare/')
+        ? { ahead_by: 1, behind_by: 5, base_commit: { sha: 'c'.repeat(40) } }
+        : {
+            head: { sha: HEAD },
+            base: { ref: 'main', sha: 'c'.repeat(40) },
+            mergeable: true,
+            mergeable_state: 'clean',
+          }) as unknown as GitHubRepoClient['get'];
+    await expect(
+      readRefreshFacts(client(get), { number: 5, baseRef: 'main', headSha: HEAD }),
+    ).resolves.toMatchObject({ ok: true, behindBy: 5, mergeableState: 'clean' });
+  });
+
   it('does not reach the compare when the pull read already failed', async () => {
     const get = vi.fn(async () => {
       throw new GitHubReadError(404, 'gone');
