@@ -40,13 +40,10 @@ import {
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { RETIRED_STATE_CONTEXT_MESSAGE, readAgentConfig } from './agent-config.js';
+import { environmentsPatchSchema, RETIRED_PREVIEW_DEPLOY_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
-import {
-  environmentsPatchSchema,
-  RETIRED_PREVIEW_DEPLOY_MESSAGE,
-} from './environments.js';
 import {
   RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
   RETIRED_PROJECT_FACTS_MESSAGE,
@@ -168,7 +165,10 @@ const idParamSchema = z.object({
  * web-v2 renders it and every other route on this file answers with it. Only the message grows the
  * path it was always about.
  */
-function flatten(error: z.ZodError): { formErrors: string[]; fieldErrors: Record<string, string[]> } {
+function flatten(error: { issues: readonly { path: readonly PropertyKey[]; message: string }[] }): {
+  formErrors: string[];
+  fieldErrors: Record<string, string[]>;
+} {
   const formErrors: string[] = [];
   const fieldErrors: Record<string, string[]> = {};
   for (const issue of error.issues) {
@@ -179,7 +179,9 @@ function flatten(error: z.ZodError): { formErrors: string[]; fieldErrors: Record
     }
     const key = String(head);
     const where = rest.length > 0 ? `${key}.${rest.join('.')}: ` : '';
-    (fieldErrors[key] ??= []).push(`${where}${issue.message}`);
+    const bucket = fieldErrors[key] ?? [];
+    bucket.push(`${where}${issue.message}`);
+    fieldErrors[key] = bucket;
   }
   return { formErrors, fieldErrors };
 }

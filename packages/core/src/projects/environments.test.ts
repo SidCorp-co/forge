@@ -86,7 +86,11 @@ describe('normalizeEnvironments — the live side', () => {
   it('answers commitUrl and commitPath separately from url', () => {
     expect(
       normalizeEnvironments({
-        live: { url: 'https://app.x', commitUrl: 'https://api.x/health', commitPath: 'data.commit' },
+        live: {
+          url: 'https://app.x',
+          commitUrl: 'https://api.x/health',
+          commitPath: 'data.commit',
+        },
       }).live,
     ).toEqual({
       url: 'https://app.x',
@@ -165,11 +169,16 @@ describe('environmentsPatchSchema — the catchall, at every level', () => {
       },
       live: { url: 'https://app.x', liveKnob: 'l' },
       testCredentials: [{ label: 'A', username: 'u', password: 'p', credKnob: 'c' }],
-    }) as Record<string, Record<string, unknown>>;
+    }) as unknown as {
+      topKnob: unknown;
+      preview: { previewKnob: unknown; urls: Record<string, unknown>[] };
+      live: { liveKnob: unknown };
+      testCredentials: Record<string, unknown>[];
+    };
     expect(parsed.topKnob).toBe('t');
     expect(parsed.preview.previewKnob).toBe('p');
-    expect((parsed.preview.urls as Record<string, unknown>[])[0]?.rowKnob).toBe('r');
+    expect(parsed.preview.urls[0]?.rowKnob).toBe('r');
     expect(parsed.live.liveKnob).toBe('l');
-    expect((parsed.testCredentials as unknown as Record<string, unknown>[])[0]?.credKnob).toBe('c');
+    expect(parsed.testCredentials[0]?.credKnob).toBe('c');
   });
 });

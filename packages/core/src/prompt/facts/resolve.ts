@@ -19,10 +19,6 @@ import {
 } from '../../db/schema.js';
 import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/integration-guides.js';
 import { grantHolds } from '../../integrations/agent-access.js';
-import {
-  type NormalizedEnvironments,
-  normalizeEnvironments,
-} from '../../projects/environments.js';
 import { getIntegration } from '../../integrations/registry.js';
 import { effectiveConfig, listBindingsForProject } from '../../integrations/store.js';
 import {
@@ -39,12 +35,14 @@ import {
   type KnowledgeObligation,
   missingProjectKnowledge,
 } from '../../projects/autonomous-contract.js';
+import { type NormalizedEnvironments, normalizeEnvironments } from '../../projects/environments.js';
 import {
   ALWAYS_INJECT_MAX_CHARS,
   type RESERVED_PROJECT_FACT_KEYS,
   unreservedProjectKeyRefusal,
 } from '../../projects/project-facts.js';
 import { effectivePipelineStates } from './effective-ladder.js';
+import { renderTestUrls, TEST_CREDS_POINTER } from './environment-keys.js';
 import {
   type FactRenderContext,
   FORGE_FACTS,
@@ -232,37 +230,10 @@ export function makeProjectResolver(src: {
     'production-branch': () =>
       '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where the project declares `releaseModel: promote`. Update this skill body.',
     'repo-path': () => src.repoPath ?? undefined,
-    // cm:guard BOTH sides, each labelled, because after ISS-1069 a project has two and an agent
-    // handed a bare list cannot tell which address it is allowed to write to. A one-box project
-    // renders only the live line; `preview: null` is that project saying it has no other side,
-    // and rendering nothing at all for it would have been the old shape's answer.
-    'test-urls': () => {
-      const lines = [
-        ...(src.environments.preview
-          ? [
-              ...(src.environments.preview.url ? [`- Preview: ${src.environments.preview.url}`] : []),
-              ...(src.environments.preview.apiUrl
-                ? [`- Preview API: ${src.environments.preview.apiUrl}`]
-                : []),
-              ...src.environments.preview.urls.map(
-                (u) => `- Preview${u.label ? ` (${u.label})` : ''}: ${u.url}`,
-              ),
-            ]
-          : []),
-        ...(src.environments.live.url ? [`- Live: ${src.environments.live.url}`] : []),
-        ...(src.environments.live.apiUrl ? [`- Live API: ${src.environments.live.apiUrl}`] : []),
-      ];
-      return lines.length > 0 ? lines.join('\n') : undefined;
-    },
-    // cm:guard a POINTER and never the value: this string is spliced VERBATIM into the
-    // device-installed SKILL.md, so whatever it says lands on disk.
-    'test-creds': () =>
-      'Fetch test credentials at runtime via `forge_projects.get` → `environments.testCredentials` (never hardcode secrets).',
-    // cm:guard the KEY stays `test-notes` though the FIELD is now `limits`. Skill bodies in other
-    // repositories splice this name, an unresolved `{{project:<key>}}` renders as the empty string,
-    // and no gate in this repo can see a skill body in another one — so renaming the key would
-    // delete a sentence from an agent's prompt with nobody told. `production-branch` above is the
-    // same decision (ISS-1046, ISS-1069).
+    'test-urls': () => renderTestUrls(src.environments),
+    'test-creds': () => TEST_CREDS_POINTER,
+    // cm:guard the KEY stays `test-notes` though the FIELD is now `limits` — the reason is stated
+    // once, on `prompt/facts/environment-keys.ts`, which owns all three of these keys.
     'test-notes': () => src.environments.limits ?? undefined,
     integrations: () => renderIntegrations(src.integrations),
   };

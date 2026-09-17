@@ -437,22 +437,18 @@ describe('forge_projects.create', () => {
   });
 });
 
+function mockUpdateReturning(row: Record<string, unknown>) {
+  updateImpl.mockImplementationOnce(() => ({
+    set: () => ({ where: () => ({ returning: () => Promise.resolve([row]) }) }),
+  }));
+}
+
 describe('forge_projects.update', () => {
   /**
    * The gate is ONE authz query (effectiveProjectRole) followed by an
    * org-tier check: org owner/admin on the project's org may update; a
    * merely-invited project admin may NOT.
    */
-  function mockUpdateReturning(row: Record<string, unknown>) {
-    updateImpl.mockImplementationOnce(() => ({
-      set: () => ({
-        where: () => ({
-          returning: () => Promise.resolve([row]),
-        }),
-      }),
-    }));
-  }
-
   it('org owner applies patch and returns the updated row', async () => {
     mockAccess({ memberRole: null, orgRole: 'owner' });
     mockUpdateReturning({
@@ -474,110 +470,100 @@ describe('forge_projects.update', () => {
     expect(res.project.repoPath).toBe('/srv/a');
     // Sensitive REST-only fields must NOT appear in the response shape so a
     // future .returning() refactor that selects them can't ship silently.
-    for (const k of [
-      'apiKey',
-      'webhookSecret',
-      'agentConfig',
-      'environments',
-      'defaultDeviceId',
-    ]) {
+    for (const k of ['apiKey', 'webhookSecret', 'agentConfig', 'environments', 'defaultDeviceId']) {
       expect(res.project).not.toHaveProperty(k);
     }
     // exactly one select — the single org-aware authz query.
     expect(selectImpl).toHaveBeenCalledTimes(1);
   });
+});
 
-  // cm:guard `environments` holds testCredentials and the live address; the limits write is a
-  // READ-MODIFY-WRITE into the existing jsonb. Replacing it would silently delete the project's
-  // test logins the first time somebody recorded a limit — which is the price stated for keeping
-  // REST's wholesale-replacement semantics beside this narrow door (ISS-1069).
-  it('environmentsLimits writes limits and keeps the live side, the preview side, the credentials and an unknown key', async () => {
-    mockAccess({ memberRole: null, orgRole: 'owner' });
-    mockSelect([
-      {
-        environments: {
-          live: { url: 'https://app.x', commitUrl: 'https://api.x/health', commitPath: 'commit' },
-          preview: { url: 'https://beta.x', apiUrl: null, urls: [] },
-          testCredentials: [{ label: 'Admin', username: 'bot@x', password: 'keep-me' }],
-          futureKnob: 'keep-me-too',
-        },
-      },
-    ]);
+// cm:why its own describe, because the block above was at the function line budget. The subject is narrow: REST replaces the column wholesale and this door must do the opposite, so an agent recording a limit cannot delete the credentials beside it (ISS-1069).
+describe('forge_projects.update · environments', () => {
+  const STORED = {
+    live: { url: 'https://app.x', commitUrl: 'https://api.x/health', commitPath: 'commit' },
+    preview: { url: 'https://beta.x', apiUrl: null, urls: [] },
+    testCredentials: [{ label: 'Admin', username: 'bot@x', password: 'keep-me' }],
+    futureKnob: 'keep-me-too',
+  };
+
+  function captureUpdate(): () => Record<string, unknown> | undefined {
     let applied: Record<string, unknown> | undefined;
-    updateImpl.mockImplementationOnce(() => ({
-      set: (v: Record<string, unknown>) => {
-        applied = v;
-        return { where: () => ({ returning: () => Promise.resolve([{ id: PROJECT_A }]) }) };
-      },
-    }));
+    const set = (v: Record<string, unknown>) => {
+      applied = v;
+      return { where: () => ({ returning: () => Promise.resolve([{ id: PROJECT_A }]) }) };
+    };
+    updateImpl.mockImplementationOnce(() => ({ set }));
+    return () => applied;
+  }
 
-    const tool = forgeProjectsUpdateTool(patCtx());
-    await tool.handler({
+  // cm:guard a READ-MODIFY-WRITE and never a replacement: `environments` holds the credentials and
+  // the live address, so a door that replaced the blob would delete a project's test logins the
+  // first time somebody recorded a limit. That is the price stated for keeping REST's own
+  // wholesale-replacement semantics beside this narrow write.
+  it('writes limits and keeps the live side, the preview side, the credentials and an unknown key', async () => {
+    mockAccess({ memberRole: null, orgRole: 'owner' });
+    mockSelect([{ environments: STORED }]);
+    const applied = captureUpdate();
+
+    await forgeProjectsUpdateTool(patCtx()).handler({
       projectId: PROJECT_A,
       patch: { environmentsLimits: 'the QA account cannot reach this project' },
     });
 
-    const env = applied?.environments as Record<string, unknown>;
-    expect(env.limits).toBe('the QA account cannot reach this project');
-    expect(env.live).toEqual({
-      url: 'https://app.x',
-      commitUrl: 'https://api.x/health',
-      commitPath: 'commit',
+    expect(applied()?.environments).toEqual({
+      ...STORED,
+      limits: 'the QA account cannot reach this project',
     });
-    expect(env.preview).toEqual({ url: 'https://beta.x', apiUrl: null, urls: [] });
-    expect(env.testCredentials).toEqual([
-      { label: 'Admin', username: 'bot@x', password: 'keep-me' },
-    ]);
-    expect(env.futureKnob).toBe('keep-me-too');
   });
 
-  it('environmentsLimits: null clears the limits and keeps the rest', async () => {
+  it('null clears the limits and keeps the rest', async () => {
     mockAccess({ memberRole: null, orgRole: 'owner' });
-    mockSelect([{ environments: { limits: 'old', testCredentials: [{ label: 'Admin' }] } }]);
-    let applied: Record<string, unknown> | undefined;
-    updateImpl.mockImplementationOnce(() => ({
-      set: (v: Record<string, unknown>) => {
-        applied = v;
-        return { where: () => ({ returning: () => Promise.resolve([{ id: PROJECT_A }]) }) };
-      },
-    }));
-    const tool = forgeProjectsUpdateTool(patCtx());
-    await tool.handler({ projectId: PROJECT_A, patch: { environmentsLimits: null } });
-    const env = applied?.environments as Record<string, unknown>;
-    expect(env.limits).toBeNull();
-    expect(env.testCredentials).toEqual([{ label: 'Admin' }]);
+    mockSelect([{ environments: STORED }]);
+    const applied = captureUpdate();
+
+    await forgeProjectsUpdateTool(patCtx()).handler({
+      projectId: PROJECT_A,
+      patch: { environmentsLimits: null },
+    });
+
+    expect(applied()?.environments).toEqual({ ...STORED, limits: null });
   });
 
-  // cm:guard ISS-1069 — the retired key is refused with a message NAMING its replacement, not with
-  // zod's own "Unrecognized key". An agent holding a tool description one version old is told what
-  // to send instead, which is the whole difference between a refusal and a dead end.
-  it('previewDeployNotes is refused by name, and nothing is written', async () => {
-    mockAccess({ memberRole: null, orgRole: 'owner' });
-    const tool = forgeProjectsUpdateTool(patCtx());
-    await expect(
-      tool.handler({ projectId: PROJECT_A, patch: { previewDeployNotes: 'anything' } }),
-    ).rejects.toThrow(/environmentsLimits/);
-    expect(updateImpl).not.toHaveBeenCalled();
-  });
+  // cm:guard the retired key is refused with a message NAMING its replacement, not with zod's own
+  // "Unrecognized key". An agent holding a tool description one version old is told what to send
+  // instead, which is the whole difference between a refusal and a dead end.
+  const RETIRED: [string, string | null][] = [
+    ['a value', 'anything'],
+    ['null', null],
+  ];
+  it.each(RETIRED)(
+    'refuses previewDeployNotes carrying %s, by name, writing nothing',
+    async (_l, value) => {
+      mockAccess({ memberRole: null, orgRole: 'owner' });
+      await expect(
+        forgeProjectsUpdateTool(patCtx()).handler({
+          projectId: PROJECT_A,
+          patch: { previewDeployNotes: value },
+        }),
+      ).rejects.toThrow(/environmentsLimits/);
+      expect(updateImpl).not.toHaveBeenCalled();
+    },
+  );
 
-  it('previewDeployNotes: null is refused by name too', async () => {
-    mockAccess({ memberRole: null, orgRole: 'owner' });
-    const tool = forgeProjectsUpdateTool(patCtx());
-    await expect(
-      tool.handler({ projectId: PROJECT_A, patch: { previewDeployNotes: null } }),
-    ).rejects.toThrow(/environmentsLimits/);
-    expect(updateImpl).not.toHaveBeenCalled();
-  });
-
-  it('a non-org-admin cannot write the limits either', async () => {
+  it('refuses a non-org-admin the limits write too', async () => {
     mockAccess({ memberRole: 'admin', orgRole: 'member' });
-    const tool = forgeProjectsUpdateTool(patCtx());
     await expect(
-      tool.handler({ projectId: PROJECT_A, patch: { environmentsLimits: 'nope' } }),
+      forgeProjectsUpdateTool(patCtx()).handler({
+        projectId: PROJECT_A,
+        patch: { environmentsLimits: 'nope' },
+      }),
     ).rejects.toThrow(/FORBIDDEN/);
     expect(updateImpl).not.toHaveBeenCalled();
   });
+});
 
+describe('forge_projects.update · the rest', () => {
   it('org admin (non-owner) is accepted', async () => {
     mockAccess({ memberRole: null, orgRole: 'admin' });
     mockUpdateReturning({
@@ -694,6 +680,42 @@ describe('forge_projects.update', () => {
   });
 });
 
+const SHARED_CREATED_AT = new Date('2026-05-25T00:00:00.000Z');
+
+const FULL_PROJECT_ROW = {
+  id: PROJECT_A,
+  slug: 'a',
+  name: 'A',
+  description: 'desc',
+  orgId: ORG_ID,
+  createdBy: OWNER_ID,
+  repoPath: '/srv/a',
+  workspaceSetup: 'pnpm install --frozen-lockfile',
+  baseBranch: 'main',
+  liveBranch: 'main',
+  defaultDeviceId: DEVICE_ID,
+  environments: {
+    preview: {
+      url: 'https://stg.example.com',
+      apiUrl: 'https://api.stg.example.com',
+      urls: [{ label: 'Test', url: 'https://test.example.com' }],
+    },
+    live: {
+      url: 'https://app.example.com',
+      apiUrl: null,
+      commitUrl: 'https://api.example.com/health',
+      commitPath: 'data.commit',
+    },
+    testCredentials: [{ label: 'qa', username: 'qa@x', password: 'p4ss' }],
+    limits: 'no outbound email',
+  },
+  createdAt: SHARED_CREATED_AT,
+};
+
+function mockProjectSelect(row: unknown | null) {
+  mockSelect(row === null ? [] : [row]);
+}
+
 describe('forge_projects.get', () => {
   /**
    * Handler issues queries in this fixed order:
@@ -701,42 +723,6 @@ describe('forge_projects.get', () => {
    *   2. effectiveProjectRole — single org-aware authz select; a null
    *      effective role → NOT_FOUND.
    */
-  const CREATED_AT = new Date('2026-05-25T00:00:00.000Z');
-
-  const FULL_PROJECT_ROW = {
-    id: PROJECT_A,
-    slug: 'a',
-    name: 'A',
-    description: 'desc',
-    orgId: ORG_ID,
-    createdBy: OWNER_ID,
-    repoPath: '/srv/a',
-    workspaceSetup: 'pnpm install --frozen-lockfile',
-    baseBranch: 'main',
-    liveBranch: 'main',
-    defaultDeviceId: DEVICE_ID,
-    environments: {
-      preview: {
-        url: 'https://stg.example.com',
-        apiUrl: 'https://api.stg.example.com',
-        urls: [{ label: 'Test', url: 'https://test.example.com' }],
-      },
-      live: {
-        url: 'https://app.example.com',
-        apiUrl: null,
-        commitUrl: 'https://api.example.com/health',
-        commitPath: 'data.commit',
-      },
-      testCredentials: [{ label: 'qa', username: 'qa@x', password: 'p4ss' }],
-      limits: 'no outbound email',
-    },
-    createdAt: CREATED_AT,
-  };
-
-  function mockProjectSelect(row: unknown | null) {
-    mockSelect(row === null ? [] : [row]);
-  }
-
   it('org owner reads project — effective role admin, full shape returned', async () => {
     mockProjectSelect(FULL_PROJECT_ROW);
     mockAccess({ memberRole: null, orgRole: 'owner' });
@@ -864,7 +850,10 @@ describe('forge_projects.get', () => {
     expect(res.project).not.toHaveProperty('webhookSecret');
     expect(res.project).not.toHaveProperty('apiKey');
   });
+});
 
+// cm:why its own describe, for the reason the update block was split: that callback was at the function line budget. The subject is the READING — the handler hand-builds its response, so a column selected and then dropped from the return literal yields a key holding `undefined`, which is how `workspaceSetup` shipped invisible on 2026-08-18.
+describe('forge_projects.get · environments', () => {
   it('environments=null returns normalized defaults instead of crashing', async () => {
     mockProjectSelect({ ...FULL_PROJECT_ROW, environments: null });
     mockAccess({ memberRole: 'member', orgRole: null });

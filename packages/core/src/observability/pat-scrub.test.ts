@@ -374,8 +374,15 @@ describe('the deployment credentials, at their `environments` path', () => {
     },
   };
 
-  function scrubbed(): Record<string, Record<string, unknown>> {
-    const body = structuredClone(PLANTED) as Record<string, Record<string, unknown>>;
+  type Env = {
+    live: Record<string, unknown>;
+    preview: Record<string, unknown>;
+    limits: unknown;
+    testCredentials: unknown;
+  };
+
+  function scrubbed(): { environments: Env } {
+    const body = structuredClone(PLANTED) as unknown as { environments: Env };
     scrubBodyKeys(body);
     return body;
   }
@@ -394,8 +401,7 @@ describe('the deployment credentials, at their `environments` path', () => {
   // useless: the URLs and the limits are what an operator needs to read a card at all, and they are
   // not secrets. This is what stops a future widening of the key set from being invisible.
   it('leaves the live url, the preview url and the limits unredacted in the same payload', () => {
-    const out = scrubbed();
-    const env = out.environments as Record<string, Record<string, unknown>>;
+    const env = scrubbed().environments;
     expect(env.live.url).toBe('https://app.example.com');
     expect(env.live.commitUrl).toBe('https://api.example.com/health');
     expect(env.preview.url).toBe('https://stg.example.com');

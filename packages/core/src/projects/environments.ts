@@ -166,9 +166,10 @@ export function normalizeEnvironments(raw: unknown): NormalizedEnvironments {
     typeof raw === 'object' && raw !== null && !Array.isArray(raw)
       ? (raw as Record<string, unknown>)
       : {};
-  const live = (
-    typeof obj.live === 'object' && obj.live !== null ? obj.live : {}
-  ) as Record<string, unknown>;
+  const live = (typeof obj.live === 'object' && obj.live !== null ? obj.live : {}) as Record<
+    string,
+    unknown
+  >;
   return {
     preview: readPreview(obj.preview),
     live: {

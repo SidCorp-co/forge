@@ -646,7 +646,16 @@ describe('PATCH /api/projects/:id', () => {
     });
     expect(res.status).toBe(400);
   });
+});
 
+/**
+ * ISS-1069 — `environments` on PATCH, as its own block.
+ *
+ * Its own `describe` and not a longer one above, because the block above was at the function line
+ * budget: every case here is about one field of one column, and the cases above are about the rest
+ * of the route.
+ */
+describe('PATCH /api/projects/:id · environments', () => {
   // cm:guard ISS-1069 — the PATCH contract for `environments` is WHOLESALE REPLACEMENT and not a
   // merge, at any depth. The two cases below are the two halves of that claim: what a partial patch
   // does to the sides it did not name, and what `null` does. Relax either into a merge and every

@@ -423,8 +423,6 @@ describe('makeProjectResolver — the branch a skill body is handed', () => {
     });
   }
 
-  const env = (raw: unknown) => ({ environments: normalizeEnvironments(raw) });
-
   it('resolves `live-branch` under `promote`', () => {
     expect(resolver()('live-branch')).toBe('production');
   });
@@ -475,59 +473,5 @@ describe('makeProjectResolver — the branch a skill body is handed', () => {
   it('still resolves the reserved keys, which are derived from project columns', () => {
     expect(resolver()('base-branch')).toBe('main');
     expect(resolver()('repo-path')).toBe('/repo');
-  });
-
-  // cm:guard ISS-1069 — the three environment keys keep their SPELLINGS while the fields behind
-  // them move. Skill bodies in other repositories splice `test-urls`, `test-creds` and
-  // `test-notes`, an unresolved `{{project:<key>}}` renders as the empty string, and no gate in
-  // this repo can see a skill body in another one. Rename a key and a sentence disappears from an
-  // agent's prompt with nobody told.
-  describe('the environment keys, after previewDeploy became environments', () => {
-    const FILLED = {
-      preview: {
-        url: 'https://staging.example.com',
-        apiUrl: 'https://api.staging.example.com',
-        urls: [{ label: 'Mailbox', url: 'https://mail.staging.example.com' }],
-      },
-      live: { url: 'https://app.example.com' },
-      limits: 'The QA account reaches no other project.',
-    };
-
-    it('renders both sides under `test-urls`, each labelled with the side it is on', () => {
-      const out = resolver(env(FILLED))('test-urls') ?? '';
-      expect(out).toContain('- Preview: https://staging.example.com');
-      expect(out).toContain('- Preview API: https://api.staging.example.com');
-      expect(out).toContain('- Preview (Mailbox): https://mail.staging.example.com');
-      expect(out).toContain('- Live: https://app.example.com');
-    });
-
-    it('renders nothing for `test-urls` on a project that declares neither side', () => {
-      expect(resolver()('test-urls')).toBeUndefined();
-    });
-
-    it('renders only the live line for a one-box project whose preview is null', () => {
-      const out = resolver(env({ preview: null, live: { url: 'https://app.example.com' } }))(
-        'test-urls',
-      );
-      expect(out).toBe('- Live: https://app.example.com');
-    });
-
-    it('renders `test-notes` from `environments.limits`', () => {
-      expect(resolver(env(FILLED))('test-notes')).toBe('The QA account reaches no other project.');
-    });
-
-    // cm:guard a POINTER and never the value. This string is spliced VERBATIM into a
-    // device-installed SKILL.md, so a resolver that rendered the stored credential would write it
-    // to disk on every paired box.
-    it('renders `test-creds` as a pointer at the new path and never a stored value', () => {
-      const out =
-        resolver(
-          env({ ...FILLED, testCredentials: [{ label: 'Admin', username: 'qa', password: 'pw' }] }),
-        )('test-creds') ?? '';
-      expect(out).toContain('environments.testCredentials');
-      expect(out).not.toContain('previewDeploy');
-      expect(out).not.toContain('pw');
-      expect(out).not.toContain('qa');
-    });
   });
 });
