@@ -646,6 +646,8 @@ pub async fn run(
             Arc::new(pool_jobs::NoRecords)
         }
     };
+    // cm:guard the claim arm waits for adoption, and the barrier is not tidiness. Adoption compares what this box RECORDED against what it is RUNNING, and a claim landing between those two reads looks to it exactly like a job whose pane did not survive — so the box would report a job core had just stamped as dead, and the release would end before its agent had spoken. A `watch` and not a `Notify`, because the master loop may reach its first sweep either side of this and a missed notification is the same bug wearing a different hat.
+    let (adopted_tx, adopted_rx) = tokio::sync::watch::channel(false);
     {
         let client = (*client).clone();
         let job_panes = job_panes.clone();
@@ -661,6 +663,8 @@ pub async fn run(
                 &job_panes,
             )
             .await;
+            // cm:guard sent even when adoption found nothing, and ALWAYS — a barrier that only opened on a successful pass would leave a box with no panes to adopt claiming nothing for the rest of its life.
+            let _ = adopted_tx.send(true);
             let mut tick = tokio::time::interval(POOL_SUPERVISE_INTERVAL);
             loop {
                 tokio::select! {
@@ -735,6 +739,7 @@ pub async fn run(
         let activity = activity.clone();
         let job_panes = job_panes.clone();
         let job_records = job_records.clone();
+        let adopted_rx = adopted_rx.clone();
         tokio::spawn(async move {
             master::run(
                 client,
@@ -743,6 +748,7 @@ pub async fn run(
                 activity,
                 job_panes,
                 job_records,
+                adopted_rx,
                 cancel_rx,
                 wake_rx,
             )

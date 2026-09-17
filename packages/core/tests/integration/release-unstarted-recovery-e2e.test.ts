@@ -16,6 +16,7 @@
  * Postgres can be asked whether both statements can win.
  */
 
+import { readFile } from 'node:fs/promises';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -244,6 +245,161 @@ describe('the fence against a box that is starting the job', () => {
     `)) as unknown as Array<{ id: string }>;
     expect(started).toHaveLength(0);
     expect(await jobStatus(jobId)).toBe('cancelled');
+  });
+});
+
+describe('a fence whose cleanup never ran', () => {
+  /**
+   * The crash window codex F4 named: `fenceJob` commits, and the worker dies
+   * before the roster is handed back. The pass cannot find that row again --
+   * its selection is `status = 'queued'` and the job is now `cancelled`.
+   *
+   * It does not have to. What the crash leaves is a `pipeline_run` still
+   * `running` with every child job terminal, which is the INVERSE half of this
+   * repo's own stated invariant, and `pipeline/runs-concluded.ts` closes exactly
+   * that on the sweeper tick -- whereupon `release-batch/claim-subscriber.ts`
+   * runs `recoverStrandedReleasing` on the terminal transition. The roster comes
+   * back one tick later through a path that owes nothing to this module.
+   *
+   * This asserts that chain rather than claiming it, because the claim is what
+   * makes the fence-first ordering safe to ship.
+   */
+  it('is still recovered, by the invariant that owns a run whose jobs are all terminal', async () => {
+    const { hooks } = await import('../../src/pipeline/hooks.js');
+    const { registerReleaseBatchClaimSubscriber } = await import(
+      '../../src/release-batch/claim-subscriber.js'
+    );
+    const { reapConcludedRuns } = await import('../../src/pipeline/runs-concluded.js');
+    registerReleaseBatchClaimSubscriber(hooks);
+
+    const a = await insertIssue();
+    const { runId, jobId } = await claim([a]);
+    // the fence landed and nothing after it ran
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'cancelled', finished_at = now() WHERE id = ${jobId}
+    `);
+    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+
+    // cm:guard the quiet window is crossed by moving the CALLER's clock, never by ageing the row: `selectConcluded` binds its cutoff from the `now` it is handed, and its own guard says a pass that read the server clock instead would make this assertion prove nothing about the window it set.
+    const anHourOn = new Date(Date.now() + 61 * 60_000);
+    expect(await reapConcludedRuns(anHourOn)).toEqual({ reaped: 1 });
+
+    expect(await runStatus(runId)).toBe('cancelled');
+    await expect
+      .poll(async () => (await stored(a)).status, { timeout: 5_000 })
+      .toBe('awaiting_release');
+    expect((await stored(a)).claim).toBeNull();
+  });
+});
+
+describe('a fence this pass already made', () => {
+  // cm:guard the window codex F2 named, closed at the TICK rather than at the hour. A worker that
+  // died after `fenceJob` left a job `cancelled` under a running run with the roster still claimed,
+  // and the first selection arm can never see it again. This asserts the second arm picks it up on
+  // the next pass, hands the roster back and still raises the wedge -- which is the part the
+  // invariant fallback below never delivers at all.
+  it('is picked up on the next tick, roster and wedge both', async () => {
+    const a = await insertIssue();
+    const { runId, jobId } = await claim([a]);
+    await ageJob(jobId, overdue());
+    // the fence committed and the worker died before anything after it
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'cancelled', finished_at = now(),
+        error = 'no box took this release batch before its deadline, so it never started'
+      WHERE id = ${jobId}
+    `);
+    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+    expect(await wedgesFor(jobId)).toBe(0);
+
+    expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 1 });
+
+    expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
+    expect(await runStatus(runId)).toBe('cancelled');
+    expect(await wedgesFor(jobId)).toBe(1);
+  });
+
+  // cm:guard the arm is narrowed to THIS pass's own reason, and the narrowing is the test: a
+  // `cancelled` release job is the ordinary end of an operator cancel or a failed run, and an arm
+  // reading every one of them would walk a roster a person had deliberately left where it is.
+  it('leaves a batch cancelled by anything else alone', async () => {
+    const a = await insertIssue();
+    const { runId, jobId } = await claim([a]);
+    await ageJob(jobId, overdue());
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'cancelled', finished_at = now(),
+        error = 'an operator cancelled this release'
+      WHERE id = ${jobId}
+    `);
+
+    expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 0 });
+
+    expect(await stored(a)).toMatchObject({ status: 'releasing', claim: runId });
+  });
+
+  /**
+   * The last step this pass can lose, and the only one no tick can re-reach.
+   *
+   * Closing the run is what stops the resume arm matching — it requires
+   * `pr.status = 'running'` — so a worker that died between the close and the
+   * wedge would leave an owner permanently uninformed about a roster that moved
+   * under them, and no later tick could find the row. Everything before the
+   * close is re-entrant.
+   *
+   * It is asserted off the source and not by injecting a crash, because the
+   * property IS an ordering: there is no state a running pass can be put in
+   * where the two orders answer differently, which is exactly why planting the
+   * swap left the behavioural test below green. An order is proved by reading
+   * the order.
+   */
+  it('raises the wedge before it closes the run, so the step cannot be stranded', async () => {
+    const src = await readFile(
+      new URL('../../src/release-batch/unstarted-recovery.ts', import.meta.url),
+      'utf8',
+    );
+    const body = src.slice(src.indexOf('export async function recoverUnstartedReleaseBatches'));
+    const wedge = body.indexOf('await emitWedge(row)');
+    const close = body.indexOf('await syncAgentSessionLifecycle(fenced');
+    expect(wedge).toBeGreaterThan(-1);
+    expect(close).toBeGreaterThan(-1);
+    expect(wedge).toBeLessThan(close);
+  });
+
+  // cm:guard the roster step IS re-entrant, and this is what proves the resume arm reaches a pass
+  // that got that far: the roster is untouched a second time and exactly one wedge is raised.
+  it('finishes a recovery that got as far as the roster', async () => {
+    const a = await insertIssue();
+    const { runId, jobId } = await claim([a]);
+    await ageJob(jobId, overdue());
+    await harness.db.execute(sql`
+      UPDATE jobs SET status = 'cancelled', finished_at = now(),
+        error = 'no box took this release batch before its deadline, so it never started'
+      WHERE id = ${jobId}
+    `);
+    const { recoverStrandedReleasing } = await import(
+      '../../src/release-batch/releasing-recovery.js'
+    );
+    await recoverStrandedReleasing(runId, { reason: 'the roster came back, the wedge did not' });
+    expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
+    expect(await wedgesFor(jobId)).toBe(0);
+
+    expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 1 });
+
+    expect(await wedgesFor(jobId)).toBe(1);
+    expect(await stored(a)).toMatchObject({ status: 'awaiting_release', claim: null });
+    expect(await runStatus(runId)).toBe('cancelled');
+  });
+
+  // cm:guard the second arm must stop matching once its own work is done, or every tick for ever
+  // would re-walk a batch that has already been handed back. What ends it is the run going
+  // terminal, which the first pass does itself.
+  it('stops matching once the roster is back', async () => {
+    const a = await insertIssue();
+    const { jobId } = await claim([a]);
+    await ageJob(jobId, overdue());
+
+    expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 1 });
+    expect(await mods.recoverUnstartedReleaseBatches(new Date())).toEqual({ recovered: 0 });
+    expect(await wedgesFor(jobId)).toBe(1);
   });
 });
 

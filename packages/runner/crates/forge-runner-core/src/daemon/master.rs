@@ -326,6 +326,7 @@ pub async fn run(
     activity: Arc<agent_activity::Activities>,
     job_panes: Arc<JobPanes>,
     job_records: Arc<dyn Records>,
+    adopted: tokio::sync::watch::Receiver<bool>,
     mut cancel: tokio::sync::watch::Receiver<bool>,
     mut wake: mpsc::Receiver<Wake>,
 ) {
@@ -344,7 +345,7 @@ pub async fn run(
     loop {
         tokio::select! {
             _ = tokio::time::sleep(delay) => {
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &mut ledger, &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -354,7 +355,7 @@ pub async fn run(
                     tokio::time::sleep(WAKE_FLOOR - since).await;
                 }
                 tracing::info!("[master] wake ({}) — sweeping now", w.describe());
-                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &mut ledger, &mut account_limit_said)
+                delay = sweep(&client, &cfg, &masters, &activity, &job_panes, job_records.as_ref(), &adopted, &mut ledger, &mut account_limit_said)
                     .await;
                 last_sweep = Instant::now();
             }
@@ -405,6 +406,7 @@ async fn sweep(
     activity: &agent_activity::Activities,
     job_panes: &Arc<JobPanes>,
     job_records: &dyn Records,
+    adopted: &tokio::sync::watch::Receiver<bool>,
     ledger: &mut Option<Ledger>,
     account_limit_said: &mut Option<String>,
 ) -> Duration {
@@ -463,7 +465,16 @@ async fn sweep(
             continue;
         }
         supervise(client, masters, &runner.project_id, &runner.slug).await;
-        take_pool_job(client, cfg, &served, job_panes, job_records, runner).await;
+        take_pool_job(
+            client,
+            cfg,
+            &served,
+            job_panes,
+            job_records,
+            adopted,
+            runner,
+        )
+        .await;
 
         // cm:guard an unreadable read is EMPTY, not fatal — this project goes quiet for a pass rather than the box going quiet on every project at once. It is now the ONLY thing that tells the daemon a project has work, so a failure here must cost one pass and never a master.
         let admissible = admissible::admissible(client, Some(&runner.project_id))
@@ -727,8 +738,13 @@ async fn take_pool_job(
     served: &[runners::MeRunner],
     job_panes: &Arc<JobPanes>,
     job_records: &dyn Records,
+    adopted: &tokio::sync::watch::Receiver<bool>,
     runner: &runners::MeRunner,
 ) {
+    // cm:guard nothing is claimed until adoption has run, and the reason is in `pool_jobs::adopt`: it reads what this box recorded and what it is running as two snapshots, and a claim landing between them looks to it exactly like a job whose pane died. Claiming first would make a fresh release the most likely thing this box reports dead.
+    if !*adopted.borrow() {
+        return;
+    }
     let bound = cfg.runner.max_job_panes.max(1) as usize;
     // cm:guard the local binding is the FALLBACK only, exactly as the guard on the project list says: core's `repoPath` on the prepared job is the answer, and a box with no binding for a project core says it serves is a real configuration this fleet runs. `take_one` refuses by name when neither exists rather than opening a pane in the daemon's own directory.
     let fallback = resolve_repo(served, cfg, &runner.project_id)
@@ -1766,6 +1782,31 @@ mod tests {
         assert!(
             drain < claim,
             "the drain branch `continue`s before the claim, so a runner core has taken off work must reach it first"
+        );
+    }
+
+    /// Nothing is claimed before adoption has run.
+    ///
+    /// `pool_jobs::adopt` compares what this box recorded against what it is
+    /// running, as two snapshots. A claim landing between them looks to it like
+    /// a job whose pane did not survive, so a box that claimed first would make
+    /// a fresh release the likeliest thing it reports dead.
+    #[test]
+    fn no_pool_job_is_claimed_before_adoption_has_run() {
+        let body = THIS_SOURCE
+            .split("async fn take_pool_job(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .unwrap_or_default();
+        let barrier = body
+            .find("if !*adopted.borrow()")
+            .expect("the claim is gated on adoption having run");
+        let claim = body
+            .find("pool_jobs::take_one(")
+            .expect("the claim is here");
+        assert!(
+            barrier < claim,
+            "the barrier has to precede the claim, or it gates nothing (ISS-1080)"
         );
     }
 

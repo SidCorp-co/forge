@@ -161,9 +161,11 @@ pub async fn adopt(
     registry: &JobPanes,
 ) -> Adopted {
     let mut out = Adopted::default();
+    // cm:guard the records are read BEFORE the panes, and the order is the whole safety of the two snapshots. A claim landing between them writes its record and then opens its pane, so this order can only miss a record whose pane it then finds — adopted and re-recorded, which costs nothing. Reversed, the same claim would land a record after a pane list that predates it, and this pass would report a job core had just stamped as dead on arrival.
+    let recorded = records.all().await;
     let live: Vec<String> = panes.names().await;
 
-    for rec in records.all().await {
+    for rec in recorded {
         if live.iter().any(|n| *n == rec.pane) {
             continue;
         }
@@ -181,10 +183,14 @@ pub async fn adopt(
                     rec.job_id
                 );
             }
-            Err(e) => tracing::warn!(
-                "[pool] job {} did not survive the restart and core could not be told: {e} — the record stays for the next start",
-                rec.job_id
-            ),
+            // cm:guard the obligation is handed to the SUPERVISOR, not left for the next boot. Adoption runs once, so a core that was unreachable for those few seconds would otherwise bury the report until someone restarted the daemon again. `supervise` finds a registry entry whose pane is not alive and sends exactly this failure, every tick, until core takes it — which is the retry that already exists rather than a second one here.
+            Err(e) => {
+                registry.note(&rec.job_id, &rec.pane);
+                tracing::warn!(
+                    "[pool] job {} did not survive the restart and core could not be told: {e} — the supervisor will keep sending it",
+                    rec.job_id
+                );
+            }
         }
     }
 
@@ -576,6 +582,7 @@ impl Panes for TmuxPanes {
 mod tests {
     use super::*;
     use crate::transport::pool::Refusal;
+    use std::sync::atomic::Ordering;
     use std::sync::Arc;
 
     #[derive(Default)]
@@ -586,12 +593,14 @@ mod tests {
         acked: Mutex<Vec<String>>,
         failed: Mutex<Vec<(String, String)>>,
         beats: Mutex<Vec<String>>,
+        recorded: Mutex<Vec<String>>,
     }
 
     struct FakePool {
         entries: Vec<PoolEntry>,
         prepare: Mutex<Option<Prepared>>,
         start: Mutex<Option<Started>>,
+        start_errs: std::sync::atomic::AtomicBool,
         rec: Arc<Recorder>,
     }
 
@@ -647,6 +656,9 @@ mod tests {
                 .unwrap_or(Prepared::Refused(Refusal::NotFound)))
         }
         async fn start(&self, _job_id: &str, _session_id: &str) -> Result<Started> {
+            if self.start_errs.load(Ordering::SeqCst) {
+                return Err(Error::Other("core did not answer".into()));
+            }
             Ok(self.start.lock().unwrap().take().unwrap_or(Started::Ok))
         }
         async fn release(&self, job_id: &str, _session_id: &str) -> Result<()> {
@@ -689,14 +701,15 @@ mod tests {
         }
     }
 
-    #[derive(Default)]
     struct FakeRecords {
         inner: Mutex<HashMap<String, String>>,
+        rec: Arc<Recorder>,
     }
 
     #[async_trait::async_trait]
     impl Records for FakeRecords {
         async fn note(&self, job_id: &str, pane: &str) {
+            self.rec.recorded.lock().unwrap().push(job_id.into());
             self.inner
                 .lock()
                 .unwrap()
@@ -763,12 +776,14 @@ mod tests {
 
     fn world(entries: Vec<PoolEntry>, prep: Option<Prepared>, start: Option<Started>) -> World {
         let rec = Arc::new(Recorder::default());
+        let rec2 = rec.clone();
         World {
             rec: rec.clone(),
             pool: FakePool {
                 entries,
                 prepare: Mutex::new(prep),
                 start: Mutex::new(start),
+                start_errs: std::sync::atomic::AtomicBool::new(false),
                 rec: rec.clone(),
             },
             panes: FakePanes {
@@ -782,7 +797,10 @@ mod tests {
                 disowned: false,
                 fail_errs: Mutex::new(0),
             },
-            records: FakeRecords::default(),
+            records: FakeRecords {
+                inner: Mutex::new(HashMap::new()),
+                rec: rec2,
+            },
             registry: JobPanes::new(),
         }
     }
@@ -1036,6 +1054,233 @@ mod tests {
             vec!["j1".to_string()]
         );
         assert!(w.rec.opened.lock().unwrap().is_empty());
+    }
+
+    // cm:guard the case F1 named: `startJobForMaster` stamps in ONE statement, so a lost response
+    // may mean the job is fully this box's with an agent already working it. Killing the pane there
+    // abandons a running release; keeping it lets the next tick ask core, which is the only party
+    // that knows.
+    #[tokio::test]
+    async fn a_stamp_that_never_answered_keeps_its_pane_for_the_next_tick() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("go"))),
+            None,
+        );
+        *w.pool.start.lock().unwrap() = None;
+        w.pool.start_errs.store(true, Ordering::SeqCst);
+
+        assert_eq!(take(&w, 2).await, Took::Unresolved("j1".into()));
+
+        assert!(w.rec.killed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+        assert_eq!(w.records.all().await.len(), 1);
+    }
+
+    // cm:guard the second half of the same case, and it is what makes the first half safe: core's
+    // own answer settles it. A stamp that did not land leaves `jobs.device_id` NULL, and
+    // `events-routes.ts` compares it to the caller and answers 403 — which `is_disowned` names.
+    #[tokio::test]
+    async fn the_next_tick_closes_an_unresolved_job_core_says_is_not_ours() {
+        let mut w = world(vec![], None, None);
+        w.report.disowned = true;
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry.note("j1", "forge-job-j1");
+        w.records.note("j1", "forge-job-j1").await;
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+
+        assert_eq!(
+            w.rec.killed.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()]
+        );
+        assert_eq!(w.registry.count(), 0);
+        assert!(w.records.all().await.is_empty());
+    }
+
+    // cm:guard the record goes down BEFORE the stamp is asked for. A record written after a
+    // successful start does not exist for the job it most matters for — the one whose daemon died
+    // inside that window, which is exactly the job whose pane a restart must account for.
+    #[tokio::test]
+    async fn a_job_is_recorded_before_the_stamp_is_asked_for() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("go"))),
+            Some(Started::Refused(Refusal::HoldLost)),
+        );
+
+        take(&w, 2).await;
+
+        // the refusal cleared it again, so the proof is that the refusal had something to clear
+        assert_eq!(
+            w.rec.recorded.lock().unwrap().clone(),
+            vec!["j1".to_string()]
+        );
+        assert!(w.records.all().await.is_empty());
+    }
+
+    // cm:guard F3: a pane that did not survive leaves NO trace on the box, so only the record can
+    // say the job existed. Without this the release waits out core's 60-minute result hop for a
+    // death this box could name the second it came back.
+    #[tokio::test]
+    async fn a_restart_reports_a_job_whose_pane_did_not_survive() {
+        let w = world(vec![], None, None);
+        w.records.note("j1", "forge-job-j1").await;
+
+        let adopted = adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+
+        assert_eq!(
+            adopted,
+            Adopted {
+                alive: 0,
+                buried: 1
+            }
+        );
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].0, "j1");
+        assert!(failed[0].1.contains("did not survive"));
+        assert!(w.records.all().await.is_empty());
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    // cm:guard the other side of the same pass, and the pair is the test: a restart that reported
+    // every recorded job dead would kill a release whose agent is still working.
+    #[tokio::test]
+    async fn a_restart_reports_nothing_for_a_job_whose_pane_is_still_there() {
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.records.note("j1", "forge-job-j1").await;
+
+        let adopted = adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+
+        assert_eq!(
+            adopted,
+            Adopted {
+                alive: 1,
+                buried: 0
+            }
+        );
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert!(w.rec.killed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    // cm:guard a record is best-effort, so a pane with no record must still be picked up — and the
+    // record re-written, or the NEXT restart would report a live job dead.
+    #[tokio::test]
+    async fn a_pane_with_no_record_is_adopted_and_recorded_again() {
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j9".into()];
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+
+        assert_eq!(w.registry.count(), 1);
+        assert_eq!(
+            w.records.all().await,
+            vec![Live {
+                job_id: "j9".into(),
+                pane: "forge-job-j9".into()
+            }]
+        );
+    }
+
+    // cm:guard a death core could not be told about is KEPT, so the next start says it again. The
+    // record is the only copy of that evidence and a box that dropped it on an unreachable core
+    // would lose the one thing it knew.
+    #[tokio::test]
+    async fn a_restart_keeps_the_record_when_core_cannot_be_told() {
+        let w = world(vec![], None, None);
+        *w.report.fail_errs.lock().unwrap() = 1;
+        w.records.note("j1", "forge-job-j1").await;
+
+        let adopted = adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+
+        assert_eq!(
+            adopted,
+            Adopted {
+                alive: 0,
+                buried: 0
+            }
+        );
+        assert_eq!(w.records.all().await.len(), 1);
+    }
+
+    // cm:guard F5: adoption runs ONCE, so a death core could not be told about at boot has to be
+    // handed to the loop that runs for ever. Left only in the records it would wait for the next
+    // restart of the daemon, which may be days.
+    #[tokio::test]
+    async fn a_death_core_refused_at_boot_is_handed_to_the_supervisor() {
+        let w = world(vec![], None, None);
+        *w.report.fail_errs.lock().unwrap() = 1;
+        w.records.note("j1", "forge-job-j1").await;
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(failed.len(), 1);
+        assert_eq!(failed[0].0, "j1");
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    // cm:guard F6, in the one place it can be asserted without a clock: the records are read BEFORE
+    // the panes. A claim writes its record and then opens its pane, so this order can only miss a
+    // record whose pane it finds — harmless. Reversed, a job core stamped a moment ago is reported
+    // dead on arrival.
+    #[test]
+    fn adoption_reads_what_this_box_recorded_before_what_it_is_running() {
+        let body = include_str!("pool_jobs.rs")
+            .split("pub async fn adopt(")
+            .nth(1)
+            .and_then(|r| r.split("\npub ").next())
+            .unwrap_or_default();
+        let recorded = body
+            .find("records.all().await")
+            .expect("adoption reads the records");
+        let panes = body
+            .find("panes.names().await")
+            .expect("adoption reads the panes");
+        assert!(
+            recorded < panes,
+            "the record snapshot has to be taken first, or a claim landing between the two reads is reported dead (ISS-1080)"
+        );
+    }
+
+    // cm:guard F4: the pane ending is evidence nobody else has, and a tick that forgot it because
+    // core happened to be unreachable would hand the release back to the 60-minute hop.
+    #[tokio::test]
+    async fn a_failure_core_did_not_take_is_sent_again_next_tick() {
+        let w = world(vec![], None, None);
+        *w.report.fail_errs.lock().unwrap() = 1;
+        w.registry.note("j1", "forge-job-j1");
+        w.records.note("j1", "forge-job-j1").await;
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+        assert_eq!(w.rec.failed.lock().unwrap().len(), 1);
+        assert_eq!(w.registry.count(), 0);
+        assert!(w.records.all().await.is_empty());
+    }
+
+    // cm:guard the id reaches a filesystem path and core supplies it. A crafted id chooses which
+    // file this writes or deletes, which is the same rule `runner/inflight.rs:marker_path` states.
+    #[test]
+    fn a_record_path_refuses_an_id_core_would_not_send() {
+        let r = FileRecords {
+            dir: PathBuf::from("/tmp/forge-pool-jobs-test"),
+        };
+        assert!(r.path("3d93cbab-98e1-4ea2-97a8-46f3543b92e3").is_some());
+        assert!(r.path("../../etc/passwd").is_none());
+        assert!(r.path("a/b").is_none());
+        assert!(r.path("").is_none());
+        assert!(r.path(&"x".repeat(65)).is_none());
     }
 
     // cm:guard the round trip is the whole reason the job id is the entire suffix. A pane name that

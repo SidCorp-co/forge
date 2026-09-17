@@ -48,6 +48,7 @@ const REASON = 'no box took this release batch before its deadline, so it never 
 /**
  * Every release batch whose job is still waiting, past the deadline.
  */
+// cm:guard the SECOND arm is what makes this pass resumable, and nothing else is. The fence commits in its own statement, so a worker that dies after it leaves a job `cancelled` under a run still `running` with a roster still claimed — a row the first arm can never see again, because its whole selection is `status = 'queued'`. The repo's inverse invariant does eventually reach that shape (`pipeline/runs-concluded.ts` closes a run whose jobs are all terminal, and the claim subscriber hands the roster back on the transition), but only after `RESULT_QUIET_MINUTES` — another hour of a roster at `releasing`, and no wedge at all, since this pass is the only thing that emits one. Matching on this pass's OWN `error` string is what keeps the arm off every other cancelled release job.
 // cm:guard `held_by IS NULL` and `dispatched_at IS NULL` are BOTH terms and neither is redundant against `status = 'queued'`. A held job is one a box took seconds ago and has not stamped yet. And `dispatched_at` survives a requeue: `jobs/hold.ts:buildRequeueUpdate` sets `status` and a fresh `queued_at` and deliberately does not clear it, so a release that ran, was held and was resumed is `queued` with a stamp on it. That is a batch which has already been on a box and may have merged or pushed, and it is not what this pass is for — this pass is for a batch NOTHING ever started. An aged hold has its own surface at `alarmAgedHolds`.
 // cm:edge lockstep -> packages/core/src/devices/claim.ts — `prepareJobForMaster` sets `held_by` while the status stays `queued`, and `startJobForMaster` is the stamp. This query is written against that split; fusing those two on the claim side would leave this pass no window to see.
 async function unstartedBatches(cutoffIso: string): Promise<UnstartedRow[]> {
@@ -56,12 +57,27 @@ async function unstartedBatches(cutoffIso: string): Promise<UnstartedRow[]> {
     FROM jobs j
     JOIN pipeline_runs pr ON pr.id = j.pipeline_run_id
     WHERE j.type = 'release_batch'
-      AND j.status = 'queued'
+      AND (j.status = 'queued' OR (j.status = 'cancelled' AND j.error = ${REASON}))
       AND j.held_by IS NULL
       AND j.dispatched_at IS NULL
       AND pr.status = 'running'
       AND j.queued_at < ${cutoffIso}
   `)) as unknown as UnstartedRow[];
+}
+
+/**
+ * Make the job unstartable, or pick up a fence this pass already made.
+ */
+// cm:guard a lost CAS is checked against THIS pass's own reason before it is treated as a loss. A `cancelled` job carrying that string is a fence a previous tick committed and did not get to finish, and the cleanup after it is idempotent by construction: `recoverStrandedReleasing` finds an empty set once the roster is back, `emitPipelineWedge` dedups on `wedge:<jobId>`, and the run is already terminal. Reading it as a loss instead is what leaves the roster for the 60-minute hop.
+async function fenceOrResume(jobId: string): Promise<typeof jobs.$inferSelect | null> {
+  const fenced = await fenceJob(jobId);
+  if (fenced) return fenced;
+  const [resumed] = await db
+    .select()
+    .from(jobs)
+    .where(and(eq(jobs.id, jobId), eq(jobs.status, 'cancelled'), eq(jobs.error, REASON)))
+    .limit(1);
+  return resumed ?? null;
 }
 
 /**
@@ -104,13 +120,14 @@ export async function recoverUnstartedReleaseBatches(
     // cm:guard checked BEFORE the fence, not after. A run that recorded a promotion has code on production and `recoverStrandedReleasing` deliberately moves and clears nothing for it — so cancelling its job first would take the run terminal underneath a roster that must keep both its status and its claim, and an issue at `releasing` with no claim is reachable by nothing. It cannot happen through the query above, because a promotion needs a dispatched job; it is checked anyway, because the cost of being wrong here is a roster nobody can find.
     if (await runRecordedPromotion(row.run_id)) continue;
 
-    const fenced = await fenceJob(row.job_id);
+    const fenced = await fenceOrResume(row.job_id);
     if (!fenced) continue;
 
     await recoverStrandedReleasing(row.run_id, { reason: REASON });
-    // cm:guard AFTER the recovery, because this is what takes the run terminal and the claim subscriber on that transition runs `recoverStrandedReleasing` again. Reversed, the subscriber would be the first reader and this pass would be racing its own cleanup; run in this order the second pass finds an empty set, which is the no-op it is built to be.
-    await syncAgentSessionLifecycle(fenced, 'cancelled');
+    // cm:guard the wedge is raised BEFORE the run is closed, and the order is what makes this pass resumable to its last step. Closing the run is what stops the second selection arm matching — it requires `pr.status = 'running'` — so a worker that died between the close and the wedge would leave an owner permanently uninformed about a roster that moved under them, with no tick able to find the row again. Everything before the close is re-entrant: `recoverStrandedReleasing` finds an empty set second time round and `emitPipelineWedge` returns early on an unresolved row with the same `wedge:<jobId>` key.
     await emitWedge(row);
+    // cm:guard AFTER the recovery, because this is what takes the run terminal and the claim subscriber on that transition runs `recoverStrandedReleasing` again. Reversed, the subscriber would be the first reader and this pass would be racing its own cleanup; run in this order the second pass finds an empty set, which is the no-op it is built to be. It is LAST for the reason above.
+    await syncAgentSessionLifecycle(fenced, 'cancelled');
     recovered++;
   }
 
