@@ -11,7 +11,9 @@
 // Split out of `schema.ts` for size, like `schema-session-inbox.ts`, and
 // registered in `drizzle.config.ts` and the client's schema map beside it.
 
+import { sql } from 'drizzle-orm';
 import {
+  check,
   index,
   integer,
   jsonb,
@@ -21,6 +23,7 @@ import {
   uniqueIndex,
   uuid,
 } from 'drizzle-orm/pg-core';
+import type { ConversationAdapter } from './schema-conversations.js';
 import { agentSessions, issues, projects } from './schema.js';
 
 export const questionStatuses = ['open', 'answered', 'void', 'expired', 'needs_info'] as const;
@@ -48,12 +51,15 @@ export type QuestionOption = {
 export const answerShapes = ['choice', 'free_text'] as const;
 export type AnswerShape = (typeof answerShapes)[number];
 
+// cm:guard `sensitive` is a fact about ONE round's material and not about the decision, which is why it sits here and not on the row: a question can ask a public thing and then need a credential, and a flag on the question would either have to be raised retroactively — after the public round was already posted — or force the whole decision private on the strength of its last step (ISS-1091 outcome 2).
+// cm:guard absence means NOT sensitive, and that is the only reading it may have: every row written before ISS-1091 asked in the open, so an absent flag is a round that went to a room and not a round nobody classified.
 type StepCommon = {
   round: number;
   prompt: string;
   askedAt: string;
   answeredAt?: string;
   answeredBy?: string;
+  sensitive?: boolean;
 };
 
 export type ChoiceStep = StepCommon & {
@@ -85,6 +91,28 @@ export function isChoiceStep(step: QuestionStep): step is ChoiceStep {
   return untagged.answerShape === undefined && Array.isArray(untagged.options);
 }
 
+/**
+ * Where a question was asked, recorded when it was asked.
+ */
+// cm:guard THREE states and not two, and the third is the whole of ISS-1091 outcome 4: a null column is a question that belongs to no conversation and still goes to the project's bound room, while an `unresolved` row is a question that DOES belong to one whose venue could not be read. Collapsing the second into the first routes it to a room nobody in that conversation is in, which is the failure this column exists to end — so the reason is stored rather than the absence.
+// cm:guard resolved from the ASKING session and stored here, never re-derived at delivery: a room can be rebound and a session's metadata rewritten between the ask and the post, and a destination inferred later is a destination that answers to the project rather than to whoever asked.
+export type QuestionOrigin =
+  | {
+      kind: 'conversation';
+      adapter: ConversationAdapter;
+      /** The venue's own id, in that adapter's vocabulary — `ports.ts`'s `externalId`. */
+      venueId: string;
+      conversationId: string;
+      windowId: string;
+      /** The transport's id for the message this question was raised against; null where it named none. */
+      anchorId: string | null;
+      askedByUserId: string | null;
+      askedByLabel: string | null;
+      /** The transport's own id for whoever spoke, which a directory can be asked about. */
+      askedByKey: string | null;
+    }
+  | { kind: 'unresolved'; reason: string };
+
 export const agentQuestions = pgTable(
   'agent_questions',
   {
@@ -103,6 +131,8 @@ export const agentQuestions = pgTable(
     maxRounds: integer('max_rounds').notNull().default(3),
     // cm:guard the premise is stored so drift can be DETECTED rather than assumed away. A question answered against a premise that has since moved is worse than an unanswered one: it is a decision taken about a world that no longer exists (ISS-964 criterion 22).
     assumed: jsonb('assumed').$type<Record<string, unknown>>(),
+    // cm:guard NULL is "no conversation asked this" and is the only value that reaches `roomForProject`; every other reading of a missing destination is an `unresolved` row carrying its reason (ISS-1091 criteria 10, 11).
+    origin: jsonb('origin').$type<QuestionOrigin>(),
     voidReason: text('void_reason'),
     claimsHeld: integer('claims_held').notNull().default(0),
     workspacesPinned: integer('workspaces_pinned').notNull().default(0),
@@ -118,6 +148,20 @@ export const agentQuestions = pgTable(
     index('agent_questions_session_idx').on(t.agentSessionId),
     // cm:guard ISS-1022 — `readQuestionsForIssue` is the door every issue screen opens and it filters on `issue_id` first; neither index above leads with it, so the lookup was a sequential scan of the whole table.
     index('agent_questions_issue_idx').on(t.issueId),
+    // cm:guard the CHECK is what makes a half-written origin unrepresentable rather than merely unlikely: a `conversation` origin with no venue would resolve to no room and — before this column had a third state — be indistinguishable from a question nobody asked in a conversation. A shape the destination resolver cannot read must not be storable (ISS-1091 criterion 10).
+    check(
+      'agent_questions_origin_shape_chk',
+      sql`${t.origin} is null or (
+        (${t.origin} ->> 'kind' = 'unresolved' and ${t.origin} ? 'reason')
+        or (
+          ${t.origin} ->> 'kind' = 'conversation'
+          and ${t.origin} ? 'adapter'
+          and ${t.origin} ? 'venueId'
+          and ${t.origin} ? 'conversationId'
+          and ${t.origin} ? 'windowId'
+        )
+      )`,
+    ),
   ],
 );
 
