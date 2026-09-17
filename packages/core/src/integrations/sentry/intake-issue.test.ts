@@ -374,6 +374,16 @@ describe('an error that came back after somebody called it done', () => {
     expect(merged).toContain(seen);
   });
 
+  // cm:guard the stamp is written only AFTER the transition succeeds, and this is the assertion that goes red if the two are ever reordered. Stamped first, a transition that then threw would leave the recurrence marked as handled while the issue stayed closed, and every later delivery would decline it as already acted on — the regression lost in silence. Stamped after, a lost stamp costs a second reopen on the retry, which is noise somebody can see.
+  it('stamps nothing when the reopen transition fails, and lets the failure out', async () => {
+    selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
+    transitionMock.mockRejectedValueOnce(new Error('the state machine refused this transition'));
+    await expect(
+      intakeSentryIssue(issue({ ...regressed, lastSeen: '2026-09-18T00:00:00Z' }), ctx),
+    ).rejects.toThrow('the state machine refused this transition');
+    expect(mergedMetadata()).not.toContain('reopenedAtLastSeen');
+  });
+
   // cm:guard the review's F2 second case. Equality let a SUPERSEDED recurrence through: T1 handled, T2 handled, the issue closed again, T1 re-delivered — T1 is not equal to the T2 watermark, so an equality test reopens completed work off a replay of something already overtaken.
   it('does not reopen for a recurrence older than the one already reopened for', async () => {
     selectRows.push(
