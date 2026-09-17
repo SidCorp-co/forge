@@ -131,7 +131,9 @@ describe('ISS-826 retry_rescues', () => {
         retryOf: failed,
       });
     }
-    const { detectRetryRescueThresholds } = await import('../../src/pipeline/retry-rescue-alert.js');
+    const { detectRetryRescueThresholds } = await import(
+      '../../src/pipeline/retry-rescue-alert.js'
+    );
 
     const first = await detectRetryRescueThresholds();
     expect(first).toEqual({ detected: 1, notified: 0 });
