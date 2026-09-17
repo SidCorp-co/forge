@@ -29,6 +29,8 @@ const LINES: readonly string[] = [
   '- Read the conversation context first; if it references older discussion, call rocketchat_history before concluding.',
   '- Your reply is the ONLY message the user receives — there is no follow-up turn, so do not promise a later one.',
   '- Plain chat text, no markdown headers.',
+  // cm:guard a TOKEN line and not a fixed sentence, because the composer drops a line whose value is null and that is the whole mechanism: a window that closed on quiet passes null and this line is not in the prompt at all, while one cut by the hold or split for overflow passes the instruction below. Two copies of the room lines — one per case — would be the second copy that drifts (ISS-1086 criteria 14-16).
+  '- {midConversation}',
 ];
 
 export const ROCKETCHAT_DOOR_LAYER: PromptLayer = {

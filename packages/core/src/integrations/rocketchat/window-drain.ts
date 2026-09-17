@@ -143,9 +143,10 @@ export async function routeOne(
       } as never);
       return resolved.linked ? null : resolved.refusal.message;
     },
-    inputs: ({ venue, conversationId, windowId, deliveryKey, messages, reserve }) => {
+    inputs: ({ venue, conversationId, windowId, deliveryKey, messages, reserve, cut }) => {
       const spoken = messages.filter((m) => m.role === 'user');
       return rocketChatTurn({
+        cut,
         bot: {
           botName: ac.botName,
           serverUrl: ac.serverUrl,
