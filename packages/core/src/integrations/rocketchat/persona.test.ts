@@ -20,6 +20,20 @@ describe('what a cut window tells the room turn', () => {
     expect(persona('overflow')).toContain(MID_CONVERSATION_INSTRUCTION);
   });
 
+  // cm:guard literal text and not the constant, so removing a clause from `MID_CONVERSATION_INSTRUCTION` goes red here rather than passing because both sides read the same string (whole-set review F3, criterion 30).
+  it.each(['deadline', 'overflow'] as const)(
+    'tells a %s turn each of the four behaviours in words',
+    (reason) => {
+      const text = persona(reason);
+      expect(text).toContain(
+        'Answer only the questions actually asked in the messages you were given',
+      );
+      expect(text).toContain('do not claim the room agreed on anything');
+      expect(text).toContain('Prefer one short, targeted contribution over a summary of the room');
+      expect(text).toContain('decline the turn');
+    },
+  );
+
   it('carries nothing of it when the window settled on quiet (criterion 16)', () => {
     expect(persona('quiet')).not.toContain(MID_CONVERSATION_INSTRUCTION);
     expect(persona('quiet')).not.toMatch(/Mid-conversation turn/);

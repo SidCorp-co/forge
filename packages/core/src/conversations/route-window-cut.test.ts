@@ -211,7 +211,13 @@ describe('a window over the message cap', () => {
       expect.objectContaining({
         windowId: 'w1',
         prefixLastSeq: 53,
-        tail: { firstSeq: 54, lastSeq: 56, firstAt: new Date(1_700_000_000_000 + 50 * 1000) },
+        // the successor's quiet clock is the window's own `extendedAt`, its last arrival (criterion 29)
+        tail: {
+          firstSeq: 54,
+          lastSeq: 56,
+          firstAt: new Date(1_700_000_000_000 + 50 * 1000),
+          lastAt: WINDOW.extendedAt,
+        },
       }),
     );
     expect(closeDetail()).toMatchObject({ cut: 'overflow', coveredSeq: [4, 53] });

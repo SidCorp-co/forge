@@ -276,7 +276,13 @@ async function decide(
       adapter: window.adapter,
       claim,
       prefixLastSeq: prefixLast.seq,
-      tail: { firstSeq: tailFirst.seq, lastSeq: window.lastSeq, firstAt: tailFirst.createdAt },
+      // cm:guard the window's `extendedAt` IS the tail's last arrival: every inbound message bumps it, and the tail ends at the window's own `lastSeq`.
+      tail: {
+        firstSeq: tailFirst.seq,
+        lastSeq: window.lastSeq,
+        firstAt: tailFirst.createdAt,
+        lastAt: window.extendedAt,
+      },
     });
     if (!split) {
       return {

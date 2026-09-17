@@ -240,6 +240,8 @@ export async function claimDueWindows(
           lte(conversationWindows.claimedAt, leaseBefore),
         ),
         venueFilter,
+        // cm:guard one conversation's windows are claimed in the order they were OPENED, and a later one waits while an earlier one is unclosed — held, or released with its lease lapsed. Without this the overflow split can bridge a claimed range: A holds 0–59, its successor B (60–69) is claimed elsewhere, C collects 70–71, and A's split lowers C to 50–71, so B's messages are answered twice under two delivery keys. The wait costs at most one turn, or one lease where the holder died; two windows opened in the same millisecond fence neither, which is the behaviour before this line (ISS-1086, whole-set review F1).
+        sql`not exists (select 1 from conversation_windows earlier where earlier.conversation_id = ${conversationWindows.conversationId} and earlier.closed_at is null and earlier.opened_at < ${conversationWindows.openedAt})`,
       ),
     )
     .orderBy(asc(conversationWindows.extendedAt))
@@ -320,8 +322,8 @@ export interface SplitTailArgs {
   claim: WindowClaim;
   /** The last seq this window keeps; everything after it goes to the successor. */
   prefixLastSeq: number;
-  /** The messages past the cap, and when the first of them arrived. */
-  tail: { firstSeq: number; lastSeq: number; firstAt: Date };
+  /** The messages past the cap, when the first of them arrived, and when the last did. */
+  tail: { firstSeq: number; lastSeq: number; firstAt: Date; lastAt: Date };
 }
 
 /**
@@ -329,7 +331,7 @@ export interface SplitTailArgs {
  * the tail to the collecting successor. False when the claim has moved on.
  */
 // cm:guard ONE transaction and the shrink FIRST, under the claim: a successor opened before the shrink committed would cover seqs this window still claims, and two windows answering one message is the double reply the claim exists to prevent. A shrink that touches no row means the lease moved on, and the caller must then take no turn (ISS-1086 criteria 23, 24).
-// cm:guard its own upsert and not `openOrExtendWindow`, because this is the ONE writer allowed to lower `first_seq` and `opened_at`: the heartbeat opens ranges over messages already routed, and an inbound collector that lowered `first_seq` on conflict would swallow that range into a window that answers it twice. Here the tail has been waiting since its first message arrived, so the successor's clocks start there and the hold counts the wait the head already cost it.
+// cm:guard its own upsert and not `openOrExtendWindow`, because this is the ONE writer allowed to lower `first_seq` and `opened_at`: the heartbeat opens ranges over messages already routed, and an inbound collector that lowered `first_seq` on conflict would swallow that range into a window that answers it twice. Here the tail has been waiting since its first message arrived, so the successor's hold starts there and counts the wait the head already cost it; its quiet clock starts at the tail's LAST arrival, because a successor stamped with the first would read as quiet on the spot while the room was still typing (whole-set review F2).
 export async function splitWindowTail(
   args: SplitTailArgs,
   dbi: typeof defaultDb = defaultDb,
@@ -354,7 +356,7 @@ export async function splitWindowTail(
         projectId: args.projectId,
         adapter: args.adapter,
         openedAt: args.tail.firstAt,
-        extendedAt: args.tail.firstAt,
+        extendedAt: args.tail.lastAt,
         firstSeq: args.tail.firstSeq,
         lastSeq: args.tail.lastSeq,
         origin: 'inbound',

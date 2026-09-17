@@ -73,10 +73,11 @@ interface WindowRowSeen {
   claimed_at: string | null;
   cut_reason: string | null;
   opened_at: string;
+  extended_at: string;
 }
 async function rowsNow(): Promise<WindowRowSeen[]> {
   const rows = await harness.db.execute(
-    sql`SELECT id, first_seq, last_seq, claimed_at, cut_reason, opened_at FROM conversation_windows WHERE conversation_id = ${conversationId} ORDER BY first_seq`,
+    sql`SELECT id, first_seq, last_seq, claimed_at, cut_reason, opened_at, extended_at FROM conversation_windows WHERE conversation_id = ${conversationId} ORDER BY first_seq`,
   );
   return rows as unknown as WindowRowSeen[];
 }
@@ -131,6 +132,22 @@ describe('a window that never goes quiet is still due', () => {
     expect(Math.abs((taken?.dueAt.getTime() ?? 0) - (opened.getTime() + 15_000))).toBeLessThan(50);
   });
 
+  // cm:guard the interleaving whole-set review F1 named: while A is held, its quiet successor is NOT due, so no other core can answer a range A's split may still lower into (criterion 28).
+  it('claims one conversation’s windows in the order they opened (criterion 28)', async () => {
+    await openAt(0, ago(20_000));
+    const [head] = await claim();
+    expect(head?.firstSeq).toBe(0);
+    await openAt(1, ago(6_000));
+    expect(await claim()).toHaveLength(0);
+    await windows.closeWindow({
+      windowId: head?.id as string,
+      decision: 'nothing-to-say',
+      claim: { claimedAt: head?.claimedAt as Date, claimedBy: 'core-1' },
+    });
+    const [next] = await claim();
+    expect(next?.firstSeq).toBe(1);
+  });
+
   it('leaves the collecting index exactly as ISS-1004 defined it (criterion 17)', async () => {
     const rows = await harness.db.execute(
       sql`SELECT indexdef FROM pg_indexes WHERE indexname = 'conversation_windows_one_collecting'`,
@@ -152,6 +169,7 @@ describe('a window that collected more than a turn may carry', () => {
     taken: { id: string; claimedAt: Date | null } | undefined,
     claimedBy: string,
     firstAt: Date,
+    lastAt: Date = ago(100),
   ) =>
     windows.splitWindowTail({
       windowId: taken?.id as string,
@@ -160,7 +178,7 @@ describe('a window that collected more than a turn may carry', () => {
       adapter: 'rocketchat',
       claim: { claimedAt: taken?.claimedAt as Date, claimedBy },
       prefixLastSeq: 49,
-      tail: { firstSeq: 50, lastSeq: 59, firstAt },
+      tail: { firstSeq: 50, lastSeq: 59, firstAt, lastAt },
     });
 
   it('keeps its head and leaves the tail in a new collecting window (criteria 11, 13)', async () => {
@@ -193,6 +211,29 @@ describe('a window that collected more than a turn may carry', () => {
     expect(rows).toHaveLength(2);
     expect(rows[1]).toMatchObject({ first_seq: 50, last_seq: 61 });
     expect(rows[1]?.claimed_at).toBeNull();
+  });
+
+  // cm:guard whole-set review F2: a successor stamped with the tail's FIRST arrival reads as quiet the moment it exists, and a drain would answer it as `quiet` while the room was mid-sentence (criterion 29).
+  it('starts the successor’s quiet clock at the tail’s last arrival, not its first (criterion 29)', async () => {
+    await openRange(0, 59);
+    const [taken] = await claim({ settleMs: 0 });
+    const firstAt = ago(5_000);
+    const lastAt = ago(100);
+    expect(await split(taken, 'core-1', firstAt, lastAt)).toBe(true);
+    await windows.closeWindow({
+      windowId: taken?.id as string,
+      decision: 'nothing-to-say',
+      claim: { claimedAt: taken?.claimedAt as Date, claimedBy: 'core-1' },
+    });
+    const successor = (await rowsNow())[1];
+    expect(
+      Math.abs(new Date(successor?.extended_at ?? 0).getTime() - lastAt.getTime()),
+    ).toBeLessThan(50);
+    // neither quiet (100ms) nor past the hold (5s of 15s): not due
+    expect(await claim()).toHaveLength(0);
+    const [later] = await claim({ now: new Date(Date.now() + 4_500) });
+    expect(later?.firstSeq).toBe(50);
+    expect(later?.cutReason).toBe('quiet');
   });
 
   it('writes nothing when the claim has moved on (criteria 23, 24)', async () => {
