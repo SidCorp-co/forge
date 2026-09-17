@@ -24,11 +24,13 @@
  */
 
 import { sql } from 'drizzle-orm';
+import { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { agentSessions, jobs as jobsTable, usageRecords } from '../../src/db/schema.js';
 import { canonicalSessionId, usageSessionMatch } from '../../src/usage-records/rollup.js';
 import {
   createTestProject,
+  createTestProjectMember,
   createTestUser,
   setupTestDatabase,
   type TestDatabase,
@@ -192,42 +194,139 @@ async function expectViewMatchesLegacy(db: TestDb): Promise<void> {
   expect(Number(shapes?.positive_duration)).toBeGreaterThan(0);
 }
 
+/**
+ * What every index-served assertion here means, in one place.
+ *
+ * cm:guard the predicate under EXPLAIN is built by the REAL `usageSessionMatch` and
+ * `canonicalSessionId` rather than hand-copied into this file. A likeness would make the
+ * negative control prove only that Postgres distinguishes two predicates — true and not
+ * the claim — while a regression in the helper kept every case green.
+ */
+function expectIndexServed(text: string) {
+  expect(text).toContain('usage_records_session_id_idx');
+  expect(text).not.toContain('Seq Scan on usage_records');
+}
+
+/** The plan Postgres chose for `query`, as EXPLAIN prints it. */
+async function explain(db: TestDb, query: ReturnType<typeof sql>): Promise<string> {
+  const rows = await db.execute<Record<string, string>>(sql`EXPLAIN (COSTS OFF) ${query}`);
+  return [...rows].map((r) => Object.values(r)[0]).join('\n');
+}
+
+/** What `constraintRefusing` answers for a write the database accepted. */
+const ACCEPTED = 'accepted';
+
+/**
+ * The name of the constraint that refused `query`, or ACCEPTED if nothing did.
+ *
+ * The constraint name is on the DRIVER error, not on the wrapper drizzle throws,
+ * so read it rather than matching the wrapper's message — which names the query
+ * and would match a syntax error just as happily.
+ *
+ * cm:guard naming the whole error when no constraint field is present, rather than
+ * returning the same value an accepted write returns: the first version of this
+ * helper answered `undefined` for both, so a run where the constraint did not exist
+ * at all read identically to one where it refused.
+ */
+async function constraintRefusing(db: TestDb, query: ReturnType<typeof sql>): Promise<string> {
+  try {
+    await db.execute(query);
+    return ACCEPTED;
+  } catch (err) {
+    const cause = (err as { cause?: { constraint_name?: string; constraint?: string } }).cause;
+    return (
+      cause?.constraint_name ?? cause?.constraint ?? `refused, not by a constraint: ${String(err)}`
+    );
+  }
+}
+
+/**
+ * The real `/api/agent-sessions` router, mounted so criterion 8 can be judged at
+ * the route rather than at a predicate this file rebuilds. Module level for the
+ * per-function line budget, like the 0177 view body above.
+ *
+ * cm:guard the router reads `db` off the environment at import, so `DATABASE_URL`
+ * has to name the harness BEFORE the dynamic import below. A static import would
+ * bind the module to whatever `DATABASE_URL` the shell happened to carry, and the
+ * case would then pass or fail against a database that is not this fixture.
+ */
+async function mountAgentSessions(
+  url: string,
+  userId: string,
+): Promise<{ app: Hono; token: string }> {
+  process.env.DATABASE_URL = url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.SMTP_HOST ??= 'localhost';
+  process.env.SMTP_PORT ??= '1025';
+  process.env.SMTP_USER ??= 'test';
+  process.env.SMTP_PASS ??= 'test';
+  process.env.SMTP_FROM ??= 'test@example.com';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV ??= 'test';
+
+  const { agentSessionRoutes } = await import('../../src/agent-sessions/routes.js');
+  const { errorHandler } = await import('../../src/middleware/error.js');
+  const { requestId } = await import('../../src/middleware/request-id.js');
+  const { signUserToken } = await import('../../src/auth/jwt.js');
+
+  const app = new Hono();
+  app.use('*', requestId());
+  app.route('/api/agent-sessions', agentSessionRoutes);
+  app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
+  return { app, token: await signUserToken(userId) };
+}
+
+interface SessionCostBody {
+  estimatedCost: number;
+  inputTokens: number;
+  outputTokens: number;
+  requests: number;
+  sampleCount: number;
+  models: { model: string; cost: number; requests: number }[];
+}
+
+/** GET /api/agent-sessions/:id/cost through the mounted router, as a client sees it. */
+async function readSessionCost(app: Hono, token: string, id: string): Promise<SessionCostBody> {
+  const res = await app.request(`/api/agent-sessions/${id}/cost`, {
+    headers: { authorization: `Bearer ${token}` },
+  });
+  expect(res.status, `GET /api/agent-sessions/${id}/cost`).toBe(200);
+  return (await res.json()) as SessionCostBody;
+}
+
 describe('ISS-1015 · usage_records rollups are index-served', () => {
   let harness: TestDatabase;
   let projectId: string;
+  /** The real `/api/agent-sessions` router, mounted so criterion 8 can be judged
+   *  at the route rather than at a predicate rebuilt here. */
+  let app: Hono;
+  let ownerToken: string;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
     await truncateAll(harness.db);
     const owner = await createTestUser(harness.db);
+    await harness.db.execute(
+      sql`UPDATE users SET email_verified_at = now() WHERE id = ${owner.id}`,
+    );
     const project = await createTestProject(harness.db, owner.id);
     projectId = project.id;
+    await createTestProjectMember(harness.db, {
+      userId: owner.id,
+      projectId,
+      role: 'member',
+    });
     await seedFixture(harness.db, projectId, owner.id);
+    ({ app, token: ownerToken } = await mountAgentSessions(harness.url, owner.id));
   }, 600_000);
 
   afterAll(async () => {
     if (harness) await harness.cleanup();
   });
 
-  const plan = async (query: ReturnType<typeof sql>): Promise<string> => {
-    const rows = await harness.db.execute<Record<string, string>>(
-      sql`EXPLAIN (COSTS OFF) ${query}`,
-    );
-    return [...rows].map((r) => Object.values(r)[0]).join('\n');
-  };
-
-  /**
-   * What every index-served assertion here means, in one place.
-   *
-   * cm:guard the predicate under EXPLAIN is built by the REAL `usageSessionMatch` and
-   * `canonicalSessionId` rather than hand-copied into this file. A likeness would make the
-   * negative control prove only that Postgres distinguishes two predicates — true and not
-   * the claim — while a regression in the helper kept every case green.
-   */
-  const expectIndexServed = (text: string) => {
-    expect(text).toContain('usage_records_session_id_idx');
-    expect(text).not.toContain('Seq Scan on usage_records');
-  };
+  const plan = (query: ReturnType<typeof sql>) => explain(harness.db, query);
 
   const totals = sql`coalesce(sum(${usageRecords.estimatedCost}), 0)::float AS cost, count(*)::int AS n`;
 
@@ -400,29 +499,40 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
     expect((await read(sql`${upper}`))?.n).toBe(0);
   });
 
+  /**
+   * criteria 8, at the route. The case above proves the HELPER canonicalises;
+   * it rebuilds the predicate itself, so it stays green if `/:id/cost` stops
+   * calling `canonicalSessionId` altogether. This one calls the real router, so
+   * the caller is what is on trial: drop the canonicalisation from the route's
+   * `sessionMatch` and the uppercase request answers zeroes while the lowercase
+   * one answers the fixture's figures, and the equality below goes red.
+   *
+   * `sampleCount > 0` is asserted on its own rather than left implied by the
+   * equality: two zeroed rollups are equal too, and an equality of nothing to
+   * nothing is the shape this whole file exists to refuse.
+   */
+  it('answers GET /api/agent-sessions/:id/cost identically for an uppercase id', async () => {
+    const lower = sessionId(4_242);
+    const upper = lower.toUpperCase();
+    expect(upper).not.toBe(lower);
+
+    const get = (id: string) => readSessionCost(app, ownerToken, id);
+
+    const lowerBody = await get(lower);
+    expect(lowerBody.sampleCount).toBeGreaterThan(0);
+    expect(lowerBody.models.length).toBeGreaterThan(0);
+
+    const upperBody = await get(upper);
+    // `sessionId` echoes the spelling the caller used, which is not a figure.
+    expect({ ...upperBody, sessionId: undefined }).toEqual({
+      ...lowerBody,
+      sessionId: undefined,
+    });
+  });
+
   // criteria 13
   it('refuses a session_id that is neither null nor a canonical lowercase uuid', async () => {
-    // The constraint name is on the driver error, not on the wrapper drizzle throws,
-    // so read it rather than matching the wrapper's message — which names the query
-    // and would match a syntax error just as happily.
-    const ACCEPTED = 'accepted';
-    const refusedBy = async (query: ReturnType<typeof sql>): Promise<string> => {
-      try {
-        await harness.db.execute(query);
-        return ACCEPTED;
-      } catch (err) {
-        const cause = (err as { cause?: { constraint_name?: string; constraint?: string } }).cause;
-        // cm:guard naming the whole error when no constraint field is present, rather than
-        // returning the same value an accepted write returns: the first version of this
-        // helper answered `undefined` for both, so a run where the constraint did not exist
-        // at all read identically to one where it refused.
-        return (
-          cause?.constraint_name ??
-          cause?.constraint ??
-          `refused, not by a constraint: ${String(err)}`
-        );
-      }
-    };
+    const refusedBy = (query: ReturnType<typeof sql>) => constraintRefusing(harness.db, query);
     const write = (value: string) =>
       refusedBy(sql`
         INSERT INTO usage_records (id, project_id, source, model, estimated_cost, request_count,

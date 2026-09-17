@@ -184,10 +184,13 @@ agentSessionRoutes.post(
 // Per-session cost + token rollup from usage_records (ISS-378 AC#6). The session
 // row itself carries no dollar cost/model, so the detail rail showed "—"; this
 // aggregates usage_records WHERE session_id = this session id and groups by model
-// for the per-model breakdown. usage_records.session_id is a uuid-shaped text
-// column — guard the cast (mirrors issues/extras-routes.ts cost-summary) so a
-// stray non-uuid value can't 500 the rollup. Mounted before `:id` GET; the extra
-// path segment means no validator collision with the single-segment `/:id`.
+// for the per-model breakdown. usage_records.session_id is an agent_sessions.id
+// in a TEXT column, constrained since ISS-1015 to null or a canonical lowercase
+// uuid, so the match is plain text equality against usage_records_session_id_idx
+// and `canonicalSessionId` lowercases the path parameter — without it an
+// uppercase spelling would match nothing and read as a session that cost zero.
+// Mounted before `:id` GET; the extra path segment means no validator collision
+// with the single-segment `/:id`.
 agentSessionRoutes.get(
   '/:id/cost',
   zValidator('param', idParamSchema, (r) => {
@@ -381,10 +384,11 @@ agentSessionRoutes.get(
     // Per-row dollar cost (ISS-391): the session row carries no cost — it lives
     // in usage_records keyed by session_id. Roll it up in ONE bounded query over
     // just this page's session ids (no per-row N+1), grouped by session_id.
-    // usage_records.session_id is a uuid-shaped text column → guard the cast
-    // (mirrors the /:id/cost route). usage_records.session_id = agent_sessions.id
-    // (NOT the job id), so filtering directly by the page's ids is correct and
-    // does not fan out the way a join through jobs would.
+    // Each page id goes in through `canonicalSessionId` (mirrors the /:id/cost
+    // route), so the IN list is canonical text and the column stays uncast and
+    // index-served. usage_records.session_id = agent_sessions.id (NOT the job
+    // id), so filtering directly by the page's ids is correct and does not fan
+    // out the way a join through jobs would.
     const costById = new Map<string, number>();
     // Last-message preview (ISS-698): one bounded DISTINCT ON query over this
     // page's ids, mirroring the cost rollup above — no per-row N+1. Excludes
