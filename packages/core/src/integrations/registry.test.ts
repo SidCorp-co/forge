@@ -33,11 +33,7 @@ import {
   providerNames,
   registerIntegration,
 } from './registry.js';
-import {
-  INTEGRATION_PROVIDERS,
-  type IntegrationDeclaration,
-  type IntegrationProvider,
-} from './types.js';
+import { INTEGRATION_PROVIDERS, type IntegrationDeclaration } from './types.js';
 
 beforeEach(() => {
   __resetRegistry();
