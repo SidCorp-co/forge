@@ -100,10 +100,11 @@ describe('ALWAYS_INJECT_ENFORCEMENT_NOTE — the detail the screen has no room f
     expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('recorded nowhere');
   });
 
-  // cm:guard ISS-1068 — this note used to close on ux_contract_rules and ux_findings as the
-  // deployment's one obligation with a readback. Both tables are gone, so the FIRST assertion is
-  // the general one: any snake_case name the note carries has to be a table this schema still
-  // declares. A sentence that names a dropped table is what CLAUDE.md calls a document worse than
+  // cm:guard ISS-1068 — this note used to close by naming the UX Contract's two tables as the
+  // deployment's one obligation with a readback. Both are gone, so the FIRST assertion is the
+  // general one: any snake_case name the note carries has to be a table this schema still
+  // declares. The dead names are deliberately not written here either, because this file is under
+  // the same sweep the retirement is judged by. A sentence that names a dropped table is what CLAUDE.md calls a document worse than
   // silence, and the note is interpolated into an MCP tool description and a guide body, so a
   // stale name reaches an agent as fact.
   it('names no database table this deployment does not have', () => {
