@@ -8,7 +8,7 @@
 
 import type { ForgeRecordView } from "@forge/contracts";
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BodyView } from "./body-view";
 import { RecordCard } from "./record-card";
@@ -117,6 +117,30 @@ describe("a field past its budget", () => {
     expect(document.querySelector("details")?.open).toBe(false);
   });
 
+  // cm:guard the two cases below are about the LABEL and not the fold: native `<details>` toggles
+  // without React, so a summary derived from the lens alone survives every assertion above and
+  // names the opposite of what pressing it does (codex F4).
+  // jsdom does not implement the native summary click, so the disclosure is driven the way the
+  // browser drives it — the element's own `open`, then the `toggle` event that follows it.
+  const toggle = (to: boolean) => {
+    const details = document.querySelector("details") as HTMLDetailsElement;
+    details.open = to;
+    fireEvent(details, new Event("toggle", { bubbles: false }));
+  };
+
+  it("stops saying 'Show all' once the reader has shown it", () => {
+    render(<RecordCard record={over} lens="product" />);
+    toggle(true);
+    expect(screen.getByText("Fold")).toBeInTheDocument();
+    expect(screen.queryByText(/Show all/)).not.toBeInTheDocument();
+  });
+
+  it("stops saying 'Fold' once the reader has folded it", () => {
+    render(<RecordCard record={over} lens="technical" />);
+    toggle(false);
+    expect(screen.getByText("Show all — 57 character(s) over budget")).toBeInTheDocument();
+  });
+
   it("folds nothing where every field is inside the budget", () => {
     render(<RecordCard record={record()} lens="product" />);
     expect(document.querySelector("details")).toBeNull();
@@ -163,6 +187,95 @@ describe("the prose the writer wrote around the fence", () => {
     );
     expect(document.body.textContent).not.toContain("```forge-record");
     expect(screen.getAllByText("holds")).toHaveLength(1);
+  });
+
+  // cm:guard a reference link written on one side of the fence and defined on the other resolved
+  // before this change, because one `<Markdown>` held the whole body. Splitting the document splits
+  // its reference table with it, and this case is what says the definitions travel (codex F3).
+  it("resolves a reference link defined on the other side of the record", () => {
+    const withRef = [
+      "See the [evidence][proof] before the record.",
+      "",
+      "```forge-record",
+      "finding: holds",
+      "```",
+      "",
+      "[proof]: https://example.com/run/1",
+    ].join("\n");
+    const refAt = withRef.indexOf("```forge-record");
+    const refTo = withRef.indexOf("[proof]:") - 2;
+    render(
+      <BodyView
+        body={withRef}
+        format="markdown"
+        record={record({ fields: [field("finding", "holds")], lead: null, at: refAt, to: refTo })}
+      />,
+    );
+    const link = document.querySelector("a[href='https://example.com/run/1']");
+    expect(link?.textContent).toBe("evidence");
+    expect(document.body.textContent).not.toContain("[evidence][proof]");
+  });
+
+  // cm:guard CommonMark resolves a label to its FIRST definition. A body defining `[proof]` above
+  // the record and again below it links to the first under one parse, and a split that appended the
+  // shared table to a half still carrying its own local second definition would link to the second
+  // (codex F3, still open at its first recheck — this is the case that closed it).
+  it("resolves a duplicated label to the document's first definition, as one parse does", () => {
+    const dup = [
+      "[proof]: https://example.com/first",
+      "",
+      "Above the record.",
+      "",
+      "```forge-record",
+      "finding: holds",
+      "```",
+      "",
+      "[proof]: https://example.com/second",
+      "",
+      "See the [evidence][proof] below the record.",
+    ].join("\n");
+    const dupAt = dup.indexOf("```forge-record");
+    const dupTo = dupAt + "```forge-record\nfinding: holds\n```".length;
+    render(
+      <BodyView
+        body={dup}
+        format="markdown"
+        record={record({ fields: [field("finding", "holds")], lead: null, at: dupAt, to: dupTo })}
+      />,
+    );
+    expect(document.querySelector("a")?.getAttribute("href")).toBe("https://example.com/first");
+  });
+
+  // cm:guard a definition-shaped line inside a fenced code example is the example's own text. The
+  // first fix for F3 ran a regex over the half and deleted it out of the code block the writer was
+  // using to teach the syntax (codex F5).
+  it("leaves a definition-shaped line inside a code example on the screen", () => {
+    const teaching = [
+      "Write the definition like this:",
+      "",
+      "~~~",
+      "[proof]: https://example.com/how-to",
+      "~~~",
+      "",
+      "```forge-record",
+      "finding: holds",
+      "```",
+    ].join("\n");
+    const teachAt = teaching.indexOf("```forge-record");
+    const teachTo = teaching.length;
+    render(
+      <BodyView
+        body={teaching}
+        format="markdown"
+        record={record({
+          fields: [field("finding", "holds")],
+          lead: null,
+          at: teachAt,
+          to: teachTo,
+        })}
+      />,
+    );
+    expect(document.body.textContent).toContain("[proof]: https://example.com/how-to");
   });
 
   it("draws an ordinary markdown comment exactly as it did before, with no card", () => {

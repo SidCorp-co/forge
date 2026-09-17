@@ -10,7 +10,7 @@
 // given decides only which of those rows are open before a reader touches them.
 
 import type { ForgeRecordFieldView, ForgeRecordView, RecordLens } from "@forge/contracts";
-import type { ReactNode } from "react";
+import { type ReactNode, useState } from "react";
 import { cn } from "@/lib/utils/cn";
 
 export interface RecordCardProps {
@@ -36,6 +36,11 @@ function Kind({ record }: { record: ForgeRecordView }): ReactNode {
 }
 
 function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }): ReactNode {
+  // cm:guard the label follows the ACTUAL disclosure state and not the lens it started in. Native
+  // `<details>` opens and closes without React, so a label derived from the prop alone tells an
+  // expanded product field to "Show all" and a collapsed technical one to "Fold" — the summary
+  // naming the opposite of what pressing it does (codex F4).
+  const [shown, setShown] = useState(open);
   const body = (
     <div className="fg-body-sm whitespace-pre-wrap break-words leading-relaxed [overflow-wrap:anywhere]">
       {field.value}
@@ -48,9 +53,12 @@ function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }):
         // cm:guard `<details>` and not a height clamp: the whole value is in the DOM either way, so
         // a reader searching the page finds it and a copy takes all of it. A clamp that renders
         // fewer characters is the truncation this card exists not to do.
-        <details open={open}>
+        <details
+          open={shown}
+          onToggle={(e) => setShown((e.currentTarget as HTMLDetailsElement).open)}
+        >
           <summary className="fg-caption cursor-pointer text-muted">
-            {open ? "Fold" : `Show all — ${field.over} character(s) over budget`}
+            {shown ? "Fold" : `Show all — ${field.over} character(s) over budget`}
           </summary>
           <div className="mt-1">{body}</div>
         </details>

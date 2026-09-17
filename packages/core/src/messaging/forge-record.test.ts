@@ -51,6 +51,41 @@ describe('the kind, which the tag line names and the fence does not', () => {
   // cm:guard a fence with no tag is still a record and still screened. Dropping it would let a
   // hand-written block past the budget by leaving off one line, which is the shape of a gate that
   // teaches the way around itself.
+  // cm:guard the tag must come from the line that ENDS this block and never from a search of the
+  // body: a `detail:` field quoting a tag back is a thing a writer records, and a search would take
+  // the quotation over the record's own label and draw a confirmation as a verdict (codex F2).
+  it('takes the tag that ends the block, not one quoted inside a field', () => {
+    const body = [
+      '## Confirmation',
+      '',
+      `${fence}forge-record`,
+      'detail: the comment I am quoting ended with',
+      '  forge-record: verdict · contract 9',
+      'finding: holds',
+      fence,
+      '',
+      '`forge-record: confirmation · contract 1`',
+    ].join('\n');
+    const parsed = parseForgeRecord(body);
+    expect({ kind: parsed?.kind, contract: parsed?.contract }).toEqual({
+      kind: 'confirmation',
+      contract: 1,
+    });
+    expect(parsed?.fields[0]?.value).toBe(
+      'the comment I am quoting ended with\nforge-record: verdict · contract 9',
+    );
+  });
+
+  it('names no kind where a quoted tag is the only one in the body', () => {
+    const body = [
+      `${fence}forge-record`,
+      'detail: it ended with',
+      '  forge-record: verdict · contract 9',
+      fence,
+    ].join('\n');
+    expect(parseForgeRecord(body)?.kind).toBeNull();
+  });
+
   it('names no kind where the fence carries no tag, rather than refusing to read it', () => {
     const parsed = parseForgeRecord(`${fence}forge-record\nfinding: holds\n${fence}`);
     expect({ kind: parsed?.kind, contract: parsed?.contract, fields: parsed?.fields }).toEqual({

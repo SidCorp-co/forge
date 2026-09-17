@@ -62,6 +62,7 @@ export interface ForgeRecord {
 
 interface Block {
   readonly entries: [string, string][];
+  readonly tag: { kind: string; contract: number } | null;
   readonly at: number;
   readonly to: number;
 }
@@ -78,19 +79,32 @@ function offsets(lines: readonly string[]): number[] {
 }
 
 /**
- * Where the block ends: past a tag line following it, blank lines included.
+ * Where the block ends, and the tag that ends it.
  */
-// cm:guard the tag is swallowed into the block deliberately. It is the record's own kind label and
-// the CLI writes it one blank line below the closing fence; leaving it outside means a card drawn
-// for the record and a stray `forge-record: verdict · contract 1` line drawn beside it as prose.
-function endOf(lines: readonly string[], starts: readonly number[], closed: number): number {
+// cm:guard the tag is read HERE, from the first non-blank line after the closing fence, and never
+// by searching the body: a field's own value may quote a tag — a continuation line reading
+// `forge-record: verdict · contract 9` inside a `detail:` is a thing a writer records — and a search
+// would take the quotation over the record's own label and draw a confirmation as a verdict.
+// cm:guard the tag is swallowed into the block's extent for the same reason. It is the record's own
+// kind label and the CLI writes it one blank line below the closing fence; leaving it outside means
+// a card drawn for the record and a stray `forge-record: verdict · contract 1` beside it as prose.
+function endOf(
+  lines: readonly string[],
+  starts: readonly number[],
+  closed: number,
+): { to: number; tag: { kind: string; contract: number } | null } {
   const endOfLine = (at: number) => (starts[at] ?? 0) + (lines[at] ?? '').length;
   for (let at = closed + 1; at < lines.length; at += 1) {
     const line = lines[at] ?? '';
     if (line.trim() === '') continue;
-    return TAG.test(line.trim()) ? endOfLine(at) : endOfLine(closed);
+    const found = TAG.exec(line.trim());
+    if (!found) return { to: endOfLine(closed), tag: null };
+    return {
+      to: endOfLine(at),
+      tag: { kind: found[1] as string, contract: Number(found[2]) },
+    };
   }
-  return endOfLine(closed);
+  return { to: endOfLine(closed), tag: null };
 }
 
 /**
@@ -110,7 +124,8 @@ function blockIn(body: string): Block | null {
   for (let at = opens + 1; at < lines.length; at += 1) {
     const line = lines[at] ?? '';
     if (line.trim().startsWith(fence)) {
-      return { entries, at: starts[opens] ?? 0, to: endOf(lines, starts, at) };
+      const end = endOf(lines, starts, at);
+      return { entries, tag: end.tag, at: starts[opens] ?? 0, to: end.to };
     }
     const indented = INDENTED.exec(line);
     const key = indented ? null : KEY.exec(line);
@@ -122,16 +137,7 @@ function blockIn(body: string): Block | null {
   }
   // cm:guard an unterminated fence is still a record and still screened: the writer left the block
   // open, and refusing to read it would let a record past the budget by dropping its closing line.
-  return { entries, at: starts[opens] ?? 0, to: body.length };
-}
-
-/** The tag line naming the record's kind, wherever it sits in the body. */
-function tagIn(body: string): { kind: string; contract: number } | null {
-  for (const line of body.split('\n')) {
-    const found = TAG.exec(line.trim());
-    if (found) return { kind: found[1] as string, contract: Number(found[2]) };
-  }
-  return null;
+  return { entries, tag: null, at: starts[opens] ?? 0, to: body.length };
 }
 
 /** How far past the budget a value runs, counted in code points as the caps are. */
@@ -146,7 +152,7 @@ export function parseForgeRecord(body: string | null | undefined): ForgeRecord |
   const text = String(body ?? '');
   const block = blockIn(text);
   if (!block) return null;
-  const tag = tagIn(text);
+  const tag = block.tag;
   const fields = block.entries.map(([key, value]) => ({
     key,
     value,

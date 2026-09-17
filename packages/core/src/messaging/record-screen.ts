@@ -7,9 +7,9 @@
  * same screen as a segment of its own (ISS-1089).
  */
 
-import { and, eq } from 'drizzle-orm';
+import { and, eq, inArray, isNotNull, or } from 'drizzle-orm';
 import { db, type Tx } from '../db/client.js';
-import { organizationMembers, projects, users } from '../db/schema.js';
+import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
 import { ROLE_PRODUCT, ROLE_TECHNICAL } from './audiences.js';
 import type { Audience, MessageRefusal, MessageVerdict } from './contract.js';
 
@@ -62,7 +62,12 @@ export function budgetRefusals(record: ForgeRecord | null): MessageRefusal[] {
 // An organization's agent users hold rows in `organization_members` too, and an agent carrying a
 // `technical` lens would otherwise decide how a record is written for the people reading it — which
 // is the fleet choosing its own audience (ISS-1089).
-// cm:guard it fails to `role:product`, never open. An empty `lenses` array already means product
+// cm:guard and only about members who can actually READ this project, which is `lib/authz.ts`'s one
+// rule and not a wider one: an explicit `project_members` row, or an org `owner`/`admin`, who derive
+// admin on every project of their org. Plain org membership derives NOTHING there, so counting it
+// here would let one technical person in a large organization unfold every card on a project whose
+// own readers are all product — the audience decided by somebody who is not in it.
+// cm:guard it fails to `product`, never open. An empty `lenses` array already means product
 // everywhere else it is read (`prompt/system.ts:buildChatRoleSection` folds no-lens and explicit
 // `product` into one branch), so a project with no lens set, no org, or a read that threw is read
 // by the stricter of the two cells rather than by the looser one.
@@ -76,10 +81,26 @@ export async function projectLens(projectId: string, executor?: Tx): Promise<Rec
       .limit(1);
     if (!project?.orgId) return 'product';
     const rows = await handle
-      .select({ lenses: organizationMembers.lenses })
+      .select({ lenses: organizationMembers.lenses, orgRole: organizationMembers.role })
       .from(organizationMembers)
       .innerJoin(users, eq(users.id, organizationMembers.userId))
-      .where(and(eq(organizationMembers.orgId, project.orgId), eq(users.kind, 'human')));
+      .leftJoin(
+        projectMembers,
+        and(
+          eq(projectMembers.projectId, projectId),
+          eq(projectMembers.userId, organizationMembers.userId),
+        ),
+      )
+      .where(
+        and(
+          eq(organizationMembers.orgId, project.orgId),
+          eq(users.kind, 'human'),
+          or(
+            isNotNull(projectMembers.userId),
+            inArray(organizationMembers.role, ['owner', 'admin']),
+          ),
+        ),
+      );
     const technical = rows.some((r) => ((r.lenses ?? []) as string[]).includes('technical'));
     return technical ? 'technical' : 'product';
   } catch {

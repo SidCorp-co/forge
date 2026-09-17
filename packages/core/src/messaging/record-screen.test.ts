@@ -11,7 +11,8 @@ import { describe, expect, it, vi } from 'vitest';
 
 interface Answers {
   readonly orgId?: string | null;
-  readonly members?: Array<{ lenses: string[] | null }>;
+  /** Only the rows the reader query returns — the members who can read the project. */
+  readonly members?: Array<{ lenses: string[] | null; orgRole?: string }>;
   readonly throws?: boolean;
 }
 
@@ -26,7 +27,9 @@ const handle = {
       if (answers.throws) throw new Error('the pool is gone');
       return {
         where: () => ({ limit: async () => (answers.orgId ? [{ orgId: answers.orgId }] : []) }),
-        innerJoin: () => ({ where: async () => answers.members ?? [] }),
+        innerJoin: () => ({
+          leftJoin: () => ({ where: async () => answers.members ?? [] }),
+        }),
       };
     },
   }),
@@ -66,7 +69,25 @@ describe('which reading a project resolves to', () => {
     );
   });
 
-  it('reads as product where the organization has no members', async () => {
+  // cm:guard the query asks about members who can READ this project, which is `lib/authz.ts`'s rule:
+  // a `project_members` row, or an org owner/admin. Plain org membership derives no project access
+  // there, and counting it here would let one technical person anywhere in a large organization
+  // unfold every card on a project whose own readers are all product (codex F1). The stub returns
+  // only the rows that query selects, so a reader who widened the predicate would still red the
+  // next case rather than this one.
+  it('reads the lens off the members the reader query returned, and nobody else', async () => {
+    expect(
+      await lensed({ orgId: 'org-1', members: [{ lenses: ['product'], orgRole: 'member' }] }),
+    ).toBe(ROLE_PRODUCT);
+  });
+
+  it('reads as technical where a project member carries the lens', async () => {
+    expect(
+      await lensed({ orgId: 'org-1', members: [{ lenses: ['technical'], orgRole: 'member' }] }),
+    ).toBe(ROLE_TECHNICAL);
+  });
+
+  it('reads as product where nobody can read the project at all', async () => {
     expect(await lensed({ orgId: 'org-1', members: [] })).toBe(ROLE_PRODUCT);
   });
 

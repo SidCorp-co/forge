@@ -150,12 +150,50 @@ function ComponentNode({ node, ctx }: { node: BodyNode; ctx: RenderCtx }) {
   );
 }
 
+/** A markdown link reference definition: `[label]: https://…`, at the line's start. */
+const DEFINITION_LINE = /^ {0,3}\[[^\]]+\]:\s+\S+/;
+/** A fenced block's own opener, whose contents are text and not markdown. */
+const FENCE_LINE = /^ {0,3}(`{3,}|~{3,})/;
+
+/**
+ * One half carved into the prose it draws and the reference definitions it declared.
+ */
+// cm:guard the carve walks lines and tracks FENCE STATE rather than running a regex over the half,
+// because a definition-shaped line inside a fenced code example is the example's own text: a
+// comment showing somebody how to write `[proof]: https://…` would have had that line silently
+// deleted from the code block it is teaching (codex F5).
+function carve(text: string): { prose: string; definitions: string[] } {
+  const prose: string[] = [];
+  const definitions: string[] = [];
+  let fence: string | null = null;
+  for (const line of text.split("\n")) {
+    const opener = FENCE_LINE.exec(line);
+    if (fence !== null) {
+      if (opener && line.trim().startsWith(fence)) fence = null;
+      prose.push(line);
+    } else if (opener) {
+      fence = opener[1] as string;
+      prose.push(line);
+    } else if (DEFINITION_LINE.test(line)) {
+      definitions.push(line);
+    } else {
+      prose.push(line);
+    }
+  }
+  return { prose: prose.join("\n"), definitions };
+}
+
 /**
  * A markdown body split at the record's own extent: prose, card, prose.
  */
 // cm:guard the prose either side is drawn by `<Markdown>` in its own place rather than concatenated
 // around the card, and the card sits exactly where the fence sat. Moving it to the end would
 // silently reorder what the writer wrote, which is the same rule `ComponentNode` states for slots.
+// cm:guard splitting one markdown document in two splits its reference table with it, so each half
+// gets the WHOLE table and neither keeps its own copy. CommonMark resolves a label to its FIRST
+// definition, so a body defining `[proof]` above the record and again below it links to the first
+// under a single parse; a half that still carried its own second definition would see it before the
+// shared table and link to the second (codex F3).
 function BodyWithRecord({
   body,
   record,
@@ -167,13 +205,15 @@ function BodyWithRecord({
   lens: RecordLens;
   className?: string;
 }): ReactNode {
-  const before = body.slice(0, record.at);
-  const after = body.slice(record.to);
+  const before = carve(body.slice(0, record.at));
+  const after = carve(body.slice(record.to));
+  const declared = [...before.definitions, ...after.definitions];
+  const table = declared.length > 0 ? `\n\n${declared.join("\n")}` : "";
   return (
     <div className={cn("min-w-0 max-w-full", className)}>
-      {before.trim() ? <Markdown>{before}</Markdown> : null}
+      {before.prose.trim() ? <Markdown>{before.prose + table}</Markdown> : null}
       <RecordCard record={record} lens={lens} />
-      {after.trim() ? <Markdown>{after}</Markdown> : null}
+      {after.prose.trim() ? <Markdown>{after.prose + table}</Markdown> : null}
     </div>
   );
 }
