@@ -1,5 +1,6 @@
 /**
- * GitHub integration adapter — the inbound half of the provider.
+ * GitHub integration adapter — the inbound half of the provider, and since
+ * ISS-1072 one outbound verb.
  *
  * Replaces the second webhook path that used to live inside `POST /in/:slug`,
  * keyed on `projects.webhookSecret`: one shared secret per project, no
@@ -8,14 +9,19 @@
  * produced 0 of 4,436 issues, so there was nothing in the field to keep
  * working.
  *
- * Outbound (open a pull request, review one) is not implemented, and the
- * declaration says so rather than promising it: `canDispatch: false` with no
- * `dispatchOutbound` at all, which `check-integration-declarations.mjs` holds to
- * the adapter since ISS-1062. Each face turns on in the change that implements
- * it — the check run is ISS-1072, the merge ISS-1073.
+ * Outbound is ONE verb: publishing `forge/issue-contract` on a pull request's
+ * head. `canDispatch` turned true in the change that implemented it and not
+ * before, which is the rule ISS-1062 wrote and
+ * `check-integration-declarations.mjs` holds the adapter to. Opening a pull
+ * request, reviewing one and MERGING one are still not implemented, and this
+ * verb refuses any event name but its own rather than growing a branch that
+ * does the nearest thing — the merge is ISS-1073's and is deliberately ordered
+ * after this, because a check run cannot damage a repository and a merge can.
  */
 
-import type { BindingRole } from '../../db/schema.js';
+import { and, eq } from 'drizzle-orm';
+import { db } from '../../db/client.js';
+import { type BindingRole, integrationBindings } from '../../db/schema.js';
 import { handleGitHubEvent } from '../../webhooks/github-adapter.js';
 import { verifyHmacSignature } from '../../webhooks/hmac.js';
 import { recordDelivery } from '../deliveries.js';
@@ -27,7 +33,10 @@ import {
   type InboundDispatchInput,
   type InboundDispatchResult,
   type IntegrationAdapterMethods,
+  type OutboundDispatchInput,
+  type OutboundDispatchResult,
 } from '../types.js';
+import { CHECK_PUBLISH_EVENT, publishForStoredPullRequest } from './contract-check.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
 import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
@@ -165,6 +174,58 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     );
     return { deliveryId, actions: result.actions };
   },
+
+  // cm:guard the event name is matched EXACTLY and anything else is refused naming both it and the one verb this adapter serves. A default arm that published the contract check for any event would make a caller's mistake return 200 and look like it worked, which is the wrong-input-absorbed shape CLAUDE.md refuses; the refusal IS the deliverable here.
+  async dispatchOutbound(
+    ctx: AdapterContext<GitHubConfig, GitHubSecrets>,
+    input: OutboundDispatchInput,
+  ): Promise<OutboundDispatchResult> {
+    const startedAt = Date.now();
+    if (input.eventName !== CHECK_PUBLISH_EVENT) {
+      throw new Error(
+        `github: no outbound verb named \`${input.eventName}\` — this adapter serves \`${CHECK_PUBLISH_EVENT}\` and nothing else. Merging and opening a pull request are not implemented here.`,
+      );
+    }
+
+    // cm:guard the binding is re-read at dispatch, exactly as `coolify/adapter.ts` re-reads its connection: the context was built earlier and a binding deactivated since is a repository nobody is bound to any more. The refusal is RECORDED as well as thrown, because ISS-1072 requires a project with no active binding to be named in the delivery log — and it is recorded against a null binding rather than the dead one, since a row scoped to a binding that is gone is a row nothing will list.
+    const [live] = await db
+      .select({ id: integrationBindings.id })
+      .from(integrationBindings)
+      .where(
+        and(eq(integrationBindings.id, ctx.bindingId), eq(integrationBindings.active, true)),
+      )
+      .limit(1);
+    if (!live) {
+      const message = `github: project ${ctx.projectId} has no active GitHub binding — binding ${ctx.bindingId} is gone or deactivated, so there is no repository to publish a contract check on`;
+      await recordDelivery({
+        bindingId: null,
+        direction: 'outbound',
+        eventName: input.eventName,
+        payload: { projectId: ctx.projectId, bindingId: ctx.bindingId, refused: message },
+        status: 'failed',
+      });
+      throw new Error(message);
+    }
+
+    const pullRequestId = (input.payload as { pullRequestId?: string } | null)?.pullRequestId;
+    if (!pullRequestId) {
+      throw new Error(
+        `github: \`${CHECK_PUBLISH_EVENT}\` needs a payload of the shape { pullRequestId: "<uuid of a repo_pull_requests row>" }`,
+      );
+    }
+
+    const outcome = await publishForStoredPullRequest(pullRequestId);
+    if (!outcome) {
+      throw new Error(
+        `github: no stored pull request ${pullRequestId} — nothing on this project's projection has that id`,
+      );
+    }
+    return {
+      deliveryId: outcome.deliveryId,
+      durationMs: Date.now() - startedAt,
+      ...(outcome.kind === 'published' ? { externalId: String(outcome.checkRunId) } : {}),
+    };
+  },
 };
 
 /**
@@ -174,7 +235,7 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
 export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>({
   provider: 'github',
   capabilities: {
-    canDispatch: false,
+    canDispatch: true,
     canReceiveWebhook: true,
     canDeploy: false,
     liveConfirmGate: false,

@@ -19,9 +19,25 @@ import { db } from '../../db/client.js';
 import { integrationBindings } from '../../db/schema.js';
 import { decryptConnectionSecrets, findConnectionById } from '../store.js';
 import { GitHubAuthError, installationToken } from './app-auth.js';
-import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
+import {
+  GITHUB_API_BASE,
+  type GitHubConfig,
+  type GitHubSecrets,
+  type HeadersLike,
+} from './types.js';
 
 const READ_TIMEOUT_MS = 6000;
+const PUBLISH_TIMEOUT_MS = 8000;
+
+/**
+ * Which step of a publish a refusal came from. ISS-1072.
+ *
+ * A publish is four operations that can each fail differently, and the status
+ * alone says nothing about which one it was: a 404 while minting means the
+ * installation does not exist, and a 404 on `create` means the App no longer
+ * reaches the repository. Reporting either as the other invents a history.
+ */
+export type GitHubPublishOp = 'mint' | 'lookup' | 'create' | 'update';
 
 /**
  * Why this project cannot be read as the App. The `reason` is what a caller
@@ -53,14 +69,63 @@ export class GitHubReadError extends Error {
   }
 }
 
+/**
+ * A failed step of a publish, carrying everything a sentence about it is built
+ * from. ISS-1072.
+ *
+ * It is a separate class from `GitHubReadError` on purpose, and the reason is
+ * the same one that made `client.get` wrong for the publish lookup:
+ * `GitHubReadError` carries a status and nothing else, and `get` converts a
+ * `GitHubAuthError` into one, so by the time a caller sees it, whether the
+ * failure was at the mint or on the repository is gone — and that is the very
+ * distinction criterion 24 exists to keep. `timedOut` is here rather than
+ * inferred from a message because "the write did not happen" and "the write may
+ * have happened and I did not hear" are different things to tell an operator.
+ */
+export class GitHubPublishError extends Error {
+  readonly op: GitHubPublishOp;
+  readonly status: number | null;
+  readonly headers: HeadersLike | null;
+  readonly detail: string | null;
+  readonly timedOut: boolean;
+  constructor(args: {
+    op: GitHubPublishOp;
+    status?: number | null;
+    headers?: HeadersLike | null;
+    detail?: string | null;
+    timedOut?: boolean;
+    message: string;
+  }) {
+    super(args.message);
+    this.name = 'GitHubPublishError';
+    this.op = args.op;
+    this.status = args.status ?? null;
+    this.headers = args.headers ?? null;
+    this.detail = args.detail ?? null;
+    this.timedOut = args.timedOut === true;
+  }
+}
+
 export interface GitHubRepoClient {
   bindingId: string;
+  /** The App's own numeric id, so a lookup can filter to runs THIS App published. */
+  appId: string;
   owner: string;
   repo: string;
   /** `owner/repo`, as the binding spells it. */
   fullName: string;
   /** GET a repository path, relative to the API base, as the installation. */
   get<T>(path: string): Promise<T>;
+  /**
+   * One request on the publish path — the lookup and the write alike — raising
+   * `GitHubPublishError` with the evidence a refusal is worded from.
+   */
+  publish<T>(args: {
+    op: GitHubPublishOp;
+    method: 'GET' | 'POST' | 'PATCH';
+    path: string;
+    body?: unknown;
+  }): Promise<T>;
 }
 
 /** The binding a project's github reads go through, or a named refusal. */
@@ -130,6 +195,7 @@ export function buildRepoClient(args: {
 
   return {
     bindingId: args.bindingId,
+    appId,
     owner,
     repo,
     fullName,
@@ -158,7 +224,82 @@ export function buildRepoClient(args: {
       }
       return (await res.json()) as T;
     },
+
+    // cm:guard the lookup goes through HERE and never through `get` above, though both are a GET. `get` collapses a `GitHubAuthError` into a `GitHubReadError` and keeps only the status, which throws away the two things a publish refusal is built from: whether the failure was at the mint or on the repository, and the rate-limit headers that tell an exhausted quota from an ungranted permission. Routing the lookup through `get` to save nine lines is how criterion 24 stops holding.
+    async publish<T>(args: {
+      op: GitHubPublishOp;
+      method: 'GET' | 'POST' | 'PATCH';
+      path: string;
+      body?: unknown;
+    }): Promise<T> {
+      let token: string;
+      try {
+        token = await mint();
+      } catch (err) {
+        if (err instanceof GitHubAuthError) {
+          // cm:guard the mint keeps `app-auth.ts`'s OWN wording. Its 404 sentence is about an installation that does not exist; rewording it here as a repository the App was removed from is the invented history criterion 24 forbids, and an operator sent to the wrong page by it loses the afternoon.
+          throw new GitHubPublishError({
+            op: 'mint',
+            status: err.status,
+            headers: err.headers,
+            message: err.message,
+          });
+        }
+        throw new GitHubPublishError({
+          op: 'mint',
+          timedOut: isAbort(err),
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      let res: Response;
+      try {
+        res = await fetch(`${base}${args.path}`, {
+          method: args.method,
+          headers: {
+            Authorization: `Bearer ${token}`,
+            Accept: 'application/vnd.github+json',
+            'X-GitHub-Api-Version': '2022-11-28',
+            ...(args.body === undefined ? {} : { 'Content-Type': 'application/json' }),
+          },
+          ...(args.body === undefined ? {} : { body: JSON.stringify(args.body) }),
+          signal: AbortSignal.timeout(PUBLISH_TIMEOUT_MS),
+        });
+      } catch (err) {
+        throw new GitHubPublishError({
+          op: args.op,
+          timedOut: isAbort(err),
+          message: err instanceof Error ? err.message : String(err),
+        });
+      }
+
+      if (!res.ok) {
+        throw new GitHubPublishError({
+          op: args.op,
+          status: res.status,
+          headers: res.headers,
+          detail: await bodyText(res),
+          message: `${args.method} ${args.path} on ${fullName} returned HTTP ${res.status}`,
+        });
+      }
+      return (await res.json()) as T;
+    },
   };
+}
+
+/** Whether a thrown value is the timeout `AbortSignal.timeout` raises. */
+function isAbort(err: unknown): boolean {
+  return err instanceof Error && (err.name === 'TimeoutError' || err.name === 'AbortError');
+}
+
+/** GitHub's own words for a refusal, where it sent any. Never fatal on its own. */
+async function bodyText(res: Response): Promise<string | null> {
+  try {
+    const text = await res.text();
+    return text.length > 0 ? text.slice(0, 2000) : null;
+  } catch {
+    return null;
+  }
 }
 
 /**

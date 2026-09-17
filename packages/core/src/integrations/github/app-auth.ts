@@ -8,7 +8,7 @@
  */
 
 import { createSign } from 'node:crypto';
-import { GITHUB_API_BASE } from './types.js';
+import { GITHUB_API_BASE, type HeadersLike } from './types.js';
 
 const JWT_LIFETIME_S = 540;
 const TOKEN_REFRESH_MARGIN_MS = 5 * 60_000;
@@ -40,11 +40,14 @@ export function __resetInstallationTokenCache(): void {
   cache.clear();
 }
 
+// cm:guard the HEADERS travel with the refusal, and dropping them is what makes a mint-time rate limit indistinguishable from a mint-time permission error — GitHub answers 403 for both, and `x-ratelimit-remaining` / `retry-after` are the only things that tell them apart. The messages below are unchanged by ISS-1072 and must stay so: a caller that wants a different sentence builds one from this evidence rather than rewording the one an operator already knows.
 export class GitHubAuthError extends Error {
   readonly status: number;
-  constructor(status: number, message: string) {
+  readonly headers: HeadersLike | null;
+  constructor(status: number, message: string, headers: HeadersLike | null = null) {
     super(message);
     this.status = status;
+    this.headers = headers;
   }
 }
 
@@ -100,23 +103,27 @@ export async function installationTokenWithExpiry(args: {
     throw new GitHubAuthError(
       401,
       'GitHub rejected the App JWT — check the App id and private key',
+      res.headers,
     );
   }
   if (res.status === 404) {
     throw new GitHubAuthError(
       404,
       `installation ${args.installationId} does not exist for this App — it was removed, or the App was never installed on that account`,
+      res.headers,
     );
   }
   if (!res.ok) {
     throw new GitHubAuthError(
       res.status,
       `minting an installation token returned HTTP ${res.status}`,
+      res.headers,
     );
   }
 
   const body = (await res.json()) as { token?: string; expires_at?: string };
-  if (!body.token) throw new GitHubAuthError(500, 'GitHub returned no installation token');
+  if (!body.token)
+    throw new GitHubAuthError(500, 'GitHub returned no installation token', res.headers);
   const expiresAt = body.expires_at ? Date.parse(body.expires_at) : now + 3600_000;
   cache.set(key, { token: body.token, expiresAt });
   return { token: body.token, expiresAt };
