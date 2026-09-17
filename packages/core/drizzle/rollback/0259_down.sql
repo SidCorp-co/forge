@@ -76,11 +76,19 @@ BEGIN
       'set: %. The sentinel map in the image is the state the ORIGINAL grant came from, so '
       'restoring it would silently discard whatever was decided afterwards — and the column is '
       'about to be dropped, so nothing would record that it ever existed. Nothing has been '
-      'changed. Decide each row by hand: either put the grant back to the value 0259 set and '
-      're-run this file, or write the newer decision into the project''s own mcpServers map '
-      'first (a `direct-mcp` grant is a `<provider>: true` sentinel; a `core-mediated` one had '
-      'no representation at all and is simply lost on the way back) and update '
-      'iss1071_agent_access_set to match before re-running.', n, moved;
+      'changed. Decide each row by hand. Editing the project''s own mcpServers map is NOT one of '
+      'the ways out, and this message used to say it was: section 3 restores every key from '
+      'iss1071_removed_mcp_sentinels with ||, so a <provider>: false written by hand there is '
+      'overwritten by the image''s true moments later and the access being revoked is handed '
+      'back. Three ways out that hold. (a) Put the grant back to the value 0259 set and re-run '
+      'this file. (b) To keep a newer DENIAL, delete the binding or set active = false: the old '
+      'model states agent access per PROJECT and cannot say that one binding of a provider is '
+      'denied while another is granted, so there is no map edit that expresses it. (c) To deny '
+      'the provider across the WHOLE project, edit the image rather than the map - UPDATE '
+      'iss1071_removed_mcp_sentinels SET value = to_jsonb(false) for that project_id, scope and '
+      'server_name - because section 3 replays the image, then update iss1071_agent_access_set '
+      'to match. A core-mediated grant had no representation in the old model at all and is lost '
+      'on the way back whichever of the three is taken.', n, moved;
   END IF;
 END $$;
 

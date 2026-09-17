@@ -24,6 +24,10 @@ vi.mock('../../config/env.js', () => ({
 }));
 
 const resultQueue: unknown[] = [];
+// Every predicate handed to `.where()`, kept so a test can assert on the query the subject BUILDS
+// and not only on the rows this stub chose to hand back. Without this the stub answers the queued
+// row whatever it is asked, and a gate added inside the shared resolver reads as a pass.
+const whereArgs: unknown[] = [];
 // biome-ignore lint/suspicious/noExplicitAny: minimal chainable drizzle stub
 function makeThenable(): any {
   // biome-ignore lint/suspicious/noExplicitAny: see above
@@ -31,7 +35,10 @@ function makeThenable(): any {
     from: () => p,
     innerJoin: () => p,
     leftJoin: () => p,
-    where: () => p,
+    where: (...args: unknown[]) => {
+      whereArgs.push(...args);
+      return p;
+    },
     orderBy: () => p,
     limit: () => p,
     then: (resolve: (v: unknown) => void) => resolve(resultQueue.shift() ?? []),
@@ -163,11 +170,38 @@ describe('forge_coolify_deploy — the agent-access gate', () => {
 // cm:guard this resolver is shared with `integrations/coolify/routes.ts` (REST) and
 // `pipeline/release-coolify.ts`. It must NOT filter on `agentAccess`; the grant is checked in
 // `forge-coolify-deploy.ts`, which is the only door an agent comes through.
+/**
+ * Walks a drizzle SQL expression for a reference to one physical column. Used to assert on the
+ * query the subject builds rather than on the rows the stub returns.
+ */
+function mentionsColumn(node: unknown, column: string): boolean {
+  if (node === null || typeof node !== 'object') return false;
+  const n = node as { name?: unknown; queryChunks?: unknown };
+  if (typeof n.name === 'string' && n.name === column) return true;
+  return Array.isArray(n.queryChunks) && n.queryChunks.some((c) => mentionsColumn(c, column));
+}
+
 describe('activeCoolifyIntegrations — the shared resolver is not the gate', () => {
   it('returns an ungranted binding, so a person and the release pipeline still deploy it', async () => {
     resultQueue.push([pair('none')]);
     const rows = await activeCoolifyIntegrations(PROJECT_ID);
     expect(rows.map((r) => r.id)).toEqual([INT_ID]);
     expect(rows[0]?.pair.binding.agentAccess).toBe('none');
+  });
+
+  // The case above cannot fail on its own: the stub returns the queued row whatever the query
+  // asks for, so moving the grant INTO the resolver as an `agent_access = 'all'` predicate would
+  // leave it green while a human's Deploy button silently lost that binding. This one reads the
+  // predicate the subject actually built. The `role` assertion is the control: it proves the
+  // walker finds a column that IS filtered on, so the `agent_access` expectation is a measurement
+  // and not a walker that returns false for everything.
+  it('builds no agent_access predicate, so a gate moved in here goes red', async () => {
+    whereArgs.length = 0;
+    resultQueue.push([pair('none')]);
+    await activeCoolifyIntegrations(PROJECT_ID);
+
+    expect(whereArgs.length).toBeGreaterThan(0);
+    expect(whereArgs.some((a) => mentionsColumn(a, 'role'))).toBe(true);
+    expect(whereArgs.some((a) => mentionsColumn(a, 'agent_access'))).toBe(false);
   });
 });
