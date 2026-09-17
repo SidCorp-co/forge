@@ -78,9 +78,13 @@ export interface ConversationProgressFrame {
 // after the turn completes and there is no partial form of it. So a reader sees the model's draft
 // before the door has admitted it, which reverses ISS-978's boundary for `web-chat-reply` and for
 // that door alone. The price and the reason are on that door's own row in `messaging/doors.ts`. What
-// is NOT reversed: the transcript still stores only the sentence that went out
-// (`conversations/transcript.ts`), so the record never holds a refused draft. When an incremental
-// screen lands, prose is screened as it streams and `replaced` above becomes dead code.
+// is NOT reversed: no refused DRAFT reaches the record — `blocksFor` below drops every text block
+// when the screen replaced the reply, and `conversations/transcript.ts` stores the sentence that
+// went out. Since ISS-1079 the kept set also carries the turn's THINKING blocks, so a row can hold
+// reasoning the door never saw; the door judges candidate replies and a model's reasoning is not
+// one, which is the same line `run-turn-core.ts` draws by keeping reasoning out of `turnText`. When
+// an incremental screen lands, prose is screened as it streams and `replaced` above becomes dead
+// code.
 export function startConversationProgress(args: {
   conversationId: string;
   entryId: string;
@@ -100,6 +104,26 @@ export function startConversationProgress(args: {
   // second defence, for the frames that cross a reconnect rather than each other.
   let tail: Promise<unknown> = Promise.resolve();
 
+  /** The entry as it stands right now, detached from the accumulator that keeps folding into it. */
+  // cm:guard a `ContentBlock` member holding NESTED mutable state needs an arm here beside
+  // `toolCall` and `todos`: the spread copies a block one level deep and no deeper, so an object or
+  // an array member stays shared with the accumulator and keeps mutating under every frame already
+  // queued — which is F1 back again, silently, on the one path that exists to be watched.
+  // `canonical-entry.ts:asBlocks` carries the sibling guard for the database's side of the same
+  // shape and names only itself; a member added to `ContentBlock['type']` answers to BOTH sites.
+  // ISS-1079's `thinking` needs no arm and is the worked example of why: `thinking` is a string and
+  // `durationMs` a number, and the spread captures a scalar by value. What would have needed one is
+  // the same pause carrying, say, a list of citations.
+  const freeze = (entry: AgentMessage): AgentMessage => ({
+    ...entry,
+    blocks: (entry.blocks ?? []).map((b) => ({
+      ...b,
+      ...(b.toolCall ? { toolCall: { ...b.toolCall } } : {}),
+      ...(b.todos ? { todos: b.todos.map((t) => ({ ...t })) } : {}),
+    })),
+    ...(entry.toolCalls ? { toolCalls: entry.toolCalls.map((t) => ({ ...t })) } : {}),
+  });
+
   const send = (frame: Omit<ConversationProgressFrame, 'conversationId' | 'rev'>): void => {
     if (closed) return;
     rev += 1;
@@ -107,6 +131,16 @@ export function startConversationProgress(args: {
       conversationId: args.conversationId,
       rev,
       ...frame,
+      // cm:guard the entry is COPIED here, before the frame joins the chain, because `acc.entry()`
+      // hands back the same mutable object every time and folds each later chunk into it: the
+      // publish below runs a tick or more later, after `publishToConversationReaders` has resolved
+      // the room's participants, so a frame queued behind a slow one serializes the turn as it
+      // stands when the publish finally runs rather than at its own flush boundary. `rev` orders the
+      // frames and cannot fix this — every one of them would carry the same, latest text, which is
+      // the coalescing window buying nothing at all. Text is what mutates in place; a tool result
+      // goes through `mergeMessages`, which returns a new object, so this is invisible on the tool
+      // path and plain on the streaming one (ISS-1078 review F1).
+      entry: freeze(frame.entry),
     };
     // cm:guard a failure to publish is CAUGHT here and nowhere else, which is the whole reason this
     // catch is not in `external-chat.ts`: a socket that went away must not end a turn the room is
