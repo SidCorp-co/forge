@@ -2868,6 +2868,10 @@
   priced the job by the wrong id, so every job showed nothing spent. They now read the session
   that ran it.
 
+- **A missing server setting is now reported by name, instead of breaking a test file before any
+  test runs.** Settings and the database are read when something needs them, not when the code
+  loads. Nothing accepted before is refused now.
+
 - **An edit you make while an agent is running an issue no longer vanishes.** Status, priority,
   complexity and the description go read-only on the issue, in the list and in bulk, each saying
   why. *Needs info* stays open.
