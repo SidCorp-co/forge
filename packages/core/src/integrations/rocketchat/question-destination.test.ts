@@ -21,7 +21,10 @@ vi.mock('../../db/client.js', () => {
   const chain = {
     where: () => chain,
     then: (resolve: (v: unknown) => unknown) =>
-      Promise.resolve(selectCall++ === 0 ? connections() : bindings()).then(resolve),
+      // `connectionBinding` reads connections then bindings, and a sensitive round runs it twice —
+      // once for the origin room and once for the direct room — so the answers alternate rather
+      // than switching after the first.
+      Promise.resolve(selectCall++ % 2 === 0 ? connections() : bindings()).then(resolve),
   };
   return { db: { select: () => ({ from: () => chain }) } };
 });
@@ -70,9 +73,9 @@ const conversationOrigin = (
     ...over,
   }) as QuestionOrigin;
 
-const bindRoom = (rid: string) => {
+const bindRoom = (...rids: string[]) => {
   connections.mockReturnValue([{ id: 'conn-1', config: { serverUrl: 'https://chat.example.co' } }]);
-  bindings.mockReturnValue([{ connectionId: 'conn-1', config: { rids: [rid] } }]);
+  bindings.mockReturnValue([{ connectionId: 'conn-1', config: { rids } }]);
 };
 
 const resolve = (origin: QuestionOrigin | null, s: QuestionStep = step()) =>
@@ -153,7 +156,7 @@ describe('resolveQuestionDestination', () => {
   });
 
   it('sends a sensitive round to the direct room, with no anchor in the public one', async () => {
-    bindRoom('ROOMA');
+    bindRoom('ROOMA', 'DM1');
     expect(await resolve(conversationOrigin(), step({ sensitive: true }))).toEqual({
       kind: 'room',
       connectionId: 'conn-1',
@@ -164,10 +167,18 @@ describe('resolveQuestionDestination', () => {
   });
 
   it('refuses a sensitive round whose asker has no direct room, rather than posting in the open', async () => {
-    bindRoom('ROOMA');
+    bindRoom('ROOMA', 'DM1');
     directRoomFor.mockResolvedValue({ ok: false, reason: 'no account to send it to' });
     const d = await resolve(conversationOrigin(), step({ sensitive: true }));
     expect(d).toEqual({ kind: 'unresolvable', reason: 'no account to send it to' });
+  });
+
+  it('refuses a sensitive round whose direct room no binding names, naming the way out', async () => {
+    bindRoom('ROOMA');
+    const d = await resolve(conversationOrigin(), step({ sensitive: true }));
+    expect(d.kind).toBe('unresolvable');
+    expect(d.kind === 'unresolvable' && d.reason).toContain('DM1');
+    expect(d.kind === 'unresolvable' && d.reason).toContain('Bind that room');
   });
 
   it('posts a follow-up into the thread its first round opened', async () => {

@@ -209,8 +209,23 @@ export async function resolveQuestionDestination(
     }
     const direct = await directRoomFor(auth, input.origin.askedByKey);
     if (!direct.ok) return { kind: 'unresolvable', reason: direct.reason };
+    // cm:guard the direct room must be one this connection has a ROUTE for, and a round that would land in one it does not is refused rather than posted: `connection-manager.ts:route` drops every message in a room no binding names BEFORE it looks a thread up, so a question delivered into an unbound direct room is one the asker can answer into a void — the reply reaches nothing and the round stays owed for ever with somebody believing they answered it. Delivering into silence is worse than refusing out loud (ISS-1091 criterion 5).
+    // cm:edge contract -> packages/core/src/integrations/rocketchat/connection-manager.ts — this refusal exists only because `route` gates on the binding before `subjectForThread`; admitting a registered thread there regardless of the binding removes the need for it, and that edit belongs to a change that owns that file.
+    const directBinding = await connectionBinding(venue.namespace, direct.rid, input.projectId);
+    if (!directBinding) {
+      return {
+        kind: 'unresolvable',
+        reason: `this round is private to whoever asked, and their direct room (${direct.rid}) is not among the rooms bound to this project — a reply typed there would reach nothing, so the round is not posted. Bind that room to this project, or ask this round in the open.`,
+      };
+    }
     // cm:guard a direct room opens a thread of its OWN and is never anchored on the public message that raised the question: the anchor lives in the room the question is being kept out of, and a thread rooted there is the disclosure itself (ISS-1091 outcome 2).
-    return { kind: 'room', connectionId, rid: direct.rid, tmid: null, takeAnchor: false };
+    return {
+      kind: 'room',
+      connectionId: directBinding,
+      rid: direct.rid,
+      tmid: null,
+      takeAnchor: false,
+    };
   }
 
   // cm:guard the anchor is the message that RAISED the question, so the round hangs under what it is about rather than at the bottom of a busy room. A window whose last inbound message carried no transport id leaves `anchorId` null, and the round opens its own thread off its own post — still in the right room, which is the outcome, just not under the right line.

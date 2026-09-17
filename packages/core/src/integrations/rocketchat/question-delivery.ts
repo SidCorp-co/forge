@@ -269,8 +269,10 @@ export async function deliverOwedRound(
     askedBy: askerOf(question.origin ?? null),
   });
 
+  // cm:guard the POST has a try of its own, and the anchor is given back only from here. A post that returned is a message somebody can already see and reply to, so releasing the anchor after one would leave a real round standing under a triple nothing owns: replies to it open ordinary windows, and another question can take the same anchor and consume them. Releasing is about an anchor whose message never appeared, which is exactly and only a post that threw (ISS-1091 criteria 20, 21).
+  let receipt: { messageId: string | null };
   try {
-    const receipt = await sendFixedReply(
+    receipt = await sendFixedReply(
       {
         kind: 'rest',
         auth,
@@ -280,22 +282,7 @@ export async function deliverOwedRound(
       text,
       { ok: true, problems: problemsOf(verdict) },
     );
-    const tmid = destination.tmid ?? receipt.messageId;
-    if (!tmid) {
-      await releaseTakenAnchor(destination, owed.questionId);
-      await noteFailure(owed, 'the post named no message id, so no thread can be registered', now);
-      return 'failed';
-    }
-    // cm:guard the thread is registered BEFORE the round is marked delivered: a round marked delivered with no thread row is a message in a room whose replies reach nothing, and this order makes that state unreachable rather than merely unlikely (ISS-978 criterion 7).
-    await registerThread(
-      { questionId: owed.questionId },
-      { connectionId: destination.connectionId, rid: destination.rid, tmid },
-    );
-    await settle(owed, { status: 'delivered' }, now);
-    await resolveNotifications(undeliverableKey(owed.questionId));
-    return 'delivered';
   } catch (err) {
-    // cm:guard the anchor this attempt took is given back before anything else, because a reservation standing behind a post that never happened is worse than none: `subjectForThread` would resolve every reply on that message to a round nobody was shown, consuming them as answers instead of letting them open a window, and no other question could ever take it (ISS-1091 criterion 20).
     await releaseTakenAnchor(destination, owed.questionId);
     logger.error(
       { err, questionId: owed.questionId, round: owed.round, rid: destination.rid },
@@ -309,6 +296,30 @@ export async function deliverOwedRound(
         now,
       );
     }
+    await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
+    return 'failed';
+  }
+
+  // cm:guard everything past the post KEEPS the anchor, whatever it does: the round is on the wall of a room, and the retry that follows has to find the same triple rather than race a competitor for it.
+  try {
+    const tmid = destination.tmid ?? receipt.messageId;
+    if (!tmid) {
+      await noteFailure(owed, 'the post named no message id, so no thread can be registered', now);
+      return 'failed';
+    }
+    // cm:guard the thread is registered BEFORE the round is marked delivered: a round marked delivered with no thread row is a message in a room whose replies reach nothing, and this order makes that state unreachable rather than merely unlikely (ISS-978 criterion 7).
+    await registerThread(
+      { questionId: owed.questionId },
+      { connectionId: destination.connectionId, rid: destination.rid, tmid },
+    );
+    await settle(owed, { status: 'delivered' }, now);
+    await resolveNotifications(undeliverableKey(owed.questionId));
+    return 'delivered';
+  } catch (err) {
+    logger.error(
+      { err, questionId: owed.questionId, round: owed.round, rid: destination.rid },
+      'rocketchat.question-delivery: the round was posted and recording it failed',
+    );
     await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
     return 'failed';
   }

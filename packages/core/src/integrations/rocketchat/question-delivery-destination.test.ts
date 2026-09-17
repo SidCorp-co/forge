@@ -194,6 +194,25 @@ describe('deliverOwedRound', () => {
     });
   });
 
+  it('keeps the anchor when the post SUCCEEDED and recording it then failed', async () => {
+    let call = 0;
+    registerThread.mockImplementation(async () => {
+      call += 1;
+      if (call === 1) return true;
+      throw new Error('the registration failed');
+    });
+    destination.mockResolvedValue({
+      kind: 'room',
+      connectionId: 'c1',
+      rid: 'ROOMA',
+      tmid: 'm-9',
+      takeAnchor: true,
+    });
+    expect(await deliverOwedRound(owed)).toBe('failed');
+    expect(sendFixedReply).toHaveBeenCalled();
+    expect(releaseQuestionThread).not.toHaveBeenCalled();
+  });
+
   it('holds on to a thread it did not take this attempt', async () => {
     sendFixedReply.mockRejectedValue(new Error('boom'));
     destination.mockResolvedValue({
