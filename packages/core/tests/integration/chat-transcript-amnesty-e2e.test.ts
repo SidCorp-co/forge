@@ -375,3 +375,89 @@ describe('a turn edited by hand is not put back by the next derive', () => {
     expect(JSON.stringify(await res.json())).toContain('SESSION_RUNNING');
   });
 });
+
+describe('core’s own rows and the runner’s numbering meet in one place', () => {
+  // cm:guard the seq the runner was handed can stop being free: core takes the
+  // next one whenever it records a wholesale write (an edit, a regeneration, an
+  // old daemon's array). `ON CONFLICT DO NOTHING` would call the runner's line a
+  // duplicate and answer 200, and that line — a part of the person's
+  // conversation — would be gone with nothing said.
+  it('refuses a line whose seq core already holds, rather than calling it a duplicate', async () => {
+    const s = await chatSession();
+    const id = idOf(s);
+    const base = baseOf(s);
+    const { recordReportedTranscript } = await import('../../src/agent-sessions/session-events.js');
+    const { db } = await import('../../src/db/client.js');
+    await recordReportedTranscript(
+      db,
+      id,
+      [{ type: 'user', content: 'edited by hand' }],
+      new Date(),
+    );
+
+    const res = await postLines(id, [
+      {
+        seq: base + 1,
+        line: { type: 'assistant', message: { content: [{ type: 'text', text: 'mine' }] } },
+      },
+    ]);
+    expect(res.status).toBe(409);
+    const body = JSON.stringify(await res.json());
+    expect(body).toContain('SEQ_TAKEN_BY_CORE');
+    expect(body).toContain(`seq ${base + 1}`);
+    // The row core wrote is still the one standing.
+    const kinds = (await harness.db.execute<{ kind: string }>(
+      sql`SELECT kind FROM agent_session_events WHERE agent_session_id = ${id} ORDER BY seq`,
+    )) as unknown as Array<{ kind: string }>;
+    expect(kinds.map((k) => k.kind)).toEqual(['seed', 'snapshot']);
+  });
+
+  // cm:guard the check and the insert take ONE turn, not two. A check outside the
+  // transaction only narrows the window: core takes the next free `seq` whenever
+  // it records a wholesale write, and one committing between the check and the
+  // insert is swallowed in exactly the same silence. The interleaving is made
+  // deterministic here by holding the advisory lock both writers take.
+  it('waits for a snapshot committing under it rather than swallowing the line', async () => {
+    const s = await chatSession();
+    const id = idOf(s);
+    const base = baseOf(s);
+    const held = await harness.client.reserve();
+    let posted: Promise<Response> | null = null;
+    try {
+      await held.unsafe('BEGIN');
+      await held.unsafe('SELECT pg_advisory_xact_lock(hashtext($1))', [id]);
+      posted = postLines(id, [
+        {
+          seq: base + 1,
+          line: { type: 'assistant', message: { content: [{ type: 'text', text: 'mine' }] } },
+        },
+      ]);
+      await waitForAdvisoryWaiter();
+      await held.unsafe(
+        `INSERT INTO agent_session_events (agent_session_id, kind, data, seq)
+         VALUES ($1, 'snapshot', '{"entries":[]}'::jsonb, $2)`,
+        [id, base + 1],
+      );
+      await held.unsafe('COMMIT');
+    } finally {
+      held.release();
+    }
+    const res = await (posted as Promise<Response>);
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain('SEQ_TAKEN_BY_CORE');
+  });
+});
+
+/** Wait until a backend is parked on the session's advisory lock. */
+async function waitForAdvisoryWaiter(): Promise<void> {
+  for (let i = 0; i < 100; i++) {
+    const rows = await harness.db.execute<{ n: number }>(sql`
+      SELECT count(*)::int AS n FROM pg_stat_activity
+      WHERE datname = current_database() AND wait_event_type = 'Lock'
+        AND query ILIKE '%pg_advisory_xact_lock%'
+    `);
+    if (Number((rows[0] as { n: number } | undefined)?.n ?? 0) > 0) return;
+    await new Promise((r) => setTimeout(r, 50));
+  }
+  throw new Error('the events route never waited on the carrier lock');
+}
