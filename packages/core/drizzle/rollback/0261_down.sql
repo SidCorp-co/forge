@@ -1,7 +1,7 @@
 -- ISS-1063 rollback — re-expand the record/delivery split into one row per recipient.
 --
 -- ORDER MATTERS: stop writes, run this, THEN start the old image. The old core reads
--- `notifications.user_id` and `notifications.read`, which 0256 dropped, so starting it
+-- `notifications.user_id` and `notifications.read`, which 0261 dropped, so starting it
 -- first gives a core that 500s on every bell request.
 --
 -- WHAT THIS CANNOT UNDO, stated rather than discovered:
@@ -12,7 +12,7 @@
 --     "15 issues are parked with merged code" was the DELIVERY's headline, and the old
 --     schema has nowhere to put a sentence about fifteen rows. Each row comes back
 --     carrying its own title, which is what it said before this change and after it.
---   * `resolution_key` and `resolved_at` cleared on signal rows during 0256 stay cleared.
+--   * `resolution_key` and `resolved_at` cleared on signal rows during 0261 stay cleared.
 --     This is the one loss that applies even to a database nothing has written to since,
 --     and it is what the pre-migration snapshot exists for.
 --   * a re-expanded recipient copy carries the SURVIVOR's created_at, not its own. The
@@ -32,7 +32,7 @@ ALTER TABLE "notifications" DROP CONSTRAINT IF EXISTS "notifications_tier_is_kno
 ALTER TABLE "notifications" ADD COLUMN "user_id" uuid REFERENCES "users"("id") ON DELETE cascade;
 ALTER TABLE "notifications" ADD COLUMN "read" boolean DEFAULT false NOT NULL;
 
--- FIRST, before anything re-expands: 0256's unique index is on `resolution_key` ALONE,
+-- FIRST, before anything re-expands: 0261's unique index is on `resolution_key` ALONE,
 -- because under the split one active ops alert is one record however many admins hold a
 -- delivery of it. Re-expansion writes exactly the rows that index now forbids -- a second
 -- admin's copy of an active alert -- so leaving it in place aborts the rollback partway

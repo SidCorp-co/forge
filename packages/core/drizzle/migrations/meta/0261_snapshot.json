@@ -1,6 +1,6 @@
 {
   "id": "69708dc1-4f61-4346-a439-8ec9e2cfd514",
-  "prevId": "36b93b88-b327-4aed-88f5-c5e37d073b34",
+  "prevId": "9447cef0-acfa-440d-959a-0f02bf0d6ff1",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -2767,6 +2767,13 @@
           "notNull": true,
           "default": true
         },
+        "agent_access": {
+          "name": "agent_access",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'none'"
+        },
         "instructions": {
           "name": "instructions",
           "type": "text",
@@ -2893,6 +2900,10 @@
         "integration_bindings_role_stages_chk": {
           "name": "integration_bindings_role_stages_chk",
           "value": "(role = 'service' AND cardinality(stages) = 0) OR (role = 'deploy' AND array_ndims(stages) = 1 AND cardinality(stages) BETWEEN 1 AND 2 AND stages <@ ARRAY['preview', 'live'] AND (cardinality(stages) = 1 OR stages[1] <> stages[2]))"
+        },
+        "integration_bindings_agent_access_chk": {
+          "name": "integration_bindings_agent_access_chk",
+          "value": "agent_access IN ('none', 'all')"
         }
       },
       "isRLSEnabled": false
@@ -8354,60 +8365,6 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
-    "public.project_facts_migration_backup": {
-      "name": "project_facts_migration_backup",
-      "schema": "",
-      "columns": {
-        "project_id": {
-          "name": "project_id",
-          "type": "uuid",
-          "primaryKey": true,
-          "notNull": true
-        },
-        "project_facts": {
-          "name": "project_facts",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "project_facts_config": {
-          "name": "project_facts_config",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "'{}'::jsonb"
-        },
-        "migrated_at": {
-          "name": "migrated_at",
-          "type": "timestamp with time zone",
-          "primaryKey": false,
-          "notNull": true,
-          "default": "now()"
-        }
-      },
-      "indexes": {},
-      "foreignKeys": {
-        "project_facts_migration_backup_project_id_projects_id_fk": {
-          "name": "project_facts_migration_backup_project_id_projects_id_fk",
-          "tableFrom": "project_facts_migration_backup",
-          "tableTo": "projects",
-          "columnsFrom": [
-            "project_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
-          "onDelete": "cascade",
-          "onUpdate": "no action"
-        }
-      },
-      "compositePrimaryKeys": {},
-      "uniqueConstraints": {},
-      "policies": {},
-      "checkConstraints": {},
-      "isRLSEnabled": false
-    },
     "public.project_git_credentials": {
       "name": "project_git_credentials",
       "schema": "",
@@ -11903,7 +11860,12 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {},
+      "checkConstraints": {
+        "usage_records_session_id_uuid_chk": {
+          "name": "usage_records_session_id_uuid_chk",
+          "value": "\"usage_records\".\"session_id\" IS NULL OR \"usage_records\".\"session_id\" ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'"
+        }
+      },
       "isRLSEnabled": false
     },
     "public.user_preferences": {
@@ -15354,7 +15316,7 @@
         },
         "conversation_windows_decision_known": {
           "name": "conversation_windows_decision_known",
-          "value": "\"conversation_windows\".\"decision\" IS NULL OR \"conversation_windows\".\"decision\" IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined')"
+          "value": "\"conversation_windows\".\"decision\" IS NULL OR \"conversation_windows\".\"decision\" IN ('answered','nothing-to-say','guard-backoff','guard-agent-loop','guard-dormant','authority-refused','unreachable','undetermined','handed-off')"
         },
         "conversation_windows_closed_has_decision": {
           "name": "conversation_windows_closed_has_decision",
@@ -15400,6 +15362,12 @@
           "primaryKey": false,
           "notNull": true,
           "default": "'direct'"
+        },
+        "mode": {
+          "name": "mode",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
         },
         "title": {
           "name": "title",
@@ -15499,6 +15467,10 @@
         "conversations_shape_known": {
           "name": "conversations_shape_known",
           "value": "\"conversations\".\"shape\" IN ('direct','group')"
+        },
+        "conversations_mode_known": {
+          "name": "conversations_mode_known",
+          "value": "\"conversations\".\"mode\" IS NULL OR \"conversations\".\"mode\" IN ('assistant','agent')"
         }
       },
       "isRLSEnabled": false
@@ -15725,6 +15697,60 @@
             "id"
           ],
           "onDelete": "set null",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.project_facts_migration_backup": {
+      "name": "project_facts_migration_backup",
+      "schema": "",
+      "columns": {
+        "project_id": {
+          "name": "project_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "project_facts": {
+          "name": "project_facts",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "project_facts_config": {
+          "name": "project_facts_config",
+          "type": "jsonb",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "'{}'::jsonb"
+        },
+        "migrated_at": {
+          "name": "migrated_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "project_facts_migration_backup_project_id_projects_id_fk": {
+          "name": "project_facts_migration_backup_project_id_projects_id_fk",
+          "tableFrom": "project_facts_migration_backup",
+          "tableTo": "projects",
+          "columnsFrom": [
+            "project_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
           "onUpdate": "no action"
         }
       },
