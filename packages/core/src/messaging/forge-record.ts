@@ -84,7 +84,7 @@ function offsets(lines: readonly string[]): number[] {
 // the CLI writes it one blank line below the closing fence; leaving it outside means a card drawn
 // for the record and a stray `forge-record: verdict · contract 1` line drawn beside it as prose.
 function endOf(lines: readonly string[], starts: readonly number[], closed: number): number {
-  const endOfLine = (at: number) => starts[at] + lines[at].length;
+  const endOfLine = (at: number) => (starts[at] ?? 0) + (lines[at] ?? '').length;
   for (let at = closed + 1; at < lines.length; at += 1) {
     const line = lines[at] ?? '';
     if (line.trim() === '') continue;
@@ -110,7 +110,7 @@ function blockIn(body: string): Block | null {
   for (let at = opens + 1; at < lines.length; at += 1) {
     const line = lines[at] ?? '';
     if (line.trim().startsWith(fence)) {
-      return { entries, at: starts[opens], to: endOf(lines, starts, at) };
+      return { entries, at: starts[opens] ?? 0, to: endOf(lines, starts, at) };
     }
     const indented = INDENTED.exec(line);
     const key = indented ? null : KEY.exec(line);
@@ -122,7 +122,7 @@ function blockIn(body: string): Block | null {
   }
   // cm:guard an unterminated fence is still a record and still screened: the writer left the block
   // open, and refusing to read it would let a record past the budget by dropping its closing line.
-  return { entries, at: starts[opens], to: body.length };
+  return { entries, at: starts[opens] ?? 0, to: body.length };
 }
 
 /** The tag line naming the record's kind, wherever it sits in the body. */

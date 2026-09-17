@@ -80,7 +80,13 @@ export interface CellSpec {
   readonly audience: Audience;
   readonly intent: Intent;
   readonly rules: readonly MessageRule[];
-  /** True where the product has no door that declares this pair yet. */
+  /**
+   * True where no surface of the product screens this pair yet.
+   */
+  // cm:guard it reads "no surface" and not "no door" since ISS-1089: the two lead cells are
+  // screened by a second `screenMessage` call at the `comment-write` door rather than by a door of
+  // their own, so a flag keyed on the door table would call them reserved while they are in use —
+  // and `shape-document.test.ts` would then require the document to say a live cell is reserved.
   readonly reserved: boolean;
 }
 

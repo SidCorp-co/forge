@@ -39,6 +39,24 @@ export const COMMENT_HAS_TEXT: MessageRule = {
   check: (text) => (text.trim() ? none : one('a comment with no text carries nothing to say')),
 };
 
+/**
+ * A record's `lead` with nothing in it. Halts, for `COMMENT_HAS_TEXT`'s reason.
+ */
+// cm:guard a third row of the same shape rather than `NON_EMPTY` reused, and for the reason that
+// already made `COMMENT_HAS_TEXT` a row of its own: the sentence a writer is shown has to name the
+// thing it broke. `NON_EMPTY` says "a question carries no empty prompt or option label" and offers
+// a question as its example, which tells somebody who wrote a blank lead nothing about a lead
+// (ISS-1089).
+export const LEAD_HAS_TEXT: MessageRule = {
+  id: 'lead-has-text',
+  halts: true,
+  shape: 'the lead is one sentence saying what was found',
+  example: 'The comment screen admits a 1,662-character wall on one line.',
+  needs: [],
+  check: (text) =>
+    text.trim() ? none : one('the record carries a lead with no text, so it says nothing was found'),
+};
+
 const SHOUT_RE = /(^|\s)@(all|here|channel)\b/i;
 
 /**

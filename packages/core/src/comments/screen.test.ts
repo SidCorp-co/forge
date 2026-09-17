@@ -132,3 +132,53 @@ describe('what the refusal hands back', () => {
     expect(messageRefusalHttp(new Error('something else'))).toBeNull();
   });
 });
+
+describe('the record inside the comment, screened field by field', () => {
+  const fence = '```';
+  const record = (body: string): string =>
+    `## Confirmation\n\n${fence}forge-record\n${body}\n${fence}\n\n\`forge-record: confirmation · contract 1\``;
+  const over = 'x'.repeat(401);
+
+  it('refuses a field past its budget, naming the field', async () => {
+    expect(await refusalOf(record(`why: ${over}`))).toContain('the `why` field is 1 character(s)');
+  });
+
+  it('carries the rule, the shape and an example on that refusal too', async () => {
+    const message = await refusalOf(record(`why: ${over}`));
+    expect(message).toContain('rule: field-budget');
+    expect(message).toContain('shape: every field of a `forge-record` block is at most 400');
+    expect(message).toContain('for example: finding: holds');
+  });
+
+  it('writes a record whose every field is inside the budget', async () => {
+    await expect(screen(record(`why: ${'x'.repeat(400)}\nfinding: holds`))).resolves.toBeUndefined();
+  });
+
+  // cm:guard the two halves of criterion 14: a comment with no fence is measured against nothing
+  // and screened against no lead. Both bodies below would be refused if either pass reached them —
+  // the first is 401 characters, the second is the developer detail `no-developer-detail` catches —
+  // so an implementation that ran either pass unconditionally reds here rather than passing quietly.
+  it('leaves a comment carrying no record exactly as it was', async () => {
+    await expect(screen(`${over}x`)).resolves.toBeUndefined();
+    await expect(screen('The cause is packages/core/src/comments/screen.ts:24.')).resolves.toBeUndefined();
+  });
+
+  it('refuses a body screen and a record screen together, rather than one at a time', async () => {
+    const message = await refusalOf(record(`why: ${over}`).replace('## Confirmation', '## @all'));
+    expect(message).toContain('addresses the whole room');
+    expect(message).toContain('the `why` field is');
+  });
+
+  // cm:guard the cell the comment door reads is UNTOUCHED by ISS-1089, and this is the case that
+  // says so by name rather than by the absence of a diff: the record screen is a second pass beside
+  // this list, and a reader who folded the two together would red here.
+  it('reads the whole comment against the four rules it read before, in their order', async () => {
+    const { cellFor } = await import('../messaging/cells.js');
+    expect(cellFor('role', 'report')?.rules.map((r) => r.id)).toEqual([
+      'comment-has-text',
+      'status-matches-the-row',
+      'no-room-broadcast',
+      'no-redacted-secret',
+    ]);
+  });
+});
