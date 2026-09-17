@@ -12,6 +12,15 @@ export default defineConfig({
       '../../scripts/**/*.test.mjs',
     ],
     environment: 'node',
+    // cm:guard measured on THIS suite before it was kept, twice in each direction and alternated so a
+    // drifting box could not favour one side: off 33.38s / 32.96s, on 25.96s / 25.60s, both `on` runs
+    // taken at a HIGHER load average than both `off` runs. The transform share is where it comes from
+    // — 43% off, 16% on — because the cache persists transformed modules on disk and a repeat run
+    // skips them. `vitest doctor` recommends it at -16%; this suite gets -22% (ISS-1067).
+    // cm:guard NOT set in vitest.integration.config.ts. That config produces the coverage report
+    // `scripts/check-flow-coverage.mjs --require-sources` treats as AUTHORITATIVE evidence that a
+    // cm:flow step is defended, and a cache on that path is a silent way to degrade a gate.
+    fsModuleCache: true,
     // See vitest.setup.ts — the three required env vars, so a unit test whose subject is a pure
     // function does not have to mock the env module to reach a populated integration registry.
     setupFiles: ['./vitest.setup.ts'],
