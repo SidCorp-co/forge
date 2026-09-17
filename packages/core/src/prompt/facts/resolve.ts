@@ -19,6 +19,10 @@ import {
 } from '../../db/schema.js';
 import { integrationGuideSlug, loadOrgGuideProviders } from '../../guides/integration-guides.js';
 import { grantHolds } from '../../integrations/agent-access.js';
+import {
+  type NormalizedEnvironments,
+  normalizeEnvironments,
+} from '../../projects/environments.js';
 import { getIntegration } from '../../integrations/registry.js';
 import { effectiveConfig, listBindingsForProject } from '../../integrations/store.js';
 import {
@@ -96,11 +100,6 @@ export interface ProjectFactInputs {
   /** The project's `kind='module'` labels (ISS-595). Empty for a project with
    *  no taxonomy, which is what keeps `module-attribution` out of its prompt. */
   modules: ProjectModuleFact[];
-}
-
-interface TestingUrl {
-  label?: string;
-  url: string;
 }
 
 interface IntegrationRow {
@@ -202,7 +201,7 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
 
 /**
  * `{{project:<key>}}` resolver. Every key it answers derives from a first-class
- * project column or from `previewDeploy`; there is no author-owned map behind it
+ * project column or from `environments`; there is no author-owned map behind it
  * any more. A key outside the reserved set resolves to a refusal naming the
  * knowledge store, NOT to `undefined` — an unresolved reference renders as the
  * empty string, so returning nothing would silently delete a sentence from the
@@ -215,8 +214,7 @@ export function makeProjectResolver(src: {
   liveBranch: string | null;
   releaseModel: ReleaseModel;
   repoPath: string | null;
-  testingUrls: TestingUrl[];
-  testNotes: string | null;
+  environments: NormalizedEnvironments;
   integrations: IntegrationRow[];
 }): ProjectVarResolver {
   const reserved: Record<(typeof RESERVED_PROJECT_FACT_KEYS)[number], () => string | undefined> = {
@@ -234,13 +232,38 @@ export function makeProjectResolver(src: {
     'production-branch': () =>
       '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where the project declares `releaseModel: promote`. Update this skill body.',
     'repo-path': () => src.repoPath ?? undefined,
-    'test-urls': () =>
-      src.testingUrls.length > 0
-        ? src.testingUrls.map((u) => `- ${u.label ? `${u.label}: ` : ''}${u.url}`).join('\n')
-        : undefined,
+    // cm:guard BOTH sides, each labelled, because after ISS-1069 a project has two and an agent
+    // handed a bare list cannot tell which address it is allowed to write to. A one-box project
+    // renders only the live line; `preview: null` is that project saying it has no other side,
+    // and rendering nothing at all for it would have been the old shape's answer.
+    'test-urls': () => {
+      const lines = [
+        ...(src.environments.preview
+          ? [
+              ...(src.environments.preview.url ? [`- Preview: ${src.environments.preview.url}`] : []),
+              ...(src.environments.preview.apiUrl
+                ? [`- Preview API: ${src.environments.preview.apiUrl}`]
+                : []),
+              ...src.environments.preview.urls.map(
+                (u) => `- Preview${u.label ? ` (${u.label})` : ''}: ${u.url}`,
+              ),
+            ]
+          : []),
+        ...(src.environments.live.url ? [`- Live: ${src.environments.live.url}`] : []),
+        ...(src.environments.live.apiUrl ? [`- Live API: ${src.environments.live.apiUrl}`] : []),
+      ];
+      return lines.length > 0 ? lines.join('\n') : undefined;
+    },
+    // cm:guard a POINTER and never the value: this string is spliced VERBATIM into the
+    // device-installed SKILL.md, so whatever it says lands on disk.
     'test-creds': () =>
-      'Fetch test credentials at runtime via `forge_projects.get` → `previewDeploy.testCredentials` (never hardcode secrets).',
-    'test-notes': () => src.testNotes ?? undefined,
+      'Fetch test credentials at runtime via `forge_projects.get` → `environments.testCredentials` (never hardcode secrets).',
+    // cm:guard the KEY stays `test-notes` though the FIELD is now `limits`. Skill bodies in other
+    // repositories splice this name, an unresolved `{{project:<key>}}` renders as the empty string,
+    // and no gate in this repo can see a skill body in another one — so renaming the key would
+    // delete a sentence from an agent's prompt with nobody told. `production-branch` above is the
+    // same decision (ISS-1046, ISS-1069).
+    'test-notes': () => src.environments.limits ?? undefined,
     integrations: () => renderIntegrations(src.integrations),
   };
   return (key) =>
@@ -267,7 +290,7 @@ export async function loadProjectModules(projectId: string): Promise<ProjectModu
 }
 
 /** Load the per-project inputs for fact resolution: the status ladder, the
- *  `{{project:}}` resolver (project columns + previewDeploy + connected
+ *  `{{project:}}` resolver (project columns + environments + connected
  *  integrations) and this project's knowledge entries. */
 export async function loadProjectFactInputs(projectId: string): Promise<ProjectFactInputs> {
   let states: Record<string, { enabled?: boolean } | undefined> = {};
@@ -275,8 +298,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let liveBranch: string | null = null;
   let releaseModel: ReleaseModel = 'none';
   let repoPath: string | null = null;
-  let testingUrls: TestingUrl[] = [];
-  let testNotes: string | null = null;
+  let environments: NormalizedEnvironments = normalizeEnvironments(null);
   let integrations: IntegrationRow[] = [];
   let noProgressRounds = DEFAULT_NO_PROGRESS_ROUNDS;
   let modules: ProjectModuleFact[] = [];
@@ -289,7 +311,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     const [row] = await db
       .select({
         agentConfig: projects.agentConfig,
-        previewDeploy: projects.previewDeploy,
+        environments: projects.environments,
         repoPath: projects.repoPath,
         repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
@@ -306,10 +328,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       } | null) ?? null;
     states = ac?.pipelineConfig?.states ?? {};
     noProgressRounds = resolveNoProgressRounds(row?.agentConfig);
-    const pd =
-      (row?.previewDeploy as { testingUrls?: TestingUrl[]; notes?: string | null } | null) ?? null;
-    testingUrls = Array.isArray(pd?.testingUrls) ? pd.testingUrls : [];
-    testNotes = typeof pd?.notes === 'string' && pd.notes.length > 0 ? pd.notes : null;
+    environments = normalizeEnvironments(row?.environments);
     baseBranch = row?.baseBranch ?? null;
     liveBranch = row?.liveBranch ?? null;
     releaseModel = row?.releaseModel ?? 'none';
@@ -356,8 +375,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       liveBranch,
       releaseModel,
       repoPath,
-      testingUrls,
-      testNotes,
+      environments,
       integrations,
     }),
     projectFactKeys,
