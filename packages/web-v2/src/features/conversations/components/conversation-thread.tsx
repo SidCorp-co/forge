@@ -6,8 +6,16 @@
 // This is the half of ISS-1004 a person can see. The store has recorded a
 // reason for every silence since the collector window landed, and until this
 // file existed the only reader was a SQL prompt.
+//
+// Since ISS-1078 an assistant turn is drawn by `features/session`'s own
+// renderer, off the same canonical entry a runner session is drawn from, and a
+// turn still running is drawn from the frames the socket carries. What is NOT
+// drawn by it: a person's own bubble, which carries an `authorLabel` a session
+// has no notion of, and the four non-message entries below.
 
-import { Icon, StreamingText } from "@/design";
+import { Icon } from "@/design";
+import { Conversation } from "@/features/session/components/conversation";
+import { type MessageEntry, parseMessages } from "@/features/session/types";
 import {
   AGENT_TURN_LABEL,
   SILENCE_REASON,
@@ -15,11 +23,84 @@ import {
   type AgentTurnState,
   type ConversationMessage,
   type ConversationWindow,
+  type ConversationProgressEntry,
   type OutboxMessage,
   threadEntries,
 } from "../types";
 
-function Said({ message }: { message: ConversationMessage }) {
+/**
+ * One stored row as the canonical entry every renderer here reads.
+ */
+// cm:guard `blocks` is passed through UNTOUCHED and is never rebuilt from `content`: the row's blocks
+// are what core accumulated for the text in `content`, and a browser that composed its own would be
+// the second producer of the shape ISS-1029 collapsed to one.
+function entryOf(message: ConversationMessage): MessageEntry {
+  return {
+    id: message.id,
+    type: message.role === "user" ? "user" : "assistant",
+    timestamp: Date.parse(message.createdAt),
+    content: message.content,
+    ...(message.blocks ? { blocks: message.blocks } : {}),
+  };
+}
+
+/**
+ * An assistant turn, drawn by the renderer a runner session is drawn by.
+ */
+// cm:guard it goes through `parseMessages` and `Conversation` rather than printing `content`, which is
+// what discarded every tool card this room's rows have held since ISS-1029: the blocks were in the
+// payload, the type dropped them, and the thread printed one paragraph. `readOnly` because a
+// conversation is an append-only log and has none of the per-turn verbs a run has — the reason
+// `conversation-chat.tsx` gives for leaving all six on the session surface.
+// cm:guard NOTHING renders where the entry carries nothing — no text, no blocks, no tools. Such a row
+// is a turn that said nothing without recording why, and `parseMessages` drops it; a placeholder here
+// would invent a turn the transcript does not claim.
+function AssistantTurn({
+  entry,
+  streaming,
+}: {
+  entry: MessageEntry;
+  streaming?: boolean;
+}) {
+  const items = parseMessages([entry]);
+  if (items.length === 0) return null;
+  return (
+    <div className="flex w-full max-w-[92%] flex-col gap-2 sm:max-w-[85%]">
+      <Conversation items={items} readOnly streaming={streaming} />
+    </div>
+  );
+}
+
+/**
+ * A draft the reply screen refused, named and struck through, above the turn that replaced it.
+ */
+// cm:guard the withdrawal is DRAWN and the draft is named in it. The door screen judges a whole reply
+// after the turn ends, so the prose that streamed was never screened, and a refusal replaces it —
+// this marker is the whole of what makes that replacement a correction a reader can see rather than a
+// substitution that happened while they were looking. The reversal, its price and the condition that
+// ends it are on the `web-chat-reply` row in core's `messaging/doors.ts`. Owner's decision, 2026-09-17.
+// cm:guard rendered from the socket-written `withdrawn` map and keyed by ENTRY ID, so it survives the
+// settle and stays beside the stored row as well as beside the live turn: drawn off the progress
+// entry alone it lasted 13 ms, because `conversation.settled` clears that key within a few
+// milliseconds of the correction frame (measured in Chrome, 2026-09-17).
+function WithdrawnDraft({ draft }: { draft: string }) {
+  return (
+    <div
+      className="rounded-md border border-line bg-surface px-3 py-2"
+      data-testid="thread-reply-withdrawn"
+    >
+      <p className="fg-body-sm flex items-start gap-2 text-muted">
+        <Icon name="alert" size={13} className="mt-0.5 flex-none" />
+        <span>
+          That draft did not pass the reply check, so it was withdrawn and answered again below.
+        </span>
+      </p>
+      <p className="fg-caption mt-1 whitespace-pre-wrap text-subtle line-through">{draft}</p>
+    </div>
+  );
+}
+
+function Said({ message, withdrawn }: { message: ConversationMessage; withdrawn?: string }) {
   // cm:guard a row carrying a `silence_reason` is a turn that RAN and said nothing, and it renders as that rather than as an empty bubble — an assistant message with no text and no label is indistinguishable on screen from one still streaming.
   if (message.silenceReason) {
     return (
@@ -55,8 +136,9 @@ function Said({ message }: { message: ConversationMessage }) {
     );
   }
   return (
-    <div className="flex w-full max-w-[92%] flex-col gap-2 sm:max-w-[85%]">
-      <StreamingText text={message.content} />
+    <div className="flex flex-col gap-2">
+      {withdrawn && <WithdrawnDraft draft={withdrawn} />}
+      <AssistantTurn entry={entryOf(message)} />
     </div>
   );
 }
@@ -69,8 +151,16 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
   return (
     <div className="flex flex-col items-end" data-testid={`thread-outbox-${item.state}`}>
       <div
+        // cm:guard a `sent` bubble is drawn at FULL strength, the same as a stored one: the faded
+        // accent says "not filed yet", and once the accepted frame has arrived that is no longer true.
+        // A row that stays faded until a refetch tells a person their message is still in flight for as
+        // long as the turn takes, which is the defect this state exists to end.
         className={`max-w-[88%] rounded-lg rounded-br-sm px-3.5 py-2.5 sm:max-w-[80%] ${
-          failed ? "border border-danger bg-surface" : "bg-accent/60 text-on-accent"
+          failed
+            ? "border border-danger bg-surface"
+            : item.state === "sent"
+              ? "bg-accent text-on-accent"
+              : "bg-accent/60 text-on-accent"
         }`}
       >
         <p className={`fg-body whitespace-pre-wrap ${failed ? "text-fg" : "text-on-accent"}`}>
@@ -88,9 +178,15 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
           )}
         </span>
       ) : (
-        <span className="fg-caption mt-1 text-subtle">
-          {item.state === "sending" ? "Sending…" : "Waiting for the answer above…"}
-        </span>
+        // cm:guard `sent` carries NO label at all, which is the whole of what ISS-1078 asked for here:
+        // the message is a durable row, so there is nothing left to say about it and a person watching
+        // their own question should see it sitting there like any other. The row itself stays until the
+        // room's read catches up — without a word under it (ISS-1078).
+        item.state !== "sent" && (
+          <span className="fg-caption mt-1 text-subtle">
+            {item.state === "sending" ? "Sending…" : "Waiting for the answer above…"}
+          </span>
+        )
       )}
     </div>
   );
@@ -101,6 +197,8 @@ export function ConversationThread({
   windows,
   outbox = [],
   agentTurns = [],
+  progress,
+  withdrawn = {},
   onRetry,
 }: {
   messages: ConversationMessage[];
@@ -109,13 +207,24 @@ export function ConversationThread({
   outbox?: OutboxMessage[];
   /** The runner-hosted turns this room has held, as the server reads their state (ISS-1039). */
   agentTurns?: AgentTurn[];
+  /** The turn running right now, as the socket's frames have it so far (ISS-1078). */
+  progress?: ConversationProgressEntry | null;
+  /** Drafts the reply screen refused in this room, by the entry id that replaced each (ISS-1078). */
+  withdrawn?: Record<string, string>;
   onRetry?: (id: string) => void;
 }) {
-  const entries = threadEntries(messages, windows, outbox, agentTurns);
+  const entries = threadEntries(messages, windows, outbox, agentTurns, progress);
   return (
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
-        if (entry.kind === "said") return <Said key={entry.key} message={entry.message} />;
+        if (entry.kind === "said")
+          return (
+            <Said
+              key={entry.key}
+              message={entry.message}
+              {...(withdrawn[entry.message.id] ? { withdrawn: withdrawn[entry.message.id] } : {})}
+            />
+          );
         if (entry.kind === "outbox")
           return <Unsent key={entry.key} item={entry.item} onRetry={onRetry} />;
         if (entry.kind === "pending") {
@@ -126,6 +235,16 @@ export function ConversationThread({
           );
         }
         if (entry.kind === "agent-turn") return <AgentTurnEntry key={entry.key} turn={entry.turn} />;
+        if (entry.kind === "progress")
+          return (
+            <LiveTurn
+              key={entry.key}
+              progress={entry.progress}
+              {...(withdrawn[entry.progress.entry.id ?? ""]
+                ? { withdrawn: withdrawn[entry.progress.entry.id ?? ""] }
+                : {})}
+            />
+          );
         return (
           <div
             key={entry.key}
@@ -137,6 +256,34 @@ export function ConversationThread({
           </div>
         );
       })}
+    </div>
+  );
+}
+
+/**
+ * The turn running right now, and — where the door replaced its draft — that fact.
+ */
+// cm:guard the caret is driven by `streaming` on the SAME component a live runner session uses, so a
+// turn in flight here and a turn in flight there are one behaviour rather than two that resemble each
+// other (ISS-1078 criterion 13).
+// cm:guard the withdrawal is DRAWN and the draft is named in it. The door screen judges a whole reply
+// after the turn ends, so the prose that streamed was never screened, and a refusal replaces it — this
+// marker is the whole of what makes that replacement a correction a reader can see rather than a
+// substitution that happened while they were looking. The reversal, its price and the condition that
+// ends it are on the `web-chat-reply` row in core's `messaging/doors.ts`. Owner's decision, 2026-09-17.
+function LiveTurn({
+  progress,
+  withdrawn,
+}: {
+  progress: ConversationProgressEntry;
+  withdrawn?: string;
+}) {
+  return (
+    <div className="flex flex-col gap-2" data-testid="thread-live-turn">
+      {withdrawn && <WithdrawnDraft draft={withdrawn} />}
+      {/* cm:guard the caret stops on the CORRECTION frame, which is the last one of the turn: a caret
+          still trailing it would say the replacement is being typed when it is already whole. */}
+      <AssistantTurn entry={progress.entry} streaming={!progress.replaced} />
     </div>
   );
 }

@@ -6,10 +6,17 @@
 // proves the two entries reach the page as different text, which is where the
 // criterion's own word "reading" puts it.
 
+import { Conversation } from "@/features/session/components/conversation";
+import { type CanonicalBlock, type MessageEntry, parseMessages } from "@/features/session/types";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
-import type { AgentTurn, ConversationMessage, ConversationWindow } from "../types";
+import type {
+  AgentTurn,
+  ConversationMessage,
+  ConversationProgressEntry,
+  ConversationWindow,
+} from "../types";
 import { ConversationThread } from "./conversation-thread";
 
 expect.extend(matchers);
@@ -181,6 +188,242 @@ describe("ConversationThread", () => {
         );
         expect(screen.queryByText(/sent and never confirmed/)).toBeNull();
       }
+    });
+  });
+});
+
+// cm:guard ISS-1078 criteria 10, 11, 12, 13, 15 and 19. Each case here asserts on the BLOCKS reaching
+// the screen and not on the thread's own markup, because the whole of what this change did to this
+// file is stop composing its own paragraph and hand the canonical entry to the renderer a runner
+// session uses — a case that asserted the text alone would pass against either.
+describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () => {
+  const replied = (over: Partial<ConversationMessage> = {}): ConversationMessage => ({
+    ...asked,
+    id: "m1",
+    seq: 1,
+    role: "assistant",
+    authorUserId: null,
+    authorLabel: null,
+    content: "two issues left",
+    createdAt: "2026-09-14T00:00:01.000Z",
+    ...over,
+  });
+
+  const toolBlocks: CanonicalBlock[] = [
+    { type: "text", text: "let me look" },
+    {
+      type: "tool",
+      toolCall: {
+        id: "t1",
+        name: "Read",
+        input: { file_path: "release.md" },
+        result: "three issues, one blocked",
+      },
+    },
+    { type: "text", text: "two issues left" },
+  ];
+
+  const live = (over: Partial<ConversationProgressEntry> = {}): ConversationProgressEntry => ({
+    conversationId: "c1",
+    rev: 4,
+    entry: {
+      id: "m1",
+      type: "assistant",
+      timestamp: Date.parse("2026-09-14T00:00:01.000Z"),
+      content: "two issues left",
+      blocks: toolBlocks,
+    },
+    ...over,
+  });
+
+  // criterion 19, and criterion 10 for the row it stores: the blocks are in the payload either way,
+  // and before this change the thread printed `content` and dropped them.
+  it("draws a stored turn's tool card from the blocks its payload already carried", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: toolBlocks })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.getByText("Read release.md")).toBeInTheDocument();
+    expect(screen.getByText("three issues, one blocked")).toBeInTheDocument();
+    // cm:guard the text either SIDE of the tool call, in order: a renderer that appended the cards
+    // after the prose would satisfy an assertion on the card alone while losing what ISS-348 fixed.
+    expect(screen.getByText("let me look")).toBeInTheDocument();
+    expect(screen.getByText("two issues left")).toBeInTheDocument();
+  });
+
+  // criterion 12 — every row stored before this change has `blocks` null, and they are most of them.
+  it("renders a stored turn whose blocks is null as its text", () => {
+    render(
+      <ConversationThread messages={[asked, replied({ blocks: null })]} windows={[closed("answered")]} />,
+    );
+    expect(screen.getByText("two issues left")).toBeInTheDocument();
+    expect(screen.queryByTestId("thread-silence")).toBeNull();
+  });
+
+  // criterion 13 — asserted as the session renderer's own markup appearing VERBATIM inside the
+  // thread's, which is the only assertion that fails if the thread ever grows a second renderer that
+  // merely resembles it.
+  it("renders one canonical entry exactly as a runner session renders it", () => {
+    const message = replied({ blocks: toolBlocks });
+    const { container: mine } = render(<ConversationThread messages={[message]} windows={[]} />);
+    const thread = mine.innerHTML;
+    cleanup();
+
+    const entry: MessageEntry = {
+      id: message.id,
+      type: "assistant",
+      timestamp: Date.parse(message.createdAt),
+      content: message.content,
+      blocks: toolBlocks,
+    };
+    const { container: theirs } = render(<Conversation items={parseMessages([entry])} readOnly />);
+    expect(thread).toContain(theirs.innerHTML);
+  });
+
+  // criterion 7, the half a test can hold: the caret is the session renderer's `forge-caret`, so a
+  // thread that drew its own would pass an assertion made on a test id of its own and lose the
+  // shared behaviour criterion 13 is about.
+  it("trails a live turn with a caret and stops once the row is stored", () => {
+    const { container } = render(
+      <ConversationThread messages={[asked]} windows={[]} progress={live()} />,
+    );
+    expect(screen.getByTestId("thread-live-turn")).toBeInTheDocument();
+    expect(container.querySelector(".forge-caret")).not.toBeNull();
+    cleanup();
+
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: toolBlocks })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(document.querySelector(".forge-caret")).toBeNull();
+  });
+
+  // criterion 8 — the refusal is DRAWN, with the draft named in it, and the replacement is no longer
+  // carrying a caret because it is not being typed.
+  it("shows a refused draft as withdrawn, with the replacement beside it", () => {
+    const { container } = render(
+      <ConversationThread
+        messages={[asked]}
+        windows={[]}
+        progress={live({ replaced: { draft: "ship it, nothing is blocked" } })}
+        withdrawn={{ m1: "ship it, nothing is blocked" }}
+      />,
+    );
+    const withdrawn = screen.getByTestId("thread-reply-withdrawn");
+    expect(withdrawn).toHaveTextContent("ship it, nothing is blocked");
+    expect(withdrawn).toHaveTextContent(/did not pass the reply check/);
+    expect(screen.getByText("two issues left")).toBeInTheDocument();
+    expect(container.querySelector(".forge-caret")).toBeNull();
+  });
+
+  // cm:guard the case the marker was BUILT wrong for, watched in Chrome on a local walk 2026-09-17:
+  // `conversation.settled` clears the progress key within a few milliseconds of the correction frame,
+  // so a marker drawn off `progress.replaced` alone was on screen for 13 ms and then gone. It has to
+  // survive the handover to the stored row, which is what keying it by entry id buys.
+  it("keeps the withdrawal beside the stored row once the turn has settled", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: null })]}
+        windows={[closed("answered")]}
+        withdrawn={{ m1: "ship it, nothing is blocked" }}
+      />,
+    );
+    expect(screen.queryByTestId("thread-live-turn")).toBeNull();
+    const withdrawn = screen.getByTestId("thread-reply-withdrawn");
+    expect(withdrawn).toHaveTextContent("ship it, nothing is blocked");
+    expect(screen.getByText("two issues left")).toBeInTheDocument();
+  });
+
+  // cm:guard keyed by ENTRY ID, so a room that has held two corrected turns marks each beside its own
+  // — a single sticky flag would print the newest draft above every one of them.
+  it("marks only the turn the draft was withdrawn from", () => {
+    render(
+      <ConversationThread
+        messages={[
+          asked,
+          replied({ id: "m1", content: "two issues left", blocks: null }),
+          replied({ id: "m2", seq: 2, content: "and one is blocked", blocks: null }),
+        ]}
+        windows={[closed("answered")]}
+        withdrawn={{ m2: "nothing at all is blocked" }}
+      />,
+    );
+    const marks = screen.getAllByTestId("thread-reply-withdrawn");
+    expect(marks).toHaveLength(1);
+    expect(marks[0]).toHaveTextContent("nothing at all is blocked");
+  });
+
+  // criterion 11 — the settle clears the progress key, but a `conversation.message` frame landing
+  // first writes the durable row while the frames are still in the cache, and the answer would be on
+  // the screen twice for as long as that gap lasts.
+  it("reduces a turn's frames and its durable row to exactly one rendered turn", () => {
+    const message = replied({ blocks: toolBlocks });
+    render(
+      <ConversationThread
+        messages={[asked, message]}
+        windows={[closed("answered")]}
+        progress={live()}
+      />,
+    );
+    expect(screen.getAllByText("two issues left")).toHaveLength(1);
+    expect(screen.getAllByText("Read release.md")).toHaveLength(1);
+    expect(screen.queryByTestId("thread-live-turn")).toBeNull();
+  });
+
+  // cm:guard the reduction is by ENTRY ID and by nothing else, which is why the two turns here say
+  // exactly the SAME thing under different ids: asked twice and answered twice is two answers, and a
+  // reduction on text would silently draw the second turn as one — the identical fixture is the only
+  // one that can tell the two rules apart.
+  it("keeps a live turn that is not the stored row's turn, even saying the same thing", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ id: "m1", content: "two issues left", blocks: null })]}
+        windows={[closed("answered")]}
+        progress={live({
+          entry: { id: "m2", type: "assistant", timestamp: 0, content: "two issues left" },
+        })}
+      />,
+    );
+    expect(screen.getByTestId("thread-live-turn")).toBeInTheDocument();
+    expect(screen.getAllByText("two issues left")).toHaveLength(2);
+  });
+
+  // criterion 15 — the three readings a room in flight has to keep apart. Rendered three times in one
+  // case because the property is that they DIFFER: each asserted alone passes against a thread that
+  // prints the same sentence for all three.
+  describe("nobody has answered, the agent had nothing to add, and an answer arriving", () => {
+    const openWindow: ConversationWindow = { ...closed(null), closedAt: null };
+
+    it("says nobody has answered yet while nothing is arriving", () => {
+      render(<ConversationThread messages={[asked]} windows={[openWindow]} />);
+      expect(screen.getByTestId("thread-pending")).toHaveTextContent(/nobody has answered this yet/i);
+      expect(screen.queryByTestId("thread-live-turn")).toBeNull();
+    });
+
+    it("says the agent read it and had nothing to add, in different words", () => {
+      render(
+        <ConversationThread
+          messages={[asked, replied({ content: "", silenceReason: "nothing-to-say", blocks: null })]}
+          windows={[closed("answered")]}
+        />,
+      );
+      expect(screen.getByText(/The agent said nothing here/)).toBeInTheDocument();
+      expect(screen.queryByTestId("thread-pending")).toBeNull();
+      expect(screen.queryByTestId("thread-live-turn")).toBeNull();
+    });
+
+    // cm:guard the window is STILL OPEN here, because that is what a room read mid-turn holds: the
+    // collector closes it when the turn ends. A thread that answered an open window with "nobody has
+    // answered this yet" regardless would print that line directly above the answer being typed.
+    it("shows the answer arriving and stops saying nobody has answered", () => {
+      render(<ConversationThread messages={[asked]} windows={[openWindow]} progress={live()} />);
+      expect(screen.getByTestId("thread-live-turn")).toBeInTheDocument();
+      expect(screen.getByText("two issues left")).toBeInTheDocument();
+      expect(screen.queryByTestId("thread-pending")).toBeNull();
     });
   });
 });

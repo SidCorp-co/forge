@@ -33,7 +33,7 @@ import {
 } from './conversation-turn.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { type ChatTurnKind, resolveForProject } from './providers/registry.js';
-import type { ChatResponseFormat } from './providers/types.js';
+import type { ChatResponseFormat, ChatStreamEvent } from './providers/types.js';
 import { runTurnEvents, usageForLog } from './run-turn-core.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
@@ -76,6 +76,14 @@ export interface ExternalChatTurnArgs {
   resolveImage?: ImageResolver | undefined;
   /** Aborts the turn (provider fetch + SSE read) so a hung upstream terminates as an error instead of wedging the caller. */
   signal?: AbortSignal | undefined;
+  /**
+   * Called for each event the turn loop yields, as it yields it.
+   */
+  // cm:guard an OBSERVER and never a filter: what it is handed is what the loop already decided to
+  // emit, its return value is ignored, and a throw from it must not end the turn — a caller watching
+  // a turn is not a caller steering one. `conversation-progress.ts` is the one implementation, and it
+  // is what lets the browser draw a turn while it runs instead of after it (ISS-1078).
+  onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
   responseFormat?: ChatResponseFormat | undefined;
   /** Picks `app_config.chat_model_by_kind[kind]`; defaults to `'agentic'`. */
   turnKind?: ChatTurnKind | undefined;
@@ -235,7 +243,24 @@ export async function runExternalChatTurn(
     signal: args.signal,
   });
   let step = await gen.next();
-  while (!step.done) step = await gen.next();
+  while (!step.done) {
+    // cm:guard a throw from the observer ENDS the turn, and the generator is returned on the way out
+    // so the provider stream is not left open. The observer is `conversation-progress.ts`, whose
+    // accumulator is also the producer of the blocks the transcript row is written with, so its
+    // refusal of a tool result naming no call this turn made is an upstream pairing break rather than
+    // a watcher's inconvenience — `run-turn.ts` ends its turn on the same refusal from the same
+    // accumulator. A failure to PUBLISH is caught inside the observer, so a socket that went away
+    // cannot reach here (ISS-1078, and ISS-1029 criterion 14 for the refusal itself).
+    if (args.onTurnEvent) {
+      try {
+        args.onTurnEvent(step.value);
+      } catch (err) {
+        await gen.return(undefined as never).catch(() => undefined);
+        throw err;
+      }
+    }
+    step = await gen.next();
+  }
   const result = step.value;
   const durationMs = Date.now() - startedAt;
   if (result.elided.overBudget) {

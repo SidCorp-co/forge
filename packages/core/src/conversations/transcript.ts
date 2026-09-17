@@ -6,6 +6,7 @@
  */
 
 import type { ConversationAdapter } from '../db/schema-conversations.js';
+import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 import { handleForProject } from './participants.js';
 import type { DeliveryReceipt } from './ports.js';
@@ -16,6 +17,20 @@ export interface DeliveredReply {
   projectId: string;
   /** The exact text the venue was shown. */
   text: string;
+  /**
+   * The id the row takes, where the caller streamed this turn under one.
+   */
+  // cm:guard handed in rather than left to the column default, so the frames a browser drew the turn
+  // from and the row it settles as share ONE identity and a client reduces them to a single turn.
+  // `store.ts`'s `id?` carries the same rule and the measurement behind it (ISS-1078, ISS-1029 F1).
+  messageId?: string | undefined;
+  /**
+   * The ordered blocks of the turn this reply ended, where the caller accumulated them.
+   */
+  // cm:guard what a caller passes here must already be the blocks of the text in `text` and never a
+  // refused draft's — `conversation-progress.ts:blocksForRecord` is what decides that, and it is
+  // named here because this row is the boundary the draft must not cross (ISS-1078).
+  blocks?: readonly ContentBlock[] | null | undefined;
   receipt: DeliveryReceipt;
   /**
    * The stable key this delivery answers, where the caller has one.
@@ -41,6 +56,8 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       conversationId: reply.conversationId,
       role: 'assistant',
       content: reply.text,
+      ...(reply.messageId ? { id: reply.messageId } : {}),
+      ...(reply.blocks && reply.blocks.length > 0 ? { blocks: reply.blocks } : {}),
       authorUserId: await handleForProject(reply.conversationId, reply.projectId),
       deliveryProof: reply.deliveryKey
         ? {

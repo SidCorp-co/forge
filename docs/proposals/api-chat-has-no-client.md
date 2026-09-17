@@ -1,8 +1,9 @@
 # `POST /api/chat` is mounted, answers, and has no client
 
-**Status: OPEN. Measured by ISS-1005 (2026-09-14) at `483ff67e`, recorded rather than acted on
-because removing an SSE surface is a product decision and there is nothing to prove the removal
-against.**
+**Status: OPEN, on a narrower question than it was filed with. Measured by ISS-1005 (2026-09-14) at
+`483ff67e`, recorded rather than acted on because removing an SSE surface is a product decision and
+there is nothing to prove the removal against. The product decision was taken on 2026-09-17 and went
+the other way from this route — see *The condition that ends this*. What is left is the diff.**
 
 ## What was measured
 
@@ -29,10 +30,12 @@ a decision; `/api/chat` streams and records none.
 
 Three reasons, and the first is the only one that is about the code.
 
-1. **It is the only streaming surface.** The conversation path answers in one HTTP response, by
-   design — `conversation-routes.ts` states why, and it is the right call for a caller that must be
-   able to tell a delivered answer from a lost one. But a caret that moves while the model thinks is
-   a product property somebody may want back, and `run-turn.ts` is where it lives.
+1. ~~**It is the only streaming surface.**~~ **Spent, 2026-09-17 (ISS-1078).** It was the only one:
+   the conversation path answers in one HTTP response, by design — `conversation-routes.ts` states
+   why, and it is the right call for a caller that must be able to tell a delivered answer from a
+   lost one — and a caret that moves while the model thinks was a property somebody might want back.
+   Somebody did. It was built on the WebSocket instead, so this is no longer a reason to keep the
+   route.
 2. **There is nothing to prove a removal against.** No client means no regression test can show the
    removal is safe and none can show it is not. That is an argument for a decision, not for a diff.
 3. **ISS-1005 was instructed to correct an annotation inside that file**, which presumes the file
@@ -63,7 +66,24 @@ The price of deciding either way, not the price of the drift.
 
 ## The condition that ends this
 
-Somebody decides whether the Forge UI's chat should stream. If yes, `/api/chat` is the surface to
-reach for and the conversation route grows a streaming sibling. If no, the route, `run-turn.ts` and
-the `chatProvider` flag go together in one change, and `external-chat.ts` keeps the resolution the
-two live callers actually use.
+**Half answered, 2026-09-17 (ISS-1078).** The owner decided the Forge UI's chat should stream — and
+decided it streams over the WebSocket, not over this route. ISS-1030 had already recorded why: a
+per-request stream cannot reach someone who did not make the request, and a room has more than one
+reader. So the conversation route grew a streaming sibling that is not an HTTP response at all:
+`POST /api/conversations/:id/messages` still answers inline, and the turn is published to every
+reader of the room as `conversation.progress` frames from
+`packages/core/src/assistant/conversation-progress.ts`.
+
+What that settles, and what it leaves:
+
+- **The product question is closed.** Streaming is wanted, and it is shipped. The first argument for
+  keeping this route — "it is the only streaming surface, and a caret that moves is a property
+  somebody may want back" — no longer holds: the caret moves, and `run-turn.ts` is not what moves
+  it.
+- **ISS-1078 did NOT make this route reachable.** It has no client today for the same reason it had
+  none on 2026-09-14. The drift under *What it costs to leave* is unchanged and now buys nothing.
+- **What is still owed is one decision and one diff**: remove the route, `run-turn.ts` and the
+  `chatProvider` flag together, or name a caller for them. `external-chat.ts` keeps the provider
+  resolution the live callers use, and `createTranscriptAccumulator` — the piece of `run-turn.ts`
+  worth keeping — is already shared with the socket path rather than copied, so a removal no longer
+  takes the canonical-entry derive with it.

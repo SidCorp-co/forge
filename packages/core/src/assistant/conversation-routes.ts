@@ -53,6 +53,7 @@ import {
   readableConversation,
   writableConversation,
 } from './conversation-access.js';
+import { agentModeOffer } from './conversation-agent-offer.js';
 import { conversationMemberRoutes } from './conversation-member-routes.js';
 import { withDisplayNames } from './conversation-people.js';
 import { ConversationModeSettledError, sendWebConversationMessage } from './conversation-send.js';
@@ -124,6 +125,14 @@ const sendSchema = z
   .object({
     content: z.string().min(1).max(40_000),
     mode: z.enum(conversationModes).optional(),
+    /**
+     * The caller's own id for this message, echoed on `conversation.accepted`.
+     */
+    // cm:guard OPTIONAL, and a send without one is not refused: the token is the sender's private
+    // bookkeeping — it matches the accepted frame to the row a tab is holding in its outbox — and no
+    // server behaviour turns on it. A required one would refuse every caller that does not keep an
+    // outbox, which is every caller but the Forge UI (ISS-1078).
+    clientToken: z.string().min(1).max(200).optional(),
   })
   .strict();
 
@@ -371,37 +380,6 @@ conversationRoutes.delete(
 );
 
 /**
- * Whether this room may still be opened in Agent mode, and why not where it may not.
- */
-// cm:guard the reason travels with the `false` and is never left for the client to compose: "Agent
-// is unavailable" tells a person nothing they can act on, and the two reasons are acted on
-// differently — a room that has already been answered needs a NEW conversation, and a project with
-// no box needs one paired (ISS-1039).
-async function agentModeOffer(
-  row: ConversationRow,
-  scope: string[],
-  messageCount: number,
-): Promise<{ available: boolean; reason: string | null }> {
-  if (row.mode !== null || messageCount > 0) {
-    return {
-      available: false,
-      reason: `this conversation already answers in ${effectiveConversationMode(row)} mode — open another one to talk to the other`,
-    };
-  }
-  const projectId = scope.length === 1 ? scope[0] : undefined;
-  if (!projectId) {
-    return {
-      available: false,
-      reason: `a turn runs under exactly one project, and this room is about ${scope.length}`,
-    };
-  }
-  if (!(await conversationAgentDeviceAvailable(projectId))) {
-    return { available: false, reason: 'this project has no box paired' };
-  }
-  return { available: true, reason: null };
-}
-
-/**
  * Say something in this room, and get back what the room now holds.
  */
 // cm:guard the turn is routed INLINE and the whole thread comes back with it, rather than answered by a socket the caller then has to wait on: the person pressing enter is the one waiting, and an endpoint that returned 202 would make a delivered answer and a lost one look identical to the only client that could tell. The socket push in `conversation-adapter.ts:deliver` is for the OTHER tabs (ISS-1004 step 5).
@@ -416,7 +394,7 @@ conversationRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { content, mode } = c.req.valid('json');
+    const { content, mode, clientToken } = c.req.valid('json');
     const userId = c.get('userId');
 
     const conversation = await writableConversation(id, userId);
@@ -473,6 +451,7 @@ conversationRoutes.post(
         content,
         mode: asking,
         namedMode: mode !== undefined,
+        ...(clientToken ? { clientToken } : {}),
       });
     } catch (err) {
       // cm:guard the LOSER of two first sends racing in one empty room, which the read above cannot

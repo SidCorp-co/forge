@@ -59,9 +59,11 @@ vi.mock('./tools/registry.js', () => ({ buildProjectToolset: () => ({ tools: [] 
 vi.mock('./tools/principal.js', () => ({ buildChatToolContext: (a: unknown) => a }));
 
 const { webConversationPersona } = await import('./door-persona.js');
-const { sendWebConversationMessage, drainWebConversationWindows } = await import(
-  './conversation-send.js'
-);
+const { sendWebConversationMessage } = await import('./conversation-send.js');
+// cm:guard the drain is imported from its OWN module and exercised through the same harness: it
+// answers a stranded window by calling `routeWebWindow` in `conversation-send.ts`, so a second set of
+// mocks for it would be a second account of one path (ISS-1078, where the split happened).
+const { drainWebConversationWindows } = await import('./conversation-drain.js');
 
 const room = { id: 'conv-1', externalId: 'venue-1', shape: 'direct' as const };
 
@@ -88,6 +90,7 @@ beforeEach(() => {
     m.mockReset();
   collectInboundMessage.mockResolvedValue({
     kind: 'collected',
+    messageId: 'msg-1',
     conversationId: 'conv-1',
     windowId: 'win-1',
     seq: 3,
@@ -101,7 +104,7 @@ beforeEach(() => {
   });
 });
 
-const send = () =>
+const send = (over: { clientToken?: string } = {}) =>
   sendWebConversationMessage({
     room,
     projectId: 'p1',
@@ -110,6 +113,7 @@ const send = () =>
     content: 'how are the issues doing?',
     mode: 'assistant' as const,
     namedMode: false,
+    ...over,
   });
 
 describe('a send', () => {
@@ -126,18 +130,56 @@ describe('a send', () => {
   });
 
   // cm:guard the settle event is published AFTER `routeWindow` returns, which is the whole reason it exists beside the delivery event: the delivery goes out before the reply row commits, so a second tab that refetched on that alone reads the room back without the answer in it (review F2).
+  // cm:guard what precedes the turn is the ACCEPTED frame and nothing else, asserted by name rather
+  // than by a count: this test's whole subject is the order of the two, and a version reading
+  // `published.length` would pass just as well if a settle had gone out early (ISS-1078).
   it('tells the room it has settled, after the window closed and whatever it decided', async () => {
     routeWindow.mockImplementation(async () => {
-      expect(published).toEqual([]);
+      expect(published.map((p) => p.event)).toEqual(['conversation.accepted']);
       return { decision: 'guard-dormant' };
     });
     await send();
-    expect(published).toEqual([
-      {
-        event: 'conversation.settled',
-        data: { conversationId: 'conv-1', windowId: 'win-1', decision: 'guard-dormant' },
-      },
+    expect(published.map((p) => p.event)).toEqual([
+      'conversation.accepted',
+      'conversation.settled',
     ]);
+    expect(published.at(-1)).toEqual({
+      event: 'conversation.settled',
+      data: { conversationId: 'conv-1', windowId: 'win-1', decision: 'guard-dormant' },
+    });
+  });
+
+  // cm:guard the accepted frame exists so the person who pressed enter stops reading "Sending…" for
+  // the length of a model turn, and it is published BEFORE the turn is routed — which is the only
+  // moment that is true of. It names the row the collector committed, so the tab that sent it can
+  // match its own outbox entry rather than guessing from the text (ISS-1078).
+  it('tells the room a message was accepted, before the turn is routed', async () => {
+    let atTurn: unknown = 'the turn never ran';
+    routeWindow.mockImplementation(async () => {
+      atTurn = published.at(0);
+      return { decision: 'answered' };
+    });
+
+    await send({ clientToken: 'outbox-7' });
+
+    expect(atTurn).toEqual({
+      event: 'conversation.accepted',
+      data: {
+        conversationId: 'conv-1',
+        messageId: 'msg-1',
+        seq: 3,
+        clientToken: 'outbox-7',
+      },
+    });
+  });
+
+  it('accepts a send that names no token, and says so rather than omitting the field', async () => {
+    await send();
+
+    expect(published.at(0)).toMatchObject({
+      event: 'conversation.accepted',
+      data: { clientToken: null },
+    });
   });
 
   it('returns the decision the window settled on', async () => {
@@ -187,7 +229,7 @@ describe('the recovery drain', () => {
     vi.doMock('../db/client.js', () => ({
       db: { select: () => ({ from: () => ({ where: () => ({ limit: async () => [] }) }) }) },
     }));
-    const fresh = await import('./conversation-send.js');
+    const fresh = await import('./conversation-drain.js');
     await fresh.drainWebConversationWindows();
     expect(releaseWindow).toHaveBeenCalledWith('win-1', {
       claimedAt: claimed.claimedAt,

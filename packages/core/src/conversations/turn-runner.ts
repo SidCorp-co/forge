@@ -12,8 +12,10 @@
  */
 
 import { type ExternalChatTurnResult, runExternalChatTurn } from '../assistant/external-chat.js';
+import type { ChatStreamEvent } from '../assistant/providers/types.js';
 import type { ChatToolset } from '../assistant/tools/mcp-adapter.js';
 import type { ImageResolver, TurnImage } from '../assistant/vision.js';
+import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 import type { DoorId } from '../messaging/contract.js';
 import { Sentry } from '../observability/sentry.js';
@@ -84,7 +86,12 @@ export interface TurnHookContext {
 // cm:guard `send: false` is the explicit "this turn posts nothing" case, and it is not a failure: an adapter that handed the turn to a slower path answers through that path, and posting here as well double-replies (ISS-727).
 export type TurnReply =
   | { send: false; reason: string; declined?: boolean }
-  | { send: true; message: ScreenedMessage };
+  // cm:guard `screenReplaced` is a FACT about the screen and never a text comparison: a turn that
+  // called a tool answers in two model round trips, so the prose a watcher accumulated holds the
+  // preamble as well and always differs from the one reply that goes out — inferring a refusal from
+  // that difference told every tool-using turn's reader their draft had been refused. Measured on a
+  // local walk, 2026-09-17 (ISS-1078).
+  | { send: true; message: ScreenedMessage; screenReplaced: boolean };
 
 export interface ConversationTurnRequest {
   venue: ConversationVenue;
@@ -123,6 +130,35 @@ export interface ConversationTurnRequest {
   // cm:guard the hook exists so a caller can make the ATTEMPT durable, and it is called before the send rather than after it because that is the only order a crash cannot beat: a reply accepted by the server and lost by a dying core is indistinguishable from one never sent, unless the intent to send was written first (ISS-1004 rule 2, review F2).
   // cm:guard a FALSE from it means the caller no longer holds the right to speak here and the text is NOT sent: this is how a holder whose lease expired mid-turn is stopped, and treating the refusal as an error would post the fallback into the room the second holder is already answering (ISS-1004, review pass 1 F1).
   onBeforeDeliver?: () => Promise<boolean>;
+  /**
+   * Called for each event of the FIRST attempt's turn loop, as it yields.
+   */
+  // cm:guard the first attempt only, and never the corrective retry: a retry is a second model turn
+  // whose prose REPLACES the first, so streaming it too would append the replacement to the draft a
+  // reader is already looking at and show one answer twice. The replacement reaches them through
+  // `onSettled` below, marked as the correction it is (ISS-1078).
+  onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
+  /**
+   * Called once with the text the screen admitted, before it is delivered.
+   */
+  // cm:guard it carries BOTH the text and whether the screen replaced the attempt that streamed,
+  // because the watcher cannot tell those apart on its own: its accumulated prose differs from the
+  // delivered reply on every turn that called a tool, and a watcher left to infer a refusal from that
+  // difference accuses the screen on every one of them. A screen refusal, an exhausted repair budget
+  // and the error fallback are all `screenReplaced: true` — each really does replace what streamed.
+  // Called before delivery, so a delivery that then fails leaves a frame the room's own read corrects;
+  // progress is best-effort and the transcript is not (ISS-1078).
+  onSettled?: ((settled: { text: string; screenReplaced: boolean }) => void) | undefined;
+  /**
+   * The identity and the blocks the delivered reply's row is written with.
+   */
+  // cm:guard asked for AFTER the screen has run, with the text that won, because that is the only
+  // moment the answer is known — and the blocks that come back must be the blocks of that text. The
+  // one implementation is `conversation-progress.ts:blocksForRecord`, which drops a refused draft's
+  // text blocks rather than filing them (ISS-1078).
+  replyEntry?:
+    | ((deliveredText: string) => { id: string; blocks: readonly ContentBlock[] | null })
+    | undefined;
   /** The answering handle's own name — the code-authored fallbacks speak as it. */
   handleName: string;
   /**
@@ -203,6 +239,9 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     ...turn,
     message: req.message,
     images: inputs.images,
+    // cm:guard spread onto THIS call and not onto `turn`, because `turn` is also spread into the
+    // retry below — putting it there is what would stream the replacement on top of the draft.
+    ...(req.onTurnEvent ? { onTurnEvent: req.onTurnEvent } : {}),
   });
 
   const late = await req.divertAfterTurn?.(result, hook);
@@ -223,20 +262,22 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     }
   }
 
-  return {
-    send: true,
-    message: await screenedTurnReply({
-      door: req.door,
-      projectId: req.venue.projectId,
-      handleName: req.handleName,
-      first: result,
-      setPhase: ctx.setPhase,
-      ...(req.log ? { log: req.log } : {}),
-      // cm:guard the retry WRITES nothing: its message is a code-authored instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the conversation, which is why it names one (ISS-1001).
-      retry: (instruction) =>
-        runExternalChatTurn({ ...turn, record: 'nothing', message: instruction }),
-    }),
-  };
+  const screenedMessage = await screenedTurnReply({
+    door: req.door,
+    projectId: req.venue.projectId,
+    handleName: req.handleName,
+    first: result,
+    setPhase: ctx.setPhase,
+    ...(req.log ? { log: req.log } : {}),
+    // cm:guard the retry WRITES nothing: its message is a code-authored instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the conversation, which is why it names one (ISS-1001).
+    retry: (instruction) =>
+      runExternalChatTurn({ ...turn, record: 'nothing', message: instruction }),
+  });
+  // cm:guard compared against THE FIRST ATTEMPT'S reply, which is the one whose events streamed, and
+  // never against the accumulated prose: they are the same thing only on a turn with no tool call.
+  // Trimmed, because that is what `screenedTurnReply` returns.
+  const screenReplaced = screenedMessage.text.trim() !== result.reply.trim();
+  return { send: true, message: screenedMessage, screenReplaced };
 }
 
 /**
@@ -280,7 +321,14 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
       tags: { area: 'conversations', phase, timed_out: String(timedOut) },
       extra: { adapter: req.venue.adapter, externalId: req.venue.externalId, ...req.log },
     });
-    reply = { send: true, message: codeAuthored(errorFallbackReply(req.handleName)) };
+    // cm:guard `screenReplaced: true` because this fallback really does replace whatever streamed
+    // before the throw — the screen never ran, and a reader watching prose arrive is owed the fact
+    // that what they saw is not what went out (ISS-1078).
+    reply = {
+      send: true,
+      message: codeAuthored(errorFallbackReply(req.handleName)),
+      screenReplaced: true,
+    };
   } finally {
     clearTimeout(timer);
     await req.dispose?.();
@@ -297,6 +345,13 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     if (req.onBeforeDeliver && !(await req.onBeforeDeliver())) {
       return { kind: 'superseded', reason: 'the right to answer here moved to another holder' };
     }
+    // cm:guard called HERE and not where the screen ran, because the screen is not the only thing
+    // that replaces a draft: the catch above builds a code-authored fallback for a turn that threw or
+    // timed out, and that path never reaches `composeReply`'s end. A watcher told only about screen
+    // refusals would let a streamed draft be silently replaced by the error fallback — the exact
+    // silent substitution this issue's decision rules out. After the delivery guard, so a superseded
+    // turn announces no correction for text it never sent (ISS-1078, consult F2).
+    req.onSettled?.({ text: reply.message.text, screenReplaced: reply.screenReplaced });
     receipt = await transport.deliver(req.venue, reply.message);
   } catch (err) {
     // cm:guard nothing is recorded when the door refuses: the venue never saw this text, and a transcript row for it would say the opposite. The commonest refusal is a room rebound while the turn ran, which `deliver` names rather than swallows.
@@ -307,12 +362,16 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     return { kind: 'undeliverable', reason: err instanceof Error ? err.message : String(err) };
   }
 
+  // cm:guard resolved from the DELIVERED text and not from the turn, so a screened replacement is
+  // stored under the identity the browser drew and with blocks that belong to what went out.
+  const entry = req.replyEntry?.(reply.message.text);
   await recordDeliveredReply({
     conversationId: conversation.id,
     projectId: req.venue.projectId,
     text: reply.message.text,
     receipt,
     deliveryKey: req.deliveryKey,
+    ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
   });
   return { kind: 'delivered', messageId: receipt.messageId };
 }

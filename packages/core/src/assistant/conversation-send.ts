@@ -8,20 +8,16 @@
  * inputs — the persona and the toolset — which is exactly the claim ISS-1002
  * made about what an adapter owes a turn.
  *
- * The drain loop at the bottom is what a restart is owed: a window opened by a
- * send whose core died is still a question somebody asked, and it is claimed and
- * routed by whichever core comes back.
+ * What a restart is owed — a window opened by a send whose core died is still a
+ * question somebody asked — is `conversation-drain.ts`, which calls
+ * `routeWebWindow` below for a window it claims by adapter rather than by room.
  */
 
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { collectInboundMessage } from '../conversations/collect-inbound.js';
 import { type ProjectHandle, resolveProjectHandle } from '../conversations/handles.js';
-import { startConversationHeartbeat } from '../conversations/heartbeat.js';
-import {
-  type ConversationVenue,
-  codeAuthored,
-  registerConversationTransport,
-} from '../conversations/ports.js';
+import { type ConversationVenue, codeAuthored } from '../conversations/ports.js';
 import { routeWindow, type WindowTurnInputs } from '../conversations/route-window.js';
 import {
   effectiveConversationMode,
@@ -42,10 +38,12 @@ import type { ConversationMode, ConversationShape } from '../db/schema-conversat
 import { logger } from '../logger.js';
 import {
   publishToConversationReaders,
+  WEB_CONVERSATION_ACCEPTED_EVENT,
   WEB_CONVERSATION_SETTLED_EVENT,
   type WebConversationFrame,
   webConversationPorts,
 } from './conversation-adapter.js';
+import { type ConversationProgress, startConversationProgress } from './conversation-progress.js';
 import { webAgentConversationPersona, webConversationPersona } from './door-persona.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
@@ -56,16 +54,6 @@ export interface WebConversationRoom {
   externalId: string;
   shape: ConversationShape;
 }
-
-/**
- * How often a core looks for web windows nobody finished.
- */
-// cm:guard this loop is the RECOVERY path and never the ordinary one: a send routes its own window inline, because a person who pressed enter is waiting on the answer and a settle delay they did not ask for is latency with nothing bought by it. What this reaches is only what a crash, a rollback or a lost socket left behind (ISS-1004 rule 1).
-const WEB_DRAIN_INTERVAL_MS = 15_000;
-
-/** How many stranded windows one tick takes. */
-// cm:guard a batch and not everything due, for the reason the first adapter's drain gives: each window costs a model turn, and a core coming back to a hundred of them would spend a hundred turns in one tick.
-const WEB_DRAIN_BATCH = 5;
 
 /**
  * What the Forge UI contributes to a turn: who the assistant is, and what it may read.
@@ -93,11 +81,29 @@ export function webConversationTurn(args: {
     conversationContext: () => Promise<string | null>;
     reserve: () => Promise<boolean>;
   };
+  /**
+   * The watcher this turn publishes to while it runs.
+   */
+  // cm:guard handed in rather than started here, because its entry id has to outlive this call: the
+  // same id is what the progress frames carry and what the delivered row is written under, and one
+  // minted inside a function called per turn could not be the row's (ISS-1078).
+  progress: ConversationProgress;
 }): WindowTurnInputs {
   return {
     door: 'web-chat-reply',
     handleName: args.handleName,
     log: { adapter: 'web', projectId: args.project.id, mode: args.window.mode },
+
+    // cm:guard all three are attached whatever the mode, and the watcher is what decides they do
+    // nothing: the runner-hosted lane never drives `runTurnEvents`, so `onTurnEvent` is simply never
+    // called there, and `onSettled` refuses to mark a replacement it has no draft for. Branching on
+    // the mode here would be a second place the fork is written.
+    onTurnEvent: args.progress.onTurnEvent,
+    onSettled: args.progress.onSettled,
+    replyEntry: (deliveredText) => ({
+      id: args.progress.entryId,
+      blocks: args.progress.blocksForRecord(deliveredText),
+    }),
 
     // cm:guard THE fork, and the only one: `assistant` returns null and the in-core turn below runs
     // exactly as it did, while `agent` hands the whole turn to the runner-hosted lane and answers
@@ -145,9 +151,21 @@ export function webConversationTurn(args: {
       // bridge, and a line here would put a promise in front of an answer.
       if (started.started) return { send: false, reason: 'agent-turn-dispatched' };
       if (started.reason === 'deduped')
-        return { send: true, message: codeAuthored(WEB_AGENT_REPLIES.dedup) };
+        // cm:guard `screenReplaced: false` on both: this fork runs BEFORE the turn, so the watcher has
+        // been handed no events and holds no draft — there is nothing for these two lines to correct,
+        // and marking them a correction would tell a person a draft was withdrawn that never existed
+        // (ISS-1078).
+        return {
+          send: true,
+          message: codeAuthored(WEB_AGENT_REPLIES.dedup),
+          screenReplaced: false,
+        };
       if (started.reason === 'no-device')
-        return { send: true, message: codeAuthored(WEB_AGENT_REPLIES.noDevice) };
+        return {
+          send: true,
+          message: codeAuthored(WEB_AGENT_REPLIES.noDevice),
+          screenReplaced: false,
+        };
       // cm:guard 'dispatch-failed' sends nothing either — the session was created and then marked
       // failed, so the completion bridge delivers the one honest sentence; replying here as well
       // would put two failures in the thread for one turn.
@@ -236,6 +254,8 @@ export async function sendWebConversationMessage(args: {
   // lane over a room that had already chosen is the defect the whole rule exists to prevent
   // (ISS-1039, plan consult F2).
   namedMode: boolean;
+  /** The sender's own id for this message, echoed on the accepted event (ISS-1078). */
+  clientToken?: string | undefined;
 }): Promise<WebSendResult> {
   const frame: WebConversationFrame = {
     conversation: args.room,
@@ -269,6 +289,29 @@ export async function sendWebConversationMessage(args: {
       `web conversations: conversation ${args.room.id} could not be placed as a venue, so the message was not taken in`,
     );
   }
+
+  // cm:guard published BEFORE the turn is routed and never after, which is the whole of what it
+  // buys: the row is committed by the collector above and the route below does not return until the
+  // answer exists, so this is the only moment anything can tell the person who pressed enter that
+  // their message is filed. Failures are logged and swallowed, as the settle below is: a message that
+  // is durable is durable whether or not a socket heard about it (ISS-1078).
+  await publishToConversationReaders(collected.conversationId, {
+    event: WEB_CONVERSATION_ACCEPTED_EVENT,
+    data: {
+      conversationId: collected.conversationId,
+      messageId: collected.messageId,
+      seq: collected.seq,
+      // cm:guard echoed back rather than re-derived, so the tab that sent this can match the row to
+      // the outbox entry it is holding without guessing from the text or the sequence — two tabs may
+      // each have a message in flight in the same room.
+      clientToken: args.clientToken ?? null,
+    },
+  }).catch((err: unknown) =>
+    logger.warn(
+      { err, conversationId: collected.conversationId },
+      'web conversations: the accepted event was not published',
+    ),
+  );
 
   const decision = await routeOneWebWindow(args.room.externalId, `send:${args.userId}`);
   return {
@@ -333,12 +376,20 @@ async function agentConversationContext(window: ConversationWindowRow): Promise<
     .join('\n');
 }
 
-async function routeWebWindow(
+export async function routeWebWindow(
   window: ConversationWindowRow,
   claim: WindowClaim,
 ): Promise<string | null> {
   const subject = await webWindowSubject(window, claim);
   if (!subject) return null;
+
+  // cm:guard ONE watcher per window, started here rather than inside `inputs`: `routeWindow` calls
+  // that builder once, but the entry id it mints has to be the id the delivered row is written under,
+  // so it is minted at the top of the routing and read twice — by the frames and by the recorder.
+  const progress = startConversationProgress({
+    conversationId: window.conversationId,
+    entryId: randomUUID(),
+  });
 
   const outcome = await routeWindow({
     window,
@@ -367,8 +418,15 @@ async function routeWebWindow(
           conversationContext: () => agentConversationContext(window),
           reserve,
         },
+        progress,
       }),
   });
+  // cm:guard the watcher is CLOSED and drained before the settle is published, because the settle is
+  // a different call that never joined its chain: a frame still queued here would land after it, and
+  // a client that clears its in-flight entry on the settle would have that frame resurrect a turn it
+  // had already finished drawing (consult F1).
+  await progress.close();
+
   // cm:guard published AFTER `routeWindow` has recorded the reply and closed the window, which is the whole point of it being a second event: the delivery event goes out before the row commits, so a tab that refetched on that alone could read the room back without the answer in it. Every decision publishes, not only `answered`, because a silence is equally something a second tab is sitting and waiting for (ISS-1004 step 5, review F2).
   await publishToConversationReaders(window.conversationId, {
     event: WEB_CONVERSATION_SETTLED_EVENT,
@@ -412,63 +470,4 @@ async function routeOneWebWindow(
       'web conversations: a window is routed under its claim, and this one holds none',
     );
   return routeWebWindow(window, claim);
-}
-
-/**
- * Route every web window a stopped core left behind.
- */
-// cm:guard claimed by ADAPTER here and with the ordinary settle, which is the opposite of the send path above and deliberately so: this tick knows nothing about which room it is serving, and the settle is what keeps it off a window a live request is about to route inline.
-export async function drainWebConversationWindows(): Promise<void> {
-  const windows = await claimDueWindows({
-    adapter: 'web',
-    claimant: 'web-drain',
-    limit: WEB_DRAIN_BATCH,
-  });
-  for (const window of windows) {
-    const claim = claimOf(window);
-    if (!claim) continue;
-    await routeWebWindow(window, claim).catch((err) =>
-      logger.error(
-        { err, windowId: window.id },
-        'web conversations: routing a stranded window failed',
-      ),
-    );
-  }
-}
-
-/**
- * Make the Forge UI an adapter the store can reach, and start its recovery drain.
- */
-// cm:guard the registration lives HERE and not in `index.ts`, and the reason is a gate rather than a taste: `index.ts` already coordinates 48 modules against an `.arch.json` limit of 6, frozen at that set by the archmap baseline, so a direct `conversations/ports.js` import there is a 49th module and a new violation of a rule the file is already amnestied for. One call from the module that owns the adapter costs the coordinator nothing it was not already paying (ISS-1004 step 5).
-// cm:guard the transport is registered BEFORE the drain starts, never after: a stranded window claimed by a tick that ran first would find no `web` transport in the registry and close `unreachable` a question somebody is still owed.
-// cm:guard NOT gated on the `chatProvider` flag — that flag gates the SSE `/api/chat` surface, while `/api/conversations` is mounted unconditionally, so gating this would leave a send endpoint whose reply had nowhere to be delivered.
-export function registerWebConversationAdapter(): () => void {
-  registerConversationTransport(webConversationPorts);
-  const stopDrain = startWebConversationDrain();
-  // cm:guard the heartbeat starts HERE for the reason the registration itself does — `index.ts` is at its coordinator limit and may not reach one more module — and it is not the web adapter's: the tick opens windows in every adapter's rooms and each adapter's own drain routes them (ISS-1034 criteria 36-38).
-  const stopHeartbeat = startConversationHeartbeat();
-  return () => {
-    stopDrain();
-    stopHeartbeat();
-  };
-}
-
-/**
- * Start the recovery drain. Returns the stop.
- */
-// cm:guard a tick still running is never overlapped by the next, which is the first adapter's rule and holds for the same reason: two drains at once each claim a batch, and the loser's windows sit under a live lease while the winner pays for its turns.
-export function startWebConversationDrain(): () => void {
-  let running = false;
-  const tick = (): void => {
-    if (running) return;
-    running = true;
-    void drainWebConversationWindows()
-      .catch((err) => logger.error({ err }, 'web conversations: the drain tick failed'))
-      .finally(() => {
-        running = false;
-      });
-  };
-  const timer = setInterval(tick, WEB_DRAIN_INTERVAL_MS);
-  timer.unref?.();
-  return () => clearInterval(timer);
 }

@@ -117,3 +117,178 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
     expect(c.keys).toHaveLength(16);
   });
 });
+
+// cm:guard ISS-1078 criterion 17, and the frames' own ordering. This file's head rule is that every
+// key it decides on sits under an invalidated prefix; the progress key is the one exception, written
+// and never invalidated, because a frame arrives many times a second and carries the whole entry — so
+// an invalidation per frame would refetch the entire conversation per token. These cases are what
+// holds that exception to what it claims.
+describe("a turn's progress frames are written, never fetched (ISS-1078)", () => {
+  // cm:guard a cache double rather than `capture()` above, because the whole behaviour under test is
+  // a WRITE: the mock up there has no `setQueryData` at all, and the router would throw before
+  // deciding anything.
+  function cache() {
+    const keys: string[] = [];
+    const store = new Map<string, unknown>();
+    const qc = {
+      invalidateQueries: ({ queryKey }: { queryKey?: unknown[] }) => {
+        keys.push(JSON.stringify(queryKey));
+      },
+      setQueryData: (key: unknown[], next: unknown) => {
+        const k = JSON.stringify(key);
+        store.set(k, typeof next === "function" ? (next as (p: unknown) => unknown)(store.get(k)) : next);
+      },
+      getQueryCache: () => ({ findAll: () => [], subscribe: () => () => {}, get: () => undefined }),
+    } as unknown as QueryClient;
+    return {
+      qc,
+      at: (key: unknown[]) => store.get(JSON.stringify(key)),
+      invalidated: (key: unknown[]) => keys.includes(JSON.stringify(key)),
+      keys,
+      frame: (event: string, data: Record<string, unknown>) => {
+        routeEvent({ event, data, timestamp: "2026-09-17T12:00:00.000Z" }, qc);
+        flushInvalidations();
+      },
+    };
+  }
+
+  const entry = (content: string, id = "m1") => ({ id, type: "assistant", timestamp: 1, content });
+
+  it("puts the entry where the thread reads it and refetches nothing", () => {
+    const c = cache();
+    c.frame("conversation.progress", { conversationId: "c1", rev: 1, entry: entry("two iss") });
+    expect(c.at(["conversations", "c1", "progress"])).toMatchObject({ rev: 1 });
+    // cm:guard asserted against the WHOLE list and not against one key: an invalidation of
+    // `["conversations"]` or of the list would refetch this room just as surely as its own key.
+    expect(c.keys).toEqual([]);
+  });
+
+  it("drops a frame that would rewind the text a reader is watching", () => {
+    const c = cache();
+    c.frame("conversation.progress", { conversationId: "c1", rev: 7, entry: entry("two issues left") });
+    c.frame("conversation.progress", { conversationId: "c1", rev: 3, entry: entry("two iss") });
+    expect(c.at(["conversations", "c1", "progress"])).toMatchObject({ rev: 7 });
+  });
+
+  // cm:guard a new entry id is a NEW turn and its revisions start again from 1, so a guard that
+  // compared revisions alone would silently drop the whole of the next turn.
+  it("accepts a lower revision when it belongs to the next turn", () => {
+    const c = cache();
+    c.frame("conversation.progress", { conversationId: "c1", rev: 7, entry: entry("two issues left") });
+    c.frame("conversation.progress", { conversationId: "c1", rev: 1, entry: entry("and one blocked", "m9") });
+    expect(c.at(["conversations", "c1", "progress"])).toMatchObject({ rev: 1 });
+  });
+
+  // cm:guard the marker's lifetime is the reason this key exists: the correction frame and the settle
+  // land within milliseconds of each other, and the settle clears the progress key — so a withdrawal
+  // recorded only on the progress entry is on screen for about 13 ms. Measured in Chrome, 2026-09-17.
+  it("records a withdrawn draft under a key the settle does not clear", () => {
+    const c = cache();
+    c.frame("conversation.progress", {
+      conversationId: "c1",
+      rev: 6,
+      entry: entry("the sentence that went out"),
+      replaced: { draft: "ISS-99999 is the blocker" },
+    });
+    c.frame("conversation.settled", { conversationId: "c1" });
+
+    expect(c.at(["conversations", "c1", "progress"])).toBeNull();
+    expect(c.at(["conversations", "c1", "withdrawn"])).toEqual({
+      m1: "ISS-99999 is the blocker",
+    });
+  });
+
+  // cm:guard keyed by the ENTRY the replacement belongs to, so a room that corrects twice marks each
+  // turn with its own draft rather than the newest one above all of them.
+  it("keeps one withdrawal per turn", () => {
+    const c = cache();
+    c.frame("conversation.progress", {
+      conversationId: "c1",
+      rev: 2,
+      entry: entry("first replacement"),
+      replaced: { draft: "first draft" },
+    });
+    c.frame("conversation.progress", {
+      conversationId: "c1",
+      rev: 2,
+      entry: entry("second replacement", "m9"),
+      replaced: { draft: "second draft" },
+    });
+    expect(c.at(["conversations", "c1", "withdrawn"])).toEqual({
+      m1: "first draft",
+      m9: "second draft",
+    });
+  });
+
+  it("records nothing for a frame that replaced nothing", () => {
+    const c = cache();
+    c.frame("conversation.progress", { conversationId: "c1", rev: 1, entry: entry("streaming") });
+    expect(c.at(["conversations", "c1", "withdrawn"])).toBeUndefined();
+  });
+
+  it("clears the in-flight entry when the turn settles, so it is not drawn beside its own row", () => {
+    const c = cache();
+    c.frame("conversation.progress", { conversationId: "c1", rev: 2, entry: entry("two iss") });
+    c.frame("conversation.settled", { conversationId: "c1" });
+    expect(c.at(["conversations", "c1", "progress"])).toBeNull();
+    expect(c.invalidated(["conversations", "c1"])).toBe(true);
+  });
+
+  it("leaves a frame with no revision alone rather than writing a rewind", () => {
+    const c = cache();
+    c.frame("conversation.progress", { conversationId: "c1", entry: entry("two iss") });
+    expect(c.at(["conversations", "c1", "progress"])).toBeUndefined();
+  });
+});
+
+// cm:guard ISS-1078 criteria 1 and 2 — the frame that tells one tab its own message is now a row.
+describe("an accepted message is filed under the token its tab minted (ISS-1078)", () => {
+  function cache() {
+    const store = new Map<string, unknown>();
+    const keys: string[] = [];
+    const qc = {
+      invalidateQueries: ({ queryKey }: { queryKey?: unknown[] }) => keys.push(JSON.stringify(queryKey)),
+      setQueryData: (key: unknown[], next: unknown) => {
+        const k = JSON.stringify(key);
+        store.set(k, typeof next === "function" ? (next as (p: unknown) => unknown)(store.get(k)) : next);
+      },
+      getQueryCache: () => ({ findAll: () => [], subscribe: () => () => {}, get: () => undefined }),
+    } as unknown as QueryClient;
+    return {
+      qc,
+      at: (key: unknown[]) => store.get(JSON.stringify(key)),
+      invalidated: (key: unknown[]) => keys.includes(JSON.stringify(key)),
+      frame: (data: Record<string, unknown>) => {
+        routeEvent({ event: "conversation.accepted", data, timestamp: "2026-09-17T12:00:00.000Z" }, qc);
+        flushInvalidations();
+      },
+    };
+  }
+
+  it("records which durable row the token became", () => {
+    const c = cache();
+    c.frame({ conversationId: "c1", messageId: "m0", seq: 0, clientToken: "tok-a" });
+    expect(c.at(["conversations", "c1", "accepted"])).toEqual({ "tok-a": { messageId: "m0", seq: 0 } });
+  });
+
+  // cm:guard two tabs, each holding its own outbox row: a map keyed by anything but the token would
+  // have one tab clear its row on the other's acceptance and drop somebody else's message off screen.
+  it("keeps one tab's acceptance from answering another's", () => {
+    const c = cache();
+    c.frame({ conversationId: "c1", messageId: "m0", seq: 0, clientToken: "tok-a" });
+    c.frame({ conversationId: "c1", messageId: "m1", seq: 1, clientToken: "tok-b" });
+    expect(c.at(["conversations", "c1", "accepted"])).toEqual({
+      "tok-a": { messageId: "m0", seq: 0 },
+      "tok-b": { messageId: "m1", seq: 1 },
+    });
+  });
+
+  // cm:guard somebody ELSE's message arriving is still news to this room, and it belongs to no outbox
+  // row here — so the room is refreshed and no token is written.
+  it("refreshes the room for a message this tab did not send", () => {
+    const c = cache();
+    c.frame({ conversationId: "c1", messageId: "m0", seq: 0 });
+    expect(c.at(["conversations", "c1", "accepted"])).toBeUndefined();
+    expect(c.invalidated(["conversations", "c1"])).toBe(true);
+  });
+});

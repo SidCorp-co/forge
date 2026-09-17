@@ -56,6 +56,12 @@ vi.mock("@/features/session/components/composer", () => ({
 }));
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
+// cm:guard the socket's own router is used rather than a hand-written `setQueryData`: what criteria 1
+// and 2 are about is the frame reaching the composer, and a test that wrote the cache itself would
+// pass against a router that never wrote that key at all (ISS-1078).
+const { routeEvent } = await import("@/lib/ws/event-router");
+const { flushInvalidations } = await import("@/lib/ws/invalidation-coalescer");
+
 const { ConversationChat } = await import("./conversation-chat");
 
 afterEach(cleanup);
@@ -65,6 +71,13 @@ beforeEach(() => {
   open.mockReset();
   send.mockReset();
   detail.mockReset();
+  // cm:guard `agentMode` is reset HERE and not only in the case that changes it. The last case in
+  // this file leaves it pending on purpose, and its key sits under the `["conversations"]` prefix
+  // that `useOpenConversation`'s `onSuccess` invalidates and AWAITS — so a hanging read of it makes
+  // the next case's `open` mutation never resolve and its send never fire. Found by a case added
+  // after it, which failed only in a whole-file run (ISS-1078).
+  agentMode.mockReset();
+  agentMode.mockResolvedValue({ available: true, reason: null });
   open.mockResolvedValue({
     id: "c1",
     adapter: "web",
@@ -445,6 +458,171 @@ describe("ConversationChat \u00b7 the pick before any room exists", () => {
     expect(screen.getByText(/checking whether a box is free/)).toBeInTheDocument();
     await act(async () => {
       answer({ available: true, reason: null });
+    });
+  });
+});
+
+// cm:guard ISS-1078 criteria 1 and 2. Before this, `POST /conversations/:id/messages` was the only
+// thing that could clear "Sending…", and it does not return until the agent turn is over — so a
+// person's own question read as still-in-flight for the whole answer. Both cases below hold that
+// request open for their whole length, which is the only way either one can fail honestly.
+describe("ConversationChat \u00b7 a question the server has filed but not yet answered (ISS-1078)", () => {
+  const roomBase = {
+    id: "c1",
+    adapter: "web",
+    externalId: "v1",
+    shape: "direct",
+    title: null,
+    updatedAt: "2026-09-14T00:00:00.000Z",
+    scope: ["p1"],
+    participants: [],
+  };
+  const stored = {
+    id: "m0",
+    seq: 0,
+    role: "user",
+    authorUserId: "u1",
+    authorLabel: "Ada",
+    content: "is the release ready?",
+    silenceReason: null,
+    createdAt: "2026-09-14T00:00:00.000Z",
+  };
+  // cm:why the heading renders the room's first message as its title, so the count is taken inside
+  // the thread — asserting over the document counts the title as a second copy.
+  const inThread = (text: string) =>
+    screen.getAllByText(text).filter((el) => el.closest("h1") === null);
+
+  const accept = async (qc: QueryClient, clientToken: string) => {
+    await act(async () => {
+      routeEvent(
+        {
+          event: "conversation.accepted",
+          data: { conversationId: "c1", messageId: "m0", seq: 0, clientToken },
+          timestamp: "2026-09-17T12:00:00.000Z",
+        },
+        qc,
+      );
+      flushInvalidations();
+    });
+  };
+
+  it("stops saying Sending when the server files it, not when the agent answers", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    send.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ConversationChat projectId="p1" />
+      </QueryClientProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+    expect(screen.getByTestId("thread-outbox-sending")).toBeInTheDocument();
+
+    await accept(qc, send.mock.calls[0]?.[3] as string);
+
+    // cm:guard the request is asserted STILL OPEN, which is the whole property: a label that cleared
+    // because the turn had ended would be the behaviour this replaces.
+    expect(send).toHaveBeenCalledTimes(1);
+    expect(screen.getByTestId("thread-outbox-sent")).toBeInTheDocument();
+    expect(screen.queryByTestId("thread-outbox-sending")).toBeNull();
+    expect(screen.queryByText("Sending…")).toBeNull();
+    expect(screen.queryByText(/Waiting for the answer above/)).toBeNull();
+
+    await act(async () => {
+      answer({ conversationId: "c1", windowId: "w1", seq: 0, decision: "answered", messages: [], windows: [] });
+    });
+  });
+
+  // cm:guard watched on a local walk in Chrome, 2026-09-17: the placeholder sat under the reply as it
+  // was being typed, saying the turn had produced nothing directly beneath the words it had produced.
+  // It is the thing streaming REPLACES, so it goes the moment frames arrive — and stays for the gap
+  // before the first one, which is the only time it is telling the truth.
+  it("drops the Agent is working placeholder once frames are arriving", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    send.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ConversationChat projectId="p1" />
+      </QueryClientProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+
+    // Before the first frame the turn has produced nothing, and the placeholder says so.
+    expect(screen.getByText("Agent is working…")).toBeInTheDocument();
+
+    await act(async () => {
+      routeEvent(
+        {
+          event: "conversation.progress",
+          data: {
+            conversationId: "c1",
+            rev: 1,
+            entry: { id: "a1", type: "assistant", timestamp: 1, content: "Sure — let me look" },
+          },
+          timestamp: "2026-09-17T12:00:00.000Z",
+        },
+        qc,
+      );
+      flushInvalidations();
+    });
+
+    expect(screen.getByText("Sure — let me look")).toBeInTheDocument();
+    expect(screen.queryByText("Agent is working…")).toBeNull();
+
+    await act(async () => {
+      answer({ conversationId: "c1", windowId: "w1", seq: 0, decision: "answered", messages: [], windows: [] });
+    });
+  });
+
+  it("holds the filed question on screen exactly once until its stored row arrives", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    send.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+
+    // The room's own read is held open, so nothing but the accepted frame can keep the question
+    // visible; `rows` is read when it resolves, so opening the gate lands the durable row.
+    let rows: unknown[] = [];
+    let openGate: () => void = () => undefined;
+    const gate = new Promise<void>((resolve) => { openGate = () => resolve(); });
+    detail.mockImplementation(async () => {
+      await gate;
+      return { ...roomBase, messages: rows, windows: [] };
+    });
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ConversationChat projectId="p1" />
+      </QueryClientProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+
+    await accept(qc, send.mock.calls[0]?.[3] as string);
+    expect(inThread("is the release ready?")).toHaveLength(1);
+
+    // cm:guard the replacement read is DELAYED here on purpose: a row dropped on acceptance leaves
+    // the question nowhere at all until this lands, which is consult F4 (ISS-1078).
+    rows = [stored];
+    await act(async () => {
+      openGate();
+      await Promise.resolve();
+    });
+    await waitFor(() => expect(screen.queryByTestId("thread-outbox-sent")).toBeNull());
+    expect(inThread("is the release ready?")).toHaveLength(1);
+
+    await act(async () => {
+      answer({ conversationId: "c1", windowId: "w1", seq: 0, decision: "answered", messages: [stored], windows: [] });
     });
   });
 });

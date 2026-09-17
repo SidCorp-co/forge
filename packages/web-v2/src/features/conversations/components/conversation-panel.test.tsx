@@ -291,7 +291,17 @@ describe("ConversationPanel \u00b7 what a slow or failing request must not do", 
     // run yet and the screen still holds the room the person chose.
     // cm:guard the third argument is the MODE, and it rides the first send of a room and no other:
     // a draft's own first message is what settles it, so the call that opens the room carries it.
-    await waitFor(() => expect(sendMsg).toHaveBeenCalledWith("cNew", "hello", "assistant"));
+    // cm:guard the fourth is the outbox row's own id, which the send carries so `conversation.accepted`
+    // comes back naming the row it belongs to; it is minted per row, so its shape is all this case can
+    // say about it (ISS-1078).
+    await waitFor(() =>
+      expect(sendMsg).toHaveBeenCalledWith(
+        "cNew",
+        "hello",
+        "assistant",
+        expect.stringMatching(/^[0-9a-f-]{36}$/),
+      ),
+    );
     expect(detail).not.toHaveBeenCalledWith("cNew");
     expect(screen.getByText("everything said in c1")).toBeInTheDocument();
   });

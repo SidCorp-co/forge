@@ -327,3 +327,121 @@ describe('a turn the adapter hands to another path', () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 });
+
+describe('what a watcher of the turn is told (ISS-1078)', () => {
+  it('names the delivered text, once, on the ordinary path', async () => {
+    const onSettled = vi.fn();
+
+    await runConversationTurn(request({ onSettled }));
+
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledWith({ text: 'an answer', screenReplaced: false });
+  });
+
+  // cm:guard `screenReplaced` is what the watcher draws its correction marker from, and the whole
+  // reason it is a FACT carried from here rather than a comparison made there: a turn that calls a
+  // tool answers in two model round trips, so the prose a watcher accumulated holds the preamble as
+  // well and differs from the one reply that goes out — every single time. A watcher inferring a
+  // refusal from that difference told the reader of every tool-using turn that their draft had failed
+  // the reply check. Measured on a local walk against the real stack, 2026-09-17.
+  it('says the screen replaced NOTHING when it admitted what the turn produced', async () => {
+    const onSettled = vi.fn();
+    runExternalChatTurn.mockResolvedValue({ ...answered, reply: 'an answer' });
+
+    await runConversationTurn(request({ onSettled }));
+
+    expect(onSettled).toHaveBeenCalledWith(expect.objectContaining({ screenReplaced: false }));
+  });
+
+  it('says the screen replaced the draft when the retry is what went out', async () => {
+    const onSettled = vi.fn();
+    screenReplyAtDoor
+      .mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] })
+      .mockResolvedValueOnce({ ok: true });
+    runExternalChatTurn
+      .mockResolvedValueOnce({ ...answered, reply: 'rejected text' })
+      .mockResolvedValueOnce({ ...answered, reply: 'the retry answer' });
+
+    await runConversationTurn(request({ onSettled }));
+
+    expect(onSettled).toHaveBeenCalledWith({
+      text: 'the retry answer',
+      screenReplaced: true,
+    });
+  });
+
+  // cm:guard the repair budget running out is a replacement too, and a louder one: what goes out is
+  // code-authored and no attempt of the model's survived it.
+  it('says the screen replaced the draft when the budget ran out', async () => {
+    const onSettled = vi.fn();
+    screenReplyAtDoor.mockResolvedValue({ ok: false, refusals: [REFUSAL] });
+    runExternalChatTurn.mockResolvedValue({ ...answered, reply: 'still bad' });
+
+    await runConversationTurn(request({ onSettled }));
+
+    expect(onSettled).toHaveBeenCalledWith({
+      text: unverifiedFallbackReply('Babo'),
+      screenReplaced: true,
+    });
+  });
+
+  // cm:guard THE consult F2 case: the screen is not the only thing that replaces a draft. A turn that
+  // throws or times out gets a code-authored fallback built in `runConversationTurn`'s catch, which
+  // never reaches the end of `composeReply` — so a watcher told only about screen refusals would let a
+  // streamed draft be silently replaced by the error sentence.
+  it('names the fallback when the turn threw, so a streamed draft is not silently replaced', async () => {
+    const onSettled = vi.fn();
+    runExternalChatTurn.mockRejectedValue(new Error('the provider went away'));
+
+    await runConversationTurn(request({ onSettled }));
+
+    expect(onSettled).toHaveBeenCalledTimes(1);
+    expect(onSettled).toHaveBeenCalledWith({
+      text: errorFallbackReply('Babo'),
+      // cm:guard TRUE, and this is the one path where the screen never ran at all: the fallback still
+      // replaces whatever streamed before the throw, and a reader watching prose arrive is owed the
+      // fact that what they saw is not what went out.
+      screenReplaced: true,
+    });
+    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ problems: [] }));
+  });
+
+  // cm:guard after the delivery guard and never before it: a turn whose right to answer moved to
+  // another holder sends nothing, and announcing a correction for text it never sent would be a
+  // correction to a room that saw neither version.
+  it('tells a watcher nothing when the turn was superseded', async () => {
+    const onSettled = vi.fn();
+
+    const outcome = await runConversationTurn(
+      request({ onSettled, onBeforeDeliver: async () => false }),
+    );
+
+    expect(outcome).toMatchObject({ kind: 'superseded' });
+    expect(onSettled).not.toHaveBeenCalled();
+  });
+
+  it('writes the identity and the blocks the watcher resolved for the delivered text', async () => {
+    const replyEntry = vi.fn((text: string) => ({
+      id: 'entry-1',
+      blocks: [{ type: 'text' as const, text }],
+    }));
+
+    await runConversationTurn(request({ replyEntry }));
+
+    expect(replyEntry).toHaveBeenCalledWith('an answer');
+    expect(recordDeliveredReply).toHaveBeenCalledWith(
+      expect.objectContaining({
+        messageId: 'entry-1',
+        blocks: [{ type: 'text', text: 'an answer' }],
+      }),
+    );
+  });
+
+  it('records no identity and no blocks when nothing is watching', async () => {
+    await runConversationTurn(request());
+
+    const recorded = recordDeliveredReply.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(recorded).not.toHaveProperty('messageId');
+    expect(recorded).not.toHaveProperty('blocks');
+  });
+});
