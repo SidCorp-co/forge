@@ -122,23 +122,34 @@ describe('sentryAdapter.healthcheck', () => {
 });
 
 describe('the Sentry declaration (ISS-1085)', () => {
-  it('declares canDispatch beside a dispatchOutbound that exists — criterion 1', async () => {
+  it('declares canDispatch beside a dispatchOutbound that exists', async () => {
     const { sentryIntegration } = await import('./adapter.js');
     expect(sentryIntegration.capabilities.canDispatch).toBe(true);
     expect(typeof sentryIntegration.adapter?.dispatchOutbound).toBe('function');
   });
 
-  it('declares hasDeliveryLog, which is what puts the tab on the connection drawer — criterion 2', async () => {
+  it('declares hasDeliveryLog, which is what puts the tab on the connection drawer', async () => {
     const { sentryIntegration } = await import('./adapter.js');
     expect(sentryIntegration.capabilities.hasDeliveryLog).toBe(true);
   });
 
-  it('still refuses an inbound delivery by name', async () => {
-    await expect(
-      // biome-ignore lint/suspicious/noExplicitAny: handleInbound refuses before reading either argument
-      sentryAdapter.handleInbound({} as any, {} as any),
-    ).rejects.toThrow(
-      'sentry: handleInbound is not supported (this provider has no inbound surface)',
-    );
+  // ── ISS-1085 slice 4 — the inbound surface this adapter used to refuse by name ──────────────
+
+  it('declares canReceiveWebhook, so the router derives a route to it', async () => {
+    const { sentryIntegration } = await import('./adapter.js');
+    expect(sentryIntegration.capabilities.canReceiveWebhook).toBe(true);
+  });
+
+  // cm:guard BOTH headers are declared, and the signature one is not optional in practice: the router refuses a matched provider that declares none (`PROVIDER_DECLARES_NO_SIGNATURE_HEADER`), so a declaration carrying only `webhookHeader` turns every Sentry delivery into a 400.
+  it('declares the two headers Sentry actually sends', async () => {
+    const { sentryIntegration } = await import('./adapter.js');
+    expect(sentryIntegration.capabilities.webhookHeader).toBe('sentry-hook-resource');
+    expect(sentryIntegration.capabilities.webhookSignatureHeader).toBe('sentry-hook-signature');
+  });
+
+  // cm:guard identity, not `typeof`. `handleInbound` used to be a stub that threw, which is also a function — so a `typeof === 'function'` assertion would have passed against the very code this slice replaced.
+  it('answers an inbound delivery through the webhook handler rather than a refusing stub', async () => {
+    const { handleSentryWebhook } = await import('./webhook.js');
+    expect(sentryAdapter.handleInbound).toBe(handleSentryWebhook);
   });
 });
