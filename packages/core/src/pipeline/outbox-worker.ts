@@ -50,6 +50,17 @@ import { emitPipelineWedge } from './wedge.js';
  */
 
 const POLL_INTERVAL_MS = 1_000;
+/**
+ * ISS-1021 — how far an idle poll backs off, and the ceiling it stops at.
+ *
+ * The worker polled every second forever. Measured on beta 2026-09-17 the table held exactly ONE
+ * unprocessed row and it was dead-lettered, so all ~86,400 polls a day claimed nothing. Backing
+ * off costs latency only while there is no work: the first row claimed returns the poll to
+ * `POLL_INTERVAL_MS`, and a transition that arrives during a backed-off window waits at most
+ * `POLL_MAX_INTERVAL_MS`. That ceiling is the priced part of the trade — 8s of added worst-case
+ * latency on the first transition after an idle spell, against 86,400 empty round trips a day.
+ */
+const POLL_MAX_INTERVAL_MS = 8_000;
 const BATCH_LIMIT = 50;
 const CLAIM_LEASE_MS = 120_000;
 // cm:why counts REdeliveries (see module header) — the filter `attempts < MAX_REDELIVERIES` therefore allows 1 initial delivery + MAX_REDELIVERIES retries before dead-lettering
@@ -73,6 +84,7 @@ interface OutboxRow extends Record<string, unknown> {
 let timer: NodeJS.Timeout | null = null;
 let running = false;
 let stopping = false;
+let pollIntervalMs = POLL_INTERVAL_MS;
 
 // cm:edge contract -> packages/core/src/pipeline/orchestrator.ts — this claim lease's at-least-once guarantee is only sound because considerEnqueue/buildAndEnqueueStepJob dedupe a re-emitted transition per-issue under pg_advisory_xact_lock
 async function claimBatch(): Promise<OutboxRow[]> {
@@ -83,7 +95,13 @@ async function claimBatch(): Promise<OutboxRow[]> {
       FROM (
         SELECT id FROM pipeline_outbox
          WHERE processed_at IS NULL
-           AND attempts < ${MAX_REDELIVERIES}
+           -- cm:guard ISS-1021 — a LITERAL, never a bind parameter, and that is the whole point of
+           -- the change. idx_outbox_unprocessed is partial on this same predicate, and Postgres
+           -- cannot prove a partial index predicate is implied by "attempts < $n" because it does
+           -- not know what $n holds at plan time. Bound as a parameter the new index is simply
+           -- never used and the migration is silently worthless — which is why the criterion for
+           -- it is an EXPLAIN naming the index rather than a reading of the migration file.
+           AND attempts < ${sql.raw(String(MAX_REDELIVERIES))}
            AND (claimed_at IS NULL OR claimed_at < now() - interval '${sql.raw(String(CLAIM_LEASE_MS))} milliseconds')
          ORDER BY created_at
          FOR UPDATE SKIP LOCKED
@@ -100,6 +118,7 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
   let processed = 0;
   let failed = 0;
   const rows = await claimBatch();
+  const delivered: string[] = [];
 
   // cm:guard never await hooks.emit() while a transaction is open on this connection or any other — subscribers (e.g. the orchestrator) open their own tx and can block on an unbounded lock, pinning whatever tx is still around
   for (const row of rows) {
@@ -122,9 +141,12 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
       });
       // cm:edge contract -> packages/core/src/pipeline/hooks.ts — only a `pipeline-orchestrator` failure is escalated; a best-effort subscriber failing (e.g. pm, which has no local guard) must not block delivery or raise a wedge claiming the status change was unprocessed
       assertHookDelivered(result, { owned: ['pipeline-orchestrator'] });
-      await db.execute(sql`
-        UPDATE pipeline_outbox SET processed_at = now(), claimed_at = NULL WHERE id = ${row.id}
-      `);
+      // cm:guard ISS-1021 — the SUCCESS write is deferred to one statement after the loop; the
+      // FAILURE write below stays per-row and must. A failure carries that row's own `last_error`
+      // and re-stamps its own `claimed_at` lease, so batching failures would either lose the
+      // per-row message or put every failed row on one lease clock. Successes carry nothing but
+      // their id, so one `id = ANY(...)` is the same write.
+      delivered.push(row.id);
       processed++;
       if (isSentryEnabled()) {
         Sentry.addBreadcrumb({
@@ -176,6 +198,25 @@ export async function drainOutboxOnce(): Promise<{ processed: number; failed: nu
       }
     }
   }
+
+  // cm:guard ISS-1021 — one statement for the whole batch, and it runs AFTER every emit rather
+  // than between them, so the "never hold a transaction open across hooks.emit()" guard above is
+  // untouched: this opens its own, with no hook running.
+  //
+  // Priced trade-off: a crash between the last emit and this write re-delivers the batch instead
+  // of one row. That is the SAME at-least-once event the module header already documents, with a
+  // window of one batch rather than one row, and it is safe for exactly the reason stated there —
+  // the orchestrator collapses a re-emitted transition under its per-issue advisory lock, and the
+  // other two subscribers dedupe on `transition:<outboxId>`. It buys 50 round trips per full
+  // batch. The condition that would end it is a subscriber that stops being idempotent, which
+  // `assertHookDelivered`'s owned set is what protects.
+  if (delivered.length > 0) {
+    await db.execute(sql`
+      UPDATE pipeline_outbox
+         SET processed_at = now(), claimed_at = NULL
+       WHERE id = ANY(${delivered}::uuid[])
+    `);
+  }
   return { processed, failed };
 }
 
@@ -183,12 +224,35 @@ async function tick(): Promise<void> {
   if (running || stopping) return;
   running = true;
   try {
-    await drainOutboxOnce();
+    const { processed, failed } = await drainOutboxOnce();
+    // cm:guard back off on an EMPTY batch, and reset on the first row claimed — including a row
+    // whose delivery failed. A failure means work exists, so treating it as idle would lengthen
+    // the poll exactly while a wedged subscriber needs retrying.
+    if (processed === 0 && failed === 0) {
+      pollIntervalMs = Math.min(pollIntervalMs * 2, POLL_MAX_INTERVAL_MS);
+    } else {
+      pollIntervalMs = POLL_INTERVAL_MS;
+    }
+    rearm();
   } catch (err) {
     logger.error({ err }, 'outbox-worker: tick failed');
+    // cm:guard a THROWN tick is not an idle one — the table was never read, so nothing here says
+    // there is no work. Hold the current interval rather than backing off on an error, or a
+    // database blip would quietly stretch the drain to its ceiling.
+    rearm();
   } finally {
     running = false;
   }
+}
+
+/** Re-arm the one-shot timer at the current interval. */
+function rearm(): void {
+  if (stopping) return;
+  if (timer) clearTimeout(timer);
+  timer = setTimeout(() => {
+    void tick();
+  }, pollIntervalMs);
+  timer.unref?.();
 }
 
 /**
@@ -199,20 +263,20 @@ async function tick(): Promise<void> {
 export function registerOutboxWorker(): void {
   if (timer) return;
   stopping = false;
-  timer = setInterval(() => {
-    void tick();
-  }, POLL_INTERVAL_MS);
-  // Don't keep the event loop alive on shutdown.
-  timer.unref?.();
+  // cm:guard a self-re-arming one-shot timer, NOT setInterval — the interval is now variable, and
+  // setInterval cannot change its period without being torn down and rebuilt on every tick.
+  pollIntervalMs = POLL_INTERVAL_MS;
+  rearm();
 }
 
 /** Test/shutdown helper. */
 export async function stopOutboxWorker(): Promise<void> {
   stopping = true;
   if (timer) {
-    clearInterval(timer);
+    clearTimeout(timer);
     timer = null;
   }
+  pollIntervalMs = POLL_INTERVAL_MS;
   // Wait out an in-flight tick so the test's tx doesn't race the worker.
   while (running) {
     await new Promise((r) => setTimeout(r, 10));

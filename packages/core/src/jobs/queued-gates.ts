@@ -225,7 +225,7 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
         WHEN j.retry_after_at IS NOT NULL AND j.retry_after_at > now() THEN 'retry_cooldown'
         WHEN ${predicates.issueBusySession} THEN 'issue_busy'
         WHEN ${predicates.issueBusyJob} THEN 'issue_busy'
-        -- cm:guard every one of the three runner arms correlates on \`j.project_id\`, and a new arm
+        -- cm:guard every one of the three runner arms correlates on j.project_id, and a new arm
         -- must too: uncorrelated, a project with no box of its own reads as served the moment ANY
         -- project in the set has one, which is the deadlock these arms exist to name, inverted.
         WHEN NOT EXISTS (
