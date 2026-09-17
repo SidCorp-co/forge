@@ -131,6 +131,75 @@ describe('a turn for a transport that is four functions', () => {
     expect(outcome).toEqual({ kind: 'delivered', messageId: 'server-id-9' });
   });
 
+  // cm:guard the observer goes to the FIRST turn only. The screen's corrective retry is a second
+  // attempt at one answer, and streaming it would put two drafts of one reply on the socket with
+  // nothing saying which the room ended up with (ISS-1078, plan step 2 as corrected).
+  it('hands the turn observer to the model turn and never to the screen’s retry', async () => {
+    const onTurnEvent = vi.fn();
+    screenReplyAtDoor
+      .mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] })
+      .mockResolvedValueOnce({ ok: true });
+    runExternalChatTurn
+      .mockResolvedValueOnce({ ...answered, reply: 'the draft' })
+      .mockResolvedValueOnce({ ...answered, reply: 'the retry answer' });
+
+    await runConversationTurn(request({ onTurnEvent }));
+
+    expect(runExternalChatTurn).toHaveBeenCalledTimes(2);
+    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({ onTurnEvent });
+    expect(runExternalChatTurn.mock.calls[1]?.[0]).not.toHaveProperty('onTurnEvent');
+  });
+
+  // cm:guard the ORDER is the property, not the call: `onSettled` publishes the correction frame, so
+  // one that ran before `onBeforeDeliver` would correct a reply a lapsed holder never sends, and one
+  // that ran after `deliver` would reach a screen that had already replaced the draft it corrects.
+  it('asks what settled after the right to speak is confirmed and before the delivery', async () => {
+    const order: string[] = [];
+    const onBeforeDeliver = vi.fn(async () => {
+      order.push('before-deliver');
+      return true;
+    });
+    const onSettled = vi.fn(async (text: string) => {
+      order.push(`settled:${text}`);
+      return { entryId: 'entry-7', blocks: null };
+    });
+    deliver.mockImplementation(async () => {
+      order.push('deliver');
+      return { messageId: 'server-id-9' };
+    });
+
+    await runConversationTurn(request({ onBeforeDeliver, onSettled }));
+
+    expect(order).toEqual(['before-deliver', 'settled:an answer', 'deliver']);
+  });
+
+  // cm:guard a turn whose right to answer moved publishes NOTHING: the holder that took the window
+  // over is the one whose reply the room gets, and a correction frame from this one would correct a
+  // draft against text that was never sent.
+  it('asks nothing of a turn whose right to speak has moved', async () => {
+    const onSettled = vi.fn(async () => ({ entryId: 'entry-7', blocks: null }));
+    const outcome = await runConversationTurn(
+      request({ onBeforeDeliver: async () => false, onSettled }),
+    );
+    expect(onSettled).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ kind: 'superseded' });
+  });
+
+  // cm:guard this is criteria 10 and 11 at the seam: the row takes the id the socket streamed under
+  // and the blocks the producer says are storable, so re-opening the room draws the same one turn
+  // the frames drew rather than a second identity with no tool cards on it.
+  it('records the row under the turn’s own entry id, with its blocks', async () => {
+    const blocks = [
+      { type: 'tool' as const, toolCall: { id: 't1', name: 'forge_issues', input: {} } },
+    ];
+    await runConversationTurn(request({ onSettled: async () => ({ entryId: 'entry-7', blocks }) }));
+    expect(recordDeliveredReply.mock.calls[0]?.[0]).toMatchObject({
+      text: 'an answer',
+      entryId: 'entry-7',
+      blocks,
+    });
+  });
+
   // cm:guard the runner reaches the venue through the REGISTERED transport and holds no door of its own: a runner that could be handed a door would let each adapter bring one, which is the second outbound path `outbound.test.ts` exists to refuse on the transport's own side.
   it('refuses by name when the venue names an adapter no transport registered', async () => {
     clearConversationTransports();

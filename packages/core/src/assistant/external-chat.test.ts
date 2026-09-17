@@ -147,6 +147,50 @@ describe('runExternalChatTurn', () => {
     expect(appended).toEqual(['The answer is 42.']);
   });
 
+  // cm:guard the observer sees the loop's own events, in order, which is what makes a caret
+  // possible at all: before this hook the generator was drained with a bare `while (!step.done)`
+  // and nothing could watch a turn happen (ISS-1078).
+  it('hands every loop event to an observer that asked for them', async () => {
+    appended.length = 0;
+    selectCall = 0;
+    const seen: Array<{ type: string }> = [];
+    await runExternalChatTurn({
+      projectId: 'p1',
+      adapter: 'web' as const,
+      conversationId: 'conv-1',
+      message: 'what is the answer?',
+      userId: null,
+      onTurnEvent: (event) => seen.push(event),
+    });
+    expect(seen.map((e) => e.type)).toContain('chunk');
+  });
+
+  // cm:guard criterion 18, and the reason the plan was corrected on this point: the observer on
+  // this path is the same accumulator that produces the blocks written to the durable row, so its
+  // refusal of a tool result naming no call is an upstream pairing break rather than a watcher's
+  // problem. Swallowing it would file a transcript that silently disagrees with what ran; the turn
+  // ends instead, with the refusal named where a reader meets it.
+  it('ends the turn on an observer’s refusal, naming it, rather than swallowing it', async () => {
+    appended.length = 0;
+    silences.length = 0;
+    selectCall = 0;
+    const out = await runExternalChatTurn({
+      projectId: 'p1',
+      adapter: 'web' as const,
+      conversationId: 'conv-1',
+      message: 'what is the answer?',
+      userId: null,
+      onTurnEvent: () => {
+        throw new Error('transcript: tool result for x names no tool call this turn made');
+      },
+    });
+    expect(out.terminal).toBe('error');
+    expect(out.error).toMatch(/names no tool call this turn made/);
+    expect(out.reply).toBe('');
+    expect(appended).toEqual([]);
+    expect(silences).toEqual(['transcript: tool result for x names no tool call this turn made']);
+  });
+
   it('injects the progress facts block into the system prompt and returns the snapshot', async () => {
     buildSystemPromptCalls.length = 0;
     selectCall = 0;

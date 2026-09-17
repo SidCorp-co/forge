@@ -114,10 +114,18 @@ export const conversationsApi = {
   // means that, and sending the room's current mode back on every message would be a request the
   // server is right to refuse.
   /** `POST /api/conversations/:id/messages` — say something, and get the room back. */
-  send: (id: string, content: string, mode?: ConversationMode) =>
+  // cm:guard `clientToken` is this TAB's own id for the row it is already showing, and the server
+  // stores it nowhere: it comes back on the `conversation.accepted` frame so the tab that typed the
+  // message clears its own unsent copy rather than another tab's, which two people in one room would
+  // otherwise do to each other (ISS-1078).
+  send: (id: string, content: string, mode?: ConversationMode, clientToken?: string) =>
     apiClient<SendResult>(`/conversations/${id}/messages`, {
       method: "POST",
-      body: JSON.stringify({ content, ...(mode ? { mode } : {}) }),
+      body: JSON.stringify({
+        content,
+        ...(mode ? { mode } : {}),
+        ...(clientToken ? { clientToken } : {}),
+      }),
     }),
 
   // cm:guard a PROJECT-scoped read and not a room's, because the composer of a draft has no room to

@@ -6,6 +6,8 @@
 // can be truncated and re-dispatched. A conversation is what was said, in order,
 // with a decision beside each thing that was not.
 
+import type { CanonicalBlock } from "@/features/session/types";
+
 export type ConversationAdapter = "web" | "widget" | "rocketchat" | "telegram";
 export type ConversationShape = "direct" | "group";
 export type ConversationMessageRole = "user" | "assistant" | "system";
@@ -75,9 +77,36 @@ export interface ConversationMessage {
   authorUserId: string | null;
   authorLabel: string | null;
   content: string;
+  /**
+   * The turn's ordered canonical blocks, or null on a row written through the text-only door.
+   */
+  // cm:guard the server has served these on every message since ISS-1029 and this type discarded
+  // them at the boundary, so no renderer could reach them however it was written — which is why
+  // criterion 19 is about the TYPE and the consumption rather than about a runtime change. Null is
+  // a row from before that change and renders as its text (ISS-1078).
+  blocks: CanonicalBlock[] | null;
   /** Set INSTEAD of text: this turn ran and chose to say nothing. */
   silenceReason: string | null;
   createdAt: string;
+}
+
+/**
+ * A turn being written right now, as the socket carries it.
+ */
+// cm:guard the entry is the canonical `AgentMessage` core produces with the SAME accumulator the
+// SSE chat surface uses, so it is read by `features/session/types.ts parseMessages` and this
+// feature grows no formatter of its own — which is the drift ISS-1029 exists to prevent (ISS-1078).
+export interface ConversationProgress {
+  conversationId: string;
+  /** The growing canonical entry; typed loosely because `parseMessages` takes `unknown`. */
+  entry: unknown;
+  /**
+   * This frame is the REPLACEMENT for prose the reply screen refused.
+   */
+  // cm:guard drawn as a correction and never swapped in place: the amnesty that lets unjudged prose
+  // reach the room is paid for by telling the reader the sentence they read was withdrawn, and a
+  // silent substitution is exactly what that decision refuses (core `conversation-progress.ts`).
+  replaced?: boolean;
 }
 
 export interface ConversationWindow {
@@ -170,8 +199,16 @@ export interface OutboxMessage {
   /** Client-minted; never a server id, and never written anywhere. */
   id: string;
   content: string;
-  /** `queued` is waiting its turn, `sending` is the request in flight, `failed` kept its words. */
-  state: "queued" | "sending" | "failed";
+  /**
+   * `queued` is waiting its turn, `sending` is the request in flight, `accepted` is filed and
+   * waiting for its durable copy, `failed` kept its words.
+   */
+  // cm:guard `accepted` is a fourth state and not the absence of one: the server has the message,
+  // so "Sending…" would be a lie, but this tab's cache does not yet hold the row that replaces this
+  // one — so the row stays, unlabelled, and is dropped when its own durable copy arrives rather
+  // than at acceptance. Dropping it at acceptance makes the question vanish off the screen until a
+  // later read brings it back (ISS-1078 criterion 2).
+  state: "queued" | "sending" | "accepted" | "failed";
   /** Set on `failed` only — what the send was refused with. */
   error?: string;
 }

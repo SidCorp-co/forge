@@ -113,6 +113,13 @@
 
 
 ### Added
+
+- **A conversation now streams as the agent writes it**, to everyone in the room: text types in and
+  each lookup appears as its own card, in place of one "Agent is working…" line.
+- **Your own message stops reading "Sending…" the moment the server has it**, rather than when the
+  answer arrives — and it stays on screen throughout.
+- **Re-opening a conversation shows what a past answer looked up**, in order, instead of one
+  paragraph. Older conversations read as they always did.
 - **The assistant benchmark's judge now reads the live project.** Each judged turn carries a brief
   of the real counts, pipeline and filing rules, so a confident wrong answer fails. A question the
   project cannot be asked is recorded, not failed.

@@ -51,6 +51,20 @@ export const WEB_CONVERSATION_EVENT = 'conversation.message';
 export const WEB_CONVERSATION_SETTLED_EVENT = 'conversation.settled';
 
 /**
+ * The event that says a typed message is durable — before its answer exists.
+ */
+// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts — the other half writes the id and the token into the room's accepted key; a rename here without one there leaves a person's own message reading "Sending…" for the whole turn again.
+// cm:guard its OWN event and not a flag on `conversation.message`: a tab must tell "the message you typed is now filed" from "a message arrived in this room", and folding the two would make every existing reader branch on a field it never had. The token it echoes is the client's own, because two tabs may each have a message in flight in one room and matching on the room alone would clear the other tab's outbox row (ISS-1078).
+export const WEB_CONVERSATION_ACCEPTED_EVENT = 'conversation.accepted';
+
+/**
+ * The event that carries a turn while it is still being written.
+ */
+// cm:edge contract -> packages/web-v2/src/lib/ws/event-router.ts — the other half WRITES this entry into the room's progress key rather than invalidating on it; answering it with an invalidation would refetch the whole room per frame, which is the cost this channel exists to avoid (ISS-1030).
+// cm:guard the payload is the canonical `AgentMessage` and never a progress shape of its own: `conversation-progress.ts` produces it with the same accumulator `run-turn.ts` uses, so one formatter renders a chat turn and a runner session alike — which is the whole of ISS-1029 and what a future transcript stream rides without inventing a second shape.
+export const WEB_CONVERSATION_PROGRESS_EVENT = 'conversation.progress';
+
+/**
  * Whose sockets may be shown this room, right now.
  */
 // cm:guard a participant row is not a permission and must not be used as one: a person keeps their row after losing the project access the room derives its scope from, and the reads refuse them while a push addressed by kind alone would hand them the whole answer. The check is the SAME one `conversation-routes.ts` applies — `assertConversationReadable` — rather than a second, weaker copy of it here (ISS-1004 step 5, review F1).

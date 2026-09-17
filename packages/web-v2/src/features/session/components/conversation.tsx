@@ -16,7 +16,14 @@ export interface ConversationActions {
   onEditTurn: (turnId: string, content: string, expectedEditedAt: string | null) => void;
 }
 
-interface ConversationProps extends ConversationActions {
+/**
+ * The run surface's own verbs, which a conversation has none of.
+ */
+// cm:guard OPTIONAL rather than defaulted to a no-op: a conversation is an append-only log — no
+// fork, no rerun, no per-turn edit, no regenerate — so the chat thread renders through this
+// component with none of them, and a button that silently did nothing would be worse than no
+// button. Where a handler is absent its control is not drawn (ISS-1004 step 5's split, ISS-1078).
+interface ConversationProps extends Partial<ConversationActions> {
   items: ConversationItem[];
   /** Session is live — drives the caret on the last agent turn. */
   streaming?: boolean;
@@ -61,20 +68,25 @@ function TodoList({ todos }: { todos: AgentTodo[] }) {
   );
 }
 
-function TurnActions({ item, busy, onRegenerate, onFork }: { item: ConversationItem; busy?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
+function TurnActions({ item, busy, onRegenerate, onFork }: { item: ConversationItem; busy?: boolean } & Partial<Pick<ConversationActions, "onRegenerate" | "onFork">>) {
+  if (!onRegenerate && !onFork) return null;
   return (
     <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-      <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
-        Regenerate
-      </Button>
-      <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
-        Fork
-      </Button>
+      {onRegenerate && (
+        <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
+          Regenerate
+        </Button>
+      )}
+      {onFork && (
+        <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
+          Fork
+        </Button>
+      )}
     </div>
   );
 }
 
-function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: { item: ConversationItem; busy?: boolean; readOnly?: boolean } & ConversationActions) {
+function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: { item: ConversationItem; busy?: boolean; readOnly?: boolean } & Partial<ConversationActions>) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(item.text);
 
@@ -98,7 +110,7 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
                 size="sm"
                 className="min-h-11"
                 disabled={busy || !draft.trim() || draft === item.text}
-                onClick={() => { onEditTurn(item.turnId, draft.trim(), item.editedAt); setEditing(false); }}
+                onClick={() => { onEditTurn?.(item.turnId, draft.trim(), item.editedAt); setEditing(false); }}
               >
                 Save
               </Button>
@@ -113,24 +125,30 @@ function PromptTurn({ item, busy, readOnly, onRegenerate, onFork, onEditTurn }: 
           <AttachmentList rows={item.attachments} />
         </div>
       )}
-      {!editing && !readOnly && (
+      {!editing && !readOnly && (onEditTurn || onRegenerate || onFork) && (
         <div className="mt-1.5 flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100 focus-within:opacity-100">
-          <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setDraft(item.text); setEditing(true); }} className="min-h-11">
-            Edit
-          </Button>
-          <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
-            Regenerate
-          </Button>
-          <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
-            Fork
-          </Button>
+          {onEditTurn && (
+            <Button variant="ghost" size="sm" disabled={busy} onClick={() => { setDraft(item.text); setEditing(true); }} className="min-h-11">
+              Edit
+            </Button>
+          )}
+          {onRegenerate && (
+            <Button variant="ghost" size="sm" icon="rerun" disabled={busy} onClick={() => onRegenerate(item.turnId)} className="min-h-11">
+              Regenerate
+            </Button>
+          )}
+          {onFork && (
+            <Button variant="ghost" size="sm" icon="fork" disabled={busy} onClick={() => onFork(item.turnId)} className="min-h-11">
+              Fork
+            </Button>
+          )}
         </div>
       )}
     </div>
   );
 }
 
-function AgentTurn({ item, streamingTail, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; busy?: boolean; readOnly?: boolean } & Pick<ConversationActions, "onRegenerate" | "onFork">) {
+function AgentTurn({ item, streamingTail, busy, readOnly, onRegenerate, onFork }: { item: ConversationItem; streamingTail?: boolean; busy?: boolean; readOnly?: boolean } & Partial<Pick<ConversationActions, "onRegenerate" | "onFork">>) {
   // The caret trails the LAST text block of the live tail turn.
   let lastTextIdx = -1;
   item.blocks.forEach((b, i) => {

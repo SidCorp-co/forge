@@ -23,7 +23,9 @@ import { Composer, ReadOnlyComposerNote } from "@/features/session/components/co
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { formatApiError } from "@/lib/api/error";
 import {
+  useAcceptedMessages,
   useConversation,
+  useConversationProgress,
   useDraftAgentMode,
   useOpenConversation,
   useSendMessage,
@@ -88,10 +90,44 @@ export function ConversationChat({
   // first send opens gets its mode from the same request that carries the message (ISS-1039).
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
+  const progressQ = useConversationProgress(resolvedId);
+  const acceptedQ = useAcceptedMessages(resolvedId);
+
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
   const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
   const busy = send.isPending || open.isPending;
+  // cm:guard the working label yields to the live turn rather than sitting above it: `AgentWorking`
+  // said "Agent is working…" for the whole turn and was the entirety of what a person saw, which is
+  // the defect this change is about. It is still what a turn that has produced nothing yet shows,
+  // and it goes the moment there is something to show instead (ISS-1078).
+  const live = progressQ.data ?? null;
+
+  // cm:guard the row is held UNLABELLED rather than dropped on acceptance, and held until its own
+  // durable copy is in the room: an already-open room's cache predates the send, so dropping it at
+  // acceptance would make the question vanish off the screen until a later read brought it back —
+  // and the only way to bring it back sooner is the refetch this whole change exists to avoid
+  // (ISS-1078, plan consult F4).
+  const acceptedTokens = useMemo(() => {
+    const present = new Set(messages.map((m) => m.id));
+    return new Set(
+      (acceptedQ.data ?? [])
+        .filter((a) => a.clientToken && present.has(a.messageId))
+        .map((a) => a.clientToken as string),
+    );
+  }, [acceptedQ.data, messages]);
+
+  const shownOutbox = useMemo(
+    () =>
+      outbox
+        .filter((m) => !acceptedTokens.has(m.id))
+        .map((m) =>
+          m.state === "sending" && (acceptedQ.data ?? []).some((a) => a.clientToken === m.id)
+            ? { ...m, state: "accepted" as const }
+            : m,
+        ),
+    [outbox, acceptedTokens, acceptedQ.data],
+  );
 
   // cm:guard the control is live while the room is EMPTY and by no other test: a room whose column
   // is still null but which already holds a transcript was opened before ISS-1039 and answers in
@@ -114,7 +150,7 @@ export function ConversationChat({
   const { scrollRef, bottomRef, onScroll } = useStickToBottom({
     conversationKey: resolvedId,
     ready: roomQ.isSuccess,
-    itemCount: messages.length + outbox.length,
+    itemCount: messages.length + outbox.length + (live ? 1 : 0),
     live: busy,
   });
 
@@ -162,6 +198,7 @@ export function ConversationChat({
         await send.mutateAsync({
           conversationId: id,
           content: next.content,
+          clientToken: next.id,
           ...(fresh ? { mode: pick } : {}),
         });
         setOutbox((o) => o.filter((m) => m.id !== next.id));
@@ -257,7 +294,7 @@ export function ConversationChat({
 
       <div ref={scrollRef} onScroll={onScroll} className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-3xl px-4 py-8 sm:px-8 xl:max-w-4xl">
-          {messages.length === 0 && outbox.length === 0 ? (
+          {messages.length === 0 && shownOutbox.length === 0 && !live ? (
             <div className="flex min-h-[40dvh] flex-col">
               <div className="grid flex-1 place-items-center">
                 <EmptyState
@@ -272,12 +309,13 @@ export function ConversationChat({
             <ConversationThread
               messages={messages}
               windows={windows}
-              outbox={outbox}
+              outbox={shownOutbox}
               agentTurns={agentTurns}
+              progress={live}
               onRetry={retry}
             />
           )}
-          {busy && (
+          {busy && !live && (
             <div className="mt-6">
               <AgentWorking label="Agent is working…" />
             </div>

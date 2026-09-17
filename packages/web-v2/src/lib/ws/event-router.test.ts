@@ -5,9 +5,14 @@ import { flushInvalidations } from "./invalidation-coalescer";
 
 function capture() {
   const keys: string[] = [];
+  const written = new Map<string, unknown>();
   const qc = {
     invalidateQueries: ({ queryKey }: { queryKey?: unknown[] }) => {
       keys.push(JSON.stringify(queryKey));
+    },
+    setQueryData: (queryKey: unknown[], value: unknown) => {
+      const at = JSON.stringify(queryKey);
+      written.set(at, typeof value === "function" ? (value as (p: unknown) => unknown)(written.get(at)) : value);
     },
     getQueryCache: () => ({
       findAll: () => [],
@@ -15,7 +20,13 @@ function capture() {
       get: () => undefined,
     }),
   } as unknown as QueryClient;
-  return { qc, keys, has: (k: unknown[]) => keys.includes(JSON.stringify(k)) };
+  return {
+    qc,
+    keys,
+    written,
+    has: (k: unknown[]) => keys.includes(JSON.stringify(k)),
+    wrote: (k: unknown[]) => written.get(JSON.stringify(k)),
+  };
 }
 
 // cm:guard `routeEvent` no longer invalidates synchronously — every key it decides on goes into a 250 ms window (ISS-1019) — so a case asserting without flushing reads an empty list and passes against a router that decided nothing at all.
@@ -115,5 +126,88 @@ describe("a reconnect still repairs every prefix it repaired before", () => {
       expect(c.has(key)).toBe(true);
     }
     expect(c.keys).toHaveLength(16);
+  });
+});
+
+// cm:guard this is criterion 17, and it is the cost that chose this transport: a progress frame
+// answered with an invalidation would refetch the whole conversation roughly eight times a second
+// for the length of a turn. These cases assert the ABSENCE of an invalidation as well as the
+// presence of the write, because a router that did both would pass on the write alone.
+describe("a turn arriving on the socket while it is still being written", () => {
+  const entry = { id: "entry-1", type: "assistant", content: "looking now" };
+
+  it("writes the live turn into the room's own slot", () => {
+    const c = send("conversation.progress", { conversationId: "c1", entry });
+    expect(c.wrote(["conversation-progress", "c1"])).toMatchObject({
+      conversationId: "c1",
+      entry,
+    });
+  });
+
+  it("does not refetch the conversation for a progress frame", () => {
+    const c = send("conversation.progress", { conversationId: "c1", entry });
+    expect(c.has(["conversations", "c1"])).toBe(false);
+    expect(c.has(["conversations", "list"])).toBe(false);
+    expect(c.keys).toHaveLength(0);
+  });
+
+  // cm:guard the marker survives the hop: it is what the thread draws the correction from, and a
+  // router that wrote the entry and dropped the flag would substitute the replacement silently —
+  // the one thing the amnesty behind this channel is not allowed to do.
+  it("carries the replaced marker through to the slot", () => {
+    const c = send("conversation.progress", { conversationId: "c1", entry, replaced: true });
+    expect(c.wrote(["conversation-progress", "c1"])).toMatchObject({ replaced: true });
+  });
+
+  // cm:guard cleared on SETTLED and not on the delivery: `conversation.message` goes out before the
+  // transcript row commits, so clearing there would leave the thread holding neither the live turn
+  // nor the answer for as long as the refetch took.
+  it("clears the live turn when the room settles, and not when the reply is delivered", () => {
+    expect(send("conversation.settled", { conversationId: "c1" }).written.has('["conversation-progress","c1"]')).toBe(true);
+    expect(send("conversation.settled", { conversationId: "c1" }).wrote(["conversation-progress", "c1"])).toBeNull();
+    expect(send("conversation.message", { conversationId: "c1" }).written.has('["conversation-progress","c1"]')).toBe(false);
+  });
+
+  // cm:guard criterion 2's router half: acceptance is written, not invalidated, because the frame
+  // already carries the durable id and this tab's own token — there is nothing left to go and ask
+  // for, and asking would cost a read of the whole room at the worst possible moment.
+  it("records an acceptance without refetching the room", () => {
+    const c = send("conversation.accepted", {
+      conversationId: "c1",
+      messageId: "m9",
+      seq: 3,
+      clientToken: "outbox-1",
+    });
+    expect(c.wrote(["conversation-accepted", "c1"])).toEqual([
+      { clientToken: "outbox-1", messageId: "m9" },
+    ]);
+    expect(c.keys).toHaveLength(0);
+  });
+
+  // cm:guard the two events that predate this change keep answering with an invalidation, so an
+  // older tab and a room whose socket missed the frames both still end up correct.
+  it("leaves conversation.message and conversation.settled invalidating as they did", () => {
+    for (const event of ["conversation.message", "conversation.settled"]) {
+      const c = send(event, { conversationId: "c1" });
+      expect(c.has(["conversations", "c1"])).toBe(true);
+      expect(c.has(["conversations", "list"])).toBe(true);
+    }
+  });
+
+  // cm:guard react-query invalidates by PREFIX, so a slot spelled `['conversations', id, …]` is
+  // refetched to its empty value by the delivery event above — the live turn would vanish on the
+  // delivery rather than on the settle, and every held outbox row would go back to "Sending…" after
+  // the server had already filed it. Both keys therefore sit outside that prefix, and this case is
+  // what goes red if either is moved back under it.
+  it("keys the two written slots outside every invalidated prefix", () => {
+    const c = send("conversation.progress", { conversationId: "c1", entry });
+    const accepted = send("conversation.accepted", {
+      conversationId: "c1",
+      messageId: "m9",
+      clientToken: "o1",
+    });
+    for (const written of [...c.written.keys(), ...accepted.written.keys()]) {
+      expect(JSON.parse(written)[0]).not.toBe("conversations");
+    }
   });
 });

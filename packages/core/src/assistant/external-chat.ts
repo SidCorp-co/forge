@@ -33,8 +33,8 @@ import {
 } from './conversation-turn.js';
 import { defaultChatProviderId } from './providers/bootstrap.js';
 import { type ChatTurnKind, resolveForProject } from './providers/registry.js';
-import type { ChatResponseFormat } from './providers/types.js';
-import { runTurnEvents, usageForLog } from './run-turn-core.js';
+import type { ChatResponseFormat, ChatStreamEvent } from './providers/types.js';
+import { runTurnEvents, type TurnCoreResult, usageForLog } from './run-turn-core.js';
 import { buildSystemPrompt } from './system-prompt.js';
 import type { ChatToolset } from './tools/mcp-adapter.js';
 import { memoryNoteGateFor } from './tools/memory-note-gate-deps.js';
@@ -86,6 +86,20 @@ export interface ExternalChatTurnArgs {
   // cm:guard `nothing` is for the RETRY of such a turn — its message is a code-authored instruction, and persisting it files words the speaker never said under their name — while a SILENCE is written under `question-only` all the same, because nothing replaces it and the reason is the row's whole point.
   // cm:guard `silence-only` is for a turn whose question is ALREADY a row — the collector wrote it when the message arrived — and whose answer is the screened caller's to record after delivery. What it still owes the transcript is the SILENCE: without it a window the model declined to answer leaves no row, and a person cannot tell it from a turn that never ran (ISS-1004).
   record?: 'question-and-answer' | 'question-only' | 'silence-only' | 'nothing';
+  /**
+   * Watch the loop's events as they are produced, for a caller streaming the turn.
+   */
+  // cm:guard a THROW from this observer ENDS the turn and is not swallowed, which is the opposite of
+  // what a watcher's failure usually earns: the observer on this path is a `transcript-entry.ts`
+  // accumulator, and its one refusal — a tool result naming no call this turn made — is an upstream
+  // pairing break, not a display problem. The same accumulator is the producer of the `blocks` the
+  // caller then writes to the durable row, so dropping the block here would file a transcript that
+  // silently disagrees with what ran. `run-turn.ts` ends its turn on the same refusal for the same
+  // reason (ISS-1078, ISS-1029 criterion 14).
+  // cm:guard a failure to PUBLISH is not a failure to observe and must not reach here: a socket that
+  // went away cannot end a turn, so the progress producer swallows its own publish errors around the
+  // publish alone (ISS-1078).
+  onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
   db?: typeof defaultDb;
 }
 
@@ -234,9 +248,38 @@ export async function runExternalChatTurn(
     responseFormat: args.responseFormat,
     signal: args.signal,
   });
+  // cm:guard the generator is RETURNED on the way out of a refusal rather than abandoned: the loop
+  // holds an open provider stream, and breaking without it leaves the upstream read running with
+  // nobody draining it until the abort signal happens to fire.
+  let observerRefusal: string | null = null;
   let step = await gen.next();
-  while (!step.done) step = await gen.next();
-  const result = step.value;
+  while (!step.done) {
+    if (args.onTurnEvent) {
+      try {
+        args.onTurnEvent(step.value);
+      } catch (err) {
+        observerRefusal = err instanceof Error ? err.message : String(err);
+        await gen.return(undefined as never).catch(() => undefined);
+        break;
+      }
+    }
+    step = await gen.next();
+  }
+  // cm:guard a refused turn is `error` with the refusal NAMED, so the reply is empty and the row
+  // below is a silence carrying that sentence — which is where a reader meets it. Reporting the
+  // partial text the loop had produced would answer with prose the pairing break says nothing
+  // stands behind (ISS-1078, criterion 18).
+  const result: TurnCoreResult = observerRefusal
+    ? {
+        finalText: '',
+        usage: {},
+        iterations: 0,
+        toolCalls: [],
+        elided: { historyMessages: 0, truncatedToolResults: 0, overBudget: false },
+        terminal: 'error',
+        errorMessage: observerRefusal,
+      }
+    : (step.value as TurnCoreResult);
   const durationMs = Date.now() - startedAt;
   if (result.elided.overBudget) {
     logger.warn(

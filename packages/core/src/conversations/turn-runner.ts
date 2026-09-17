@@ -11,7 +11,9 @@
  * this.
  */
 
+import type { SettledEntry } from '../assistant/conversation-progress.js';
 import { type ExternalChatTurnResult, runExternalChatTurn } from '../assistant/external-chat.js';
+import type { ChatStreamEvent } from '../assistant/providers/types.js';
 import type { ChatToolset } from '../assistant/tools/mcp-adapter.js';
 import type { ImageResolver, TurnImage } from '../assistant/vision.js';
 import { logger } from '../logger.js';
@@ -140,6 +142,24 @@ export interface ConversationTurnRequest {
     result: ExternalChatTurnResult,
     ctx: TurnHookContext,
   ) => Promise<TurnReply | null>;
+  /**
+   * Watch the turn's loop events as the model produces them.
+   */
+  // cm:guard handed to the FIRST turn only and never to the screen's corrective retry: the retry's
+  // prose is a second attempt at the same answer, and streaming it would put two drafts of one
+  // reply on the socket with nothing to say which the room ended up with. What the reader is shown
+  // instead is the settled text, marked, by `onSettled` below (ISS-1078).
+  onTurnEvent?: ((event: ChatStreamEvent) => void) | undefined;
+  /**
+   * The exact text this turn settled on, handed over after the screen and before the delivery.
+   */
+  // cm:guard called AFTER `onBeforeDeliver` and BEFORE `deliver`, which is the only window that is
+  // both: a turn whose right to answer moved publishes nothing, and a correction frame that landed
+  // after the delivery event would reach a screen that had already replaced the draft it corrects.
+  // cm:guard it answers with what the durable ROW should carry — the turn's one identity and its
+  // blocks — because the producer of the frames is the only thing that knows both, and because
+  // where the screen replaced the text those blocks are NOT the ones it streamed (ISS-1078).
+  onSettled?: ((deliveredText: string) => Promise<SettledEntry>) | undefined;
   /** Released once the turn is over, however it ended. */
   dispose?: () => Promise<void>;
   log?: Record<string, unknown>;
@@ -203,6 +223,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     ...turn,
     message: req.message,
     images: inputs.images,
+    ...(req.onTurnEvent ? { onTurnEvent: req.onTurnEvent } : {}),
   });
 
   const late = await req.divertAfterTurn?.(result, hook);
@@ -293,10 +314,12 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   }
 
   let receipt: Awaited<ReturnType<typeof transport.deliver>>;
+  let entry: SettledEntry | null = null;
   try {
     if (req.onBeforeDeliver && !(await req.onBeforeDeliver())) {
       return { kind: 'superseded', reason: 'the right to answer here moved to another holder' };
     }
+    entry = (await req.onSettled?.(reply.message.text)) ?? null;
     receipt = await transport.deliver(req.venue, reply.message);
   } catch (err) {
     // cm:guard nothing is recorded when the door refuses: the venue never saw this text, and a transcript row for it would say the opposite. The commonest refusal is a room rebound while the turn ran, which `deliver` names rather than swallows.
@@ -313,6 +336,10 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     text: reply.message.text,
     receipt,
     deliveryKey: req.deliveryKey,
+    // cm:guard `text` stays the sentence that WENT OUT and this adds nothing to it: what the entry
+    // carries is the turn's identity and the record of what it ran, and where the screen replaced
+    // the reply its own producer has already dropped the text blocks the door refused (ISS-1078).
+    ...(entry ? { entryId: entry.entryId, blocks: entry.blocks } : {}),
   });
   return { kind: 'delivered', messageId: receipt.messageId };
 }

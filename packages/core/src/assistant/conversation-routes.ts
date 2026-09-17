@@ -124,6 +124,8 @@ const sendSchema = z
   .object({
     content: z.string().min(1).max(40_000),
     mode: z.enum(conversationModes).optional(),
+    // cm:guard passed through and stored nowhere; what it is for is on `sendWebConversationMessage`'s own field, which is the one place that states it (ISS-1078).
+    clientToken: z.string().min(1).max(200).optional(),
   })
   .strict();
 
@@ -416,7 +418,7 @@ conversationRoutes.post(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { content, mode } = c.req.valid('json');
+    const { content, mode, clientToken } = c.req.valid('json');
     const userId = c.get('userId');
 
     const conversation = await writableConversation(id, userId);
@@ -473,6 +475,7 @@ conversationRoutes.post(
         content,
         mode: asking,
         namedMode: mode !== undefined,
+        ...(clientToken ? { clientToken } : {}),
       });
     } catch (err) {
       // cm:guard the LOSER of two first sends racing in one empty room, which the read above cannot

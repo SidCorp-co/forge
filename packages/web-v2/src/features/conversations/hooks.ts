@@ -9,6 +9,7 @@ import type {
   ConversationDetail,
   ConversationMembership,
   ConversationMode,
+  ConversationProgress,
   ConversationRow,
 } from "./types";
 
@@ -102,6 +103,44 @@ export function useConversation(id: string | undefined) {
 // cm:guard asked only while there is no room to ask about, which is the draft: once a room exists its
 // own `agentMode` is the answer, and two probes for one question is how a composer comes to disagree
 // with the room it is sitting in (ISS-1039).
+/**
+ * The turn being written in this room right now, as the socket left it.
+ */
+// cm:guard the key is a slot the event router WRITES and not a read anybody makes, which is what
+// keeps a progress frame from costing a refetch of the whole room (ISS-1030's cost).
+// cm:guard it is NOT under `['conversations', id]`, and this file's own opening rule is what makes
+// that worth saying: react-query invalidates by PREFIX, so under that key the `conversation.message`
+// case would refetch this slot to null in the same tick a frame wrote it — the live turn would
+// vanish on the delivery event rather than on the settle. Nothing invalidates this prefix (ISS-1078).
+export function useConversationProgress(id: string | undefined) {
+  return useQuery<ConversationProgress | null>({
+    queryKey: ["conversation-progress", id],
+    enabled: !!id,
+    initialData: null,
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: () => null,
+  });
+}
+
+/**
+ * The messages this tab's own sends have been told are durable.
+ */
+// cm:guard the same slot-not-a-read rule and the same prefix reasoning as the progress key above:
+// under `['conversations', id]` the delivery event would clear which tokens were accepted, and every
+// held row would go back to reading "Sending…" after the server had already filed it.
+// cm:guard it exists so an outbox row can be held until its durable copy is actually in the room:
+// acceptance carries ids, and an already open room's cache predates the send, so dropping the row on
+// acceptance would make the question vanish until a later read brought it back (plan consult F4).
+export function useAcceptedMessages(id: string | undefined) {
+  return useQuery<Array<{ clientToken: string | null; messageId: string }>>({
+    queryKey: ["conversation-accepted", id],
+    enabled: !!id,
+    initialData: [],
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: () => [],
+  });
+}
+
 export function useDraftAgentMode(projectId: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: ["conversations", "agent-mode", projectId],
@@ -199,12 +238,15 @@ export function useSendMessage() {
       conversationId,
       content,
       mode,
+      clientToken,
     }: {
       conversationId: string;
       content: string;
       /** Sent on the FIRST message of a room and never again; the server refuses it after that. */
       mode?: ConversationMode | undefined;
-    }) => conversationsApi.send(conversationId, content, mode),
+      /** This tab's own id for the copy it is already showing; echoed back on `conversation.accepted`. */
+      clientToken?: string | undefined;
+    }) => conversationsApi.send(conversationId, content, mode, clientToken),
     onSuccess: async (result) => {
       await qc.cancelQueries({ queryKey: ["conversations", result.conversationId] });
       // cm:guard the room's own `mode` and its `agentTurns` are written with the messages, because

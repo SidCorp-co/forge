@@ -7,17 +7,45 @@
 // reason for every silence since the collector window landed, and until this
 // file existed the only reader was a SQL prompt.
 
-import { Icon, StreamingText } from "@/design";
+import { Icon } from "@/design";
+import { Conversation } from "@/features/session/components/conversation";
+import { parseMessages } from "@/features/session/types";
 import {
   AGENT_TURN_LABEL,
   SILENCE_REASON,
   type AgentTurn,
   type AgentTurnState,
   type ConversationMessage,
+  type ConversationProgress,
   type ConversationWindow,
   type OutboxMessage,
   threadEntries,
 } from "../types";
+
+/**
+ * One assistant turn, drawn by the renderer a runner session is drawn by.
+ */
+// cm:guard the chat thread and the run thread render through ONE component off ONE derivation —
+// `parseMessages` and `features/session/components/conversation.tsx` — because a conversation row's
+// canonical entry and a runner turn's are the same shape and have been since ISS-1029. A second
+// formatter under `features/conversations/` is exactly the drift that issue exists to prevent, and
+// the content-only `StreamingText` path this replaces is why a room that ran six tools drew one
+// paragraph (ISS-1078 criteria 13 and 19).
+// cm:guard `readOnly`, and not as decoration: fork, rerun, per-turn edit and regenerate all rewrite
+// a RUN's turns, and a conversation is an append-only log — the store's `appendMessages` leaves
+// every row already in it alone. Those verbs stayed on the session surface (ISS-1004 step 5).
+function CanonicalTurn({
+  entry,
+  streaming,
+}: {
+  entry: unknown;
+  /** The live tail: drives the caret, and stops driving it when the turn settles. */
+  streaming?: boolean;
+}) {
+  const items = parseMessages([entry]);
+  if (items.length === 0) return null;
+  return <Conversation items={items} readOnly streaming={streaming} />;
+}
 
 function Said({ message }: { message: ConversationMessage }) {
   // cm:guard a row carrying a `silence_reason` is a turn that RAN and said nothing, and it renders as that rather than as an empty bubble — an assistant message with no text and no label is indistinguishable on screen from one still streaming.
@@ -54,10 +82,19 @@ function Said({ message }: { message: ConversationMessage }) {
       </div>
     );
   }
+  // cm:guard `blocks` are handed over when the row has them and the row's own text when it does not:
+  // a message written before ISS-1029 carries `blocks: null` and is a text-only row, which
+  // `parseMessages` reads through its `content` branch — so it renders as text rather than as an
+  // empty turn (ISS-1078 criterion 12).
   return (
-    <div className="flex w-full max-w-[92%] flex-col gap-2 sm:max-w-[85%]">
-      <StreamingText text={message.content} />
-    </div>
+    <CanonicalTurn
+      entry={{
+        id: message.id,
+        type: "assistant",
+        content: message.content,
+        ...(message.blocks ? { blocks: message.blocks } : {}),
+      }}
+    />
   );
 }
 
@@ -88,9 +125,15 @@ function Unsent({ item, onRetry }: { item: OutboxMessage; onRetry?: (id: string)
           )}
         </span>
       ) : (
-        <span className="fg-caption mt-1 text-subtle">
-          {item.state === "sending" ? "Sending…" : "Waiting for the answer above…"}
-        </span>
+        // cm:guard `accepted` renders NO line at all and not a third sentence: the server has the
+        // message, so the row is simply a message now, and the one thing a label could still say —
+        // "sent" — is what the bubble already says by being there. It is dropped when its durable
+        // copy arrives, which is a frame later and not this one's business (ISS-1078 criterion 1).
+        item.state !== "accepted" && (
+          <span className="fg-caption mt-1 text-subtle">
+            {item.state === "sending" ? "Sending…" : "Waiting for the answer above…"}
+          </span>
+        )
       )}
     </div>
   );
@@ -101,6 +144,7 @@ export function ConversationThread({
   windows,
   outbox = [],
   agentTurns = [],
+  progress,
   onRetry,
 }: {
   messages: ConversationMessage[];
@@ -109,9 +153,17 @@ export function ConversationThread({
   outbox?: OutboxMessage[];
   /** The runner-hosted turns this room has held, as the server reads their state (ISS-1039). */
   agentTurns?: AgentTurn[];
+  /** The turn being written right now, as the socket carries it (ISS-1078). */
+  progress?: ConversationProgress | null;
   onRetry?: (id: string) => void;
 }) {
   const entries = threadEntries(messages, windows, outbox, agentTurns);
+  // cm:guard the live turn is dropped the moment its own durable row is in `messages`, matched on
+  // the entry id the socket streamed under and the row was written with: they are ONE turn, and
+  // drawing both would show a person their answer twice for as long as the settle took. The id is
+  // shared precisely so this reduction is an equality rather than a guess (ISS-1029 review F1).
+  const liveId = (progress?.entry as { id?: string } | undefined)?.id;
+  const settled = liveId !== undefined && messages.some((m) => m.id === liveId);
   return (
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
@@ -137,6 +189,24 @@ export function ConversationThread({
           </div>
         );
       })}
+      {/* cm:guard the live turn is appended AFTER every stored row and never interleaved, for the
+          reason the outbox is: it has no `seq`, because it has not been written yet. */}
+      {progress && !settled && (
+        <div data-testid="thread-live-turn" data-replaced={progress.replaced ? "yes" : undefined}>
+          {/* cm:guard a REPLACEMENT says so, above the text, rather than arriving in the draft's
+              place: prose reaches this thread before the reply screen has judged it, and what pays
+              for that is telling the reader the sentence they read was withdrawn. A silent swap is
+              the substitution that decision refuses by name (core `messaging/doors.ts`,
+              `web-chat-reply`). */}
+          {progress.replaced && (
+            <p className="fg-caption mb-1 flex items-center gap-1.5 text-muted" data-testid="thread-correction">
+              <Icon name="alert" size={12} className="flex-none" />
+              The agent replaced what it was writing — this is the reply that was sent.
+            </p>
+          )}
+          <CanonicalTurn entry={progress.entry} streaming={!progress.replaced} />
+        </div>
+      )}
     </div>
   );
 }

@@ -42,10 +42,12 @@ import type { ConversationMode, ConversationShape } from '../db/schema-conversat
 import { logger } from '../logger.js';
 import {
   publishToConversationReaders,
+  WEB_CONVERSATION_ACCEPTED_EVENT,
   WEB_CONVERSATION_SETTLED_EVENT,
   type WebConversationFrame,
   webConversationPorts,
 } from './conversation-adapter.js';
+import { startConversationProgress } from './conversation-progress.js';
 import { webAgentConversationPersona, webConversationPersona } from './door-persona.js';
 import { buildChatToolContext } from './tools/principal.js';
 import { buildProjectToolset } from './tools/registry.js';
@@ -94,10 +96,18 @@ export function webConversationTurn(args: {
     reserve: () => Promise<boolean>;
   };
 }): WindowTurnInputs {
+  // cm:guard the handle is built HERE, where the window's turn inputs are, and threads down through
+  // the spread `route-window.ts` already makes — so the events reach the socket with no second venue
+  // opening, no second toolset construction and no second persona. Those three are the costs
+  // `docs/proposals/api-chat-has-no-client.md` prices, and a fourth site of them is what this change
+  // must not add (ISS-1078).
+  const progress = startConversationProgress({ conversationId: args.window.conversationId });
   return {
     door: 'web-chat-reply',
     handleName: args.handleName,
     log: { adapter: 'web', projectId: args.project.id, mode: args.window.mode },
+    onTurnEvent: progress.onTurnEvent,
+    onSettled: progress.onSettled,
 
     // cm:guard THE fork, and the only one: `assistant` returns null and the in-core turn below runs
     // exactly as it did, while `agent` hands the whole turn to the runner-hosted lane and answers
@@ -236,6 +246,13 @@ export async function sendWebConversationMessage(args: {
   // lane over a room that had already chosen is the defect the whole rule exists to prevent
   // (ISS-1039, plan consult F2).
   namedMode: boolean;
+  /**
+   * The caller's own id for the copy of this message it is already showing.
+   */
+  // cm:guard echoed back on the `accepted` frame and stored nowhere: two tabs may each have a
+  // message in flight in one room, and a frame matched on the room alone would clear the other
+  // tab's unsent row while its own question was still unanswered (ISS-1078).
+  clientToken?: string | undefined;
 }): Promise<WebSendResult> {
   const frame: WebConversationFrame = {
     conversation: args.room,
@@ -269,6 +286,28 @@ export async function sendWebConversationMessage(args: {
       `web conversations: conversation ${args.room.id} could not be placed as a venue, so the message was not taken in`,
     );
   }
+
+  // cm:guard published the moment the collector's transaction COMMITTED and before the turn is
+  // routed, which is the whole of what this event is for: the message is durable long before the
+  // answer exists, and until this frame the only thing that told a browser so was the POST
+  // returning — which it does not do until the turn is over. The token is the caller's own, echoed
+  // back, so the tab that typed it clears its own outbox row and not another tab's (ISS-1078).
+  // cm:guard best-effort, as every push on this transport is: zero open sockets is not a failed
+  // send, and the row is in the log whether or not anybody was listening.
+  await publishToConversationReaders(collected.conversationId, {
+    event: WEB_CONVERSATION_ACCEPTED_EVENT,
+    data: {
+      conversationId: collected.conversationId,
+      messageId: collected.messageId,
+      seq: collected.seq,
+      clientToken: args.clientToken ?? null,
+    },
+  }).catch((err: unknown) =>
+    logger.warn(
+      { err, conversationId: collected.conversationId },
+      'web conversations: the accepted event was not published',
+    ),
+  );
 
   const decision = await routeOneWebWindow(args.room.externalId, `send:${args.userId}`);
   return {

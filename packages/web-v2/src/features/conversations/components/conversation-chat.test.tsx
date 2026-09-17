@@ -57,6 +57,8 @@ vi.mock("@/features/session/components/composer", () => ({
 vi.mock("@/providers/toast-provider", () => ({ useToast: () => ({ toast: vi.fn() }) }));
 
 const { ConversationChat } = await import("./conversation-chat");
+const { routeEvent } = await import("@/lib/ws/event-router");
+const { flushInvalidations } = await import("@/lib/ws/invalidation-coalescer");
 
 afterEach(cleanup);
 
@@ -446,5 +448,129 @@ describe("ConversationChat \u00b7 the pick before any room exists", () => {
     await act(async () => {
       answer({ available: true, reason: null });
     });
+  });
+});
+
+// cm:guard criterion 1 and criterion 2 together, at the seam where they can disagree: acceptance
+// must stop the label AND must not take the question off the screen. The two are asserted in one
+// render because a screen that dropped the row passes the first read on its own, and a screen that
+// never cleared the label passes the second.
+describe("ConversationChat · a message the server has filed", () => {
+  const room = (messages: unknown[]) => ({
+    id: "c1",
+    adapter: "web",
+    externalId: "v1",
+    shape: "direct",
+    title: null,
+    updatedAt: "2026-09-14T00:00:00.000Z",
+    scope: ["p1"],
+    participants: [],
+    messages,
+    windows: [],
+  });
+
+  /** A send that never returns — which is what the real one does for the whole agent turn. */
+  const hangingSend = () => {
+    send.mockImplementation(() => new Promise(() => undefined));
+  };
+
+  const mountOpenRoom = (messages: unknown[] = []) => {
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    detail.mockImplementation(async () => room(messages));
+    const view = render(
+      <QueryClientProvider client={qc}>
+        <ConversationChat projectId="p1" conversationId="c1" />
+      </QueryClientProvider>,
+    );
+    return { qc, view };
+  };
+
+  it("stops saying Sending, and keeps the question, until its durable row arrives", async () => {
+    hangingSend();
+    const { qc } = mountOpenRoom();
+    await screen.findByRole("button", { name: "send" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(screen.getByText("Sending…")).toBeInTheDocument());
+
+    const token = send.mock.calls[0]?.[3] as string;
+    expect(token).toEqual(expect.any(String));
+
+    // The server files the message and says so, carrying this tab's own token.
+    await act(async () => {
+      routeEvent(
+        {
+          event: "conversation.accepted",
+          data: { conversationId: "c1", messageId: "m0", seq: 0, clientToken: token },
+          timestamp: "2026-09-14T00:00:00.000Z",
+        },
+        qc,
+      );
+      flushInvalidations();
+    });
+
+    await waitFor(() => expect(screen.queryByText("Sending…")).toBeNull());
+    expect(screen.getByText("is the release ready?")).toBeInTheDocument();
+
+    // ...and only when the durable row is actually in the room does the unsent copy go.
+    await act(async () => {
+      qc.setQueryData(["conversations", "c1"], room([
+        {
+          id: "m0",
+          seq: 0,
+          role: "user",
+          authorUserId: "u1",
+          authorLabel: "Ada",
+          content: "is the release ready?",
+          blocks: null,
+          silenceReason: null,
+          createdAt: "2026-09-14T00:00:00.000Z",
+        },
+      ]));
+    });
+
+    await waitFor(() =>
+      expect(screen.getAllByText("is the release ready?")).toHaveLength(1),
+    );
+  });
+
+  // cm:guard criteria 3 to 5 and 7 where a person meets them: the turn draws as it arrives, and the
+  // "Agent is working…" placeholder — which was the whole of what a person saw — goes the moment
+  // there is something real to show instead.
+  it("draws the streaming turn in place of the working label", async () => {
+    hangingSend();
+    const { qc } = mountOpenRoom();
+    await screen.findByRole("button", { name: "send" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(screen.getByText("Agent is working…")).toBeInTheDocument());
+
+    await act(async () => {
+      routeEvent(
+        {
+          event: "conversation.progress",
+          data: {
+            conversationId: "c1",
+            entry: {
+              id: "entry-1",
+              type: "assistant",
+              blocks: [
+                { type: "tool", toolCall: { id: "t1", name: "forge_issues", input: {} } },
+                { type: "text", text: "reading the issues" },
+              ],
+            },
+          },
+          timestamp: "2026-09-14T00:00:00.000Z",
+        },
+        qc,
+      );
+      flushInvalidations();
+    });
+
+    await waitFor(() => expect(screen.getByText("reading the issues")).toBeInTheDocument());
+    expect(screen.getByText(/forge_issues/)).toBeInTheDocument();
+    expect(screen.queryByText("Agent is working…")).toBeNull();
   });
 });

@@ -1,6 +1,7 @@
 "use client";
 
 // cm:guard a `features/*` hook must key its query under one of the prefixes invalidated below (e.g. ['projects']) — pick any other and the live update silently no-ops, with nothing red anywhere to say the screen stopped refreshing
+// cm:guard TWO keys are deliberately OUTSIDE every prefix invalidated below — `['conversation-progress', <id>]` and `['conversation-accepted', <id>]` — and that is the whole reason they are not spelled `['conversations', <id>, …]`: they are slots this router WRITES, not reads anyone fetches, and react-query matches by prefix, so under `['conversations', <id>]` the delivery event three cases up would refetch them to their empty value and undo the write in the same tick that made it. A refetch per progress frame is also the exact cost that chose this transport (ISS-1030), so nothing may invalidate these two (ISS-1078).
 import type { QueryClient } from "@tanstack/react-query";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 import { scheduleInvalidation } from "./invalidation-coalescer";
@@ -88,8 +89,46 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "conversation.message": {
 			if (data?.conversationId) {
 				scheduleInvalidation(qc, ["conversations", data.conversationId]);
+				// cm:guard the live turn is cleared when the room SETTLES and not when the reply is
+				// delivered: `conversation.message` goes out before the transcript row commits, so
+				// dropping the streamed turn there would leave the thread with neither for as long as
+				// the refetch took. The settled event is published after the window closed (ISS-1078).
+				if (event === "conversation.settled") {
+					qc.setQueryData(["conversation-progress", data.conversationId], null);
+				}
 			}
 			scheduleInvalidation(qc, ["conversations", "list"]);
+			return;
+		}
+		// cm:edge contract -> packages/core/src/assistant/conversation-adapter.ts — `WEB_CONVERSATION_ACCEPTED_EVENT`; the payload is settled there.
+		// cm:guard WRITTEN and never invalidated, which is the whole point of this case: the frame
+		// already carries everything the screen needs — the durable id, its seq, and the token the tab
+		// that typed it minted — so a refetch would buy nothing and cost a read of the whole room at
+		// the moment a person is watching their own message hardest (ISS-1078 criterion 2).
+		case "conversation.accepted": {
+			if (!data?.conversationId) return;
+			qc.setQueryData<Array<{ clientToken: string | null; messageId: string }>>(
+				["conversation-accepted", data.conversationId],
+				(prev) => [
+					...(prev ?? []),
+					{ clientToken: data.clientToken ?? null, messageId: data.messageId },
+				],
+			);
+			return;
+		}
+		// cm:edge contract -> packages/core/src/assistant/conversation-progress.ts — the producer of these frames; the entry is the canonical `AgentMessage`, and the `replaced` marker is what the amnesty there is paid for with.
+		// cm:guard WRITTEN and never invalidated, and this one is the cost that chose the transport:
+		// a progress frame answered with `scheduleInvalidation` would refetch the whole conversation
+		// roughly eight times a second for the length of a turn, which is the exact expense ISS-1030
+		// names. The key is the one documented exception to the head comment's rule that every key
+		// sits under an invalidated prefix (ISS-1078 criterion 17).
+		case "conversation.progress": {
+			if (!data?.conversationId) return;
+			qc.setQueryData(["conversation-progress", data.conversationId], {
+				conversationId: data.conversationId,
+				entry: data.entry,
+				...(data.replaced ? { replaced: true } : {}),
+			});
 			return;
 		}
 		case "agent-session.created":

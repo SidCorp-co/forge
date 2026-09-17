@@ -35,7 +35,12 @@ vi.mock('../conversations/scope.js', () => ({
   assertConversationReadable: (...args: unknown[]) => assertConversationReadable(...args),
 }));
 
-const { WEB_CONVERSATION_EVENT, webConversationPorts } = await import('./conversation-adapter.js');
+const {
+  WEB_CONVERSATION_EVENT,
+  WEB_CONVERSATION_PROGRESS_EVENT,
+  publishToConversationReaders,
+  webConversationPorts,
+} = await import('./conversation-adapter.js');
 
 const venue = {
   adapter: 'web' as const,
@@ -134,5 +139,41 @@ describe('the Forge UI adapter · the other three ports', () => {
   it('fetches no history, because the store is this transport’s history', async () => {
     expect(await webConversationPorts.fetchHistory(venue, 50)).toEqual([]);
     expect(findConversation).not.toHaveBeenCalled();
+  });
+});
+
+// cm:guard criteria 6 and 14 at the one place they can be told apart: the turn streams to EVERY
+// reader of the room and to nobody the reads refuse. Both are properties of the fan-out rather than
+// of the producer, which is precisely why `conversation-progress.ts` publishes through this function
+// instead of addressing sockets itself — a second, weaker copy of `assertConversationReadable` is
+// the hole ISS-1004's review found on the delivery side (ISS-1078).
+describe('the Forge UI adapter · a turn in progress', () => {
+  const frame = {
+    event: WEB_CONVERSATION_PROGRESS_EVENT,
+    data: { conversationId: 'conv-1', entry: { id: 'entry-1', type: 'assistant' } },
+  };
+
+  it('reaches every reader of the room, not only whoever typed', async () => {
+    const sockets = await publishToConversationReaders('conv-1', frame);
+    expect(published.map((p) => p.room).sort()).toEqual(['user:alice', 'user:bob']);
+    expect(published.every((p) => p.event === 'conversation.progress')).toBe(true);
+    expect(sockets).toBe(2);
+  });
+
+  it('reaches nobody whose access to the room has gone', async () => {
+    assertConversationReadable.mockImplementation(async (_id: string, userId: string) => {
+      if (userId === 'bob') throw new Error('no role on this project any more');
+      return ['project-1'];
+    });
+    await publishToConversationReaders('conv-1', frame);
+    expect(published.map((p) => p.room)).toEqual(['user:alice']);
+  });
+
+  // cm:guard the same rule the delivery obeys: a project-room fan-out hands every member of the
+  // project the text of a room they are not in, and it passes every other assertion here because
+  // the tab that asked is subscribed to both.
+  it('reaches no project room', async () => {
+    await publishToConversationReaders('conv-1', frame);
+    expect(published.filter((p) => p.room.startsWith('project:'))).toEqual([]);
   });
 });

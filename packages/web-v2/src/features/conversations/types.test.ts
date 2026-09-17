@@ -25,6 +25,7 @@ const said = (seq: number, over: Partial<ConversationMessage> = {}): Conversatio
   authorUserId: "alice",
   authorLabel: "Alice",
   content: `message ${seq}`,
+  blocks: null,
   silenceReason: null,
   createdAt: "2026-09-14T00:00:00.000Z",
   ...over,

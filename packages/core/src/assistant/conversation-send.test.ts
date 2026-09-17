@@ -17,6 +17,7 @@ const routeWindow = vi.fn();
 const releaseWindow = vi.fn();
 const resolveProjectHandle = vi.fn();
 const published: Array<{ event: string; data: unknown }> = [];
+const publishFails = { value: false };
 
 vi.mock('../conversations/collect-inbound.js', () => ({
   collectInboundMessage: (...a: unknown[]) => collectInboundMessage(...a),
@@ -38,6 +39,7 @@ vi.mock('./conversation-adapter.js', async (orig) => {
       _id: string,
       envelope: { event: string; data: unknown },
     ) => {
+      if (publishFails.value) throw new Error('no room manager here');
       published.push(envelope);
       return 1;
     },
@@ -78,6 +80,7 @@ const claimed = {
 
 beforeEach(() => {
   published.length = 0;
+  publishFails.value = false;
   for (const m of [
     collectInboundMessage,
     claimDueWindows,
@@ -90,6 +93,7 @@ beforeEach(() => {
     kind: 'collected',
     conversationId: 'conv-1',
     windowId: 'win-1',
+    messageId: 'msg-1',
     seq: 3,
   });
   claimDueWindows.mockResolvedValue([claimed]);
@@ -101,7 +105,7 @@ beforeEach(() => {
   });
 });
 
-const send = () =>
+const send = (extra: { clientToken?: string } = {}) =>
   sendWebConversationMessage({
     room,
     projectId: 'p1',
@@ -110,7 +114,18 @@ const send = () =>
     content: 'how are the issues doing?',
     mode: 'assistant' as const,
     namedMode: false,
+    ...extra,
   });
+
+const accepted = {
+  event: 'conversation.accepted',
+  data: {
+    conversationId: 'conv-1',
+    messageId: 'msg-1',
+    seq: 3,
+    clientToken: null,
+  },
+};
 
 describe('a send', () => {
   // cm:guard the venue prefix is what keeps one person's request off another room's window; without it this call takes whatever the adapter owes and answers it under this request's timing.
@@ -128,16 +143,68 @@ describe('a send', () => {
   // cm:guard the settle event is published AFTER `routeWindow` returns, which is the whole reason it exists beside the delivery event: the delivery goes out before the reply row commits, so a second tab that refetched on that alone reads the room back without the answer in it (review F2).
   it('tells the room it has settled, after the window closed and whatever it decided', async () => {
     routeWindow.mockImplementation(async () => {
-      expect(published).toEqual([]);
+      // cm:guard the ACCEPTED frame is the only thing out at this point and the settled one is not:
+      // acceptance says the question is durable, settlement says the room stopped thinking, and a
+      // tab that read the second before it happened would stop waiting for the answer (ISS-1078).
+      expect(published).toEqual([accepted]);
       return { decision: 'guard-dormant' };
     });
     await send();
     expect(published).toEqual([
+      accepted,
       {
         event: 'conversation.settled',
         data: { conversationId: 'conv-1', windowId: 'win-1', decision: 'guard-dormant' },
       },
     ]);
+  });
+
+  // cm:guard this is criterion 1: the frame goes out BEFORE the turn is routed, because the whole
+  // defect is that the POST does not return until the turn is over and until then nothing told the
+  // screen the message was filed.
+  it('tells the room the message is filed before the turn is routed', async () => {
+    const seenAtRoute: Array<{ event: string; data: unknown }> = [];
+    routeWindow.mockImplementation(async () => {
+      seenAtRoute.push(...published);
+      return { decision: 'answered' };
+    });
+    await send();
+    expect(seenAtRoute).toEqual([accepted]);
+  });
+
+  // cm:guard criterion 2's other half: two tabs may each hold a message in flight in one room, and
+  // an acceptance matched on the room alone would clear the wrong tab's unsent copy. The token is
+  // the caller's own id, echoed back untouched.
+  it('echoes the caller’s own token on the accepted frame', async () => {
+    await send({ clientToken: 'outbox-42' });
+    expect(published[0]).toEqual({
+      event: 'conversation.accepted',
+      data: {
+        conversationId: 'conv-1',
+        messageId: 'msg-1',
+        seq: 3,
+        clientToken: 'outbox-42',
+      },
+    });
+  });
+
+  // cm:guard a send whose acceptance nobody could be told about is still a send: the row is in the
+  // log whether or not a socket was open, and turning a best-effort push into a failed request
+  // would refuse a message that had already been committed.
+  it('takes the turn even when the accepted frame cannot be published', async () => {
+    publishFails.value = true;
+    await expect(send()).resolves.toMatchObject({ decision: 'answered' });
+    expect(routeWindow).toHaveBeenCalledTimes(1);
+  });
+
+  // cm:guard the two events that predate this change keep their names and their payloads, so a tab
+  // running older code works exactly as it did — which is what makes the new frame additive.
+  it('leaves conversation.settled’s name and payload alone', async () => {
+    await send();
+    expect(published.at(-1)).toEqual({
+      event: 'conversation.settled',
+      data: { conversationId: 'conv-1', windowId: 'win-1', decision: 'answered' },
+    });
   });
 
   it('returns the decision the window settled on', async () => {

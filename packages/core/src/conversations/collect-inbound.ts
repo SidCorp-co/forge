@@ -49,7 +49,20 @@ export interface InboundCollection<Frame> {
  */
 // cm:guard `venue-unresolved` is the ONLY ending before anything is written: a frame nobody could place has no conversation to write into. An unlinked speaker is NOT one of them any more — the message is collected and `route-window.ts` refuses it under the window's delivery key, which is the only arrangement that sends the refusal exactly once. Refusing here first meant a transport that accepted the text and then dropped the connection got a second refusal from the window (ISS-1004, review pass 1 F3 and the plan's own read).
 export type CollectOutcome =
-  | { kind: 'collected'; conversationId: string; windowId: string; seq: number }
+  | {
+      kind: 'collected';
+      conversationId: string;
+      windowId: string;
+      /**
+       * The row the message became.
+       */
+      // cm:guard answered here and not read back by a second query: the id is what the Forge UI's
+      // `conversation.accepted` frame carries so a browser can tell its own unsent copy from the
+      // durable one, and a caller that re-read the newest row to find it would sometimes find a
+      // different message (ISS-1078).
+      messageId: string;
+      seq: number;
+    }
   | { kind: 'venue-unresolved' };
 
 /**
@@ -104,6 +117,7 @@ export async function collectInboundMessage<Frame>(
       kind: 'collected' as const,
       conversationId: conversation.id,
       windowId: window.id,
+      messageId: row.id,
       seq: row.seq,
     };
   });

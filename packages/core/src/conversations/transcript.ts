@@ -6,6 +6,7 @@
  */
 
 import type { ConversationAdapter } from '../db/schema-conversations.js';
+import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 import { handleForProject } from './participants.js';
 import type { DeliveryReceipt } from './ports.js';
@@ -27,6 +28,23 @@ export interface DeliveredReply {
    */
   // cm:guard it travels with the proof because the proof is what a later claimant reads: a core that delivered an authority refusal and died before closing its window left the next one able to see that something was sent, and nothing to say what — so it wrote `answered` over a room that had been refused (ISS-1004 rule 4).
   decision?: string | undefined;
+  /**
+   * The canonical entry id this turn streamed under, where a producer kept one.
+   */
+  // cm:guard the row takes the id the SOCKET already used and does not mint a second: a client
+  // reduces the growing progress frames and the settled row to one assistant turn by this id, and
+  // two identities for one answer made a reducer draw two turns (ISS-1029 review F1, ISS-1078).
+  // cm:guard NOT the receipt's `messageId`, which stays what it is — the transport's own id for
+  // what it posted, and nothing the client's reduction reads.
+  entryId?: string | undefined;
+  /**
+   * The ordered blocks of the turn, where a producer kept them.
+   */
+  // cm:guard these are the blocks the producer says are STORABLE, not everything it accumulated:
+  // where the reply screen replaced the model's text, the streamed text blocks hold the draft the
+  // door refused and `conversation-progress.ts` has already dropped them — so the guard above
+  // holds through `blocks` as well as through `content` (ISS-1078).
+  blocks?: readonly ContentBlock[] | null | undefined;
 }
 
 /**
@@ -42,6 +60,8 @@ export async function recordDeliveredReply(reply: DeliveredReply): Promise<void>
       role: 'assistant',
       content: reply.text,
       authorUserId: await handleForProject(reply.conversationId, reply.projectId),
+      ...(reply.entryId ? { id: reply.entryId } : {}),
+      ...(reply.blocks !== undefined ? { blocks: reply.blocks } : {}),
       deliveryProof: reply.deliveryKey
         ? {
             ...reply.receipt,

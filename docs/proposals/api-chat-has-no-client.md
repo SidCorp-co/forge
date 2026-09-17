@@ -67,3 +67,17 @@ Somebody decides whether the Forge UI's chat should stream. If yes, `/api/chat` 
 reach for and the conversation route grows a streaming sibling. If no, the route, `run-turn.ts` and
 the `chatProvider` flag go together in one change, and `external-chat.ts` keeps the resolution the
 two live callers actually use.
+
+**That condition was met on 2026-09-17, and it was answered the other way (ISS-1078).** The Forge UI's
+chat streams, and the surface it streams on is the conversation route: the turn is published to the
+room over the WebSocket as `conversation.progress`, carrying the same canonical `AgentMessage`
+`run-turn.ts` streams over SSE, because a conversation has participants and a per-request stream
+reaches only whoever made the request. The send route still answers inline and its three "no answer
+yet" states are untouched, so the bill the first row of the table above prices was not paid — a 202
+and a push is still a separate decision nobody has taken.
+
+So the one justification recorded here for keeping `/api/chat` — that it is the surface to reach for
+if streaming is ever wanted — no longer holds: streaming arrived somewhere else. What that leaves is
+the second and third rows of the table, unchanged and now unopposed. Retiring the route is its own
+decision and this file is not it; what has changed is that nothing on this page argues against it any
+more.
