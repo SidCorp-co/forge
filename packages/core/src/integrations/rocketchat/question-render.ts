@@ -48,16 +48,24 @@ function optionSuffix(option: QuestionOption, recommended: boolean): string {
 // cm:edge contract -> packages/core/src/questions/screen.ts — re-exported, not restated. The ask door and the delivery door screen the SAME strings of the same round; two lists drifting apart is how a round passes at the ask and is refused at delivery, owed to a person and never posted.
 export { agentAuthoredSegments } from '../../questions/screen.js';
 
+// cm:guard the asker is named in the HEAD and never as a Rocket.Chat mention: a round is posted as a
+// thread reply under that person's own message, so they are already notified, and an `@` here would
+// ping them a second time for the same line. Naming them is for everyone ELSE in the room — it says
+// whose question this came out of, which is what makes a colleague who knows the answer able to give
+// it (ISS-1091 criterion 3).
 export function renderRound(args: {
   issueKey: string | null;
   step: QuestionStep;
   rounds: number;
   parkDeadlineAt: Date | null;
+  /** Whoever the asking turn was answering, where the question remembers; null where it does not. */
+  askedBy?: string | null;
 }): string {
   const { step, rounds } = args;
+  const about = args.askedBy ? ` on ${args.askedBy}'s question` : '';
   const head = args.issueKey
-    ? `**${args.issueKey}** — a run is parked on a decision.`
-    : 'A run is parked on a decision.';
+    ? `**${args.issueKey}** — a run is parked on a decision${about}.`
+    : `A run is parked on a decision${about}.`;
   const lines = [head, '', step.prompt, ''];
   if (isChoiceStep(step)) {
     step.options.forEach((o, i) => {

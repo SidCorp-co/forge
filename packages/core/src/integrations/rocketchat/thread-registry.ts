@@ -123,6 +123,35 @@ export async function registerThread(
 }
 
 /**
+ * Give back one question's reservation on one exact thread triple.
+ */
+// cm:guard scoped to the QUESTION and the triple together, never to either alone: the caller releases
+// an anchor it took moments earlier and whose post then failed, and a release scoped to the question
+// would also drop a thread an earlier round established, while one scoped to the triple would drop
+// another subject's. A row that is not this question's at this triple is left exactly as it is.
+// cm:guard a DELETE and not a retirement, unlike an issue thread's: the row being given back stands
+// for a message that was never posted, so there is nothing for a reply to be refused against — it is
+// a reservation that turned out to be wrong, not a thread that ended (ISS-1091 criterion 20).
+export async function releaseQuestionThread(
+  questionId: string,
+  ref: ThreadRef,
+  tx: Tx = db,
+): Promise<boolean> {
+  const released = await tx
+    .delete(rocketchatThreads)
+    .where(
+      and(
+        eq(rocketchatThreads.questionId, questionId),
+        eq(rocketchatThreads.connectionId, ref.connectionId),
+        eq(rocketchatThreads.rid, ref.rid),
+        eq(rocketchatThreads.tmid, ref.tmid),
+      ),
+    )
+    .returning({ id: rocketchatThreads.id });
+  return released.length > 0;
+}
+
+/**
  * Retire this issue's live thread, so the next comment opens a new one.
  */
 // cm:guard retirement is a timestamp and never a delete, and the partial unique is what makes the replacement registrable: the retired row keeps holding its room triple so a reply left there still resolves and is refused by name (ISS-981 criteria 35, 36).
