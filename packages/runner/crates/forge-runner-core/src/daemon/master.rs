@@ -1081,8 +1081,23 @@ pub(crate) async fn say_resume_choices(
     };
     let mut said = 0;
     for run in owed {
-        let (Some(session_id), Some(choice)) = (run.session_id.clone(), run.resume_choice.clone())
-        else {
+        // cm:guard a run with no core session is SAID rather than skipped, and that is the whole of
+        // the change here. This was a bare `continue`: a master's recorded choice about a run whose
+        // subagent never started was dropped, every sweep, for the life of the boot, with nothing
+        // logged — and "the pane died before the subagent was ever dispatched" is the commonest
+        // thing a resumed master inherits, so it is the case that mattered most. The choice IS in
+        // the ledger; what cannot happen is the report, because
+        // `POST /api/devices/me/run-sessions/{session_id}/resume-choice` is keyed on a core session
+        // this run never had. A route that is not session-keyed is core's to add, so the residual is
+        // named here rather than guessed at (ISS-1050 criterion 29).
+        let Some(choice) = run.resume_choice.clone() else {
+            continue;
+        };
+        let Some(session_id) = run.session_id.clone() else {
+            tracing::warn!(
+                "[master] run {}: this pane chose to {choice} and the choice cannot reach its issue — the run has no core session, which is what a run whose subagent never started looks like. It stands in the box ledger and nowhere a reader will find it",
+                run.run_id
+            );
             continue;
         };
         let why = run.resume_choice_why.clone().unwrap_or_default();

@@ -376,7 +376,7 @@ fn run_declare(
                 })
                 .collect();
             return ClaimReply::refused(format!(
-                "this pane was resumed holding {} run(s) it has not answered for yet: {}. Say what happens to each — `continue`, `restart` or `leave`, with your reason — before declaring new work. Closing a run is not answering for it: the close records that the row ended, not what you decided, and a reason written there reaches no issue.",
+                "this pane was resumed holding {} run(s) it has not answered for yet: {}. Answer each one with `forge-runner run choice <run-id> continue|restart|leave --reason \"<why>\"` before declaring new work. Closing a run is not answering for it: the close records that the row ended, not what you decided, and a reason written there reaches no issue.",
                 pending.len(),
                 names.join("; ")
             ));
@@ -616,6 +616,30 @@ pub async fn request_run_declare(
     .await
 }
 
+/// Record a resumed pane's choice about a run it inherited, over the control socket.
+// cm:guard this client existed nowhere until ISS-1050's testing pass, and its absence is why
+// `resume_choice` was 0 of 368 rows across eight days. The frame (`RunChoice`), the daemon handler
+// (`run_choice`), the ledger column and the report path onto the issue were all present and
+// correct; nothing could call them, so criterion 29 could never have passed however the gate was
+// written. The same producer-gone shape this whole issue was filed about, one layer up.
+#[cfg(unix)]
+pub async fn request_run_choice(
+    path: &std::path::Path,
+    token: &str,
+    run_id: &str,
+    choice: &str,
+    why: &str,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({
+            "op": "run_choice", "token": token, "runId": run_id,
+            "choice": choice, "why": why
+        }),
+    )
+    .await
+}
+
 /// Close a declared run from a pane, over the control socket.
 #[cfg(unix)]
 pub async fn request_run_close(
@@ -638,6 +662,17 @@ pub async fn request_run_declare(
     _project_id: &str,
     _issue_keys: &[String],
     _worktree_path: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
+#[cfg(not(unix))]
+pub async fn request_run_choice(
+    _path: &std::path::Path,
+    _token: &str,
+    _run_id: &str,
+    _choice: &str,
+    _why: &str,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }
@@ -787,6 +822,31 @@ mod tests {
             }),
             token,
         )
+    }
+
+    // cm:guard the frame is the one `request_run_choice` builds, byte for byte. Everything behind
+    // this op — the `RunChoice` variant, the `run_choice` handler, `record_resume_choice`, the
+    // column and the report onto the issue — shipped in the original change and was reachable from
+    // nothing: no client function, no CLI subcommand, so `resume_choice` was 0 of 368 rows over
+    // eight days and criterion 29 could not have passed however the gate was written. This test is
+    // the wire half; the handler tests above it call `run_choice` directly and would not have
+    // noticed the absence (ISS-1050 criterion 29).
+    #[test]
+    fn a_choice_frame_from_the_cli_decodes_with_its_run_choice_and_reason() {
+        let frame = r#"{"op":"run_choice","token":"t1","runId":"r-1","choice":"restart","why":"nothing was started"}"#;
+        let req: Request = serde_json::from_str(frame).expect("the choice frame must decode");
+        let Request::RunChoice {
+            run_id,
+            choice,
+            why,
+            ..
+        } = &req
+        else {
+            panic!("a frame whose op is `run_choice` must decode as one");
+        };
+        assert_eq!(run_id, "r-1");
+        assert_eq!(choice, "restart");
+        assert_eq!(why, "nothing was started");
     }
 
     // cm:guard the frame is the one the CLI actually sends, byte for byte, and the op name is
@@ -1135,6 +1195,25 @@ mod tests {
                 "name the three words: {reason}"
             );
         }
+        // cm:guard the refusal must carry the command that ENDS it. A gate with no way out named in it
+        // is one a master retries, and until this pass there was no way out at all to name.
+        #[test]
+        fn the_refusal_names_the_command_that_answers_it() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+
+            let reason = reply.reason.unwrap_or_default();
+            assert!(
+                reason.contains("forge-runner run choice"),
+                "the refusal must name the verb that answers it: {reason}"
+            );
+            for word in ["continue", "restart", "leave"] {
+                assert!(reason.contains(word), "and the three words: {reason}");
+            }
+        }
+
         // cm:guard the obligation survives the CLOSE, and this is the case that broke in production
         // rather than a case the code was already shaped for. Measured on forge-vm's ledger,
         // 2026-09-16T12:34Z: four runs were stamped `resume_owed_at` and two of them were then ended
