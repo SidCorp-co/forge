@@ -55,6 +55,26 @@ emits a snapshot under `meta/`.
 Both mean the generated file is a starting point on this repo, not a finished
 one. Keep the snapshot drizzle emitted; rewrite the SQL and the journal entry.
 
+### When a sibling migration lands on `main` first
+
+Regenerate yours on the merged tree; do not renumber by hand. Measured 2026-09-17 on ISS-1030,
+whose `0266`/`0267` were buried by `0268` landing an hour earlier at a `when` 16 days above them —
+as they stood, drizzle would have skipped both silently and forever.
+
+Renaming the files and raising the `when` is not enough, because a snapshot records the schema it
+was diffed FROM: yours chains off the snapshot `main` held when you generated it, and `main` now
+carries another one. The chain gate fails it by name, and the first `pnpm db:generate` after that
+re-emits DDL the database already has. So after `git merge origin/main`:
+
+1. Delete your `.sql` files, your `meta/<idx>_snapshot.json` files, and your entries from
+   `meta/_journal.json` (`git checkout origin/main -- meta/_journal.json` restores it whole).
+2. `pnpm db:generate --name <your_name>` once per migration you are restoring. Where you own two,
+   comment the second one's module out of `drizzle.config.ts` for the first pass and restore it for
+   the second, so each pass emits exactly one.
+3. Diff the emitted SQL against what you had. It should be byte-identical; anything else is a real
+   schema change you did not mean to make.
+4. Set the `when` values by hand — `generate` writes `Date.now()`, which is months below the floor.
+
 ### Hand-written SQL (rare)
 
 Use only when codegen can't express the change (data backfills,
