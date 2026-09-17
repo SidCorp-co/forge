@@ -3,11 +3,12 @@
 // The shared conversation thread — renders flattened `ConversationItem[]`.
 // Reused by the run thread (session-screen) and the /agent Chat surface.
 // Prompt turns are editable + regen/fork anchors; agent turns render ordered
-// text / tool / todos blocks with a streaming caret on the live tail.
+// thinking / text / tool / todos blocks with a streaming caret on the live tail.
 import { useState } from "react";
 import { Button, Icon, StreamingText } from "@/design";
 import { AttachmentList } from "@/features/issues/components/attachment-list";
 import type { AgentTodo, ConversationItem } from "../types";
+import { ThinkingLine } from "./thinking-line";
 import { ToolCard } from "./tool-card";
 
 /**
@@ -166,6 +167,22 @@ function AgentTurn({ item, streamingTail, busy, readOnly, onRegenerate, onFork }
             return <StreamingText key={i} text={block.text} streaming={streamingTail && i === lastTextIdx} />;
           }
           if (block.type === "todos") return <TodoList key={i} todos={block.todos} />;
+          // cm:guard this arm is before the `ToolCard` fall-through and must stay there: the map
+          // ends by reading `block.tool` off whatever is left, so a block type with no arm reads a
+          // field off undefined rather than rendering nothing. The compiler caught exactly that the
+          // moment `RenderBlock` grew this member (ISS-1079).
+          if (block.type === "thinking") {
+            return (
+              <ThinkingLine
+                // biome-ignore lint/suspicious/noArrayIndexKey: a turn's blocks are positional and append-only — the list grows at the end while the turn streams and never reorders, so the index IS this block's identity. A thinking block carries no id to key on, and the sibling text and todos arms key the same way for the same reason.
+                key={i}
+                text={block.text}
+                durationMs={block.durationMs}
+                count={block.count}
+                streaming={streamingTail && i === item.blocks.length - 1}
+              />
+            );
+          }
           return <ToolCard key={block.tool.id ?? i} tool={block.tool} />;
         })}
       </div>

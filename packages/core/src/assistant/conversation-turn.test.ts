@@ -60,6 +60,27 @@ describe('toProviderMessages', () => {
     ]);
   });
 
+  // cm:guard a turn's own reasoning is NEVER replayed to the model. What stops it is the shape of
+  // this function rather than a filter inside it: every message it builds carries `role`, `content`
+  // and — where a picture was attached — content parts, and `blocks` is not read at all. Reasoning
+  // rides `blocks`, so feeding a turn's thinking back as history would take a change to this
+  // function and not merely a change to what a row holds. Asserted on the KEYS, because a filter
+  // that dropped reasoning could be removed without a single other test going red (ISS-1079).
+  it('builds a provider message out of role and content alone, so no block can reach the model', () => {
+    const out = toProviderMessages(
+      turn(
+        [
+          stored({ content: 'earlier' }),
+          stored({ role: 'assistant', content: 'Two issues left.' }),
+        ],
+        [stored({ content: 'and now?' })],
+      ),
+    );
+    for (const m of out) expect(Object.keys(m).sort()).toEqual(['content', 'role']);
+    expect(JSON.stringify(out)).not.toContain('thinking');
+    expect(JSON.stringify(out)).not.toContain('blocks');
+  });
+
   // cm:guard a silence is a ROW and never a prompt: replaying it as an empty assistant turn teaches
   // the model that an empty answer is a shape it may produce.
   it('leaves a recorded silence out of the prompt', () => {

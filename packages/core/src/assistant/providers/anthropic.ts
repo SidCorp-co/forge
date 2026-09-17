@@ -5,6 +5,8 @@
  * stream on the way in, so `runTurnEvents` and every toolset stay wire-agnostic. The second adapter
  * after `openai.ts`: the Messages wire carries what the Completions wire hides — explicit `cache_control`,
  * cache-read token counts, `thinking` blocks — and an Anthropic-format proxy is a URL an operator may have.
+ * ISS-1079 forwards the thinking half of that: a `thinking_delta` becomes a `reasoning` event, and a
+ * `redacted_thinking` block becomes one marked `redacted` carrying no text.
  */
 
 import { openAiCompatUrl } from '../../lib/openai-compat-url.js';
@@ -176,7 +178,13 @@ interface WireEvent {
   type: string;
   index?: number;
   content_block?: { type: string; id?: string; name?: string };
-  delta?: { type?: string; text?: string; partial_json?: string; stop_reason?: string };
+  delta?: {
+    type?: string;
+    text?: string;
+    thinking?: string;
+    partial_json?: string;
+    stop_reason?: string;
+  };
   message?: { usage?: WireUsage };
   usage?: WireUsage;
   error?: { message?: string };
@@ -223,9 +231,21 @@ async function* readEvents(body: ReadableStream<Uint8Array>): AsyncGenerator<Cha
         name: ev.content_block.name ?? '',
         json: '',
       });
+    } else if (
+      ev.type === 'content_block_start' &&
+      ev.content_block?.type === 'redacted_thinking'
+    ) {
+      // cm:guard an encrypted thinking block has no readable content, so it is reported as the FACT
+      // of a pause and never as text: one event, marked, carrying the empty string. The accumulator
+      // turns it into a thinking block with no text — not one holding that empty string — because an
+      // expandable "Thought" that opens onto nothing is the affordance defect this refuses
+      // (ISS-1079).
+      yield { type: 'reasoning', text: '', redacted: true };
     } else if (ev.type === 'content_block_delta') {
       if (ev.delta?.type === 'text_delta' && ev.delta.text)
         yield { type: 'chunk', text: ev.delta.text };
+      else if (ev.delta?.type === 'thinking_delta' && ev.delta.thinking)
+        yield { type: 'reasoning', text: ev.delta.thinking };
       else if (ev.delta?.type === 'input_json_delta') {
         const acc = pending.get(index);
         if (acc) acc.json += ev.delta.partial_json ?? '';

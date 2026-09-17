@@ -78,6 +78,37 @@ describe('asBlocks', () => {
     for (const v of [null, undefined, {}, 'text', 3, true, []]) expect(asBlocks(v)).toBeNull();
   });
 
+  // cm:guard this whitelist is the ONLY thing standing between a stored block and a reader, and it
+  // is not a compile-time list: it takes `unknown` and filters, so widening `ContentBlock` does not
+  // widen it. A member added to the shape and not here is dropped on the way out of the database
+  // with nothing on either side saying so — which is what happened to `thinking` for the length of
+  // one plan consult (ISS-1079, plan consult F1).
+  it('reads a thinking block back with its text and its duration', () => {
+    expect(asBlocks([{ type: 'thinking', thinking: 'let me check', durationMs: 400 }])).toEqual([
+      { type: 'thinking', thinking: 'let me check', durationMs: 400 },
+    ]);
+  });
+
+  // cm:guard a thinking block with NO text is the encrypted pause, and it must come back as one
+  // rather than be filtered out for holding nothing: `out.length > 0` is the only emptiness test
+  // here, and a block is not empty because it carries no text (ISS-1079, whole-set read F1).
+  it('reads back an encrypted pause, which is a thinking block with no text', () => {
+    expect(asBlocks([{ type: 'thinking' }, { type: 'text', text: 'ok' }])).toEqual([
+      { type: 'thinking' },
+      { type: 'text', text: 'ok' },
+    ]);
+  });
+
+  it('keeps a thinking block in order beside the prose and the tools it sat between', () => {
+    const stored = [
+      { type: 'thinking', thinking: 'hmm', durationMs: 120 },
+      { type: 'text', text: 'Let me look.' },
+      { type: 'tool', toolCall: { id: 't1', name: 'forge_issues', input: {} } },
+      { type: 'text', text: 'Two left.' },
+    ];
+    expect(asBlocks(stored)?.map((b) => b.type)).toEqual(['thinking', 'text', 'tool', 'text']);
+  });
+
   // cm:guard an illegible column degrades to the LEGACY reading, not to an empty turn: null is what
   // `toCanonicalEntry` answers from `content`, and `[]` would render a real answer as nothing.
   it('drops entries it cannot read and answers null when none survive', () => {
