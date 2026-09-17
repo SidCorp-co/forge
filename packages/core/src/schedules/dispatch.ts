@@ -24,8 +24,8 @@ import {
   loadCreatedBy,
   resolveScheduleTargetProject,
 } from './release-batch-dispatch.js';
-import { dispatchScheduleSentryPull } from './sentry-pull-dispatch.js';
 import { runScheduleScript } from './script/executor.js';
+import { dispatchScheduleSentryPull } from './sentry-pull-dispatch.js';
 
 // Keys for standing templates that build their own prompt instead of the steward.
 // Add new standing-template keys here when they have a dedicated builder.

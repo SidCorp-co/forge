@@ -49,7 +49,7 @@ import {
   listActiveBindingsForProjectProvider,
 } from '../store.js';
 import { judgeSentryIssue } from './admission.js';
-import { type SentryAdapterContext, listSentryIssues } from './issues.js';
+import { listSentryIssues, type SentryAdapterContext } from './issues.js';
 import { resolveSentryTargets } from './targets.js';
 import type { SentryIssueDetail, SentryTarget } from './types.js';
 
@@ -181,7 +181,9 @@ async function findFiled(projectId: string, externalId: string): Promise<Existin
       ),
     )
     .limit(1);
-  return row ? { id: row.id, metadata: (row.metadata ?? null) as Record<string, unknown> | null } : null;
+  return row
+    ? { id: row.id, metadata: (row.metadata ?? null) as Record<string, unknown> | null }
+    : null;
 }
 
 /** The event count the last sighting recorded, or `null` where none was ever recorded. */

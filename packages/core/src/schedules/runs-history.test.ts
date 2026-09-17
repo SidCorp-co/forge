@@ -88,9 +88,7 @@ describe('isRunnerLessScheduleKind', () => {
   // would dispatch through the prompt arm and its history would be read off agent sessions it never
   // creates. This is the assertion that goes red when the next kind is added to one list only.
   it('partitions scheduleKinds with nothing left over', () => {
-    const unaccounted = scheduleKinds.filter(
-      (k) => k !== 'prompt' && !isRunnerLessScheduleKind(k),
-    );
+    const unaccounted = scheduleKinds.filter((k) => k !== 'prompt' && !isRunnerLessScheduleKind(k));
     expect(unaccounted).toEqual([]);
   });
 });

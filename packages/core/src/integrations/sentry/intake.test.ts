@@ -68,8 +68,13 @@ vi.mock('../../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { buildSentryIssueRow, recordedCount, runSentryPull, sentryMetadataMerge, SENTRY_FILED_STATUS } =
-  await import('./intake.js');
+const {
+  buildSentryIssueRow,
+  recordedCount,
+  runSentryPull,
+  sentryMetadataMerge,
+  SENTRY_FILED_STATUS,
+} = await import('./intake.js');
 
 const PROJECT = '11111111-1111-4111-8111-111111111111';
 const TARGET = { label: 'forge-core', organizationSlug: 'canawan', projectSlug: 'forge-core' };
@@ -200,7 +205,14 @@ describe('runSentryPull — filing a new Sentry issue', () => {
     creatorFound();
     answers(
       [],
-      [{ issueId: '2', shortId: 'B-2', belongsTo: 'forge-web', reason: 'belongs to project forge-web' }],
+      [
+        {
+          issueId: '2',
+          shortId: 'B-2',
+          belongsTo: 'forge-web',
+          reason: 'belongs to project forge-web',
+        },
+      ],
     );
     const outcome = await runSentryPull({ projectId: PROJECT });
     expect(outcome.output).toMatch(/confined out B-2: belongs to project forge-web/);
