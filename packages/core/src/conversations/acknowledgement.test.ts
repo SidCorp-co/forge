@@ -161,6 +161,37 @@ describe('a transport without acknowledge, and one that refuses', () => {
     );
   });
 
+  it('takes back an ON that lands after its deadline and after settle (pass 2A F2)', async () => {
+    let release: (() => void) | null = null;
+    const state: unknown[] = [];
+    acknowledge.mockImplementation(async (_venue: unknown, ack: unknown) => {
+      const a = ack as { kind: string; on: boolean };
+      if (a.kind === 'received' && a.on) {
+        await new Promise<void>((r) => {
+          release = r;
+        });
+      }
+      state.push(ack);
+    });
+    const ack = start(9000);
+    await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS + 1);
+    await ack.settle();
+    await vi.advanceTimersByTimeAsync(ACK_TIMEOUT_MS * 3);
+    // working on, working off went through; received on is still pending
+    expect(state).toEqual([
+      { kind: 'working', on: true },
+      { kind: 'working', on: false },
+      { kind: 'received', messageId: 'rc-1', on: false },
+    ]);
+    (release as unknown as () => void)();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(state.slice(-2)).toEqual([
+      { kind: 'received', messageId: 'rc-1', on: true },
+      { kind: 'received', messageId: 'rc-1', on: false },
+    ]);
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
   it('settles idempotently', async () => {
     const ack = start(9000);
     await ack.settle();

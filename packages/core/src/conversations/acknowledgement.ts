@@ -29,12 +29,16 @@ export const WORKING_RENEW_MS = 5000;
 // cm:guard BOUNDED, because `settle()` is awaited on the route between the turn and the window's close: a transport call that never returns would otherwise hold the status and the close hostage to decoration, which the turn's own timeout does not cover. The call is abandoned, not cancelled — the transport may still complete it — and the abandonment is logged (whole-set review, pass A F2).
 export const ACK_TIMEOUT_MS = 5000;
 
+class AckDeadlineError extends Error {
+  constructor(ms: number) {
+    super(`the acknowledgement did not return within ${ms}ms`);
+    this.name = 'AckDeadlineError';
+  }
+}
+
 function withDeadline<T>(p: Promise<T>, ms: number): Promise<T> {
   return new Promise<T>((resolve, reject) => {
-    const t = setTimeout(
-      () => reject(new Error(`the acknowledgement did not return within ${ms}ms`)),
-      ms,
-    );
+    const t = setTimeout(() => reject(new AckDeadlineError(ms)), ms);
     t.unref?.();
     p.then(
       (v) => {
@@ -75,15 +79,34 @@ export function acknowledgeRequest(args: AcknowledgeArgs): RequestAcknowledgemen
   if (!ack) return NOOP;
   const transport = args.transport as ConversationTransport;
   const now = args.now ?? Date.now;
+  let settled = false;
+  const warn = (err: unknown, ackArg: unknown, msg: string) =>
+    logger.warn({ err, ...args.log, ack: ackArg, externalId: args.venue.externalId }, msg);
   const tell = (
     ackArg: Parameters<NonNullable<ConversationTransport['acknowledge']>>[1],
-  ): Promise<void> =>
-    withDeadline(ack.call(transport, args.venue, ackArg), ACK_TIMEOUT_MS).catch((err: unknown) => {
-      logger.warn(
-        { err, ...args.log, ack: ackArg, externalId: args.venue.externalId },
-        'conversations: an acknowledgement could not be shown',
+  ): Promise<void> => {
+    const call = ack.call(transport, args.venue, ackArg);
+    let abandoned = false;
+    // cm:guard an ON that completes AFTER its deadline and after settle has put a signal on the room that nothing is scheduled to take back — the off went out while it was still pending — so it is followed by its own off the moment it lands (whole-set review, pass 2A F2). A late OFF needs nothing: off is the resting state.
+    if (ackArg.on) {
+      call.then(
+        () => {
+          if (abandoned && settled) {
+            ack
+              .call(transport, args.venue, { ...ackArg, on: false })
+              .catch((err: unknown) =>
+                warn(err, ackArg, 'conversations: a late acknowledgement could not be taken back'),
+              );
+          }
+        },
+        () => undefined,
       );
+    }
+    return withDeadline(call, ACK_TIMEOUT_MS).catch((err: unknown) => {
+      if (err instanceof AckDeadlineError) abandoned = true;
+      warn(err, ackArg, 'conversations: an acknowledgement could not be shown');
     });
+  };
 
   let chain: Promise<void> = Promise.resolve();
   let queued = 0;
@@ -99,7 +122,6 @@ export function acknowledgeRequest(args: AcknowledgeArgs): RequestAcknowledgemen
   };
 
   let receivedSet = false;
-  let settled = false;
   const markReceived = () => {
     if (settled || !args.anchor.messageId) return;
     receivedSet = true;
