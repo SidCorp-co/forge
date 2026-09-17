@@ -92,10 +92,14 @@ async function seedFixture(db: TestDb, projectId: string, ownerId: string): Prom
     FROM generate_series(1, ${RUNS}) g`);
 
   await db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at)
+    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
     SELECT ('10000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid, ${projectId},
            ('20000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${RUNS}) + 1), 10, '0'))::uuid,
-           'idle', now() - (g * interval '1 second')
+           'idle', now() - (g * interval '1 second'),
+           -- metadata.issueId maps sessions onto the same 2,000 issues the jobs use, so
+           -- estimateIssueContextTokens has a real selection to be planned against.
+           jsonb_build_object('issueId',
+             '30000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${ISSUES}) + 1), 10, '0'))
     FROM generate_series(1, ${SESSIONS}) g`);
 
   // Jobs 1..8000 carry sessions 1..8000. `status` cycles through the REAL members of
@@ -207,6 +211,29 @@ function expectIndexServed(text: string) {
   expect(text).not.toContain('Seq Scan on usage_records');
 }
 
+/**
+ * A verified owner who is a member of a fresh project — what the mounted router's
+ * auth needs before it will answer a cost read at all.
+ */
+async function seedOwnerProject(db: TestDb): Promise<{ userId: string; projectId: string }> {
+  const user = await createTestUser(db);
+  await db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
+  const project = await createTestProject(db, user.id);
+  await createTestProjectMember(db, { userId: user.id, projectId: project.id, role: 'member' });
+  return { userId: user.id, projectId: project.id };
+}
+
+/**
+ * The body of `estimateIssueContextTokens` (jobs/session-resume.ts), spelled here
+ * as that function spells it so a regression there fails this file.
+ */
+const issueContextPeak = (issue: string) => sql`
+  SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak
+  FROM agent_sessions AS s
+  JOIN usage_records AS ur
+    ON ur.session_id = s.id::text
+  WHERE s.metadata->>'issueId' = ${issue}`;
+
 /** The plan Postgres chose for `query`, as EXPLAIN prints it. */
 async function explain(db: TestDb, query: ReturnType<typeof sql>): Promise<string> {
   const rows = await db.execute<Record<string, string>>(sql`EXPLAIN (COSTS OFF) ${query}`);
@@ -307,19 +334,10 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
   beforeAll(async () => {
     harness = await setupTestDatabase();
     await truncateAll(harness.db);
-    const owner = await createTestUser(harness.db);
-    await harness.db.execute(
-      sql`UPDATE users SET email_verified_at = now() WHERE id = ${owner.id}`,
-    );
-    const project = await createTestProject(harness.db, owner.id);
-    projectId = project.id;
-    await createTestProjectMember(harness.db, {
-      userId: owner.id,
-      projectId,
-      role: 'member',
-    });
-    await seedFixture(harness.db, projectId, owner.id);
-    ({ app, token: ownerToken } = await mountAgentSessions(harness.url, owner.id));
+    const owner = await seedOwnerProject(harness.db);
+    projectId = owner.projectId;
+    await seedFixture(harness.db, projectId, owner.userId);
+    ({ app, token: ownerToken } = await mountAgentSessions(harness.url, owner.userId));
   }, 600_000);
 
   afterAll(async () => {
@@ -447,6 +465,14 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
         WHERE ${agentSessions.pipelineRunId} IN (${page})
         GROUP BY ${agentSessions.pipelineRunId}`),
     );
+  });
+
+  // Not a criterion — the extra fix declared in the correction of 2026-09-17:
+  // estimateIssueContextTokens (jobs/session-resume.ts) is a ninth session-scoped
+  // read this issue's call-site sweep missed, because it builds raw SQL rather
+  // than going through usageSessionMatch. It runs on every dispatch.
+  it('serves the issue context-token peak from the index', async () => {
+    expectIndexServed(await plan(issueContextPeak(issueId(7))));
   });
 
   // criteria 6 — the negative control. Without this the five cases above cannot
