@@ -44,8 +44,16 @@ export interface IssuePullRequest {
   refreshError: string | null;
   /** Counted over the current head's runs only. */
   checks: CheckRollup;
-  /** Reviewers whose review is neither dismissed nor stale, by their last state. */
-  reviews: Array<{ reviewer: string; state: string }>;
+  /**
+   * Every review still standing, newest submission last. History, not a verdict.
+   *
+   * One reviewer may appear twice — changes requested, then an approval that
+   * never dismissed it — and both are returned WITH their submission times,
+   * because which of the two supersedes the other is a judgement and this field
+   * is evidence. A dismissed review is absent: GitHub has retracted it, which is
+   * a fact about the review rather than a reading of it.
+   */
+  reviews: Array<{ id: string; reviewer: string; state: string; submittedAt: string | null }>;
   mergedAt: string | null;
   mergeCommitSha: string | null;
 }
@@ -95,7 +103,13 @@ export async function readPullRequestsForIssues(
       checks: rollupOf(row.checks ?? {}, row.headSha),
       reviews: Object.values(row.reviews ?? {})
         .filter((r) => !r.dismissed)
-        .map((r) => ({ reviewer: r.reviewer, state: r.state })),
+        .map((r) => ({
+          id: r.id,
+          reviewer: r.reviewer,
+          state: r.state,
+          submittedAt: r.submittedAt ?? null,
+        }))
+        .sort((a, b) => (a.submittedAt ?? '').localeCompare(b.submittedAt ?? '')),
       mergedAt: row.mergedAt ? row.mergedAt.toISOString() : null,
       mergeCommitSha: row.mergeCommitSha,
     });

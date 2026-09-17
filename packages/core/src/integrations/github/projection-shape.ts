@@ -106,15 +106,27 @@ export function currentHeadRuns(
     if (run.headSha !== currentHeadSha) continue;
     const key = `${run.app}\u001f${run.name}`;
     const held = latest.get(key);
-    if (!held || startedOrder(run) >= startedOrder(held)) latest.set(key, run);
+    if (!held || startedAfter(run, held)) latest.set(key, run);
   }
   return [...latest.values()].sort((a, b) => a.name.localeCompare(b.name));
 }
 
-// cm:guard the id is the tiebreak and it is COMPARED AS A NUMBER — GitHub's check-run ids are ascending integers, and two runs of one check started in the same second are otherwise ordered by whichever `Map` insertion happened to be last, which is arrival order wearing a different name.
-function startedOrder(run: ProjectedCheckRun): number {
-  const t = Date.parse(run.startedAt ?? '') || 0;
-  return t * 1e6 + (Number(run.id) % 1e6);
+// cm:guard the id is the tiebreak and it is compared WHOLE, as a BigInt — GitHub's check-run ids are ascending integers, and two runs of one check started in the same second are otherwise ordered by whichever `Map` insertion happened to be last, which is arrival order wearing a different name.
+// cm:guard the two keys are compared in turn rather than packed into one number: epoch milliseconds are ~1.79e12 today, so `t * 1e6` is past `Number.MAX_SAFE_INTEGER` and adjacent ids collapse onto equal values, and a `% 1e6` on the id makes 2000000 sort below 1999999 — both of them silently, and both of them producing the arrival-order answer this function exists to refuse.
+function startedAfter(run: ProjectedCheckRun, held: ProjectedCheckRun): boolean {
+  const a = Date.parse(run.startedAt ?? '') || 0;
+  const b = Date.parse(held.startedAt ?? '') || 0;
+  if (a !== b) return a > b;
+  return idOf(run.id) >= idOf(held.id);
+}
+
+/** A check-run id as the integer GitHub means, or 0 where it is not one. */
+function idOf(id: string): bigint {
+  try {
+    return BigInt(id);
+  } catch {
+    return 0n;
+  }
 }
 
 export interface CheckRollup {

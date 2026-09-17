@@ -98,6 +98,48 @@ describe('the two reads an event invalidated', () => {
     expect(out.ok === false && out.reason).toMatch(/aborted due to timeout/);
   });
 
+  // cm:guard the read is refused when GitHub answers about a head we did not ask about. The row still names the old head, so the DATABASE fence cannot catch this one — a `synchronize` that has not been delivered yet is enough to make GitHub's `mergeable` describe H2 while the compare below explicitly describes H1.
+  it('refuses the pair when GitHub answers for a head this read was not about', async () => {
+    const get = vi.fn(async () => ({
+      head: { sha: 'z'.repeat(40) },
+      mergeable: true,
+    })) as unknown as GitHubRepoClient['get'];
+    const out = await readRefreshFacts(client(get), { number: 5, baseRef: 'main', headSha: HEAD });
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.reason).toMatch(
+      /GitHub answered for head z+ while this read was for a+/,
+    );
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('refuses the pair when the pull request has been retargeted to another base', async () => {
+    const get = vi.fn(async () => ({
+      head: { sha: HEAD },
+      base: { ref: 'release' },
+    })) as unknown as GitHubRepoClient['get'];
+    const out = await readRefreshFacts(client(get), { number: 5, baseRef: 'main', headSha: HEAD });
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.reason).toMatch(
+      /answered for base release while this read was for main/,
+    );
+    expect(get).toHaveBeenCalledTimes(1);
+  });
+
+  it('accepts an answer that names the head and base it was asked about', async () => {
+    const get = (async (path: string) =>
+      path.includes('/compare/')
+        ? { ahead_by: 1, behind_by: 2 }
+        : {
+            head: { sha: HEAD },
+            base: { ref: 'main' },
+            mergeable: true,
+            mergeable_state: 'clean',
+          }) as unknown as GitHubRepoClient['get'];
+    await expect(
+      readRefreshFacts(client(get), { number: 5, baseRef: 'main', headSha: HEAD }),
+    ).resolves.toMatchObject({ ok: true, behindBy: 2, mergeableState: 'clean' });
+  });
+
   it('does not reach the compare when the pull read already failed', async () => {
     const get = vi.fn(async () => {
       throw new GitHubReadError(404, 'gone');

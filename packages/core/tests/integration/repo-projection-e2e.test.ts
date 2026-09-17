@@ -98,7 +98,7 @@ describe('a pull_request delivery', () => {
   // cm:guard the `CASE WHEN head_sha = excluded.head_sha` arms. Without them a behind-by computed for H1 survives beside H2 and reads as current, which is the number this whole projection exists to stop being wrong.
   it('clears what described the previous head in the statement that moves the head', async () => {
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
-    await g.mods.storeRefresh(String((await g.row())?.id), H1, {
+    await g.mods.storeRefresh(String((await g.row())?.id), { headSha: H1, baseRef: 'main' }, {
       ok: true,
       behindBy: 9,
       aheadBy: 2,
@@ -124,7 +124,7 @@ describe('a pull_request delivery', () => {
 
   it('keeps a refresh that describes the head the payload also carries', async () => {
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
-    await g.mods.storeRefresh(String((await g.row())?.id), H1, {
+    await g.mods.storeRefresh(String((await g.row())?.id), { headSha: H1, baseRef: 'main' }, {
       ok: true,
       behindBy: 4,
       aheadBy: 1,
@@ -310,7 +310,7 @@ describe('a refresh is fenced on the head it answered for', () => {
     );
 
     await expect(
-      g.mods.storeRefresh(id, H1, {
+      g.mods.storeRefresh(id, { headSha: H1, baseRef: 'main' }, {
         ok: true,
         behindBy: 99,
         aheadBy: 99,
@@ -320,7 +320,7 @@ describe('a refresh is fenced on the head it answered for', () => {
       }),
     ).resolves.toBe(false);
     await expect(
-      g.mods.storeRefresh(id, H1, { ok: false, reason: 'a stale complaint' }),
+      g.mods.storeRefresh(id, { headSha: H1, baseRef: 'main' }, { ok: false, reason: 'a stale complaint' }),
     ).resolves.toBe(false);
 
     const r = await g.row();
@@ -334,7 +334,7 @@ describe('a refresh is fenced on the head it answered for', () => {
     await g.mods.applyPullRequestEvent(g.ctx(), g.prEvent());
     const id = String((await g.row())?.id);
     await expect(
-      g.mods.storeRefresh(id, H1, { ok: false, reason: 'HTTP 403 on SidCorp-co/forge' }),
+      g.mods.storeRefresh(id, { headSha: H1, baseRef: 'main' }, { ok: false, reason: 'HTTP 403 on SidCorp-co/forge' }),
     ).resolves.toBe(true);
     const r = await g.row();
     expect(r?.refresh_error).toBe('HTTP 403 on SidCorp-co/forge');

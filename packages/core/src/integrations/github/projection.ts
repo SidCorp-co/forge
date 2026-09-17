@@ -106,8 +106,9 @@ export async function applyPullRequestEvent(
   const issueId = await resolveIssueForHeadRef({ projectId: ctx.projectId, headRef });
   const updatedAt = pr.updated_at ? new Date(pr.updated_at) : null;
 
-  // cm:guard `excluded.head_sha` against the STORED one, not against a value read a statement ago — the four refresh columns and `refreshed_for_head` describe one head, so they are cleared in the very statement that moves it. Read-then-write here would leave a behind-by count from the old head beside the new one for as long as the gap, and a number that reads current and is not is the failure this projection exists to remove.
-  const sameHead = sql`${repoPullRequests.headSha} = excluded.head_sha`;
+  // cm:guard `excluded.*` against the STORED values, not against anything read a statement ago — the four refresh columns and `refreshed_for_head` describe one head ON ONE BASE, so they are cleared in the very statement that moves either. Read-then-write here would leave a behind-by from the old target beside the new one for as long as the gap, and a number that reads current and is not is the failure this projection exists to remove.
+  // cm:guard the BASE is half of it. A pull request retargeted from `main` to `release` keeps its head, so a head-only comparison would carry a behind-by computed against `main` onto a row that now says `release` — the same wrong number, arrived at without anyone pushing anything.
+  const sameTarget = sql`${repoPullRequests.headSha} = excluded.head_sha AND ${repoPullRequests.baseRef} = excluded.base_ref`;
 
   const rows = await db
     .insert(repoPullRequests)
@@ -144,12 +145,12 @@ export async function applyPullRequestEvent(
         mergedAt: sql`excluded.merged_at`,
         mergeCommitSha: sql`excluded.merge_commit_sha`,
         payloadUpdatedAt: sql`excluded.payload_updated_at`,
-        behindBy: sql`CASE WHEN ${sameHead} THEN ${repoPullRequests.behindBy} END`,
-        aheadBy: sql`CASE WHEN ${sameHead} THEN ${repoPullRequests.aheadBy} END`,
-        mergeable: sql`CASE WHEN ${sameHead} THEN ${repoPullRequests.mergeable} END`,
-        mergeableState: sql`CASE WHEN ${sameHead} THEN ${repoPullRequests.mergeableState} END`,
-        refreshedForHead: sql`CASE WHEN ${sameHead} THEN ${repoPullRequests.refreshedForHead} END`,
-        refreshError: sql`CASE WHEN ${sameHead} THEN ${repoPullRequests.refreshError} END`,
+        behindBy: sql`CASE WHEN ${sameTarget} THEN ${repoPullRequests.behindBy} END`,
+        aheadBy: sql`CASE WHEN ${sameTarget} THEN ${repoPullRequests.aheadBy} END`,
+        mergeable: sql`CASE WHEN ${sameTarget} THEN ${repoPullRequests.mergeable} END`,
+        mergeableState: sql`CASE WHEN ${sameTarget} THEN ${repoPullRequests.mergeableState} END`,
+        refreshedForHead: sql`CASE WHEN ${sameTarget} THEN ${repoPullRequests.refreshedForHead} END`,
+        refreshError: sql`CASE WHEN ${sameTarget} THEN ${repoPullRequests.refreshError} END`,
         updatedAt: new Date(),
       },
       // cm:guard the ONLY ordering evidence for these scalars. Without it a retried or delayed `synchronize` rewinds `head_sha`, and every check the row holds for the real head is then read as belonging to a head the row no longer names.
@@ -276,9 +277,13 @@ export async function applyReviewEvent(
 export async function findRowByNumber(
   ctx: ProjectionContext,
   number: number,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; headSha: string; baseRef: string } | null> {
   const [row] = await db
-    .select({ id: repoPullRequests.id })
+    .select({
+      id: repoPullRequests.id,
+      headSha: repoPullRequests.headSha,
+      baseRef: repoPullRequests.baseRef,
+    })
     .from(repoPullRequests)
     .where(and(eq(repoPullRequests.bindingId, ctx.bindingId), eq(repoPullRequests.number, number)))
     .limit(1);
@@ -291,14 +296,23 @@ export function branchOfPush(payload: PushPayload): string | null {
   return ref.startsWith('refs/heads/') ? ref.slice('refs/heads/'.length) : null;
 }
 
-/** The open pull requests based on the branch this push moved, oldest first. */
+/**
+ * The open pull requests based on the branch this push moved, oldest first.
+ *
+ * Every one of them, not a page: the caller refreshes a bounded prefix and must
+ * write the truncation onto ALL the rest, so a query that stopped at the cap
+ * would leave the remainder stale with nothing on them saying so.
+ */
 export async function openPullRequestsOnBase(
   ctx: ProjectionContext,
   baseRef: string,
-  limit: number,
-): Promise<Array<{ id: string }>> {
+): Promise<Array<{ id: string; headSha: string; baseRef: string }>> {
   return db
-    .select({ id: repoPullRequests.id })
+    .select({
+      id: repoPullRequests.id,
+      headSha: repoPullRequests.headSha,
+      baseRef: repoPullRequests.baseRef,
+    })
     .from(repoPullRequests)
     .where(
       and(
@@ -307,6 +321,5 @@ export async function openPullRequestsOnBase(
         eq(repoPullRequests.state, 'open'),
       ),
     )
-    .orderBy(repoPullRequests.number)
-    .limit(limit);
+    .orderBy(repoPullRequests.number);
 }

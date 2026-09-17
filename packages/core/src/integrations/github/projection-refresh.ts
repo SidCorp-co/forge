@@ -40,6 +40,7 @@ interface PullRead {
   mergeable?: boolean | null;
   mergeable_state?: string | null;
   head?: { sha?: string };
+  base?: { ref?: string };
 }
 
 interface CompareRead {
@@ -49,6 +50,13 @@ interface CompareRead {
 }
 
 /** What the two reads answered, or why they could not. */
+/** The row this refresh is an answer about — both halves, because either can move. */
+export interface RefreshTarget {
+  number: number;
+  baseRef: string;
+  headSha: string;
+}
+
 export type RefreshOutcome =
   | {
       ok: true;
@@ -71,10 +79,13 @@ export type RefreshOutcome =
  */
 export async function readRefreshFacts(
   client: GitHubRepoClient,
-  args: { number: number; baseRef: string; headSha: string },
+  args: RefreshTarget,
 ): Promise<RefreshOutcome> {
   try {
     const pull = await client.get<PullRead>(`/repos/${client.fullName}/pulls/${args.number}`);
+    // cm:guard the pull read answers for whatever target GitHub holds NOW, which may already be ahead of the row — a synchronize whose delivery has not arrived, or a retarget. The compare below is explicitly for the head we asked about, so accepting that mergeability would stamp one head's verdict beside another head's counts, and the database fence could not see it because the row still names the old head. Refuse the pair rather than store a mixture; the delivery for the new target asks again.
+    const mismatch = targetMismatch(args, pull);
+    if (mismatch) return { ok: false, reason: mismatch };
     // cm:why the compare is against the base REF and not the stored base sha: what "behind" means is how far this head trails the base branch as it is now, and the stored sha is the base as it was when a payload last mentioned it — which a base push does not update.
     const cmp = await client.get<CompareRead>(
       `/repos/${client.fullName}/compare/${encodeURIComponent(args.baseRef)}...${encodeURIComponent(args.headSha)}`,
@@ -95,17 +106,35 @@ export async function readRefreshFacts(
   }
 }
 
+/** Whether GitHub's answer is about the target asked about, and why not if it is not. */
+function targetMismatch(args: RefreshTarget, pull: PullRead): string | null {
+  const head = pull.head?.sha;
+  if (head && head !== args.headSha) {
+    return `not refreshed: GitHub answered for head ${head} while this read was for ${args.headSha} — the delivery for that head asks again`;
+  }
+  const base = pull.base?.ref;
+  if (base && base !== args.baseRef) {
+    return `not refreshed: GitHub answered for base ${base} while this read was for ${args.baseRef} — the delivery for that base asks again`;
+  }
+  return null;
+}
+
 /**
  * Write a refresh onto the row it answered for, or do nothing.
  *
- * The `head_sha` in the WHERE is the whole of the fence and it covers the error
- * arm as well as the value arm: a slow read for a head the row has since left
- * knows nothing about the head it now carries, so neither its counts nor its
- * complaint belongs there. Nothing is a correct amount to write.
+ * The fence is the head AND the base, and it covers the error arm as well as the
+ * value arm: a slow read for a target the row has since left knows nothing about
+ * the target it now carries, so neither its counts nor its complaint belongs
+ * there. Nothing is a correct amount to write.
+ *
+ * The base is in the fence because a retarget moves it without moving the head —
+ * `main` to `release` on the same commits — and a behind-by computed against
+ * `main` landing on a row that says `release` is the same wrong number a stale
+ * head would give, reached without anybody pushing anything.
  */
 export async function storeRefresh(
   rowId: string,
-  headSha: string,
+  target: { headSha: string; baseRef: string },
   outcome: RefreshOutcome,
 ): Promise<boolean> {
   const set = outcome.ok
@@ -115,13 +144,13 @@ export async function storeRefresh(
         mergeable: outcome.mergeable,
         mergeableState: outcome.mergeableState,
         ...(outcome.baseSha ? { baseSha: outcome.baseSha } : {}),
-        refreshedForHead: headSha,
+        refreshedForHead: target.headSha,
         refreshedAt: new Date(),
         refreshError: null,
         updatedAt: new Date(),
       }
     : {
-        refreshedForHead: headSha,
+        refreshedForHead: target.headSha,
         refreshedAt: new Date(),
         refreshError: outcome.reason,
         updatedAt: new Date(),
@@ -129,7 +158,13 @@ export async function storeRefresh(
   const rows = await db
     .update(repoPullRequests)
     .set(set)
-    .where(and(eq(repoPullRequests.id, rowId), eq(repoPullRequests.headSha, headSha)))
+    .where(
+      and(
+        eq(repoPullRequests.id, rowId),
+        eq(repoPullRequests.headSha, target.headSha),
+        eq(repoPullRequests.baseRef, target.baseRef),
+      ),
+    )
     .returning({ id: repoPullRequests.id });
   return rows.length > 0;
 }
@@ -156,15 +191,30 @@ export async function refreshStoredPullRequest(
     .where(eq(repoPullRequests.id, rowId))
     .limit(1);
   if (!row) return false;
-  const outcome = await readRefreshFacts(client, {
-    number: row.number,
-    baseRef: row.baseRef,
-    headSha: row.headSha,
-  });
+  const outcome = await readRefreshFacts(client, row);
   if (!outcome.ok) {
     logger.info({ rowId, reason: outcome.reason }, 'repo projection: refresh could not answer');
   }
-  return storeRefresh(rowId, row.headSha, outcome);
+  return storeRefresh(rowId, row, outcome);
+}
+
+/**
+ * Put a refusal onto the rows a delivery could not read for at all.
+ *
+ * A binding with no installation or no App key is the commonest of these, and it
+ * is the one an operator can act on — leaving the row's counts null with nothing
+ * beside them makes "nobody has asked yet" and "Forge cannot ask" the same
+ * answer, which is the silent substitution the rest of this design refuses.
+ */
+export async function storeRefreshRefusal(
+  rows: Array<{ id: string; headSha: string; baseRef: string }>,
+  reason: string,
+): Promise<number> {
+  let touched = 0;
+  for (const row of rows) {
+    if (await storeRefresh(row.id, row, { ok: false, reason })) touched += 1;
+  }
+  return touched;
 }
 
 /** Mark the rows a base push could not reach, so the truncation is on the row. */

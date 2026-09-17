@@ -61,7 +61,7 @@ describe('the repo projection as the admissible payload reads it', () => {
         SELECT id FROM repo_pull_requests WHERE binding_id = ${g.bindingId} AND number = 11
       `)) as unknown as Array<{ id: string }>;
 
-    await g.mods.storeRefresh(String(greenRow[0]?.id), H1, {
+    await g.mods.storeRefresh(String(greenRow[0]?.id), { headSha: H1, baseRef: 'main' }, {
       ok: true,
       behindBy: 0,
       aheadBy: 3,
@@ -83,7 +83,7 @@ describe('the repo projection as the admissible payload reads it', () => {
       },
       repository: { full_name: 'SidCorp-co/forge' },
     });
-    await g.mods.storeRefresh(String(badRow[0]?.id), H2, {
+    await g.mods.storeRefresh(String(badRow[0]?.id), { headSha: H2, baseRef: 'main' }, {
       ok: true,
       behindBy: 12,
       aheadBy: 1,

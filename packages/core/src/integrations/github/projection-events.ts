@@ -26,6 +26,7 @@ import {
   BASE_PUSH_REFRESH_CAP,
   markRefreshCapped,
   refreshStoredPullRequest,
+  storeRefreshRefusal,
 } from './projection-refresh.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
@@ -49,17 +50,27 @@ export interface DeliveryContext extends ProjectionContext {
   secrets: GitHubSecrets;
 }
 
+/** A client, or the sentence an operator acts on. Never an exception either way. */
+type ClientOrRefusal = { client: GitHubRepoClient } | { client: null; reason: string };
+
 // cm:guard the refresh is BEST EFFORT and its absence is on the row, never in an exception — this runs after the payload write has committed, so throwing would answer the delivery 500 and have GitHub re-deliver a payload in order to retry a read.
-function clientOrNull(ctx: DeliveryContext): GitHubRepoClient | null {
+// cm:guard the refusal is CARRIED, not swallowed into a log line and a bare null. A binding with no installation or no App key is the commonest reason a refresh never happens and the one an operator can fix, and a row whose counts are null with nothing beside them says "nobody has asked yet" and "Forge cannot ask" in the same breath.
+function clientFor(ctx: DeliveryContext): ClientOrRefusal {
   try {
-    return buildRepoClient({ bindingId: ctx.bindingId, config: ctx.config, secrets: ctx.secrets });
+    return {
+      client: buildRepoClient({
+        bindingId: ctx.bindingId,
+        config: ctx.config,
+        secrets: ctx.secrets,
+      }),
+    };
   } catch (err) {
     if (err instanceof GitHubClientError) {
       logger.info(
         { bindingId: ctx.bindingId, reason: err.reason },
         'repo projection: no App client for this binding, so nothing is re-read',
       );
-      return null;
+      return { client: null, reason: err.message };
     }
     throw err;
   }
@@ -78,30 +89,30 @@ async function onPullRequest(ctx: DeliveryContext, payload: PullRequestPayload):
   const written = await applyPullRequestEvent(ctx, payload);
   if (written === 0) return 0;
   if (!REFRESHING_PR_ACTIONS.has(payload.action ?? '')) return written;
-  const client = clientOrNull(ctx);
-  if (!client) return written;
   const number = payload.pull_request?.number;
   if (typeof number !== 'number') return written;
   const row = await findRowByNumber(ctx, number);
-  if (row) await refreshStoredPullRequest(client, row.id);
+  if (!row) return written;
+  const got = clientFor(ctx);
+  if (got.client) await refreshStoredPullRequest(got.client, row.id);
+  else await storeRefreshRefusal([row], got.reason);
   return written;
 }
 
 async function onPush(ctx: DeliveryContext, payload: PushPayload): Promise<number> {
   const branch = branchOfPush(payload);
   if (!branch) return 0;
-  const rows = await openPullRequestsOnBase(ctx, branch, BASE_PUSH_REFRESH_CAP + 1);
+  const rows = await openPullRequestsOnBase(ctx, branch);
   if (rows.length === 0) return 0;
-  const within = rows.slice(0, BASE_PUSH_REFRESH_CAP);
-  const past = rows.slice(BASE_PUSH_REFRESH_CAP);
-  const client = clientOrNull(ctx);
+  const got = clientFor(ctx);
+  // cm:guard the refusal reaches EVERY row this push invalidated, not the first 25 — the cap bounds the READS, and a row nobody could read for is in the same state as a row past the cap.
+  if (!got.client) return storeRefreshRefusal(rows, got.reason);
+  // cm:guard `slice` past the cap takes ALL the remainder. Reading `cap + 1` rows and marking the one extra was the shape this replaced: on a base with 27 open pull requests it left two of them stale with no sentence on them, which is the silent truncation the cap's own message exists to prevent.
   let touched = 0;
-  if (client) {
-    for (const row of within) {
-      if (await refreshStoredPullRequest(client, row.id)) touched += 1;
-    }
+  for (const row of rows.slice(0, BASE_PUSH_REFRESH_CAP)) {
+    if (await refreshStoredPullRequest(got.client, row.id)) touched += 1;
   }
-  touched += await markRefreshCapped(past.map((r) => r.id));
+  touched += await markRefreshCapped(rows.slice(BASE_PUSH_REFRESH_CAP).map((r) => r.id));
   return touched;
 }
 

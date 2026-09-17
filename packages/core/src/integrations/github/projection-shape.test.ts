@@ -99,6 +99,23 @@ describe('the rollup reads the current head, grouped by app and name', () => {
     expect(rollupOf(checks, HEAD)).toEqual({ total: 1, success: 1, failure: 0, pending: 0 });
   });
 
+  // cm:guard the id is compared WHOLE. The first shape of this was `t * 1e6 + id % 1e6`: epoch milliseconds times 1e6 is past `Number.MAX_SAFE_INTEGER`, and the modulo put 2000000 below 1999999 — so the answer was arrival order again, silently, exactly where this function claims to refuse it.
+  it('takes the higher id across a million boundary, where a packed key inverted it', () => {
+    const at = '2026-09-17T01:00:00Z';
+    const lower = run({ id: '1999999', conclusion: 'failure', startedAt: at });
+    const higher = run({ id: '2000000', conclusion: 'success', startedAt: at });
+    expect(currentHeadRuns({ '1999999': lower, '2000000': higher }, HEAD)[0]?.id).toBe('2000000');
+    expect(currentHeadRuns({ '2000000': higher, '1999999': lower }, HEAD)[0]?.id).toBe('2000000');
+  });
+
+  it('keeps adjacent ids apart at a modern timestamp, where a packed key collapsed them', () => {
+    const at = '2026-09-17T01:00:00Z';
+    const a = run({ id: '40000000001', conclusion: 'failure', startedAt: at });
+    const b = run({ id: '40000000002', conclusion: 'success', startedAt: at });
+    expect(currentHeadRuns({ a: a, b: b }, HEAD)[0]?.id).toBe('40000000002');
+    expect(currentHeadRuns({ b: b, a: a }, HEAD)[0]?.id).toBe('40000000002');
+  });
+
   it('breaks a tie on the run id, so two runs started in one second do not depend on map order', () => {
     const at = '2026-09-17T01:00:00Z';
     const older = run({ id: '100', conclusion: 'failure', startedAt: at });
