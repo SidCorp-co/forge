@@ -46,7 +46,9 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { applyIntakeGate, finalizeIntake, resolveIntakeGate } = await import('./intake-gate.js');
+const { admitGithubIssue, applyIntakeGate, finalizeIntake, resolveIntakeGate } = await import(
+  './intake-gate.js'
+);
 
 const PROJECT = 'p-1';
 const gatedConfig = { agentConfig: { pipelineConfig: { intakeGate: { enabled: true } } } };
@@ -72,6 +74,81 @@ describe('resolveIntakeGate', () => {
       { agentConfig: { pipelineConfig: { intakeGate: { enabled: true, notify: false } } } },
     ]);
     expect(await resolveIntakeGate(PROJECT)).toEqual({ enabled: true, notify: false });
+  });
+});
+
+describe('admitGithubIssue (ISS-1076)', () => {
+  it('a project that never set the key is closed, and says which door refused', async () => {
+    selectQueue.push([{ agentConfig: {} }]);
+    expect(await admitGithubIssue(PROJECT)).toEqual({
+      admitted: false,
+      reason: 'github-intake-closed',
+    });
+  });
+
+  it('a project with no row at all is closed rather than open by omission', async () => {
+    selectQueue.push([]);
+    expect(await admitGithubIssue(PROJECT)).toEqual({
+      admitted: false,
+      reason: 'github-intake-closed',
+    });
+  });
+
+  it('an explicit false is closed', async () => {
+    selectQueue.push([{ agentConfig: { pipelineConfig: { githubIntake: { enabled: false } } } }]);
+    expect(await admitGithubIssue(PROJECT)).toEqual({
+      admitted: false,
+      reason: 'github-intake-closed',
+    });
+  });
+
+  // cm:guard `enabled` is read for the boolean `true` and not for truthiness: the schema refuses a string, but this reader stands over a jsonb column an older document could have been written to before the schema declared the key, and `'false'` is truthy.
+  it('a truthy non-boolean does not open the door', async () => {
+    selectQueue.push([{ agentConfig: { pipelineConfig: { githubIntake: { enabled: 'false' } } } }]);
+    expect(await admitGithubIssue(PROJECT)).toEqual({
+      admitted: false,
+      reason: 'github-intake-closed',
+    });
+  });
+
+  it('open door, intake gate off → admitted at open', async () => {
+    selectQueue.push([{ agentConfig: { pipelineConfig: { githubIntake: { enabled: true } } } }]);
+    expect(await admitGithubIssue(PROJECT)).toEqual({
+      admitted: true,
+      status: 'open',
+      gated: false,
+    });
+  });
+
+  it('open door, intake gate on → admitted at draft, gated', async () => {
+    selectQueue.push([
+      {
+        agentConfig: {
+          pipelineConfig: { githubIntake: { enabled: true }, intakeGate: { enabled: true } },
+        },
+      },
+    ]);
+    expect(await admitGithubIssue(PROJECT)).toEqual({
+      admitted: true,
+      status: 'draft',
+      gated: true,
+    });
+  });
+
+  // cm:guard the two settings are read from ONE document, so an intakeGate on its own never opens this door. A reader that fell back to intakeGate would admit on three of the fleet's projects that turned the gate on and were never asked about GitHub at all.
+  it('an intake gate on its own opens nothing', async () => {
+    selectQueue.push([{ agentConfig: { pipelineConfig: { intakeGate: { enabled: true } } } }]);
+    expect(await admitGithubIssue(PROJECT)).toEqual({
+      admitted: false,
+      reason: 'github-intake-closed',
+    });
+  });
+
+  // cm:guard ONE select for both settings — the queue mock above is order-sensitive, so a second read here would consume the next test's row and this assertion is what catches that.
+  it('reads the project document once', async () => {
+    selectQueue.push([{ agentConfig: { pipelineConfig: { githubIntake: { enabled: true } } } }]);
+    await admitGithubIssue(PROJECT);
+    expect(selectQueue).toHaveLength(0);
   });
 });
 

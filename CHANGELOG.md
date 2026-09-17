@@ -2297,6 +2297,18 @@
 
 ### Removed
 
+- **GitHub issues are no longer copied into your project, and no GitHub event changes or closes a
+  Forge issue.** A project that wants outside reports admits them once, through a setting that
+  starts closed everywhere:
+
+  ```
+  PATCH /api/projects/<projectId>/pipeline-config
+  { "githubIntake": { "enabled": true } }
+  ```
+
+  Read it back to confirm. Opening it admits new reports only; the edit and close copying is gone
+  for every project and no setting restores it. Issues already copied are untouched.
+
 - **Nine days of maintenance on prompts nothing could ever read, ended.** When the staged pipeline
   was removed, the instructions written for its nine stages were left behind: eight blocks of
   per-stage guidance and nine pieces of process knowledge, all addressed to steps that can no longer
