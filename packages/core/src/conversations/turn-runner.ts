@@ -13,7 +13,7 @@
 
 import { type ExternalChatTurnResult, runExternalChatTurn } from '../assistant/external-chat.js';
 import type { ChatStreamEvent } from '../assistant/providers/types.js';
-import type { ChatToolset } from '../assistant/tools/mcp-adapter.js';
+import { type ChatToolset, mergeToolsets } from '../assistant/tools/mcp-adapter.js';
 import type { ImageResolver, TurnImage } from '../assistant/vision.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
@@ -26,7 +26,13 @@ import {
   conversationTransport,
   type ScreenedMessage,
 } from './ports.js';
-import { assertAnswerableDoor, declinedTurn, screenedTurnReply } from './screened-reply.js';
+import { roomSendCapture } from './room-send-tool.js';
+import {
+  assertAnswerableDoor,
+  declinedTail,
+  declinedTurn,
+  screenedTurnReply,
+} from './screened-reply.js';
 import { openConversation } from './store.js';
 import { recordDeliveredReply, recordSilence } from './transcript.js';
 
@@ -119,6 +125,11 @@ export interface ConversationTurnRequest {
    */
   // cm:guard a turn nobody summoned MUST be able to decline, and that is the whole difference between an agent reading its rooms and an agent answering everything it hears: without it the fallbacks below post "sorry, I had trouble" into a room that asked it nothing (ISS-1004).
   mayDecline?: boolean;
+  /**
+   * How the model's answer reaches the venue: as its reply, or only through `room_send`.
+   */
+  // cm:guard `tool` changes WHICH TEXT is the reply and nothing after that point: the captured text takes the model's reply's place before the screen, and the screen, the reservation, `deliver` and the transcript row are the same as in `reply` mode. A second path that delivered from inside the tool would be two live paths, and the one this runner keeps true is the only one there is (ISS-1087 criteria 18-20).
+  sendMode?: 'reply' | 'tool' | undefined;
   /**
    * The stable key this turn's delivery answers, so a retry of it delivers nothing.
    */
@@ -217,6 +228,11 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
 
   ctx.setPhase('prepare');
   const inputs = (await req.prepare?.(hook)) ?? {};
+  // cm:guard the send tool is merged FIRST so it owns its name whatever an external toolset offers, and it exists only in `tool` mode: a `window` room offered it would let the model post twice, once by the tool and once by its reply.
+  const capture = req.sendMode === 'tool' ? roomSendCapture() : null;
+  const tools = capture
+    ? mergeToolsets(capture.toolset, ...(inputs.tools ? [inputs.tools] : []))
+    : inputs.tools;
 
   ctx.setPhase('turn');
   // cm:guard every turn this runner takes is SCREENED, so it writes the question and never the answer: `question-and-answer` persists the model's first reply before the screen has read it, and a transcript holding text the screen rejected is a record of a conversation nobody had (`external-chat.ts` carries the other half of this rule).
@@ -231,11 +247,11 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     speakerLabel: req.speakerKey,
     persona: inputs.persona ?? null,
     conversationContext: inputs.conversationContext ?? null,
-    tools: inputs.tools,
+    tools,
     resolveImage: inputs.resolveImage,
     signal: ctx.abort.signal,
   };
-  const result = await runExternalChatTurn({
+  let result = await runExternalChatTurn({
     ...turn,
     message: req.message,
     images: inputs.images,
@@ -247,12 +263,33 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   const late = await req.divertAfterTurn?.(result, hook);
   if (late) return late;
 
+  // cm:guard in `tool` mode the model's OWN prose is never the reply: what it captured through `room_send` is, and a turn that captured nothing is a named silence rather than an unnamed one — `tool-not-called` is the row a person reads when a room in this mode goes quiet (ISS-1087 criteria 19, 20). A finished turn with no capture is judged before the decline check below, so the sentinel path never sees the model's prose.
+  if (capture && result.terminal === 'done') {
+    const captured = capture.captured();
+    if (captured === null) {
+      await recordSilence({
+        conversationId: ctx.conversationId,
+        projectId: req.venue.projectId,
+        reason: 'tool-not-called',
+      });
+      return { send: false, reason: 'tool-not-called', declined: true };
+    }
+    result = { ...result, reply: captured };
+  }
+
   // cm:guard the two declines are kept apart because only ONE of them owes a row here: a turn that errored or came back empty is already filed by `external-chat.ts` under its own reason, and a turn that answered the sentinel produced text nothing else will record (ISS-1004 rule 4).
   if (req.mayDecline) {
     if (result.terminal !== 'done' || result.reply.trim().length === 0) {
       return { send: false, reason: result.error ?? 'empty-reply', declined: true };
     }
     if (declinedTurn(result.reply)) {
+      // cm:guard what followed the sentinel is LOGGED and never posted: the judgement was a decline, and the hedge after it is the text the equality test used to hand to the room whole (ISS-1087 criteria 22, 38).
+      const tail = declinedTail(result.reply);
+      if (tail)
+        logger.info(
+          { ...req.log, tail },
+          'conversations: the turn declined with a trailing remark',
+        );
       await recordSilence({
         conversationId: ctx.conversationId,
         projectId: req.venue.projectId,

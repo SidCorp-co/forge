@@ -27,14 +27,22 @@ import { codeAuthored, type ScreenedMessage, screened } from './ports.js';
 // cm:guard a SENTINEL and not an empty string, because the two mean different things: an empty reply is a turn that failed to produce one, and this is a turn that produced the judgement "nothing here needs me". A room the bot was never summoned to is owed the second and must never be posted the first's apology (ISS-1004).
 export const NOTHING_TO_ADD = '(nothing to add)';
 
-/** Did the model decline this turn? Punctuation and case are the model's, the judgement is not. */
+/**
+ * Did the model decline this turn? Case, punctuation and whatever it added after
+ * the sentinel are the model's; the judgement is not.
+ */
+// cm:guard BEGINS WITH and not equality: `(nothing to add) — though you may want to check the build` is a decline with a hedge on it, and under equality the whole string, sentinel included, went to the room. What follows the sentinel is logged by the caller and never posted (ISS-1087 criteria 22, 23, 38).
 export function declinedTurn(text: string): boolean {
-  return (
-    text
-      .trim()
-      .toLowerCase()
-      .replace(/[.!]+$/, '') === NOTHING_TO_ADD
-  );
+  return text.trim().toLowerCase().startsWith(NOTHING_TO_ADD);
+}
+
+/** What the model wrote after the sentinel, for the log; empty when it wrote nothing more. */
+export function declinedTail(text: string): string {
+  const trimmed = text.trim();
+  return trimmed
+    .slice(NOTHING_TO_ADD.length)
+    .replace(/^[\s.!—–-]+/, '')
+    .trim();
 }
 
 const correctiveMessage = (problems: string[]): string =>
