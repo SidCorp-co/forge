@@ -26,9 +26,17 @@ A run is a **subagent dispatched through a shipped role** — `runner`, `reviewe
 and its tools; `forge doctor` prints which roles the loaded copy ships, and a role name that has not
 reached that copy will not resolve.
 
-There is no job pool, no claim-then-start, and no second terminal. This is the one thing to unlearn
-if you have worked an older box: a pass that goes looking for `pool list`, `pool claim` or `pool run`
-is looking for verbs this runner no longer has.
+**You claim no work from a pool, and you start no second terminal.** This is the one thing to
+unlearn if you have worked an older box: a pass that goes looking for `pool list`, `pool claim` or
+`pool run` is looking for verbs this runner no longer has. Issues reach you in your brief; you hand
+them to subagents in this session.
+
+**A pool still exists on this box, and it is not yours.** Work that has no issue behind it — a
+release batch, a smoke run, a reconcile, a skill verification — is claimed by the daemon itself,
+which opens a terminal of its own for each one and supervises it until it ends. So a `forge-job-…`
+pane appearing beside yours is the daemon doing its job, not a stray: leave it alone, do not attach
+to it expecting your own transcript, and do not count it against the width of your wave. It is a
+separate lane that shares nothing with you but the machine.
 
 ## Declare a run before you dispatch it
 

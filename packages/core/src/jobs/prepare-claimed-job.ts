@@ -54,7 +54,7 @@ export async function resolveRunnerForDevice(
 }
 
 export interface PreparedJob {
-  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/dispatch.rs — identity travels WITH the preparation, never from the runner's own pool read. A pool entry is a snapshot the master may have been holding for minutes; rebuilding the job's identity from it is the mismatch `prepareClaimedJob` refuses one guard down, arriving by a different door.
+  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs — identity travels WITH the preparation, never from the runner's own pool read. A pool entry is a snapshot the master may have been holding for minutes; rebuilding the job's identity from it is the mismatch `prepareClaimedJob` refuses one guard down, arriving by a different door.
   jobId: string;
   projectId: string;
   issueId: string | null;

@@ -2,10 +2,17 @@
 //! skills in step with what core holds.
 //!
 //! It used to run jobs too: a claimed pool row became a process here, with the
-//! event drain, the salvage and the lifecycle calls that a job needed. A run is
-//! a subagent inside the master's own session now and no job reaches this box,
-//! so what is left is the two things every other part of the daemon still asks
-//! this module for.
+//! event drain, the salvage and the lifecycle calls that a job needed. ISS-933
+//! took all of that out, because a run is a subagent inside the master's own
+//! session and never reaches this process. What is left is the two things every
+//! other part of the daemon still asks this module for.
+//!
+//! The four kinds with no issue to rank came back in ISS-1080, and they came
+//! back somewhere else: `daemon/pool_jobs.rs` opens a pane per job and watches
+//! it, with no job token, no event drain and no salvage. Nothing of the machinery
+//! this module lost is wanted there, and a caller looking for the pool reader
+//! here would find this header instead.
+// cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs — the pool reader core's `devices/pool-routes.ts`, `ws/master-wake.ts` and `jobs/prepare-claimed-job.ts` all point at. Until 2026-09-17 those three annotations named THIS file and no box read a pool at all.
 
 use std::path::PathBuf;
 

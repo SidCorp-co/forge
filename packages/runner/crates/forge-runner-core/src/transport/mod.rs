@@ -9,6 +9,7 @@
 //! - `skills`         — device skill sync: manifest/content pull + install report (ISS-278)
 //! - `agent_sessions` — GET/PATCH `/api/agent-sessions/:id` for interactive chat (ISS-321)
 //! - `git_credential` — POST `/api/devices/me/git-credential`: one git ask, one token
+//! - `pool`           — GET `/me/pool` and the prepare/start/release claim (ISS-1080)
 
 pub mod admissible;
 pub mod agent_sessions;
@@ -21,6 +22,7 @@ pub mod lifecycle;
 pub mod master;
 pub mod mcp_servers;
 pub mod plugins;
+pub mod pool;
 pub mod protections;
 pub mod provision;
 pub mod questions;

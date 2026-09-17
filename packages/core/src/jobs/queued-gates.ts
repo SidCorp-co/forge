@@ -23,6 +23,7 @@ import { eq, type SQL, sql } from 'drizzle-orm';
 import { type Db, db } from '../db/client.js';
 import type { JobType, RunnerType } from '../db/schema.js';
 import { jobs } from '../db/schema.js';
+import { RELEASE_LABEL_FOR_JOB } from '../devices/release-label.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { RUNNER_CAPABILITIES } from '../pipeline/registry.js';
 import { claimCapableSql } from '../runners/device-cap.js';
@@ -36,7 +37,9 @@ export type GateSkipReason =
   | 'issue_busy'
   // cm:guard every member here must be a string `buildGateReasonCase` can actually return, and every string it returns must be a member — `assertDispatchable` casts the raw CASE result into this union unchecked, so a mismatch is invisible to tsc. A name that outlives its arm is the failure mode: `release_decompose_pending` sat here for months naming an arm that never existed, and `blocked_by`/`project_cap` outlived their arms in the `forge_jobs.list` tool description and in `alarmStalledQueuedJobs`'s own guard until ISS-765 read them back against this CASE.
   | 'runner_too_old'
-  | 'runner_stale';
+  | 'runner_stale'
+  // cm:edge lockstep -> packages/core/src/devices/claim.ts — the same string `prepareJobForMaster` already answers for a refused claim, deliberately: an operator reading a gate map and an operator reading a master's transcript are given one name for one condition.
+  | 'release_label_missing';
 
 /**
  * What {@link assertDispatchable} answers. `ok: false` carries the first
@@ -126,6 +129,8 @@ export function buildBarrierFragments(args: {
   // cm:guard this CTE answers "is a usable box ALIVE", never "does it have room". Core stopped deciding how many jobs a box may hold when the master began claiming from the pool (`devices/claim.ts`), and the real ceiling — `duplex_max_sessions`, RAM, the repo lock — lives on the runner where core cannot see it. So a capacity arm here could only report a hold nothing enforces, which is worse than reporting none: `runner_full` named exactly that from 2026-09-05 back.
   const ctes = sql`    fresh_capable_runners AS (
       SELECT r.id,
+             -- cm:guard labels is carried as a COLUMN for the same reason claim_capable is, and it must NOT become a WHERE clause: this CTE is the definition of a usable runner for every reader, and narrowing it to the release label would make runner_stale fire for every non-release job on a project whose label matches nobody.
+             r.labels,
              -- cm:guard carried as a COLUMN and not a WHERE clause, so the reason arms can tell "no box at all" from "a box too old to claim". Every reader asking "is there a usable runner" MUST therefore say WHERE claim_capable; one that forgets counts a box the claim refuses outright ("runner_too_old") and re-opens the picker-offers/selector-rejects deadlock this CTE carries three other guards about.
              ${claimCapableSql('d')} AS claim_capable
       FROM runners r
@@ -204,6 +209,14 @@ function buildGateReasonCase(predicates: BarrierFragments['predicates']): SQL {
         WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners) THEN 'runner_stale'
         WHEN NOT EXISTS (SELECT 1 FROM fresh_capable_runners WHERE claim_capable)
           THEN 'runner_too_old'
+        -- cm:guard LAST, after both runner arms, and the order is the answer rather than a preference: a project with no live box at all is runner_stale, and only a project that HAS one is being told the label is what hides the job. Reversed, every release job on a dead fleet would report a label problem the operator does not have.
+        -- cm:edge lockstep -> packages/core/src/devices/pool.ts — RUNNER_MAY_TAKE_JOB is this same predicate as the pool filter. It hid a release_batch job from every box and had no arm here, so the job read as fully dispatchable and the wedge told the owner "every dispatch gate passes ... the picker is offering this job to a selector that keeps declining it" about a job the picker never offered anyone (ISS-1080).
+        WHEN j.type = 'release_batch'
+          AND NOT EXISTS (
+            SELECT 1 FROM fresh_capable_runners
+            WHERE claim_capable AND labels ? ${RELEASE_LABEL_FOR_JOB}
+          )
+          THEN 'release_label_missing'
         ELSE NULL
       END`;
 }

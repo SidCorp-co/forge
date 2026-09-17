@@ -50,6 +50,7 @@ import { assertMethodFor, readMethod } from './method.js';
 import { RELEASE_BATCH_SKILL, ReleaseBranchesUndeclaredError, releaseBranches } from './plan.js';
 import { buildReleaseBatchPrompt } from './prompt.js';
 import { recoverStrandedReleasing } from './releasing-recovery.js';
+import { RELEASE_UNSTARTED_DEADLINE_MS } from './unstarted-recovery.js';
 import { readLiveCommit, verifyDeployed } from './verify.js';
 
 // cm:why re-exported rather than moved-and-forgotten: `routes.ts`, `refusals.ts` and three test
@@ -67,6 +68,10 @@ export interface CreateReleaseBatchResult {
   jobId: string;
   issueIds: string[];
   gateStatus: IssueStatus;
+  /** When this batch must have an owner, or it is cancelled and its roster handed back. */
+  // cm:guard the caller is TOLD this rather than left to infer it, and it is the whole of what core can honestly promise. ISS-1080 Rule 1 asks for "batch created => session exists or the creation refused", and the synchronous half is not buildable here: `ws/rooms.ts` publishes fire-and-forget with no buffer and no reply, so nothing inside this request can learn whether a box took the work. What is promised instead is bounded, and a deadline the caller cannot see is a promise only the code knows it made.
+  // cm:edge lockstep -> packages/core/src/release-batch/unstarted-recovery.ts — one constant decides both, deliberately: a deadline reported here and enforced from a second number is a caller told one thing while the sweeper does another.
+  ownerDeadlineAt: string;
 }
 
 export async function createReleaseBatch(
@@ -231,7 +236,13 @@ export async function createReleaseBatch(
     throw err;
   }
 
-  return { runId: run.id, jobId, issueIds, gateStatus };
+  return {
+    runId: run.id,
+    jobId,
+    issueIds,
+    gateStatus,
+    ownerDeadlineAt: new Date(Date.now() + RELEASE_UNSTARTED_DEADLINE_MS).toISOString(),
+  };
 }
 
 export interface FinishReleaseBatchResult {
