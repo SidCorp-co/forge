@@ -209,7 +209,10 @@ export function McpServersSection({
           {addOpen ? (
             <div className="space-y-2 rounded-md border border-line bg-surface p-3">
               <Input
-                placeholder="Server name (e.g. sentry)"
+                // The example must be a name this form would ACCEPT. It read `sentry` until
+                // ISS-1071, which is a provider name the refusal below rejects by name — so the
+                // field's own worked example was a value typing it verbatim could not use.
+                placeholder="Server name (e.g. internal-docs)"
                 value={customName}
                 onChange={(e) => setCustomName(e.target.value)}
               />
