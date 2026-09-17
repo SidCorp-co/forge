@@ -112,6 +112,13 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Six tables that only ever grew now have a retention rule and a nightly sweep.** The operator
+  sets each window, and the sweep reports what it removed and kept. The runner Activity
+  panel says how long that history lasts.
+
+- **A job's events are no longer deleted before the transcript they rebuild is written.** Events are
+  kept until the session records its transcript as final. Where that never happened, the sweep
+  writes the transcript instead of letting them expire.
 
 - **A request that never reached the API is now reported.** The browser collapses CORS, DNS and
   TLS failures into one opaque error, and until now they reached nobody. A response the API

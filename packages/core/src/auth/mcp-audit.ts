@@ -6,13 +6,16 @@
  * to a console.warn (a future PR will route these to Sentry once the
  * scrubber is sure to redact PAT plaintext from breadcrumbs).
  *
- * Retention is DECLARED at 90 days and not enforced: nothing calls
- * `enforceMcpAuditRetention()`. The docstring here used to say the
- * stale-detector cadence did; it does not, and `grep` says so.
+ * This table is NOT swept, on purpose, and `pipeline/retention/policy.ts` is where that
+ * is stated and why. `drizzle/migrations/0063_mcp_audit_log.sql` declares 90
+ * days in a comment and ISS-1027 superseded it: the MCP tool-deletion rule in
+ * `docs/architecture/agent-surface.md` spends a count over the whole table as
+ * evidence a tool was never called, so a window here would turn "never called"
+ * into "not called lately" and license a deletion nothing would go red for. The
+ * 90-day `enforceMcpAuditRetention` that nothing ever called went with it.
  */
 
 import { createHash } from 'node:crypto';
-import { lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { mcpAuditLog } from '../db/schema.js';
 
@@ -71,14 +74,4 @@ export function writeMcpAudit(row: AuditRow): void {
       console.warn('[mcp-audit] insert failed', err);
     }
   })();
-}
-
-// cm:guard nothing calls this, so the table is unpruned and a `count(*)` over it really is a lifetime count — which is exactly what `mcp/registered-tools.ts` and `docs/architecture/agent-surface.md` spend when they clear a tool for deletion on "zero rows, whole table". Wiring this to a tick turns that evidence into "zero rows in 90 days" and licenses deleting a quarterly-called tool with nothing going red, so whoever wires it changes that rule in the same commit.
-/** Delete audit rows older than 90 days. Idempotent; call on a cron tick. */
-export async function enforceMcpAuditRetention(): Promise<number> {
-  const result = await db
-    .delete(mcpAuditLog)
-    .where(lt(mcpAuditLog.createdAt, sql`now() - interval '90 days'`))
-    .returning({ id: mcpAuditLog.id });
-  return result.length;
 }

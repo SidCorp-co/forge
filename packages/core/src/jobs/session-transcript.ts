@@ -30,6 +30,7 @@ import {
 import { syncTurnsWithMessages } from '../agent-sessions/turns-helpers.js';
 import { db } from '../db/client.js';
 import { agentSessions, jobEvents } from '../db/schema.js';
+import { finalizedMerge } from '../db/transcript-marker.js';
 import {
   type AgentMessage,
   applyEventsToState,
@@ -175,6 +176,7 @@ async function deriveOnce(
   jobId: string,
   agentSessionId: string,
   st: FlushState | null,
+  finalizedAt: Date | null,
 ): Promise<DeriveOutcome> {
   const [existing] = await db
     .select({
@@ -228,6 +230,7 @@ async function deriveOnce(
     messages,
     claudeSessionId:
       claudeSessionId && existing.claudeSessionId !== claudeSessionId ? claudeSessionId : null,
+    finalizedAt,
   });
   if (!written) {
     // cm:guard zero rows is two outcomes wearing one face, and telling them apart is the point: the swap losing is retried against what now stands, the cancel firing is the answer. Collapse them and a cancelled session burns three re-derives and then logs that the write was lost, which reads as a fault where there was none.
@@ -273,6 +276,8 @@ interface TranscriptWrite {
   prevMessages: AgentMessage[];
   messages: AgentMessage[];
   claudeSessionId: string | null;
+  /** Set only by the FINAL derive; see `FINALIZED_MARKER`. */
+  finalizedAt: Date | null;
 }
 
 type WriteResult = {
@@ -296,6 +301,7 @@ async function writeTranscript(
         messages: w.messages,
         updatedAt: new Date(),
         ...(w.claudeSessionId ? { claudeSessionId: w.claudeSessionId } : {}),
+        ...(w.finalizedAt ? { metadata: finalizedMerge(w.finalizedAt) } : {}),
       })
       .where(
         and(
@@ -314,15 +320,34 @@ async function writeTranscript(
 }
 
 /**
+ * Record the finalisation on its own, for the one case the transcript write
+ * cannot carry it: a final derive that found nothing to write.
+ */
+async function markFinalized(agentSessionId: string, at: Date): Promise<void> {
+  try {
+    await db
+      .update(agentSessions)
+      .set({ metadata: finalizedMerge(at), updatedAt: new Date() })
+      .where(eq(agentSessions.id, agentSessionId));
+  } catch (err) {
+    logger.warn({ err, agentSessionId }, 'session-transcript: could not record the finalisation');
+  }
+}
+
+/**
  * Derive the transcript and write it, retrying against what now stands whenever
  * the compare-and-swap loses. Always best-effort: swallows and logs all errors.
  */
-async function runDerive(jobId: string, agentSessionId: string): Promise<void> {
+async function runDerive(
+  jobId: string,
+  agentSessionId: string,
+  finalizedAt: Date | null = null,
+): Promise<DeriveOutcome> {
   const st = flushStates.get(agentSessionId) ?? null;
   try {
     for (let attempt = 1; attempt <= DERIVE_CAS_ATTEMPTS; attempt += 1) {
-      const outcome = await deriveOnce(jobId, agentSessionId, st);
-      if (outcome !== 'lost-race') return;
+      const outcome = await deriveOnce(jobId, agentSessionId, st, finalizedAt);
+      if (outcome !== 'lost-race') return outcome;
       if (st) st.checkpoint = null;
       logger.warn(
         { jobId, agentSessionId, attempt },
@@ -338,6 +363,8 @@ async function runDerive(jobId: string, agentSessionId: string): Promise<void> {
     if (st) st.checkpoint = null;
     logger.warn({ err, jobId, agentSessionId }, 'session-transcript: derive failed');
   }
+  // cm:guard both fall-throughs above are a derive that WROTE NOTHING, and this is the answer that says so. Returning 'written' or 'nothing-to-write' here would tell `deriveSessionFinal` to stamp the finalisation marker for a transcript that was never stored, and ISS-1027's retention rule reads that marker as permission to delete the events it would have been built from.
+  return 'lost-race';
 }
 
 /**
@@ -369,10 +396,12 @@ export function maybeDeriveIncremental(
 
   st.stdoutSinceFlush = 0;
   st.lastFlushAtMs = Date.now();
-  st.inFlight = runDerive(jobId, agentSessionId).finally(() => {
-    const cur = flushStates.get(agentSessionId);
-    if (cur) cur.inFlight = null;
-  });
+  st.inFlight = runDerive(jobId, agentSessionId)
+    .then(() => undefined)
+    .finally(() => {
+      const cur = flushStates.get(agentSessionId);
+      if (cur) cur.inFlight = null;
+    });
   return st.inFlight;
 }
 
@@ -394,6 +423,9 @@ export async function deriveSessionFinal(jobId: string, agentSessionId: string):
   }
   // cm:guard the terminal transcript is a full rebuild from every event, always. Dropping the checkpoint here is what makes that true: leave it and the last derive a session ever gets is an incremental one, and any event the cursor skipped is skipped for good.
   st.checkpoint = null;
-  await runDerive(jobId, agentSessionId);
+  const finalizedAt = new Date();
+  const outcome = await runDerive(jobId, agentSessionId, finalizedAt);
+  // cm:guard a derive with nothing to write still FINALISED the session, and the marker has to say so: a job that produced no parseable event has no transcript to protect, and withholding the marker would hold its `job_events` rows for ever under ISS-1027's retention rule while the repair pass re-derived nothing, night after night. 'lost-race' is the other direction and gets no marker at all.
+  if (outcome === 'nothing-to-write') await markFinalized(agentSessionId, finalizedAt);
   flushStates.delete(agentSessionId);
 }
