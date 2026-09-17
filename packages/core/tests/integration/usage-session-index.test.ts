@@ -23,7 +23,7 @@
  * able to fail.
  */
 
-import { sql } from 'drizzle-orm';
+import { type SQL, sql } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { agentSessions, jobs as jobsTable, usageRecords } from '../../src/db/schema.js';
@@ -223,17 +223,6 @@ async function seedOwnerProject(db: TestDb): Promise<{ userId: string; projectId
   return { userId: user.id, projectId: project.id };
 }
 
-/**
- * The body of `estimateIssueContextTokens` (jobs/session-resume.ts), spelled here
- * as that function spells it so a regression there fails this file.
- */
-const issueContextPeak = (issue: string) => sql`
-  SELECT MAX(ur.input_tokens + ur.cache_read_tokens) AS peak
-  FROM agent_sessions AS s
-  JOIN usage_records AS ur
-    ON ur.session_id = s.id::text
-  WHERE s.metadata->>'issueId' = ${issue}`;
-
 /** The plan Postgres chose for `query`, as EXPLAIN prints it. */
 async function explain(db: TestDb, query: ReturnType<typeof sql>): Promise<string> {
   const rows = await db.execute<Record<string, string>>(sql`EXPLAIN (COSTS OFF) ${query}`);
@@ -280,7 +269,7 @@ async function constraintRefusing(db: TestDb, query: ReturnType<typeof sql>): Pr
 async function mountAgentSessions(
   url: string,
   userId: string,
-): Promise<{ app: Hono; token: string }> {
+): Promise<{ app: Hono; token: string; issueContextPeakQuery: (issueId: string) => SQL }> {
   process.env.DATABASE_URL = url;
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
@@ -297,12 +286,16 @@ async function mountAgentSessions(
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   const { signUserToken } = await import('../../src/auth/jwt.js');
+  // Same reason as the router: session-resume pulls in db/client, which validates
+  // DATABASE_URL at import. Taken here so the index case explains the query the
+  // production function runs rather than a copy that cannot observe a regression.
+  const { issueContextPeakQuery } = await import('../../src/jobs/session-resume.js');
 
   const app = new Hono();
   app.use('*', requestId());
   app.route('/api/agent-sessions', agentSessionRoutes);
   app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
-  return { app, token: await signUserToken(userId) };
+  return { app, token: await signUserToken(userId), issueContextPeakQuery };
 }
 
 interface SessionCostBody {
@@ -330,6 +323,7 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
    *  at the route rather than at a predicate rebuilt here. */
   let app: Hono;
   let ownerToken: string;
+  let issueContextPeakQuery: (issueId: string) => SQL;
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -337,7 +331,11 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
     const owner = await seedOwnerProject(harness.db);
     projectId = owner.projectId;
     await seedFixture(harness.db, projectId, owner.userId);
-    ({ app, token: ownerToken } = await mountAgentSessions(harness.url, owner.userId));
+    ({
+      app,
+      token: ownerToken,
+      issueContextPeakQuery,
+    } = await mountAgentSessions(harness.url, owner.userId));
   }, 600_000);
 
   afterAll(async () => {
@@ -470,9 +468,10 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
   // Not a criterion — the extra fix declared in the correction of 2026-09-17:
   // estimateIssueContextTokens (jobs/session-resume.ts) is a ninth session-scoped
   // read this issue's call-site sweep missed, because it builds raw SQL rather
-  // than going through usageSessionMatch. It runs on every dispatch.
+  // than going through usageSessionMatch. It runs on every dispatch. The query
+  // comes from that module, so restoring the old predicate THERE fails here.
   it('serves the issue context-token peak from the index', async () => {
-    expectIndexServed(await plan(issueContextPeak(issueId(7))));
+    expectIndexServed(await plan(issueContextPeakQuery(issueId(7))));
   });
 
   // criteria 6 — the negative control. Without this the five cases above cannot
