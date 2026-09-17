@@ -2864,6 +2864,10 @@
 
 ### Fixed
 
+- **The Issues list opens again.** It failed on every project holding work: asking for each
+  issue's cost sent the server a question it could not answer, so the page never loaded. Only
+  empty projects opened. Costs are back.
+
 - **Per-job cost and tokens no longer read zero.** A job's history row and its prompt details
   priced the job by the wrong id, so every job showed nothing spent. They now read the session
   that ran it.

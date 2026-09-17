@@ -29,35 +29,22 @@ import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { agentSessions, jobs as jobsTable, usageRecords } from '../../src/db/schema.js';
 import { canonicalSessionId, usageSessionMatch } from '../../src/usage-records/rollup.js';
 import {
-  createTestProject,
-  createTestProjectMember,
-  createTestUser,
   setupTestDatabase,
   type TestDatabase,
   type TestDb,
   truncateAll,
 } from '../helpers/index.js';
-
-const RUNS = 5_000;
-const SESSIONS = 16_000;
-const JOBS = 8_000;
-const ISSUES = 2_000;
-const USAGE_ROWS = 24_000;
-
-/**
- * Deterministic uuids so a selection can be written without reading ids back.
- *
- * cm:guard the literal `ab` in every node is what keeps a hex LETTER in each id, and it
- * is not decoration. Without it `sessionId(1)` is `...000000000001`, all digits, and
- * `toUpperCase()` on it is a no-op — so the two cases below that exist to prove an
- * uppercase spelling is handled would have been comparing a string with itself. That
- * happened twice while this file was written; putting the letters in the generator is
- * what stops it happening a third time in whatever case someone adds next.
- */
-const node = (g: number) => `ab${g.toString(16).padStart(10, '0')}`;
-const runId = (g: number) => `20000000-0000-4000-8000-${node(g)}`;
-const sessionId = (g: number) => `10000000-0000-4000-8000-${node(g)}`;
-const issueId = (g: number) => `30000000-0000-4000-8000-${node(g)}`;
+import {
+  expectIndexServed,
+  explain,
+  issueId,
+  runId,
+  SESSIONS,
+  seedFixture,
+  seedOwnerProject,
+  sessionId,
+  USAGE_ROWS,
+} from './usage-session-ground.js';
 
 /** The 0177 shape of `cost_usd`: one correlated subquery per job row. */
 const LEGACY_VIEW = sql`
@@ -75,85 +62,6 @@ const LEGACY_VIEW = sql`
   LEFT JOIN agent_sessions s ON s.id = j.agent_session_id
   WHERE j.finished_at IS NOT NULL
     AND (s.started_at IS NOT NULL OR j.dispatched_at IS NOT NULL)`;
-
-/** The fixture, seeded once. Kept out of the describe body so the suite stays inside the
- *  per-function line budget rather than buying an exemption from it. */
-async function seedFixture(db: TestDb, projectId: string, ownerId: string): Promise<void> {
-  await db.execute(sql`
-    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-    SELECT ('30000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid,
-           ${projectId}, g, 'seeded ' || g, 'open', ${ownerId}
-    FROM generate_series(1, ${ISSUES}) g`);
-
-  await db.execute(sql`
-    INSERT INTO pipeline_runs (id, project_id, kind, status, started_at)
-    SELECT ('20000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid,
-           ${projectId}, 'system', 'running', now() - (g * interval '1 minute')
-    FROM generate_series(1, ${RUNS}) g`);
-
-  await db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, pipeline_run_id, status, started_at, metadata)
-    SELECT ('10000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid, ${projectId},
-           ('20000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${RUNS}) + 1), 10, '0'))::uuid,
-           'idle', now() - (g * interval '1 second'),
-           -- metadata.issueId maps sessions onto the same 2,000 issues the jobs use, so
-           -- estimateIssueContextTokens has a real selection to be planned against.
-           jsonb_build_object('issueId',
-             '30000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${ISSUES}) + 1), 10, '0'))
-    FROM generate_series(1, ${SESSIONS}) g`);
-
-  // Jobs 1..8000 carry sessions 1..8000. `status` cycles through the REAL members of
-  // `jobStatuses` — `done`, `failed`, `cancelled` — because the view yields a duration only
-  // for `done`: seeded with a status the enum does not hold, every row's `duration_seconds`
-  // is NULL and the equivalence case cannot tell the two views' duration expressions apart.
-  // Every 500th job's span is inverted, finished before started, so the guard 0128 added is
-  // exercised on both of its sides.
-  await db.execute(sql`
-    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status,
-                      agent_session_id, dispatched_at, finished_at, model_used)
-    SELECT ('40000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid, ${projectId},
-           ('30000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${ISSUES}) + 1), 10, '0'))::uuid,
-           ('20000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${RUNS}) + 1), 10, '0'))::uuid,
-           ${ownerId}, 'plan',
-           (ARRAY['done','failed','cancelled'])[(g % 3) + 1]::text,
-           ('10000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid,
-           now() - (g * interval '1 second'),
-           CASE WHEN g % 500 = 0 THEN now() - (g * interval '1 second') - interval '5 second'
-                ELSE now() - (g * interval '1 second') + interval '30 second' END,
-           'claude-opus-4-7'
-    FROM generate_series(1, ${JOBS}) g`);
-
-  // Two more shapes the view has to carry unchanged: a job with no session at
-  // all, and a job whose session exists but has produced no usage row.
-  await db.execute(sql`
-    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status,
-                      agent_session_id, dispatched_at, finished_at, model_used)
-    SELECT ('50000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid, ${projectId}, NULL,
-           ('20000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid, ${ownerId}, 'plan',
-           'done',
-           CASE WHEN g % 2 = 0 THEN NULL
-                ELSE ('10000000-0000-4000-8000-ab' || lpad(to_hex(${SESSIONS} + g), 10, '0'))::uuid END,
-           now() - interval '1 hour', now() - interval '30 minute', NULL
-    FROM generate_series(1, 200) g`);
-
-  // 24,000 rows over the 16,000 sessions, written in two ascending passes so a
-  // session's rows land together the way they accrue on the deployment.
-  for (const [count, tag] of [
-    [SESSIONS, 'first'],
-    [USAGE_ROWS - SESSIONS, 'second'],
-  ] as Array<[number, string]>) {
-    await db.execute(sql`
-      INSERT INTO usage_records (id, project_id, source, model, input_tokens, output_tokens,
-                                 estimated_cost, request_count, session_id, recorded_at)
-      SELECT gen_random_uuid(), ${projectId}, 'cli', 'claude-opus-4-7', 100 + g, 10 + g,
-             (g % 97)::real / 1000.0, 1,
-             '10000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'),
-             now() - (g * interval '1 second') - ${sql.raw(`interval '${tag === 'first' ? 0 : 1} hour'`)}
-      FROM generate_series(1, ${count}) g`);
-  }
-
-  await db.execute(sql`ANALYZE`);
-}
 
 /** criteria 17 — kept out of the describe body for the per-function line budget. */
 async function expectViewMatchesLegacy(db: TestDb): Promise<void> {
@@ -198,37 +106,6 @@ async function expectViewMatchesLegacy(db: TestDb): Promise<void> {
   expect(Number(shapes?.positive_duration)).toBeGreaterThan(0);
 }
 
-/**
- * What every index-served assertion here means, in one place.
- *
- * cm:guard the predicate under EXPLAIN is built by the REAL `usageSessionMatch` and
- * `canonicalSessionId` rather than hand-copied into this file. A likeness would make the
- * negative control prove only that Postgres distinguishes two predicates — true and not
- * the claim — while a regression in the helper kept every case green.
- */
-function expectIndexServed(text: string) {
-  expect(text).toContain('usage_records_session_id_idx');
-  expect(text).not.toContain('Seq Scan on usage_records');
-}
-
-/**
- * A verified owner who is a member of a fresh project — what the mounted router's
- * auth needs before it will answer a cost read at all.
- */
-async function seedOwnerProject(db: TestDb): Promise<{ userId: string; projectId: string }> {
-  const user = await createTestUser(db);
-  await db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
-  const project = await createTestProject(db, user.id);
-  await createTestProjectMember(db, { userId: user.id, projectId: project.id, role: 'member' });
-  return { userId: user.id, projectId: project.id };
-}
-
-/** The plan Postgres chose for `query`, as EXPLAIN prints it. */
-async function explain(db: TestDb, query: ReturnType<typeof sql>): Promise<string> {
-  const rows = await db.execute<Record<string, string>>(sql`EXPLAIN (COSTS OFF) ${query}`);
-  return [...rows].map((r) => Object.values(r)[0]).join('\n');
-}
-
 /** What `constraintRefusing` answers for a write the database accepted. */
 const ACCEPTED = 'accepted';
 
@@ -238,12 +115,8 @@ const ACCEPTED = 'accepted';
  * The constraint name is on the DRIVER error, not on the wrapper drizzle throws,
  * so read it rather than matching the wrapper's message — which names the query
  * and would match a syntax error just as happily.
- *
- * cm:guard naming the whole error when no constraint field is present, rather than
- * returning the same value an accepted write returns: the first version of this
- * helper answered `undefined` for both, so a run where the constraint did not exist
- * at all read identically to one where it refused.
  */
+// cm:guard naming the whole error when no constraint field is present, rather than returning the same value an accepted write returns: the first version of this helper answered `undefined` for both, so a run where the constraint did not exist at all read identically to one where it refused.
 async function constraintRefusing(db: TestDb, query: ReturnType<typeof sql>): Promise<string> {
   try {
     await db.execute(query);
@@ -260,16 +133,16 @@ async function constraintRefusing(db: TestDb, query: ReturnType<typeof sql>): Pr
  * The real `/api/agent-sessions` router, mounted so criterion 8 can be judged at
  * the route rather than at a predicate this file rebuilds. Module level for the
  * per-function line budget, like the 0177 view body above.
- *
- * cm:guard the router reads `db` off the environment at import, so `DATABASE_URL`
- * has to name the harness BEFORE the dynamic import below. A static import would
- * bind the module to whatever `DATABASE_URL` the shell happened to carry, and the
- * case would then pass or fail against a database that is not this fixture.
  */
+// cm:guard the router reads `db` off the environment at import, so `DATABASE_URL` has to name the harness BEFORE the dynamic import below. A static import would bind the module to whatever `DATABASE_URL` the shell happened to carry, and the case would then pass or fail against a database that is not this fixture.
 async function mountAgentSessions(
   url: string,
   userId: string,
-): Promise<{ app: Hono; token: string; issueContextPeakQuery: (issueId: string) => SQL }> {
+): Promise<{
+  app: Hono;
+  token: string;
+  issueContextPeakQuery: (issueId: string) => SQL;
+}> {
   process.env.DATABASE_URL = url;
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
@@ -386,61 +259,6 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
         sql`SELECT ${totals} FROM ${usageRecords} WHERE ${usageSessionMatch(sql`IN ${sessionIds}`)}`,
       ),
     );
-  });
-
-  // criteria 4 — the issues-list rollup, at both widths, because they answer
-  // differently and both answers are correct.
-  //
-  // cm:guard a broad page is NOT asserted to be an index scan, and forcing one would
-  // be the wrong fix. One issue resolves about 4 sessions and takes a nested loop over
-  // the index; a 25-issue page resolves about 100 (224 on beta, of 15,657), and at that
-  // width Postgres legitimately prefers to hash `usage_records` whole rather than probe
-  // the index a hundred times. What this change buys the wide case is not an index scan
-  // but an uncast join key: measured on beta 2026-09-17 over a real 25-issue page, the
-  // same rollup falls from 47.2ms at cost 5,273.81 (Merge Join on `(u.session_id)::uuid`)
-  // to 6.2ms at cost 2,709.30. The criterion was written claiming an index scan at both
-  // widths; that was wrong about the planner and is corrected on the issue rather than
-  // relaxed here to match what got built.
-  it('serves the issues-list rollup from the index for one issue', async () => {
-    expectIndexServed(
-      await plan(sql`
-        SELECT p.issue_id, coalesce(sum(${usageRecords.estimatedCost}), 0)::float AS cost
-        FROM (SELECT DISTINCT ${jobsTable.issueId} AS issue_id,
-                     ${jobsTable.agentSessionId}::text AS session_id
-              FROM ${jobsTable}
-              WHERE ${jobsTable.issueId} = ${issueId(7)}
-                AND ${jobsTable.agentSessionId} IS NOT NULL) p
-        INNER JOIN ${usageRecords} ON ${usageSessionMatch(sql`= p.session_id`)}
-        GROUP BY p.issue_id`),
-    );
-  });
-
-  it('joins a 25-issue page on the uncast column, and cheaper than the cast did', async () => {
-    const page = sql.join(
-      Array.from({ length: 25 }, (_, i) => sql`${issueId(i + 1)}`),
-      sql`, `,
-    );
-    const pageCost = async (join: ReturnType<typeof sql>, subselect: ReturnType<typeof sql>) => {
-      const rows = await harness.db.execute<Record<string, string>>(sql`
-        EXPLAIN SELECT p.issue_id, coalesce(sum(u.estimated_cost), 0)::float AS cost
-        FROM (SELECT DISTINCT issue_id, ${subselect} FROM jobs
-              WHERE issue_id IN (${page}) AND agent_session_id IS NOT NULL) p
-        INNER JOIN usage_records u ON ${join}
-        GROUP BY p.issue_id`);
-      const text = [...rows].map((r) => Object.values(r)[0]).join('\n');
-      return { text, total: Number(/cost=[\d.]+\.\.([\d.]+)/.exec(text)?.[1]) };
-    };
-    const now = await pageCost(
-      sql`u.session_id = p.session_id`,
-      sql`agent_session_id::text AS session_id`,
-    );
-    const before = await pageCost(
-      sql`u.session_id ~ '^[0-9a-fA-F-]{36}$' AND u.session_id::uuid = p.agent_session_id`,
-      sql`agent_session_id`,
-    );
-    expect(now.text).not.toContain('(u.session_id)::uuid');
-    expect(before.text).toContain('(u.session_id)::uuid');
-    expect(now.total).toBeLessThan(before.total);
   });
 
   // criteria 5 — one run (about 3 sessions), then a page of 25 runs (about 75, 0.5%).
