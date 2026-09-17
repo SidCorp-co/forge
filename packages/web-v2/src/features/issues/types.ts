@@ -68,8 +68,9 @@ export interface IssueFailureInfo {
 }
 
 /**
- * One issue row from `GET /api/projects/:id/issues/search`. The raw `issues`
- * row plus `displayId` (`ISS-<issSeq>`) and — when `withAgentSessions=1` —
+ * One issue row from `GET /api/projects/:id/issues/search`. A projection of the
+ * `issues` row — every scalar, none of the body columns (ISS-1016) — plus
+ * `displayId` (`ISS-<issSeq>`) and, when `withAgentSessions=1`,
  * `agentSessions[]` + `agentStatus`. `pipelineHealth` arrives only under
  * `withPipelineHealth=1`; without it, per-row pipeline stage is derived from
  * `status` and a queued-but-undispatched step is invisible (ISS-903).
@@ -102,7 +103,6 @@ export interface IssueRow {
   issSeq: number;
   displayId: string;
   title: string;
-  description: string | null;
   status: IssueStatus;
   priority: IssuePriority;
   category: string | null;
@@ -252,6 +252,11 @@ export interface IssueLabel {
 }
 
 export interface IssueDetail extends IssueRow {
+  // cm:guard ISS-1016 — `description` is a DETAIL field and not a list one. The two list endpoints
+  // select a projection that never reads it off disk, so a list row declaring it would promise a
+  // field the server does not send; the single-issue reads (`GET /api/issues/:id`, the PATCH and
+  // transition returns) are the only payloads that carry it.
+  description: string | null;
   plan: string | null;
   acceptanceCriteria: string | null;
   /** ISS-898 — the renderer the description was stored for. */

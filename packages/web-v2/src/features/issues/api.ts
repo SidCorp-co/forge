@@ -12,6 +12,7 @@ import type {
   IssueComplexity,
   IssueCostSummary,
   IssueDependencies,
+  IssueDetail,
   IssueLabel,
   IssuePriority,
   IssueRow,
@@ -118,7 +119,7 @@ export const issuesApi = {
   /** `PATCH /api/issues/:id` — priority/complexity/description (status is NOT
    *  patchable here; use `transition`). */
   patch: (id: string, body: PatchIssueInput) =>
-    apiClient<IssueRow>(`/issues/${id}`, {
+    apiClient<IssueDetail>(`/issues/${id}`, {
       method: "PATCH",
       body: JSON.stringify(body),
     }),
@@ -131,7 +132,7 @@ export const issuesApi = {
     toStatus: IssueStatus,
     opts?: { reason?: string; waitingKind?: WaitingCause },
   ) =>
-    apiClient<IssueRow>(`/issues/${id}/transition`, {
+    apiClient<IssueDetail>(`/issues/${id}/transition`, {
       method: "POST",
       body: JSON.stringify({
         toStatus,

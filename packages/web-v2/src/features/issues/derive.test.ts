@@ -52,7 +52,6 @@ function row(over: Partial<IssueRow> & { id: string }): IssueRow {
 		issSeq: over.issSeq ?? 1,
 		displayId: over.displayId ?? `ISS-${over.issSeq ?? 1}`,
 		title: over.title ?? "Title",
-		description: over.description ?? null,
 		status: over.status ?? "open",
 		priority: over.priority ?? "none",
 		category: over.category ?? null,

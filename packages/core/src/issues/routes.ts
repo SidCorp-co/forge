@@ -38,6 +38,7 @@ import {
   type ResolvedLabelAttach,
   resolveLabelIdsForWrite,
 } from './label-service.js';
+import { issueListPageQuery, serializeRestListRow } from './list-projection.js';
 import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fields.js';
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
@@ -356,20 +357,19 @@ issueProjectRoutes.get(
 
     const [{ n } = { n: 0 }] = await db.select({ n: count() }).from(issues).where(where);
 
-    const orderBy = buildIssueOrderBy(q.sort);
-
-    const rows = await db
-      .select()
-      .from(issues)
-      .where(where)
-      .orderBy(orderBy)
-      .limit(q.limit)
-      .offset(q.offset);
+    // cm:why ISS-1016 — the page comes from `issueListPageQuery` and not from a `db.select()` here, so the plan the index tests EXPLAIN is the plan this handler runs. `sort=createdAt:desc` and `updatedAt:desc` are served by `issues_project_created_at_idx` / `issues_project_updated_at_idx`; the two `priority` sorts order by a CASE expression, which no btree serves, and still sort.
+    const rows = await issueListPageQuery({
+      where,
+      orderBy: buildIssueOrderBy(q.sort),
+      limit: q.limit,
+      offset: q.offset,
+    });
 
     const total = Number(n);
 
     const listPrefix = await activeIssuePrefix(projectId);
-    const serialized = rows.map((r) => serializeIssue(r as IssueRow, listPrefix));
+    // cm:guard `serializeRestListRow` and NOT `serializeIssue`: the latter also grafts `descriptionNodes`, parsed from a column this projection no longer reads, and its body columns are OPTIONAL — so a projected row type-checks through it and answers `descriptionNodes: null` on every row of every page. A list that says nothing about a body beats one that says the body is empty (ISS-1016).
+    const serialized = rows.map((r) => serializeRestListRow(r, listPrefix));
     if (serialized.length === 0) {
       return c.json(listResponse(c, serialized, total, q));
     }

@@ -39,25 +39,20 @@ export function buildIssueSearchCondition(term: string): SQL {
 }
 
 /**
- * Which fields a row matched, from a row that already carries them — the REST
- * search route selects whole issues, so this costs no extra read there.
+ * Which fields a row matched, computed by Postgres — the only way to name the
+ * match now that no surface selects the text. Every list here reads a
+ * projection that never pulls `description`, `plan` or `acceptanceCriteria`
+ * off disk (ISS-562 for the MCP browse, ISS-1016 for the two REST lists), and
+ * a JS twin of this answer would undo exactly that.
+ *
+ * It matches on ILIKE, the same operator the predicate filters on, so a row
+ * the search returned and a field this names can never disagree — the JS
+ * version it replaced compared `String.toLowerCase`, which parts company with
+ * Postgres over Unicode.
  *
  * The identifier arm can match a row no field matches literally (a camelCase
  * or `-`-split token), so `[]` is a legal answer and means "matched on the
  * identifier split rather than on a substring".
- */
-export function issueSearchMatchedFields(
-  term: string,
-  row: Partial<Record<IssueSearchField, string | null>>,
-): IssueSearchField[] {
-  const needle = term.toLowerCase();
-  return ISSUE_SEARCH_FIELDS.filter((f) => (row[f] ?? '').toLowerCase().includes(needle));
-}
-
-/**
- * The same answer as `issueSearchMatchedFields`, computed by Postgres, for the
- * light browse projection whose whole point (ISS-562) is never to read `plan`
- * or `acceptanceCriteria` off disk into the app.
  */
 export function matchedSearchFieldsSql(term: string): SQL<IssueSearchField[]> {
   const pattern = buildIlikePattern(term);

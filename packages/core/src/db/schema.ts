@@ -1154,7 +1154,22 @@ export const issues = pgTable(
     projectSourceExternalIdUq: uniqueIndex('issues_project_source_external_id_uq')
       .on(t.projectId, t.source, t.externalId)
       .where(sql`external_id IS NOT NULL`),
+    // cm:guard ISS-1016 — this index was 14 MB with `idx_scan = 0` on the beta database for as long as the counters had run, and it could not be otherwise: the search predicate ORs it with four leading-`%` ILIKEs, and an OR is index-served only when EVERY arm is. The four `_trgm_idx` below are what make the arms indexable, and therefore what makes THIS index reachable. Dropping any of them puts it back to never being planned.
     identSearchIdx: index('issues_ident_search_idx').using('gin', t.identSearch),
+    // cm:edge lockstep -> packages/core/src/issues/search-predicate.ts — one trigram index per name in `ISSUE_SEARCH_FIELDS`; a field added there without one here goes back to being the arm that forces a sequential scan for the whole predicate
+    titleTrgmIdx: index('issues_title_trgm_idx').using('gin', sql`${t.title} gin_trgm_ops`),
+    descriptionTrgmIdx: index('issues_description_trgm_idx').using(
+      'gin',
+      sql`${t.description} gin_trgm_ops`,
+    ),
+    planTrgmIdx: index('issues_plan_trgm_idx').using('gin', sql`${t.plan} gin_trgm_ops`),
+    acceptanceCriteriaTrgmIdx: index('issues_acceptance_criteria_trgm_idx').using(
+      'gin',
+      sql`${t.acceptanceCriteria} gin_trgm_ops`,
+    ),
+    // cm:guard ISS-1016 — ASCENDING deliberately, for both. Postgres walks a btree backwards at the same cost, and `ORDER BY created_at DESC LIMIT 50` under a project filter plans as an Index Scan Backward reading 52 buffers, against 516 and a top-N sort with no index at all. A descending declaration would buy nothing and would say the sort direction matters.
+    projectCreatedAtIdx: index('issues_project_created_at_idx').on(t.projectId, t.createdAt),
+    projectUpdatedAtIdx: index('issues_project_updated_at_idx').on(t.projectId, t.updatedAt),
     releaseBatchRunIdIdx: index('issues_release_batch_run_id_idx')
       .on(t.releaseBatchRunId)
       .where(sql`release_batch_run_id IS NOT NULL`),
