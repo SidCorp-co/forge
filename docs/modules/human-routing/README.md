@@ -90,7 +90,7 @@ its kind and tier once, in `packages/contracts/src/notifications.ts`, mirrored f
 | Kind | States | Closed by |
 |---|---|---|
 | `signal` | `emitted`, `expired` | nothing — an event cannot stop having happened, so it never counts as open. A CHECK constraint forbids it a resolution key |
-| `condition` | `pending`, `firing`, `inhibited`, `resolved` | `auto-resolve.ts:resolveNotifications` and the sweeper pass `notifications/reevaluate.ts`. **No HTTP route reaches it** |
+| `condition` | `pending`, `firing`, `inhibited`, `resolved` | `auto-resolve.ts:resolveNotifications` and the sweeper pass `pipeline/reevaluate-conditions.ts`. **No HTTP route reaches it** |
 | `task` | `open`, `acknowledged`, `done`, `dismissed` | `POST /api/notifications/:id/done` or `/dismiss` |
 
 `GET /api/notifications/open-count` is what the bell, the favicon dot and the document title read: the
@@ -105,6 +105,20 @@ already settled it, and all four live in `notifications/deliver.ts`: dedup on `r
 bounded expiring silence a reader sets for themselves (`notification_silences`). Grouping is the
 fifth: records sharing a `groupKey` reach one recipient as one delivery that names their cause and
 how many it holds.
+
+All five are evaluated per RECIPIENT, inside `deliver.ts:deliverTo`, and that is load-bearing in two
+directions. A silence matches its own author (`created_by`) and nobody else's deliveries — one
+operator saying "stop telling me for an hour" is not a switch that quiets the deployment. And every
+path that delivers goes through the same loop: a first delivery, a pending record's promotion, a
+firing record re-emitted, and `deliverExisting` for the one producer that writes its record inside a
+transaction. A reader gated out at the first sighting is therefore told when the gate lifts, for as
+long as the condition is still true.
+
+Grouping quiets the bell AND the channel that interrupts. The record that founds a delivery carries
+`announce: true` on its `notificationCreated` event; the records that join it carry `announce:
+false`, and `features/notifications/use-notification-delivery.ts` fires the toast, the sound and the
+browser notification only for the first. Fifteen conditions from one sweep are one bell row and one
+interruption. The bell still refreshes on every event.
 
 `notifications/emission-switch.ts` is the operator's blunt instrument beside them — deployment-wide,
 in code, visible in a diff. It currently suppresses nothing.
