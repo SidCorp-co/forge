@@ -116,7 +116,11 @@ const MAX_BATCH: usize = 100;
 /// here leaves earlier chunks committed on the server — and an operator told
 /// that none of the turn was stored goes looking for a transcript that is
 /// partly there. The count is what the caller puts in front of a person.
-pub async fn post_events(client: &CoreClient, session_id: &str, events: &[LineEvent]) -> Result<()> {
+pub async fn post_events(
+    client: &CoreClient,
+    session_id: &str,
+    events: &[LineEvent],
+) -> Result<()> {
     let total = events.len();
     let mut delivered = 0usize;
     for chunk in events.chunks(MAX_BATCH) {
@@ -307,7 +311,10 @@ mod tests {
             .expect_err("the second chunk was refused");
         let text = err.to_string();
         assert!(
-            text.contains(&format!("{MAX_BATCH} of {} line(s) were stored", MAX_BATCH + 1)),
+            text.contains(&format!(
+                "{MAX_BATCH} of {} line(s) were stored",
+                MAX_BATCH + 1
+            )),
             "the error must count what landed: {text}"
         );
     }

@@ -703,12 +703,24 @@ mod tests {
         // cm:guard the `false` rows are what make this an assertion rather than a
         // tautology: a predicate that dropped anything it did not recognise would
         // silently withhold every frame kind the CLI adds next.
-        assert!(is_partial_stream_event(&json!({"type": "stream_event", "event": {}})));
-        assert!(!is_partial_stream_event(&json!({"type": "assistant", "message": {}})));
-        assert!(!is_partial_stream_event(&json!({"type": "user", "message": {}})));
-        assert!(!is_partial_stream_event(&json!({"type": "result", "num_turns": 1})));
-        assert!(!is_partial_stream_event(&json!({"type": "system", "subtype": "init"})));
-        assert!(!is_partial_stream_event(&json!({"type": "a_frame_added_tomorrow"})));
+        assert!(is_partial_stream_event(
+            &json!({"type": "stream_event", "event": {}})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "assistant", "message": {}})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "user", "message": {}})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "result", "num_turns": 1})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "system", "subtype": "init"})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "a_frame_added_tomorrow"})
+        ));
         assert!(!is_partial_stream_event(&json!({"no_type_at_all": true})));
     }
 
