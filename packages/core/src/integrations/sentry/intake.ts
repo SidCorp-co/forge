@@ -321,6 +321,15 @@ async function pullOneTarget(
   thresholds: { minEventCount: number; minUserCount: number },
   report: string[],
 ): Promise<{ filed: number; commented: number }> {
+  // cm:why NO `requestId` is passed, deliberately. `deliveries.ts:recordDelivery` does a bare
+  // insert carrying `requestId` against a unique index on `(bindingId, requestId)` with no
+  // `onConflict`, so a request-keyed delivery that is retried dies on the index BEFORE the
+  // provider is contacted — priced at `docs/proposals/a-request-keyed-outbound-delivery-cannot-be-retried.md`
+  // and deliberately not fixed there, because the fix decides what a delivery row means. This pull
+  // is not an outbound dispatch: it runs inside core from the sweeper tick, nothing enqueues it and
+  // nothing retries it, and the listing's delivery row is a record of one call rather than an
+  // idempotency key. Omitting the id is what keeps it out of that defect's way. Do not add one
+  // here to "make the delivery traceable" without reading that proposal first.
   const listing = await listSentryIssues(ctx, { targetLabel: target.label });
   let filed = 0;
   let commented = 0;

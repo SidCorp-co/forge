@@ -97,7 +97,56 @@ describe('admin thresholds routes (ISS-654)', () => {
       deliveryFailRatePct: 20,
       interventionLabels: ['kernel-hardening', 'onboarding'],
       ghostRunnerOfflineDays: 14,
+      sentryMinEventCount: 10,
+      sentryMinUserCount: 2,
     });
+  });
+
+  // cm:guard ISS-1085 slice 3 — this is the ONLY place the two Sentry columns are exercised against
+  // a real Postgres. Every other assertion about them runs at a mocked `db`, so a migration that
+  // never applied, a CHECK with the bounds the wrong way round, or a column drizzle's model
+  // believes in and the table does not, would be invisible everywhere but here.
+  it('persists the Sentry admission thresholds, and the CHECK refuses a value outside the bounds', async () => {
+    const token = await tokenFor(ADMIN_EMAIL);
+
+    const ok = await put(token, { sentryMinEventCount: 25, sentryMinUserCount: 3 });
+    expect(ok.status).toBe(200);
+
+    const body = (await (await get(token)).json()) as Record<string, unknown>;
+    expect(body.sentryMinEventCount).toBe(25);
+    expect(body.sentryMinUserCount).toBe(3);
+
+    // the zod schema refuses it before the table is reached, which is the door an operator meets
+    expect((await put(token, { sentryMinEventCount: 0 })).status).toBe(400);
+
+    // and the refusal left the stored policy alone rather than half-writing it
+    const after = (await (await get(token)).json()) as Record<string, unknown>;
+    expect(after.sentryMinEventCount).toBe(25);
+  });
+
+  // cm:guard the CHECK constraint itself, reached BELOW the zod schema. The route cannot send an
+  // out-of-bounds value, so the only way to prove the constraint shipped — rather than being
+  // emitted as `>= $1` with a bind placeholder, which is what a bare `${}` in a drizzle `sql`
+  // template produces — is to write past the route and read the database's own refusal.
+  it('has the CHECK constraints the migration declared, not bind placeholders', async () => {
+    const { db } = await import('../../src/db/client.js');
+    const { sql } = await import('drizzle-orm');
+
+    const found = await db.execute(
+      sql`SELECT conname, pg_get_constraintdef(oid) AS def FROM pg_constraint
+          WHERE conrelid = 'admin_thresholds'::regclass AND contype = 'c'
+            AND conname LIKE 'admin_thresholds_sentry_%'
+          ORDER BY conname`,
+    );
+    const rows = (found as unknown as { rows: Array<{ conname: string; def: string }> }).rows;
+    expect(rows.map((r) => r.conname)).toEqual([
+      'admin_thresholds_sentry_min_event_count_ck',
+      'admin_thresholds_sentry_min_user_count_ck',
+    ]);
+    for (const r of rows) {
+      expect(r.def).toContain('1000000');
+      expect(r.def).not.toContain('$1');
+    }
   });
 
   it('persists a PUT and reads it back', async () => {
