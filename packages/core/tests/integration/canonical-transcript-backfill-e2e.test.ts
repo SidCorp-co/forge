@@ -233,6 +233,16 @@ describe('the deploy refuses until the backfill has actually finished', () => {
 
       // And a boot after that does not pay for the scan again.
       expect(await once(raw)).toEqual({ ran: false, reason: 'already-done' });
+
+      // cm:guard the WAY BACK clears the marker. `revert-canonical` is what a
+      // rollback runs; leaving the marker standing would make the next boot of
+      // this release skip the forward pass and start canonical-only readers
+      // against the legacy rows the inverse just restored.
+      await revert(raw);
+      expect((await messagesOf(good))[0]).toMatchObject({ role: 'user' });
+      const ranAgain = await once(raw);
+      expect(ranAgain.ran).toBe(true);
+      expect((await messagesOf(good))[0]).toMatchObject({ type: 'user' });
     } finally {
       await raw.end();
     }

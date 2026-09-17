@@ -15,6 +15,7 @@ import { Hono } from 'hono';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
   createTestProject,
+  createTestProjectMember,
   createTestUser,
   seedOrg,
   setupTestDatabase,
@@ -31,6 +32,7 @@ let deviceId: string;
 let deviceToken: string;
 let app: Hono<{ Variables: Vars }>;
 let seedTurn: typeof import('../../src/agent-sessions/session-events.js').seedTurn;
+let signUserToken: typeof import('../../src/auth/jwt.js').signUserToken;
 let db: typeof import('../../src/db/client.js').db;
 
 beforeAll(async () => {
@@ -48,11 +50,14 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
 
   const { agentSessionRoutes } = await import('../../src/agent-sessions/routes.js');
+  const { agentSessionTurnsRoutes } = await import('../../src/agent-sessions/turns-routes.js');
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono<{ Variables: Vars }>();
   app.use('*', requestId());
   app.route('/api/agent-sessions', agentSessionRoutes as never);
+  app.route('/api/agent-sessions', agentSessionTurnsRoutes as never);
+  ({ signUserToken } = await import('../../src/auth/jwt.js'));
   app.onError(errorHandler);
 
   ({ seedTurn } = await import('../../src/agent-sessions/session-events.js'));
@@ -65,9 +70,10 @@ afterAll(async () => {
 
 beforeEach(async () => {
   await truncateAll(harness.db);
-  ownerId = (await createTestUser(harness.db)).id;
+  ownerId = (await createTestUser(harness.db, { emailVerifiedAt: new Date() })).id;
   const org = await seedOrg(harness.db, ownerId);
   projectId = (await createTestProject(harness.db, ownerId, { orgId: org.id })).id;
+  await createTestProjectMember(harness.db, { userId: ownerId, projectId, role: 'admin' });
   const { pairDevice } = await import('../helpers/pair-device.js');
   const issued = await pairDevice({ ownerId, name: 'box', platform: 'linux' });
   deviceId = issued.device.id;
@@ -304,5 +310,68 @@ describe('a box upgraded mid-conversation keeps the turns the old daemon answere
       Array.isArray(m.blocks) ? (m.blocks as Array<Record<string, unknown>>) : [],
     );
     expect(blocks.filter((b) => b.type === 'tool')).toHaveLength(1);
+  });
+});
+
+describe('a turn edited by hand is not put back by the next derive', () => {
+  // cm:guard an edit rewrites `messages` past the carrier, and a chat session's
+  // transcript is REBUILT by folding that carrier — so an edit the carrier never
+  // saw is one the next turn's derive hands straight back, with the person
+  // looking at the words they replaced.
+  it('keeps the edited text through the turn that follows it', async () => {
+    const s = await chatSession();
+    const id = idOf(s);
+    expect((await postLines(id, aTurnThatRanTools(baseOf(s)))).status).toBe(200);
+    expect((await patchSession(id, { status: 'completed' })).status).toBe(200);
+
+    const turns = (await harness.db.execute<{ id: string }>(
+      sql`SELECT id::text AS id FROM agent_session_turns
+          WHERE agent_session_id = ${id} AND role = 'user' ORDER BY turn_index LIMIT 1`,
+    )) as unknown as Array<{ id: string }>;
+    const turnId = (turns[0] as { id: string }).id;
+
+    const token = await signUserToken(ownerId);
+    const edited = await app.request(`/api/agent-sessions/${id}/turns/${turnId}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ content: 'what did you ACTUALLY do?' }),
+    });
+    expect(edited.status).toBe(200);
+
+    // The next turn, dispatched and answered on the wire.
+    const seeded = await seedTurn(db, id, {
+      priorMessages: await transcriptOf(id),
+      entry: { id: randomUUID(), type: 'user', content: 'and now?', timestamp: 3 },
+      at: new Date(),
+    });
+    await harness.db.execute(sql`UPDATE agent_sessions SET status = 'running' WHERE id = ${id}`);
+    expect((await postLines(id, aTurnThatRanTools(seeded.lastSeq))).status).toBe(200);
+    expect((await patchSession(id, { status: 'completed' })).status).toBe(200);
+
+    const said = (await transcriptOf(id)).map((m) => String(m.content ?? ''));
+    expect(said).toContain('what did you ACTUALLY do?');
+    expect(said).not.toContain('what did you do?');
+  });
+
+  it('refuses the edit while a turn is in flight rather than eating the runner’s next line', async () => {
+    const s = await chatSession();
+    const id = idOf(s);
+    expect((await postLines(id, aTurnThatRanTools(baseOf(s)))).status).toBe(200);
+    expect((await patchSession(id, { status: 'completed' })).status).toBe(200);
+    const turns = (await harness.db.execute<{ id: string }>(
+      sql`SELECT id::text AS id FROM agent_session_turns
+          WHERE agent_session_id = ${id} AND role = 'user' ORDER BY turn_index LIMIT 1`,
+    )) as unknown as Array<{ id: string }>;
+    const turnId = (turns[0] as { id: string }).id;
+    await harness.db.execute(sql`UPDATE agent_sessions SET status = 'running' WHERE id = ${id}`);
+
+    const token = await signUserToken(ownerId);
+    const res = await app.request(`/api/agent-sessions/${id}/turns/${turnId}`, {
+      method: 'PATCH',
+      headers: { authorization: `Bearer ${token}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ content: 'too late' }),
+    });
+    expect(res.status).toBe(409);
+    expect(JSON.stringify(await res.json())).toContain('SESSION_RUNNING');
   });
 });

@@ -86,6 +86,7 @@ export async function applyTranscriptPatch(args: {
   // the divergence this issue exists to end.
   // cm:edge lockstep -> packages/core/src/agent-sessions/canonical-legacy.ts
   if (patch.messages === undefined) return { messages: undefined, derived, snapshot: false };
+
   const canonical = toCanonicalMessages(patch.messages);
   if (!canonical.ok) {
     throw new HTTPException(400, {

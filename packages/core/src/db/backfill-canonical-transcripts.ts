@@ -154,6 +154,12 @@ export async function runCanonicalBackfillOnce(sql: Sql): Promise<BackfillOnce> 
 }
 
 export async function revertCanonicalTranscripts(sql: Sql): Promise<BackfillReport> {
+  // cm:guard the marker goes FIRST, before a single row is restored. The inverse
+  // puts legacy entries back; leaving the completion marker standing would make
+  // the next boot of this release skip the forward pass and start canonical-only
+  // readers against the data the inverse restored — the same "new code, old
+  // data" silence the marker exists to end, arrived at by the way back.
+  await sql`DELETE FROM backfill_markers WHERE key = ${CANONICAL_BACKFILL_KEY}`;
   const sessionRows = await sql<{ id: string; messages: unknown }[]>`
     SELECT id, messages FROM agent_sessions
     WHERE jsonb_path_exists(messages, '$[*].__legacyEntry')

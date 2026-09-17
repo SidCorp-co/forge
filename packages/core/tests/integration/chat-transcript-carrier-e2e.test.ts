@@ -356,6 +356,41 @@ describe('the delivery contract', () => {
     expect(said).toEqual(['one', 'two', 'three']);
   });
 
+  // cm:guard the seq the runner was handed can stop being free: core takes the
+  // next one whenever it records a wholesale write (an edit, a regeneration, an
+  // old daemon's array). `ON CONFLICT DO NOTHING` would call the runner's line a
+  // duplicate and answer 200, and that line — a part of the person's
+  // conversation — would be gone with nothing said.
+  it('refuses a line whose seq core already holds, rather than calling it a duplicate', async () => {
+    const s = await chatSession();
+    const id = idOf(s);
+    const base = baseOf(s);
+    const { recordReportedTranscript } = await import('../../src/agent-sessions/session-events.js');
+    const { db } = await import('../../src/db/client.js');
+    await recordReportedTranscript(
+      db,
+      id,
+      [{ type: 'user', content: 'edited by hand' }],
+      new Date(),
+    );
+
+    const res = await postLines(id, [
+      {
+        seq: base + 1,
+        line: { type: 'assistant', message: { content: [{ type: 'text', text: 'mine' }] } },
+      },
+    ]);
+    expect(res.status).toBe(409);
+    const body = JSON.stringify(await res.json());
+    expect(body).toContain('SEQ_TAKEN_BY_CORE');
+    expect(body).toContain(`seq ${base + 1}`);
+    // The row core wrote is still the one standing.
+    const kinds = (await harness.db.execute<{ kind: string }>(
+      sql`SELECT kind FROM agent_session_events WHERE agent_session_id = ${id} ORDER BY seq`,
+    )) as unknown as Array<{ kind: string }>;
+    expect(kinds.map((k) => k.kind)).toEqual(['seed', 'snapshot']);
+  });
+
   it('refuses a batch by the seq of the line it cannot represent, and stores none of it', async () => {
     const s = await chatSession();
     const id = idOf(s);

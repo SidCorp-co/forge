@@ -12,7 +12,9 @@
  * them with `jobs/session-transcript.ts`, the same reducer the pipeline path
  * uses.
  */
+
 import { zValidator } from '@hono/zod-validator';
+import { and, eq, inArray } from 'drizzle-orm';
 import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
@@ -142,6 +144,35 @@ agentSessionEventsRoutes.post(
         message: `stream-json line at seq ${refusal.seq} ${refusal.why}`,
         cause: { code: 'UNREPRESENTABLE_LINE', details: refusal },
       });
+    }
+
+    // cm:guard a `seq` this batch claims that is already held by a row core
+    // wrote — a `seed` or a `snapshot` — is REFUSED by name, because
+    // `ON CONFLICT DO NOTHING` cannot tell that apart from the retry it exists
+    // for. Core takes the next free `seq` when it records a wholesale write
+    // (an edit, a regeneration, an old daemon's array) and the runner numbers
+    // this turn's lines from the base it was dispatched with, so the two can
+    // meet — and a line swallowed as a "duplicate" is a line of the person's
+    // conversation gone with a 200 on the wire. The turn stops here instead,
+    // saying where.
+    const claimed = await db
+      .select({ seq: agentSessionEvents.seq, kind: agentSessionEvents.kind })
+      .from(agentSessionEvents)
+      .where(
+        and(
+          eq(agentSessionEvents.agentSessionId, sessionId),
+          inArray(
+            agentSessionEvents.seq,
+            events.map((e) => e.seq),
+          ),
+        ),
+      );
+    const taken = claimed.find((row) => row.kind !== 'stdout');
+    if (taken) {
+      throw conflict(
+        `seq ${taken.seq} is already held by a \`${taken.kind}\` row core wrote; this turn's lines were numbered from a base that is no longer free`,
+        'SEQ_TAKEN_BY_CORE',
+      );
     }
 
     // cm:guard ONE transaction and `ON CONFLICT DO NOTHING` on `(agent_session_id,
