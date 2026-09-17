@@ -164,10 +164,19 @@ describe('the record the read path ships', () => {
     expect(node.body.slice(record.to)).toBe('\n\nAnd a sentence below.');
   });
 
-  it('ships no record on a comment carrying no fence', async () => {
+  // cm:guard the plain comment is found by its own body and not by counting nulls: a page that
+  // attached the record to the WRONG comment would leave exactly one null either way, so the count
+  // passes while the screen draws a card on the comment that has no fence (codex F1 of the second
+  // whole-set read).
+  it('ships no record on the comment carrying no fence, and one on the comment that does', async () => {
     const { issueId, jwt } = await seed();
     const page = await read(issueId, jwt);
-    expect(page.items.filter((n) => n.record === null)).toHaveLength(1);
+    const plain = page.items.find((n) => n.body === 'No record in this one.');
+    const fenced = page.items.find((n) => n.body === BODY);
+    expect({ plain: plain?.record, fencedKind: fenced?.record?.kind }).toEqual({
+      plain: null,
+      fencedKind: 'confirmation',
+    });
   });
 });
 
