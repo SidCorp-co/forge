@@ -339,7 +339,14 @@ export function serialize(row: IssueRow, prefix: string | null): Record<string, 
  * widen this back to `serialize()`.
  */
 
-function serializeListRow(row: IssueListRow, prefix: string | null): Record<string, unknown> {
+// cm:guard EXPORTED for one reason and it is not reuse: `integrations/sentry/chokepoint.test.ts`
+// asserts that this projection char-strips a title and does NOT frame it, so that the trade-off
+// priced in the `cm:why` below is a red test when somebody changes it rather than a comment
+// somebody has to find. Do not widen callers — `list` is still the only one.
+export function serializeListRow(
+  row: IssueListRow,
+  prefix: string | null,
+): Record<string, unknown> {
   return {
     documentId: row.id,
     issueId: formatIssueRef(prefix, row.issSeq),

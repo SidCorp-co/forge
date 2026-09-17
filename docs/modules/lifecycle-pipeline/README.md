@@ -45,7 +45,8 @@ flowchart LR
 | `schema.ts:pipelineRunStatuses` | `running` · `paused` · `completed` · `failed` · `cancelled` |
 | `schema.ts:jobStatuses` | `queued` · `dispatched` · `running` · `held` · `done` · `failed` · `cancelled` |
 | `schema.ts:jobTypes` | one per stage, `forge-<jobType>` names the skill |
-| `schema.ts:scheduleKinds` | `prompt` (fires an agent session) · `script` (sandboxed Node, no LLM) · `release_batch` |
+| `schema.ts:scheduleKinds` | `prompt` (fires an agent session) · `script` · `release_batch` · `sentry_pull` |
+| `schema.ts:RUNNER_LESS_SCHEDULE_KINDS` | every kind but `prompt` — they run inside core, start no agent session, and their history lives in `schedule_runs` and nowhere else. `schedules/service.ts:listScheduleRuns` reads that set; a runner-less kind left out of it answers `{ runs: [] }` over rows it did write, which is what `release_batch` did from the day it shipped until ISS-1085. |
 
 ## The issue flow
 

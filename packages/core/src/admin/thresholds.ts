@@ -29,5 +29,7 @@ export async function readThresholds(): Promise<AdminThresholds> {
     deliveryFailRatePct: row.deliveryFailRatePct,
     interventionLabels: row.interventionLabels,
     ghostRunnerOfflineDays: row.ghostRunnerOfflineDays,
+    sentryMinEventCount: row.sentryMinEventCount,
+    sentryMinUserCount: row.sentryMinUserCount,
   };
 }
