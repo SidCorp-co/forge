@@ -50,7 +50,7 @@ vi.mock('../db/client.js', () => ({
 
 const enqueueSpy = vi.fn();
 vi.mock('../integrations/queue.js', () => ({
-  enqueueCoolifyDispatch: (job: unknown) => enqueueSpy(job),
+  enqueueOutboundDispatch: (job: unknown) => enqueueSpy(job),
 }));
 
 const findDeliverySpy = vi.fn();

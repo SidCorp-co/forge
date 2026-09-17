@@ -97,7 +97,60 @@ describe('admin thresholds routes (ISS-654)', () => {
       deliveryFailRatePct: 20,
       interventionLabels: ['kernel-hardening', 'onboarding'],
       ghostRunnerOfflineDays: 14,
+      sentryMinEventCount: 10,
+      sentryMinUserCount: 2,
     });
+  });
+
+  // cm:guard ISS-1085 slice 3 — this is the ONLY place the two Sentry columns are exercised against
+  // a real Postgres. Every other assertion about them runs at a mocked `db`, so a migration that
+  // never applied, a CHECK with the bounds the wrong way round, or a column drizzle's model
+  // believes in and the table does not, would be invisible everywhere but here.
+  it('round-trips the Sentry admission thresholds, and a refused PUT leaves the stored ones alone', async () => {
+    const token = await tokenFor(ADMIN_EMAIL);
+
+    const ok = await put(token, { sentryMinEventCount: 25, sentryMinUserCount: 3 });
+    expect(ok.status).toBe(200);
+
+    const body = (await (await get(token)).json()) as Record<string, unknown>;
+    expect(body.sentryMinEventCount).toBe(25);
+    expect(body.sentryMinUserCount).toBe(3);
+
+    // The 400 here is the ZOD SCHEMA's, not the CHECK constraint's — the route cannot send an
+    // out-of-bounds value, so the table's own refusal is unreachable from this door and is proved
+    // separately in the test below by reading pg_constraint. Saying which one refused matters: a
+    // test titled for the constraint while exercising the schema would go green with the
+    // constraint missing entirely.
+    expect((await put(token, { sentryMinEventCount: 0 })).status).toBe(400);
+
+    // and the refusal left the stored policy alone rather than half-writing it
+    const after = (await (await get(token)).json()) as Record<string, unknown>;
+    expect(after.sentryMinEventCount).toBe(25);
+  });
+
+  // cm:guard the CHECK constraints themselves, reached BELOW the zod schema. The route cannot send
+  // an out-of-bounds value, so the only way to prove the constraints SHIPPED — rather than being
+  // emitted as `>= $1` with a bind placeholder, which is what a bare `${}` in a drizzle `sql`
+  // template produces — is to read the database's own catalogue. A migration that never applied
+  // and a constraint that applied wrong are invisible to every other assertion in this change.
+  it('has the CHECK constraints migration 0268 declared, with literal bounds', async () => {
+    const rows = await harness.db.execute<{ conname: string; def: string }>(sql`
+      SELECT conname, pg_get_constraintdef(oid) AS def
+        FROM pg_constraint
+       WHERE conrelid = 'admin_thresholds'::regclass
+         AND contype = 'c'
+         AND conname LIKE 'admin_thresholds_sentry_%'
+       ORDER BY conname
+    `);
+
+    expect(rows.map((r) => r.conname)).toEqual([
+      'admin_thresholds_sentry_min_event_count_ck',
+      'admin_thresholds_sentry_min_user_count_ck',
+    ]);
+    for (const r of rows) {
+      expect(r.def).toContain('1000000');
+      expect(r.def).not.toContain('$1');
+    }
   });
 
   it('persists a PUT and reads it back', async () => {
