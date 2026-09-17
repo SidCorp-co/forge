@@ -129,6 +129,12 @@ export function ConversationChat({
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
   const agentTurns = useMemo(() => roomQ.data?.agentTurns ?? [], [roomQ.data]);
   const busy = send.isPending || open.isPending;
+  // cm:guard a turn is ARRIVING whenever frames are landing or a send of this browser's is still
+  // out — the two are not the same, and neither alone is the signal: `busy` is false for the second
+  // person in the room, who can nonetheless see the turn, and `progress` is null in the gap between
+  // the send and the first frame. While either holds, the thread follows without animating
+  // (ISS-1078 review F6, whole-set consult round 2).
+  const streaming = busy || progress != null;
 
   // cm:guard the control is live while the room is EMPTY and by no other test: a room whose column
   // is still null but which already holds a transcript was opened before ISS-1039 and answers in
@@ -153,6 +159,7 @@ export function ConversationChat({
     ready: roomQ.isSuccess,
     itemCount: messages.length + outbox.length,
     live: busy,
+    streaming,
     // cm:guard the streaming turn's own growth, because nothing else above moves while it arrives:
     // `itemCount` counts rows and the live turn is not one, and `busy` was already true. Without it
     // the thread follows the first frame and then stops (ISS-1078 review F6).

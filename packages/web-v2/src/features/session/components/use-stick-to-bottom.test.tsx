@@ -27,7 +27,12 @@ beforeEach(() => {
   });
 });
 
-function Harness(props: { itemCount: number; live: boolean; streamedChars: number }) {
+function Harness(props: {
+  itemCount: number;
+  live: boolean;
+  streaming?: boolean;
+  streamedChars: number;
+}) {
   const { scrollRef, bottomRef, onScroll } = useStickToBottom({
     conversationKey: "c1",
     ready: true,
@@ -50,11 +55,11 @@ function scrollIntoHistory(el: HTMLElement, onScroll: () => void) {
 
 describe("a thread following a turn that is still being written", () => {
   it("follows the text as it grows, with no new item to show for it", () => {
-    const { rerender } = render(<Harness itemCount={3} live streamedChars={10} />);
+    const { rerender } = render(<Harness itemCount={3} live streaming streamedChars={10} />);
     const before = scrolls.length;
 
     act(() => {
-      rerender(<Harness itemCount={3} live streamedChars={48} />);
+      rerender(<Harness itemCount={3} live streaming streamedChars={48} />);
     });
 
     expect(scrolls.length).toBeGreaterThan(before);
@@ -71,31 +76,63 @@ describe("a thread following a turn that is still being written", () => {
   // again. The property it stands in for needs a real browser: start pinned, append a card taller
   // than the threshold, then append text every 120ms during the scroll, and assert the viewport is
   // still at the latest content once it settles (ISS-1078 review F6, whole-set consult).
-  it("asks for no animation on a stream step, and keeps one for a new item", () => {
-    const { rerender } = render(<Harness itemCount={3} live streamedChars={10} />);
+  it("asks for no animation while a turn is arriving, and keeps one outside a turn", () => {
+    const { rerender } = render(<Harness itemCount={3} live streaming streamedChars={10} />);
 
     act(() => {
-      rerender(<Harness itemCount={3} live streamedChars={48} />);
+      rerender(<Harness itemCount={3} live streaming streamedChars={48} />);
     });
     expect(scrolls.at(-1)).toEqual({ block: "end" });
 
     act(() => {
-      rerender(<Harness itemCount={4} live streamedChars={48} />);
+      rerender(<Harness itemCount={4} live={false} streamedChars={48} />);
     });
     expect(scrolls.at(-1)).toEqual({ behavior: "smooth", block: "end" });
+  });
+
+  // cm:guard the ROW a reader queues mid-turn, which is the sequence the first version of this fix
+  // still animated: the composer takes a follow-up while the reply streams (`queueWhileBusy`), and
+  // that moves `itemCount` with the stream content untouched. Branching on which dependency moved
+  // put a smooth animation in the middle of a stream — one is enough, because its own scroll events
+  // set the guard false and every frame after it returns at the guard instead of re-affirming it,
+  // so following never comes back for the rest of the turn. This is red the moment the branch goes
+  // back to reading the changed dependency rather than whether a turn is arriving.
+  it("does not animate a row queued while the reply is still streaming", () => {
+    const { rerender } = render(<Harness itemCount={3} live streaming streamedChars={48} />);
+
+    act(() => {
+      rerender(<Harness itemCount={4} live streaming streamedChars={48} />);
+    });
+
+    expect(scrolls.at(-1)).toEqual({ block: "end" });
+  });
+
+  // cm:guard the watcher, who has no send of their own in flight: `live` is false for them for the
+  // whole turn, so a hook reading `live` as "a turn is arriving" would animate every row and every
+  // frame they see. `streaming` is what a second browser in the room has (criterion 6).
+  it("does not animate for a second person watching, whose own send is not in flight", () => {
+    const { rerender } = render(
+      <Harness itemCount={3} live={false} streaming streamedChars={10} />,
+    );
+
+    act(() => {
+      rerender(<Harness itemCount={3} live={false} streaming streamedChars={48} />);
+    });
+
+    expect(scrolls.at(-1)).toEqual({ block: "end" });
   });
 
   // cm:guard the growth dependency must not defeat the near-bottom guard: a reader who scrolled up
   // to read what was said earlier is the one person a streaming turn must not move, and this hook's
   // whole reason for being conditional is that turning it unconditional makes history unreadable.
   it("does not drag a reader who scrolled back into history", () => {
-    const view = render(<Harness itemCount={3} live streamedChars={10} />);
+    const view = render(<Harness itemCount={3} live streaming streamedChars={10} />);
     const el = view.getByTestId("scroller");
     scrollIntoHistory(el, () => el.dispatchEvent(new Event("scroll", { bubbles: true })));
     const before = scrolls.length;
 
     act(() => {
-      view.rerender(<Harness itemCount={3} live streamedChars={48} />);
+      view.rerender(<Harness itemCount={3} live streaming streamedChars={48} />);
     });
 
     expect(scrolls.length).toBe(before);
