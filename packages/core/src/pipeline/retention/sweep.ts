@@ -46,21 +46,35 @@ const MAX_BATCHES = 1000;
 /** How many held sessions a tick names in the log before it stops listing them. */
 const NAMED_HELD_SESSIONS = 20;
 
+// cm:guard this exists so a test can reach the batch cap, which is otherwise ten million rows away, and reaching it is the only way to prove `heldBack` counts what a rule exempts rather than what a tick failed to drain. It is NOT an operator knob: the scheduled worker passes nothing and there is no environment variable behind it, so the production shape is the two constants above and stays readable in one place.
+/** The batch shape the delete loop runs at. */
+export interface SweepBounds {
+  batchSize: number;
+  maxBatches: number;
+}
+
 /** What one table's rule did this tick. */
 export interface TableSweepResult {
   table: string;
   /** The window this tick swept at, or null where the rule sweeps nothing. */
   windowDays: number | null;
   deleted: number;
+  /**
+   * Over-age rows this table's rule EXEMPTS — a running job's audit, a runner's
+   * carry-in event, a transcript not yet finalised. It counts the negation of
+   * the delete's own predicate, so it says nothing about a backlog the batch cap
+   * left behind; `capped` says that.
+   */
   heldBack: number;
   durationMs: number;
   /** An environment override this tick refused, and why. */
   rejected: string | null;
   /**
    * The batch loop hit its cap with a full batch still coming back, so eligible
-   * rows are left over and `heldBack` counts them alongside the exempt ones.
-   * It is reported rather than folded away because the two are different facts:
-   * a backlog the sweep did not reach, and rows a rule deliberately keeps.
+   * rows are left over — rows this rule would have deleted and did not reach.
+   * They are NOT in `heldBack`, and keeping the two apart is the point: one is a
+   * sweep that ran out of budget, the other is a rule doing its job, and a
+   * single number that moves for either reason tells an operator nothing.
    */
   capped: boolean;
 }
@@ -96,7 +110,7 @@ async function readCount(statement: ReturnType<typeof sql>): Promise<number> {
   return Array.isArray(rows) && rows[0] ? Number(rows[0].n) : 0;
 }
 
-async function sweepTable(rule: RetentionRule): Promise<TableSweepResult> {
+async function sweepTable(rule: RetentionRule, bounds: SweepBounds): Promise<TableSweepResult> {
   const t0 = Date.now();
   const resolved = resolveRetention(rule);
   const base: TableSweepResult = {
@@ -121,18 +135,18 @@ async function sweepTable(rule: RetentionRule): Promise<TableSweepResult> {
 
   let deleted = 0;
   let capped = true;
-  for (let i = 0; i < MAX_BATCHES; i++) {
-    const batch = await countRows(statements.deleteBatch(resolved.days, BATCH_SIZE));
+  for (let i = 0; i < bounds.maxBatches; i++) {
+    const batch = await countRows(statements.deleteBatch(resolved.days, bounds.batchSize));
     deleted += batch;
-    if (batch < BATCH_SIZE) {
+    if (batch < bounds.batchSize) {
       capped = false;
       break;
     }
   }
   if (capped) {
     logger.warn(
-      { table: rule.table, deleted, batches: MAX_BATCHES },
-      'retention: the batch cap stopped this table before it ran out of rows — heldBack counts a backlog as well as what the rule keeps',
+      { table: rule.table, deleted, batches: bounds.maxBatches },
+      'retention: the batch cap stopped this table before it ran out of rows — eligible rows are left for the next tick',
     );
   }
   const heldBack = statements.heldBack ? await readCount(statements.heldBack(resolved.days)) : 0;
@@ -188,11 +202,17 @@ async function repairUnfinalized(days: number, max: number): Promise<RepairSweep
   };
 }
 
-export async function runRetentionSweep(): Promise<RetentionSweepResult> {
+export async function runRetentionSweep(
+  bounds: Partial<SweepBounds> = {},
+): Promise<RetentionSweepResult> {
   const t0 = Date.now();
+  const limits: SweepBounds = {
+    batchSize: bounds.batchSize ?? BATCH_SIZE,
+    maxBatches: bounds.maxBatches ?? MAX_BATCHES,
+  };
   const tables: TableSweepResult[] = [];
   for (const rule of RETENTION_RULES) {
-    const result = await sweepTable(rule);
+    const result = await sweepTable(rule, limits);
     tables.push(result);
     logger.info(result, `retention: ${rule.table}`);
   }

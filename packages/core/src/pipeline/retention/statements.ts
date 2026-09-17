@@ -36,41 +36,46 @@ export interface TableStatements {
   /** One bounded batch of deletions, returning the ids removed. */
   deleteBatch: (days: number, limit: number) => SQL;
   /**
-   * Rows past the window that this sweep's predicates would not let it remove,
-   * counted AFTER the batches have run — at which point everything eligible has
-   * gone, so what is left past the window is exactly what was held. `null` where
-   * the table's rule holds nothing back, which is reported as zero rather than
-   * left unsaid.
+   * Rows past the window that this table's rule EXEMPTS — the negation of the
+   * same predicate the delete selects on, so the figure means "what the rule
+   * keeps" and nothing else. It is deliberately not "what is left past the
+   * window": that answer folds in any backlog the batch cap did not reach, and
+   * the two are different facts. `null` where the rule exempts nothing, which is
+   * reported as zero rather than left unsaid.
    */
   heldBack: ((days: number) => SQL) | null;
 }
 
 // cm:guard the `s.id IS NULL` arm is not defensive noise: `jobs.agent_session_id` can point at a session row that no longer exists, and without that arm such a job's events match neither the delete nor any repair, so they are held for ever by a transcript that cannot be rebuilt into anything. A row with no session to protect has nothing to protect.
+/** Over-age `job_events` rows in scope, and the rows among them the rule releases. */
+const JOB_EVENTS_SOURCE = sql`
+  FROM job_events e
+  JOIN jobs j ON j.id = e.job_id
+  LEFT JOIN agent_sessions s ON s.id = j.agent_session_id
+`;
+const JOB_EVENT_RELEASABLE = sql`(
+  j.agent_session_id IS NULL
+  OR s.id IS NULL
+  OR s.metadata ->> ${TRANSCRIPT_FINALIZED_KEY} IS NOT NULL
+)`;
+
 const jobEvents: TableStatements = {
   deleteBatch: (days, limit) => sql`
     DELETE FROM job_events
     WHERE id IN (
-      SELECT e.id
-      FROM job_events e
-      JOIN jobs j ON j.id = e.job_id
-      LEFT JOIN agent_sessions s ON s.id = j.agent_session_id
+      SELECT e.id ${JOB_EVENTS_SOURCE}
       WHERE ${olderThan(sql`e.ts`, days)}
         AND j.status IN ${JOB_TERMINAL}
-        AND (
-          j.agent_session_id IS NULL
-          OR s.id IS NULL
-          OR s.metadata ->> ${TRANSCRIPT_FINALIZED_KEY} IS NOT NULL
-        )
+        AND ${JOB_EVENT_RELEASABLE}
       LIMIT ${limit}
     )
     RETURNING id
   `,
   heldBack: (days) => sql`
-    SELECT count(*)::int AS n
-    FROM job_events e
-    JOIN jobs j ON j.id = e.job_id
+    SELECT count(*)::int AS n ${JOB_EVENTS_SOURCE}
     WHERE ${olderThan(sql`e.ts`, days)}
       AND j.status IN ${JOB_TERMINAL}
+      AND NOT ${JOB_EVENT_RELEASABLE}
   `,
 };
 
@@ -88,57 +93,67 @@ const queueSnapshots: TableStatements = {
 };
 
 // cm:guard the correlated subquery is scoped to events BEFORE THE CUTOFF, and the scope is the whole point. `metrics/queries.ts`'s `runner_uptime` carries in the LATEST event before the cutoff, which is what sets the leading edge of the chart; keeping each runner's newest event OVERALL does not keep that one. A runner that went online 100 days ago and offline 10 days ago has its newest event inside the window, so the unscoped form would delete the online event the chart needs and the uptime would read wrong rather than absent — the failure this repo cares about more.
+const notTheCarryIn = (days: number): SQL => sql`
+  e.id <> (
+    SELECT e2.id FROM runner_events e2
+    WHERE e2.runner_id = e.runner_id AND ${olderThan(sql`e2.ts`, days)}
+    ORDER BY e2.ts DESC, e2.id DESC
+    LIMIT 1
+  )
+`;
+
 const runnerEvents: TableStatements = {
   deleteBatch: (days, limit) => sql`
     DELETE FROM runner_events
     WHERE id IN (
       SELECT e.id FROM runner_events e
       WHERE ${olderThan(sql`e.ts`, days)}
-        AND e.id <> (
-          SELECT e2.id FROM runner_events e2
-          WHERE e2.runner_id = e.runner_id AND ${olderThan(sql`e2.ts`, days)}
-          ORDER BY e2.ts DESC, e2.id DESC
-          LIMIT 1
-        )
+        AND ${notTheCarryIn(days)}
       LIMIT ${limit}
     )
     RETURNING id
   `,
-  // Counted after the batches, so every pre-cutoff row still standing is a carry-in this rule kept.
   heldBack: (days) => sql`
-    SELECT count(*)::int AS n FROM runner_events WHERE ${olderThan(sql`ts`, days)}
+    SELECT count(*)::int AS n FROM runner_events e
+    WHERE ${olderThan(sql`e.ts`, days)}
+      AND NOT ${notTheCarryIn(days)}
   `,
 };
 
 // cm:guard the `ELSE false` arm is load-bearing: `kernel_transitions.entity` carries no foreign key, so an entity name this CASE does not know is a row whose parent nothing here can look up. Widening the ELSE to `true` deletes it on age alone, which is the one direction this table may not fail in — it is the audit of terminal kernel flips, and an unknown entity means a writer this sweep has not been taught about.
+const ENTITY_IS_TERMINAL = sql`
+  CASE k.entity
+    WHEN 'job' THEN NOT EXISTS (
+      SELECT 1 FROM jobs j
+      WHERE j.id = k.entity_id AND j.status NOT IN ${JOB_TERMINAL}
+    )
+    WHEN 'session' THEN NOT EXISTS (
+      SELECT 1 FROM agent_sessions s
+      WHERE s.id = k.entity_id AND s.status NOT IN ${SESSION_TERMINAL}
+    )
+    WHEN 'run' THEN NOT EXISTS (
+      SELECT 1 FROM pipeline_runs r
+      WHERE r.id = k.entity_id AND r.status NOT IN ${RUN_TERMINAL}
+    )
+    ELSE false
+  END
+`;
+
 const kernelTransitions: TableStatements = {
   deleteBatch: (days, limit) => sql`
     DELETE FROM kernel_transitions
     WHERE id IN (
       SELECT k.id FROM kernel_transitions k
       WHERE ${olderThan(sql`k.created_at`, days)}
-        AND CASE k.entity
-          WHEN 'job' THEN NOT EXISTS (
-            SELECT 1 FROM jobs j
-            WHERE j.id = k.entity_id AND j.status NOT IN ${JOB_TERMINAL}
-          )
-          WHEN 'session' THEN NOT EXISTS (
-            SELECT 1 FROM agent_sessions s
-            WHERE s.id = k.entity_id AND s.status NOT IN ${SESSION_TERMINAL}
-          )
-          WHEN 'run' THEN NOT EXISTS (
-            SELECT 1 FROM pipeline_runs r
-            WHERE r.id = k.entity_id AND r.status NOT IN ${RUN_TERMINAL}
-          )
-          ELSE false
-        END
+        AND ${ENTITY_IS_TERMINAL}
       LIMIT ${limit}
     )
     RETURNING id
   `,
   heldBack: (days) => sql`
-    SELECT count(*)::int AS n FROM kernel_transitions
-    WHERE ${olderThan(sql`created_at`, days)}
+    SELECT count(*)::int AS n FROM kernel_transitions k
+    WHERE ${olderThan(sql`k.created_at`, days)}
+      AND NOT ${ENTITY_IS_TERMINAL}
   `,
 };
 

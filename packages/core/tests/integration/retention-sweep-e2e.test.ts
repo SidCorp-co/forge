@@ -161,6 +161,28 @@ describe('retention sweep: the exemptions (ISS-1027)', () => {
     expect(swept.deleted).toBe(0);
   });
 
+  // cm:guard `heldBack` counts what a RULE exempts, never what a tick failed to drain, and this is the only case that tells the two apart: at the cap an eligible row is still standing, so a post-sweep count of everything past the window answers 2 here. That number moves when the backlog moves and when the rule holds more, which is exactly the reading an operator uses it for — `deleted: 0, heldBack: n` is either a wedged rule or a sweep out of budget, and `capped` is what says which.
+  it('counts only the exempt rows when the batch cap leaves eligible ones behind', async () => {
+    const live = await fx.insertJob({ status: 'running', type: 'code' });
+    const dead = await fx.insertJob({ status: 'done', type: 'review' });
+    const session = await fx.insertSession({ status: 'running' });
+    const held = await fx.insertKernelTransition('session', session, 200);
+    await fx.insertKernelTransition('job', dead, 200);
+    await fx.insertKernelTransition('job', dead, 201);
+    const liveHeld = await fx.insertKernelTransition('job', live, 200);
+
+    const result = await fx.mods.runRetentionSweep({ batchSize: 1, maxBatches: 1 });
+    const swept = result.tables.find((t) => t.table === 'kernel_transitions');
+
+    expect(swept?.deleted).toBe(1);
+    expect(swept?.capped).toBe(true);
+    expect(swept?.heldBack).toBe(2);
+    // One eligible transition survived the cap, and it is not in the held count.
+    const left = await idsIn('kernel_transitions');
+    expect(left).toHaveLength(3);
+    expect(left).toEqual(expect.arrayContaining([held, liveHeld]));
+  });
+
   it('keeps a transition whose session is still running', async () => {
     const session = await fx.insertSession({ status: 'running' });
     const held = await fx.insertKernelTransition('session', session, 200);
