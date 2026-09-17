@@ -131,6 +131,16 @@ export interface ConversationTurnRequest {
   // cm:guard `tool` changes WHICH TEXT is the reply and nothing after that point: the captured text takes the model's reply's place before the screen, and the screen, the reservation, `deliver` and the transcript row are the same as in `reply` mode. A second path that delivered from inside the tool would be two live paths, and the one this runner keeps true is the only one there is (ISS-1087 criteria 18-20).
   sendMode?: 'reply' | 'tool' | undefined;
   /**
+   * What stands when the turn cannot post its answer: the code-authored apology, or nothing.
+   */
+  // cm:guard `silence` is the GROUP venue's setting and `post` the direct one's, decided by `route-window.ts`: an apology in a room's main stream notifies everybody about an answer nobody got, so a group turn that fails ends as a named silence and the window posts one status into the asker's thread instead; a direct room is one person waiting and is owed the apology as before (ISS-1088 criterion 19). Absent: `post`.
+  fallbacks?: 'post' | 'silence' | undefined;
+  /**
+   * The person this reply answers, by the label the transport shows for them.
+   */
+  // cm:guard handed to `deliver` and never written into the text here: the screen has read the text by then, and the transport is the one that knows how its venue addresses a person — and whether to (ISS-1088 criteria 20, 21).
+  addressee?: string | null | undefined;
+  /**
    * The stable key this turn's delivery answers, so a retry of it delivers nothing.
    */
   // cm:guard derived from the WINDOW by the caller and never minted here: a key this function invented would be fresh on every attempt, which is the at-most-once property read backwards (ISS-1004 rule 2).
@@ -316,6 +326,8 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     }
   }
 
+  // cm:guard `silence` and tool mode share the fallback rule and are otherwise separate: tool mode changes WHICH TEXT is the reply, `fallbacks` changes what stands when there is none (ISS-1088 criterion 19).
+  const silent = capture !== null || req.fallbacks === 'silence';
   let declinedInRetry = false;
   const screenedMessage = await screenedTurnReply({
     door: req.door,
@@ -324,7 +336,7 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     first: result,
     setPhase: ctx.setPhase,
     ...(req.log ? { log: req.log } : {}),
-    fallback: capture ? 'none' : 'code-authored',
+    fallback: silent ? 'none' : 'code-authored',
     // cm:guard the retry WRITES nothing: its message is a code-authored instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the conversation, which is why it names one (ISS-1001).
     // cm:guard in `tool` mode a corrective retry is CAPTURED like the first attempt, through a capture of its own because the first is already spent: what the retry wrote as prose is not the reply, and a retry that never called `room_send` hands the screen an empty rewrite, which it refuses until the budget is spent and the turn falls silent (ISS-1087 criterion 20; whole-set review F1).
     retry: async (instruction) => {
@@ -413,8 +425,8 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     // cm:guard `screenReplaced: true` because this fallback really does replace whatever streamed
     // before the throw — the screen never ran, and a reader watching prose arrive is owed the fact
     // that what they saw is not what went out (ISS-1078).
-    // cm:guard in `tool` mode the fallback is NOT posted: the room hears only what `room_send` carried, and a turn that died before or during the model's work carried nothing, so it is recorded as a named silence instead (ISS-1087 criterion 19; whole-set review F1).
-    if (req.sendMode === 'tool') {
+    // cm:guard in `tool` mode the fallback is NOT posted: the room hears only what `room_send` carried, and a turn that died before or during the model's work carried nothing, so it is recorded as a named silence instead (ISS-1087 criterion 19; whole-set review F1). A group venue's `fallbacks: 'silence'` ends here the same way, and the window's status path reads the `turn-failed` decline (ISS-1088 criterion 19).
+    if (req.sendMode === 'tool' || req.fallbacks === 'silence') {
       await recordSilence({
         conversationId: conversation.id,
         projectId: req.venue.projectId,
@@ -451,7 +463,9 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     // silent substitution this issue's decision rules out. After the delivery guard, so a superseded
     // turn announces no correction for text it never sent (ISS-1078, consult F2).
     req.onSettled?.({ text: reply.message.text, screenReplaced: reply.screenReplaced });
-    receipt = await transport.deliver(req.venue, reply.message);
+    receipt = await transport.deliver(req.venue, reply.message, {
+      addressee: req.addressee ?? null,
+    });
   } catch (err) {
     // cm:guard nothing is recorded when the door refuses: the venue never saw this text, and a transcript row for it would say the opposite. The commonest refusal is a room rebound while the turn ran, which `deliver` names rather than swallows.
     logger.error(
@@ -464,10 +478,11 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
   // cm:guard resolved from the DELIVERED text and not from the turn, so a screened replacement is
   // stored under the identity the browser drew and with blocks that belong to what went out.
   const entry = req.replyEntry?.(reply.message.text);
+  // cm:guard the row holds the text the room was SHOWN: a transport that addressed the reply on the way out says so in `deliveredText`, and a transcript holding the unaddressed text beside a room holding the addressed one is two records of one message (ISS-1088 criterion 22).
   await recordDeliveredReply({
     conversationId: conversation.id,
     projectId: req.venue.projectId,
-    text: reply.message.text,
+    text: receipt.deliveredText ?? reply.message.text,
     receipt,
     deliveryKey: req.deliveryKey,
     ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),

@@ -91,6 +91,7 @@ const handles = [{ userId: 'handle-1', handle: 'babo' }];
 vi.mock('./participants.js', () => ({
   roomHandles: async () => handles,
   handleForProject: async () => 'handle-1',
+  personCount: async () => 1,
 }));
 let selves = new Map<string, { presence: Record<string, unknown> }>();
 vi.mock('../orgs/agent-selves.js', () => ({ readSelvesFor: async () => selves }));

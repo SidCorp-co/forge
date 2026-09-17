@@ -12,6 +12,7 @@ import { db as defaultDb } from '../db/client.js';
 import { organizationMembers, personalAccessTokens, projectMembers, users } from '../db/schema.js';
 import {
   type ConversationParticipantKind,
+  conversationMessages,
   conversationParticipants,
   conversations,
 } from '../db/schema-conversations.js';
@@ -133,6 +134,38 @@ export async function roomHandles(
     }
   }
   return [...byUser.values()];
+}
+
+/**
+ * How many people this room holds, for deciding whether a reply must say whom it answers.
+ */
+// cm:guard the larger of two counts and not the participant rows alone: a Forge room registers every person who joins it, but a Rocket.Chat room registers nobody — its people are known only by having spoken — so a count read off `conversation_participants` alone would never prefix a reply in the one transport that needs the prefix. A speaker is counted once by the Forge user they are linked to, else by the transport's key, else by the label it showed (ISS-1088 criterion 20; plan consult F7).
+export async function personCount(
+  conversationId: string,
+  tx: Executor = defaultDb,
+): Promise<number> {
+  const [registered] = await tx
+    .select({ n: sql<number>`count(*)::int` })
+    .from(conversationParticipants)
+    .where(
+      and(
+        eq(conversationParticipants.conversationId, conversationId),
+        eq(conversationParticipants.kind, 'person'),
+        isNull(conversationParticipants.removedAt),
+      ),
+    );
+  const [spoken] = await tx
+    .select({
+      n: sql<number>`count(distinct coalesce(${conversationMessages.authorUserId}::text, ${conversationMessages.authorKey}, ${conversationMessages.authorLabel}))::int`,
+    })
+    .from(conversationMessages)
+    .where(
+      and(
+        eq(conversationMessages.conversationId, conversationId),
+        eq(conversationMessages.role, 'user'),
+      ),
+    );
+  return Math.max(registered?.n ?? 0, spoken?.n ?? 0);
 }
 
 /**

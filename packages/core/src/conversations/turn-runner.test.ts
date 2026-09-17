@@ -65,7 +65,11 @@ const { unverifiedFallbackReply, errorFallbackReply, emptyFallbackReply } = awai
 );
 
 /** The neutral half of a transport: what the registry holds, and all a turn can reach. */
-const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'server-id-9' }));
+const deliver = vi.fn(
+  async (..._a: unknown[]): Promise<{ messageId: string; deliveredText?: string }> => ({
+    messageId: 'server-id-9',
+  }),
+);
 const fetchHistory = vi.fn(async (..._a: unknown[]) => []);
 
 const VENUE = {
@@ -123,7 +127,9 @@ describe('a turn for a transport that is four functions', () => {
   it('runs, screens, delivers and records with no adapter callback at all', async () => {
     const outcome = await runConversationTurn(request());
 
-    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: 'an answer' }));
+    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: 'an answer' }), {
+      addressee: null,
+    });
     expect(recordDeliveredReply).toHaveBeenCalledWith({
       conversationId: 'conv-1',
       projectId: 'proj-1',
@@ -405,7 +411,9 @@ describe('what a watcher of the turn is told (ISS-1078)', () => {
       // fact that what they saw is not what went out.
       screenReplaced: true,
     });
-    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ problems: [] }));
+    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ problems: [] }), {
+      addressee: null,
+    });
   });
 
   // cm:guard after the delivery guard and never before it: a turn whose right to answer moved to
@@ -445,5 +453,51 @@ describe('what a watcher of the turn is told (ISS-1078)', () => {
     const recorded = recordDeliveredReply.mock.calls[0]?.[0] as Record<string, unknown>;
     expect(recorded).not.toHaveProperty('messageId');
     expect(recorded).not.toHaveProperty('blocks');
+  });
+});
+
+describe('fallbacks silenced, and the addressee (ISS-1088 criteria 19, 21, 22)', () => {
+  it('posts no apology when the screen is exhausted under fallbacks: silence — a named silence instead', async () => {
+    screenReplyAtDoor.mockResolvedValue({ ok: false, refusals: [REFUSAL] });
+    const out = await runConversationTurn(request({ fallbacks: 'silence', mayDecline: true }));
+    expect(out).toEqual({ kind: 'declined', reason: 'screen-refused' });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(recordSilence).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'screen-refused' }),
+    );
+  });
+
+  it('posts no apology when the turn throws under fallbacks: silence, and records turn-failed', async () => {
+    runExternalChatTurn.mockRejectedValue(new Error('provider exploded'));
+    const out = await runConversationTurn(request({ fallbacks: 'silence', mayDecline: true }));
+    expect(out).toEqual({ kind: 'declined', reason: 'turn-failed' });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(recordSilence).toHaveBeenCalledWith(expect.objectContaining({ reason: 'turn-failed' }));
+  });
+
+  it('still posts the apology under fallbacks: post, as before', async () => {
+    screenReplyAtDoor.mockResolvedValue({ ok: false, refusals: [REFUSAL] });
+    await runConversationTurn(request({ fallbacks: 'post' }));
+    expect(deliver).toHaveBeenCalledWith(
+      VENUE,
+      expect.objectContaining({ text: unverifiedFallbackReply('Babo') }),
+      { addressee: null },
+    );
+  });
+
+  it('hands the addressee to deliver and never writes it into the screened text', async () => {
+    await runConversationTurn(request({ addressee: 'alice' }));
+    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: 'an answer' }), {
+      addressee: 'alice',
+    });
+    expect(screenReplyAtDoor.mock.calls[0]?.[1]).toMatchObject({ segments: ['an answer'] });
+  });
+
+  it('records the text the transport says it delivered, where it changed it', async () => {
+    deliver.mockResolvedValue({ messageId: 'server-id-9', deliveredText: '@alice an answer' });
+    await runConversationTurn(request({ addressee: 'alice' }));
+    expect(recordDeliveredReply).toHaveBeenCalledWith(
+      expect.objectContaining({ text: '@alice an answer' }),
+    );
   });
 });
