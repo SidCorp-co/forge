@@ -29,6 +29,9 @@ const LINES: readonly string[] = [
   '- Read the conversation context first; if it references older discussion, call rocketchat_history before concluding.',
   '- Your reply is the ONLY message the user receives — there is no follow-up turn, so do not promise a later one.',
   '- Plain chat text, no markdown headers.',
+  // cm:guard a TOKEN line and not a fixed sentence, because the composer drops a line whose value is null and that is the whole mechanism: a window that closed on quiet passes null and this line is not in the prompt at all, while one cut by the hold or split for overflow passes the instruction below. Two copies of the room lines — one per case — would be the second copy that drifts (ISS-1086 criteria 14-16).
+  // cm:guard the fixed prefix is what the claim ledger holds onto: its rows claim token-free text, and a line that is nothing but a token has no sentence a row can name (`layer-accounting.test.ts` criterion 24).
+  '- Mid-conversation turn: {midConversation}',
 ];
 
 export const ROCKETCHAT_DOOR_LAYER: PromptLayer = {

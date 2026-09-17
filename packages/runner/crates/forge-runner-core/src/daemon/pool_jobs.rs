@@ -62,6 +62,11 @@ pub trait Panes: Send + Sync {
     async fn names(&self) -> Vec<String>;
 }
 
+/// The `kind` core accepts for this box's once-a-tick heartbeat.
+// cm:edge contract -> packages/core/src/db/schema.ts — `jobEventKinds` is the enum `POST /api/jobs/:id/events` validates against (`jobs/events-routes.ts:42`), and a kind outside it is a 400 on EVERY beat. This said `"status"` until ISS-1082, so no heartbeat from a pool job ever landed: `reapResultMisses` was never held off a long release, and `supervise` never reached the 409 that tells it the job is over, so the pane it opened stood until a person killed it.
+// cm:guard a 400 here is THIS box speaking a shape core refuses, and `is_disowned` deliberately answers false for it — so the way this regression comes back is silent by construction, and the test below is the only thing that names it.
+const HEARTBEAT_KIND: &str = "progress";
+
 /// One job this box is running, and the pane it is running in.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Live {
@@ -443,7 +448,7 @@ impl Report for CoreReport<'_> {
 
     async fn progress(&self, job_id: &str) -> Result<bool> {
         let beat = JobEventInput::new(
-            "status",
+            HEARTBEAT_KIND,
             serde_json::json!({ "source": "pool_jobs", "state": "running" }),
         );
         match events::post_job_events(self.client, job_id, &[beat]).await {
@@ -1105,7 +1110,10 @@ mod tests {
 
         assert_eq!(took, Took::GaveBack("j1".into()));
         assert!(w.rec.opened.lock().unwrap().is_empty(), "no pane may open");
-        assert_eq!(w.rec.released.lock().unwrap().clone(), vec!["j1".to_string()]);
+        assert_eq!(
+            w.rec.released.lock().unwrap().clone(),
+            vec!["j1".to_string()]
+        );
     }
 
     // this is a refusal and not a fallback to the daemon's own working directory.
@@ -1381,5 +1389,59 @@ mod tests {
         assert_eq!(job_id_of("forge-master-forge-dev"), None);
         assert_eq!(job_id_of("forge-job-"), None);
         assert_eq!(job_id_of("forge-job"), None);
+    }
+
+    /// The kinds `POST /api/jobs/:id/events` validates against, mirrored from
+    /// core so this box can assert what it sends is one of them.
+    // cm:edge lockstep -> packages/core/src/db/schema.ts — `jobEventKinds`. A kind added there and not here only makes this list narrower than core's, which cannot pass a bad beat; a kind REMOVED there and left here is the shape this test exists to catch, and it comes back as a 400 on every tick.
+    const CORE_JOB_EVENT_KINDS: &[&str] = &[
+        "stdout",
+        "stderr",
+        "tool_call",
+        "tool_result",
+        "progress",
+        "result",
+        "intervention",
+        "kill_ack",
+    ];
+
+    /// Captures the body of the first request and answers `200`.
+    async fn capture_one() -> (String, tokio::sync::oneshot::Receiver<String>) {
+        let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+        let addr = listener.local_addr().unwrap();
+        let (tx, rx) = tokio::sync::oneshot::channel();
+        tokio::spawn(async move {
+            use tokio::io::{AsyncReadExt, AsyncWriteExt};
+            let (mut sock, _) = listener.accept().await.unwrap();
+            let mut buf = vec![0u8; 8192];
+            let n = sock.read(&mut buf).await.unwrap_or(0);
+            let req = String::from_utf8_lossy(&buf[..n]).to_string();
+            let body = "{}";
+            let resp = format!(
+                "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{body}",
+                body.len()
+            );
+            let _ = sock.write_all(resp.as_bytes()).await;
+            let _ = sock.shutdown().await;
+            let _ = tx.send(req);
+        });
+        (format!("http://{addr}"), rx)
+    }
+
+    // cm:guard this asserts the kind core ACCEPTS, not the kind this file happens to name — `HEARTBEAT_KIND` alone would pass whatever it was set to. forge-vm 2026-09-17: the beat said `"status"`, core answered 400 to every one of them for months, and the first thing anyone noticed was two release panes holding a whole box.
+    #[tokio::test]
+    async fn the_heartbeat_carries_a_kind_core_accepts() {
+        let (url, rx) = capture_one().await;
+        let client = CoreClient::new(url, String::from("tok"));
+        let report = CoreReport { client: &client };
+        let _ = report.progress("job-1").await;
+        let req = rx.await.expect("the server must have seen the beat");
+        let kind = CORE_JOB_EVENT_KINDS
+            .iter()
+            .find(|k| req.contains(&format!("\"kind\":\"{k}\"")));
+        assert!(
+            kind.is_some(),
+            "the heartbeat kind is not one core accepts, so every beat is a 400: {req}"
+        );
     }
 }

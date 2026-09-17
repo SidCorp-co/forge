@@ -2917,6 +2917,10 @@
 
 ### Fixed
 
+- **A finished release no longer holds a job slot.** Two ended release batches held a runner's
+  whole pane budget for four hours, stopping every project on that box. The box now learns when a
+  job is over.
+
 - **An assistant reply fits the panel it is in.** Two nested 85% caps left a blank column beside
   every answer, growing as the panel shrank. One place now sets the measure: full width, up to a
   readable line length.

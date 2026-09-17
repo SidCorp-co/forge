@@ -55,6 +55,8 @@ vi.mock('./windows.js', () => ({
     row.claimedAt && row.claimedBy ? { claimedAt: row.claimedAt, claimedBy: row.claimedBy } : null,
   closeWindow: (...a: unknown[]) => closeWindow(...(a as [])),
   reserveDelivery: (...a: unknown[]) => reserveDelivery(...(a as [])),
+  // cm:guard present on the mock because `route-window.ts` imports it; the overflow path that calls it is `route-window-cut.test.ts`'s and never runs here (ISS-1086).
+  splitWindowTail: async () => true,
 }));
 
 const deliver = vi.fn(async () => ({ messageId: 'rc-9' }));
@@ -104,6 +106,7 @@ const WINDOW = {
   lastSeq: 4,
   claimedAt: new Date(),
   claimedBy: 'core-1',
+  cutReason: null as 'quiet' | 'deadline' | 'overflow' | null,
   deliveryReservedAt: null as Date | null,
   closedAt: null,
   decision: null,
