@@ -148,6 +148,16 @@ describe('a window that never goes quiet is still due', () => {
     expect(next?.firstSeq).toBe(1);
   });
 
+  // cm:guard the tie the recheck named: same `opened_at` to the millisecond, and the later first_seq is still the later window (criterion 28).
+  it('fences a later window that opened in the same millisecond as the held one (criterion 28)', async () => {
+    const same = ago(20_000);
+    await openAt(0, same);
+    const [head] = await claim();
+    expect(head?.firstSeq).toBe(0);
+    await openAt(1, same);
+    expect(await claim()).toHaveLength(0);
+  });
+
   it('leaves the collecting index exactly as ISS-1004 defined it (criterion 17)', async () => {
     const rows = await harness.db.execute(
       sql`SELECT indexdef FROM pg_indexes WHERE indexname = 'conversation_windows_one_collecting'`,

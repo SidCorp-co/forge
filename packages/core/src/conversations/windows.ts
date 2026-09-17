@@ -240,8 +240,8 @@ export async function claimDueWindows(
           lte(conversationWindows.claimedAt, leaseBefore),
         ),
         venueFilter,
-        // cm:guard one conversation's windows are claimed in the order they were OPENED, and a later one waits while an earlier one is unclosed — held, or released with its lease lapsed. Without this the overflow split can bridge a claimed range: A holds 0–59, its successor B (60–69) is claimed elsewhere, C collects 70–71, and A's split lowers C to 50–71, so B's messages are answered twice under two delivery keys. The wait costs at most one turn, or one lease where the holder died; two windows opened in the same millisecond fence neither, which is the behaviour before this line (ISS-1086, whole-set review F1).
-        sql`not exists (select 1 from conversation_windows earlier where earlier.conversation_id = ${conversationWindows.conversationId} and earlier.closed_at is null and earlier.opened_at < ${conversationWindows.openedAt})`,
+        // cm:guard one conversation's windows are claimed in the order they were OPENED, and a later one waits while an earlier one is unclosed — held, or released with its lease lapsed. Without this the overflow split can bridge a claimed range: A holds 0–59, its successor B (60–69) is claimed elsewhere, C collects 70–71, and A's split lowers C to 50–71, so B's messages are answered twice under two delivery keys. The wait costs at most one turn, or one lease where the holder died. The order is TOTAL: `opened_at`, then `first_seq`, then the id, so two windows opened in the same millisecond still have exactly one earlier one and the fence has no gap to slip through (ISS-1086, whole-set review F1 and its recheck).
+        sql`not exists (select 1 from conversation_windows earlier where earlier.conversation_id = ${conversationWindows.conversationId} and earlier.closed_at is null and (earlier.opened_at, earlier.first_seq, earlier.id) < (${conversationWindows.openedAt}, ${conversationWindows.firstSeq}, ${conversationWindows.id}))`,
       ),
     )
     .orderBy(asc(conversationWindows.extendedAt))
