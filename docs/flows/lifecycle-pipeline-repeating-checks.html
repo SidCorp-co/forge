@@ -90,7 +90,7 @@ flowchart TD
   R --> RD["everything is reached,<br/>just later than it would have been"]
   A --> AB{"take the oldest handful<br/>every time anyway?"}
   AB -->|"the obvious thing"| BAD["<b>the same handful, forever.</b><br/>Item 201 is never mentioned<br/>to anyone, at all"]
-  AB -->|"what it does now"| GOOD["<b>remember where it stopped</b> and<br/>carry on from there next time,<br/>starting over when it reaches the end"]
+  AB -->|"what it does now"| GOOD["<b>remember where it stopped</b> and<br/>carry on from there next time,<br/>starting over at the end —<br/>and after ten passes regardless"]
 </pre></div>
   <p class="cap">This is the whole reason there are two mechanisms instead of one. A capped repair is
   a <b>delay</b>: it finishes each item it touches, so the list gets shorter and the next pass picks
@@ -100,6 +100,15 @@ flowchart TD
   which at least got to the bottom eventually. Measured: with a plain cap and a list one page
   longer than the cap, the overflow was surfaced <b>zero</b> times; with the remembered position it
   is surfaced on the very next pass.</p>
+
+  <p class="cap">Starting over "when it reaches the end" is not on its own enough, and this was the
+  finding a second reader raised against the first version of it. If new items keep arriving ahead
+  of the remembered position faster than a pass can get through them, there is no end to reach: every
+  pass is full, the position only ever moves forward, and everything behind it is never mentioned
+  again — the same blind spot one level up. So a traversal also starts over after <b>ten</b> passes
+  whatever the last page looked like. The price, said out loud: a list longer than ten passes' worth
+  is re-read from the top before its tail is reached, which starves the newest rather than the
+  oldest, and the oldest is the work that has been waiting longest.</p>
 
   <p class="stage"><b>2</b>A pass that ran out of room says so, with the number</p>
   <div class="board"><pre class="mermaid">

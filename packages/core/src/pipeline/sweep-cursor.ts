@@ -17,12 +17,30 @@
 // terminal, so its candidate set really does shrink and oldest-first plus a bound drains it — a
 // cursor there would skip past rows that a failed reap left behind.
 
+// One more thing the wrap-on-a-short-page rule does not give on its own: if new candidates keep
+// arriving AHEAD of the cursor faster than a page drains them, every page is full, the traversal
+// never reaches its end, and a row behind the cursor is never revisited. A short page is a
+// sufficient wrap condition only for a candidate set that is not growing. So a traversal is also
+// capped at `MAX_TRAVERSAL_PAGES` pages, after which it wraps whatever the page looked like.
+//
+// The price, stated: a candidate set larger than `MAX_TRAVERSAL_PAGES * limit` is re-read from the
+// oldest row before its tail is reached, so under sustained growth past that size the tail is
+// starved instead of the head. That is the right way round — the head is the oldest and most
+// stranded work — and it holds the criterion the flat bound could not: EVERY row is revisited
+// within a bounded number of passes, whatever the set does.
+const MAX_TRAVERSAL_PAGES = 10;
+
+interface Traversal extends SweepPosition {
+  /** Full pages this traversal has taken, which is what the ceiling above counts. */
+  pages: number;
+}
+
 // cm:guard the position is per-process and deliberately NOT persisted. It is a traversal offset,
 // not kernel state: losing it on a restart restarts the traversal at the oldest candidate, which
 // is the same place a cold process starts anyway and costs at most one repeated page. Persisting
 // it would make a crashed sweep able to skip a candidate forever, which is the failure this whole
 // module exists to prevent.
-const positions = new Map<string, SweepPosition>();
+const positions = new Map<string, Traversal>();
 
 export interface SweepPosition {
   /** The sort column rendered by the DATABASE as text, never a JS `Date`. */
@@ -38,7 +56,8 @@ export interface SweepPosition {
  * forward past rows it never looked at.
  */
 export function sweepPosition(cursorKey: string): SweepPosition | null {
-  return positions.get(cursorKey) ?? null;
+  const at = positions.get(cursorKey);
+  return at ? { ts: at.ts, id: at.id } : null;
 }
 
 /**
@@ -48,10 +67,25 @@ export function sweepPosition(cursorKey: string): SweepPosition | null {
  * page means the traversal reached the end, so the cursor is cleared and the next pass wraps to
  * the oldest candidate — which is what makes an already-surfaced row get revisited rather than
  * left behind a cursor that never moves again.
+ *
+ * The page ceiling is the second wrap condition, and the only one a GROWING candidate set can
+ * reach: without it, a set gaining a page of new rows between every pass is traversed forever and
+ * nothing behind the cursor is ever seen again.
  */
 export function advanceSweep(cursorKey: string, last: SweepPosition | null, filled: boolean): void {
-  if (filled && last) positions.set(cursorKey, last);
-  else positions.delete(cursorKey);
+  if (!filled || !last) {
+    positions.delete(cursorKey);
+    return;
+  }
+  const pages = (positions.get(cursorKey)?.pages ?? 0) + 1;
+  if (pages >= MAX_TRAVERSAL_PAGES) positions.delete(cursorKey);
+  else positions.set(cursorKey, { ts: last.ts, id: last.id, pages });
+}
+
+/** How many full pages one traversal may take before it wraps regardless. Read by the test that
+ *  plants a candidate set growing faster than the sweep drains it. */
+export function maxTraversalPages(): number {
+  return MAX_TRAVERSAL_PAGES;
 }
 
 /** Test helper — a cursor surviving between cases makes one case's page another's starting point. */
