@@ -129,6 +129,14 @@ async function callSentry(
 ): Promise<unknown> {
   const authToken = ctx.secrets?.authToken;
   if (!authToken) {
+    // The same rule the catch below states, at the one refusal that precedes it: a connection left
+    // green through a call that could not be made is a state that lies about itself. `healthcheck`
+    // in `adapter.ts` writes `error` for this exact condition, and a dispatch that stayed silent
+    // here would leave the card disagreeing with the delivery log beside it.
+    await updateConnection(ctx.connectionId, {
+      lastHealthStatus: 'error',
+      lastHealthAt: new Date(),
+    });
     throw new Error('sentry: this connection holds no auth token, so no call can be made');
   }
   let res: Attempt;

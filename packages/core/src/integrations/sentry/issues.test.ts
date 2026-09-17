@@ -388,12 +388,19 @@ describe('the credential and the health it earns — criteria 11, 12 and 13', ()
     );
   });
 
-  it('refuses before any call when the connection holds no auth token', async () => {
+  it('refuses before any call when the connection holds no auth token, and says so on the card', async () => {
     const calls = answerOnce(sentryBody());
     await expect(
       readSentryIssue(buildCtx({}), { issueId: '4411', targetLabel: 'forge-core' }),
     ).rejects.toThrow(/holds no auth token/);
     expect(calls).toHaveLength(0);
+    // A refusal that leaves the connection green is the contradiction this whole function avoids
+    // everywhere else; `adapter.ts:healthcheck` writes `error` for this same condition.
+    expect(updateConnectionMock).toHaveBeenCalledWith(
+      CONN_ID,
+      expect.objectContaining({ lastHealthStatus: 'error' }),
+    );
+    expect(deliveryPatch().status).toBe('failed');
   });
 });
 
