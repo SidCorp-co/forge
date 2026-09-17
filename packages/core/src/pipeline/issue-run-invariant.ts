@@ -24,7 +24,7 @@
  * is not computable from either side; saying they disagree is.
  */
 
-import { and, eq, gte, inArray, isNull, ne, or, sql } from 'drizzle-orm';
+import { and, eq, gte, inArray, isNull, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { notifications } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
@@ -148,7 +148,7 @@ async function orphanedAssertions(now: Date): Promise<OrphanRow[]> {
 async function nameOnce(args: { now: Date; row: OrphanRow; ref: string }): Promise<boolean> {
   const resolutionKey = orphanedAssertionResolutionKey(args.row.issueId);
   const [existing] = await db
-    .select({ id: notifications.id })
+    .select({ id: notifications.id, state: notifications.state })
     .from(notifications)
     .where(
       and(
@@ -156,21 +156,26 @@ async function nameOnce(args: { now: Date; row: OrphanRow; ref: string }): Promi
         eq(notifications.resolutionKey, resolutionKey),
         isNull(notifications.resolvedAt),
         // cm:guard ISS-1063 — `state <> 'resolved'` where this read `read = false`, for the reason the same guard in stranded-issues.ts carries: read state is a fact about a person and is not on this table any more, and an episode still firing is the thing that must not be named twice.
-        // cm:guard a `pending` record is ALWAYS re-emitted, whichever arm below would
-        // otherwise match. A type declaring a pending duration is promoted to `firing` by a
-        // LATER emission of the same identity — that re-emission IS its second evaluation.
-        // Short-circuit here and the record never promotes and nobody is ever told about a
-        // condition that is still true; the re-notify window would suppress the very pass
-        // that announces it. The delivery layer's own dedup (`activeRecord`) is what stops
-        // the re-emission writing a second record.
-        ne(notifications.state, 'pending'),
         or(
-          inArray(notifications.state, ['firing', 'inhibited']),
+          inArray(notifications.state, ['pending', 'firing', 'inhibited']),
           gte(notifications.createdAt, new Date(args.now.getTime() - ORPHAN_RENOTIFY_MS)),
         ),
       ),
     )
     .limit(1);
+
+  // cm:guard ISS-1063 — a `pending` record is ALWAYS re-emitted, and the re-emission is
+  // deliberately SILENT. A type declaring a pending duration is promoted to `firing` by a LATER
+  // emission of the same identity — that re-emission IS its second evaluation, so short-circuit
+  // here and the record never promotes and nobody is ever told about a condition that is still
+  // true. It does not log and does not count, because the log line below is what `reported`
+  // counts and one episode is named once: counting the promotion tick too would report two
+  // episodes for one orphan, which is what `ORPHAN_RENOTIFY_MS` exists to prevent. The delivery
+  // layer's own dedup (`activeRecord`) is what stops the re-emission writing a second record.
+  if (existing?.state === 'pending') {
+    await emit(args, resolutionKey);
+    return false;
+  }
   if (existing) return false;
 
   // cm:guard the log line is the deliverable and is emitted whether or not anyone is reachable by
@@ -187,30 +192,39 @@ async function nameOnce(args: { now: Date; row: OrphanRow; ref: string }): Promi
     'issue-run-invariant: this issue says work is in progress and no live run is behind it — nothing has been moved',
   );
 
-  const admins = await projectAdminUserIds(args.row.projectId);
-  if (admins.length > 0) {
-    // cm:guard ISS-1063 changed the SHAPE of what this writes — one record and a delivery
-    // per admin instead of a row per admin — and changed nothing about WHEN it writes.
-    // The predicate above, the log line, and this alarm's grace window are untouched: the
-    // issue that asked for this refactor named this detector as the one thing it must not
-    // regress.
-    await emitNotification({
-      recipients: admins,
-      projectId: args.row.projectId,
-      issueId: args.row.issueId,
-      type: 'issue_stranded',
-      resolutionKey,
-      groupKey: sweepGroupKey('orphan-assertion', args.now),
-      groupTitle: 'Issues asserting work in progress with no run behind them',
-      title: `${args.ref} says work is in progress with no run behind it`,
-      body:
-        `${args.ref} (${args.row.status}) has asserted work in progress since ` +
-        `${args.row.since} and no job, issue run or run session is live for it. ` +
-        'Nothing has been moved: whether the issue or the run record is the wrong half is not ' +
-        'decidable from here.',
-    });
-  }
+  await emit(args, resolutionKey);
   return true;
+}
+
+/**
+ * Tell this project's admins about one orphan episode.
+ */
+async function emit(
+  args: { now: Date; row: OrphanRow; ref: string },
+  resolutionKey: string,
+): Promise<void> {
+  const admins = await projectAdminUserIds(args.row.projectId);
+  if (admins.length === 0) return;
+  // cm:guard ISS-1063 changed the SHAPE of what this writes — one record and a delivery
+  // per admin instead of a row per admin — and changed nothing about WHEN it writes.
+  // The predicate above, the log line, and this alarm's grace window are untouched: the
+  // issue that asked for this refactor named this detector as the one thing it must not
+  // regress.
+  await emitNotification({
+    recipients: admins,
+    projectId: args.row.projectId,
+    issueId: args.row.issueId,
+    type: 'issue_stranded',
+    resolutionKey,
+    groupKey: sweepGroupKey('orphan-assertion', args.now),
+    groupTitle: 'Issues asserting work in progress with no run behind them',
+    title: `${args.ref} says work is in progress with no run behind it`,
+    body:
+      `${args.ref} (${args.row.status}) has asserted work in progress since ` +
+      `${args.row.since} and no job, issue run or run session is live for it. ` +
+      'Nothing has been moved: whether the issue or the run record is the wrong half is not ' +
+      'decidable from here.',
+  });
 }
 
 /**
