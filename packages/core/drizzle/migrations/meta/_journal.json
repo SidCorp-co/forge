@@ -1828,6 +1828,13 @@
       "when": 1797724800000,
       "tag": "0268_sentry_admission_thresholds",
       "breakpoints": true
+    },
+    {
+      "idx": 275,
+      "version": "7",
+      "when": 1800057600000,
+      "tag": "0275_pg_stat_statements",
+      "breakpoints": true
     }
   ]
 }
