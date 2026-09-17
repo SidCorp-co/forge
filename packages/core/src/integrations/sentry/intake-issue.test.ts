@@ -332,7 +332,7 @@ describe('an error that came back after somebody called it done', () => {
     );
     const out = await intakeSentryIssue(issue({ ...regressed, lastSeen: seen }), ctx);
     expect(out).toMatchObject({ kind: 'refused' });
-    expect((out as { reason: string }).reason).toContain('same recurrence');
+    expect((out as { reason: string }).reason).toContain('not newer');
     expect(transitionMock).not.toHaveBeenCalled();
   });
 
@@ -372,6 +372,48 @@ describe('an error that came back after somebody called it done', () => {
     const merged = mergedMetadata();
     expect(merged).toContain('reopenedAtLastSeen');
     expect(merged).toContain(seen);
+  });
+
+  // cm:guard the review's F2 second case. Equality let a SUPERSEDED recurrence through: T1 handled, T2 handled, the issue closed again, T1 re-delivered — T1 is not equal to the T2 watermark, so an equality test reopens completed work off a replay of something already overtaken.
+  it('does not reopen for a recurrence older than the one already reopened for', async () => {
+    selectRows.push(
+      [filed({ status: 'closed' })],
+      [
+        filed({
+          status: 'closed',
+          metadata: { sentry: { count: 41, reopenedAtLastSeen: '2026-09-18T00:00:00Z' } },
+        }),
+      ],
+    );
+    const out = await intakeSentryIssue(
+      issue({ ...regressed, lastSeen: '2026-09-17T00:00:00Z' }),
+      ctx,
+    );
+    expect(out).toMatchObject({ kind: 'refused' });
+    expect((out as { reason: string }).reason).toContain('not newer');
+    expect(transitionMock).not.toHaveBeenCalled();
+  });
+
+  // cm:guard a recurrence Sentry did not timestamp cannot be told apart from one already acted on, so it is refused by name rather than reopened on a guess — the same rule the admission gate applies to an absent count. Without this an identical redelivery reopens on every attempt, forever.
+  it('refuses by name a regression Sentry did not timestamp', async () => {
+    selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
+    const out = await intakeSentryIssue(issue({ ...regressed, lastSeen: null }), ctx);
+    expect(out).toMatchObject({ kind: 'refused' });
+    expect((out as { reason: string }).reason).toContain('no usable time');
+    expect(transitionMock).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the review's F1. The stamp must touch ONE key. Rebuilt from the pre-transition snapshot it replaced the whole sentry object, so a count another delivery committed in between was overwritten with the older one — and the next observation of the newer count then read as growth and posted a duplicate comment.
+  it('stamps the watermark without rewriting the rest of the sentry record', async () => {
+    selectRows.push([filed({ status: 'closed' })], [filed({ status: 'closed' })]);
+    await intakeSentryIssue(issue({ ...regressed, lastSeen: '2026-09-18T00:00:00Z' }), ctx);
+    const stamp = updateSets.at(-1);
+    const rendered = new PgDialect().sqlToQuery(stamp?.metadata as never);
+    expect(rendered.sql).toContain('jsonb_set');
+    expect(JSON.stringify(rendered.params)).toContain('reopenedAtLastSeen');
+    // The stamp carries the watermark and NOTHING else — no count, no userCount, no seenAt.
+    expect(JSON.stringify(rendered.params)).not.toContain('seenAt');
+    expect(JSON.stringify(rendered.params)).not.toContain('userCount');
   });
 
   it('does not reopen an issue Sentry did not report as regressed', async () => {

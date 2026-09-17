@@ -104,7 +104,7 @@ export function selectSentryTarget(
         projectSlug === null
           ? 'this delivery names no project at all'
           : `this delivery names project "${projectSlug}"`
-      }. Give each target a distinct projectSlug, leave at most one target org-wide, or bind them to separate Forge projects.`,
+      }. Give every target a distinct projectSlug, or declare exactly one org-wide target and no others — an org-wide target overlaps every scoped one, so keeping one of each leaves this delivery ambiguous.`,
     };
   }
 
@@ -233,7 +233,7 @@ export async function handleSentryWebhook(
     const message = err instanceof Error ? err.message : 'unknown error';
     await updateDelivery(deliveryId, {
       status: 'failed',
-      errorMessage: `this delivery failed part way and was not acted on: ${message}`,
+      errorMessage: `this delivery failed part way: ${message}. Some of its writes may already have committed — the issue's own comments and metadata are the record of what did.`,
       completedAt: new Date(),
     });
     throw err;

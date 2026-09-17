@@ -179,6 +179,26 @@ export function sentryMetadataMerge(record: SentrySightingRecord): SQL {
 }
 
 /**
+ * The SQL that stamps the reopen watermark and touches nothing else.
+ *
+ * A nested merge rather than a whole-record write, and the difference is not cosmetic. Postgres's
+ * `||` merges at the TOP level, so handing it a rebuilt `{sentry: …}` replaces the whole sentry
+ * object — and the object this path would rebuild is made from the snapshot read before the
+ * transition, so a count another delivery or the scheduled pull committed in between would be
+ * overwritten with the older one. The next observation of the newer count would then read as growth
+ * and post a duplicate comment. Setting the one key leaves every other key where it is, whoever
+ * wrote it and whenever.
+ */
+export function sentryWatermarkStamp(lastSeen: string): SQL {
+  return sql`jsonb_set(
+    coalesce(${issues.metadata}, '{}'::jsonb),
+    '{sentry}',
+    coalesce(${issues.metadata} -> 'sentry', '{}'::jsonb) || ${JSON.stringify({ reopenedAtLastSeen: lastSeen })}::jsonb,
+    true
+  )`;
+}
+
+/**
  * What this sighting records, keeping the last KNOWN count where this one carries none.
  *
  * cm:guard `previous` is what the growth test compares against, so writing a null over an
@@ -202,6 +222,13 @@ export function sighting(
     ...(issue.count === null ? { countMissingAt: new Date().toISOString() } : {}),
     ...(previous?.reopenedAtLastSeen ? { reopenedAtLastSeen: previous.reopenedAtLastSeen } : {}),
   };
+}
+
+/** A Sentry timestamp as a comparable instant, or `null` where it is absent or unparseable. */
+function parseSeen(value: string | null | undefined): number | null {
+  if (!value) return null;
+  const t = Date.parse(value);
+  return Number.isNaN(t) ? null : t;
 }
 
 /** The whole sighting the last observation stored, or `null` where none was ever stored. */
@@ -360,10 +387,19 @@ async function reopenOnRegression(
   if (existing.status !== 'closed') return null;
 
   // cm:guard the watermark is the RECURRENCE this issue was already reopened for, not the last time anything was seen. Comparing against `previous.lastSeen` instead would be wrong in the common case: the scheduled pull observes the same issue on its own tick and advances `lastSeen`, so a webhook delivering the genuine regression a moment later would find them equal and decline to reopen. `reopenedAtLastSeen` moves only when a reopen actually happens, so an ordinary observation cannot suppress one.
-  if (previous?.reopenedAtLastSeen && previous.reopenedAtLastSeen === issue.lastSeen) {
+  // cm:guard a HIGH-WATER MARK rather than an equality test, and the difference is a case equality lets through: recurrence T1 is handled, T2 is handled, the issue is closed again, and T1 is re-delivered. T1 is not equal to the T2 watermark, so an equality test reopens completed work off a replay of something already superseded. Anything at or before the mark is declined.
+  const recurrence = parseSeen(issue.lastSeen);
+  if (recurrence === null) {
     return {
       kind: 'refused',
-      reason: `Sentry reports ${shortId} has regressed, but this is the same recurrence (last seen ${issue.lastSeen}) this issue was already reopened for — a re-delivered hook, not a second regression, so nothing was moved.`,
+      reason: `Sentry reports ${shortId} has regressed but timestamps it \`${issue.lastSeen ?? 'not at all'}\`, and a recurrence with no usable time cannot be told apart from one already acted on — this is refused rather than reopened on a guess. The scheduled pull will carry it on the next tick.`,
+    };
+  }
+  const mark = parseSeen(previous?.reopenedAtLastSeen ?? null);
+  if (mark !== null && recurrence <= mark) {
+    return {
+      kind: 'refused',
+      reason: `Sentry reports ${shortId} has regressed, but this recurrence (last seen ${issue.lastSeen}) is not newer than the one this issue was already reopened for (${previous?.reopenedAtLastSeen}) — a re-delivered hook, not a second regression, so nothing was moved.`,
     };
   }
 
@@ -383,17 +419,10 @@ async function reopenOnRegression(
   );
 
   // cm:guard the watermark is stamped AFTER the transition succeeds, never before it or inside it. Stamped first, a transition that then threw would leave the recurrence marked as handled and the issue still closed — the next delivery would decline and the regression would be lost in silence. Stamped after, the failure mode of a lost stamp is a SECOND reopen on the retry, which is noise a person can see rather than a silence nobody can.
-  if (issue.lastSeen) {
-    await db
-      .update(issues)
-      .set({
-        metadata: sentryMetadataMerge({
-          ...sighting(issue, shortId, previous),
-          reopenedAtLastSeen: issue.lastSeen,
-        }),
-      })
-      .where(eq(issues.id, existing.id));
-  }
+  await db
+    .update(issues)
+    .set({ metadata: sentryWatermarkStamp(issue.lastSeen as string) })
+    .where(eq(issues.id, existing.id));
 
   logger.info(
     { projectId: ctx.projectId, issueId: existing.id, shortId },
