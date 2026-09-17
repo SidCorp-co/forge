@@ -14,6 +14,12 @@
  * authoritative). Every write here is best-effort — a parse/DB hiccup must
  * never block event ingest or job `/complete`.
  *
+ * ISS-1030 — the same fold, over a second carrier. A chat turn has no `jobs`
+ * row (`transport/agent_sessions.rs`: "Chat never touches the `jobs` table"), so
+ * its raw lines land in `agent_session_events` instead; everything below reads
+ * whichever carrier it is handed and there is still one reducer, one CAS writer
+ * and one broadcast.
+ *
  * ISS-1020 — an incremental flush folds only the events past its checkpoint.
  * The final derive is still a full rebuild from every event and is still the
  * owner of the terminal transcript; so is every fallback. What makes the two
@@ -29,13 +35,14 @@ import {
 } from '../agent-sessions/broadcast.js';
 import { syncTurnsWithMessages } from '../agent-sessions/turns-helpers.js';
 import { db } from '../db/client.js';
-import { agentSessions, jobEvents } from '../db/schema.js';
+import { agentSessionEvents, agentSessions, jobEvents } from '../db/schema.js';
 import { finalizedMerge } from '../db/transcript-marker.js';
 import {
   type AgentMessage,
   applyEventsToState,
   createDeriveState,
   type DeriveState,
+  mergeMessages,
 } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
 
@@ -124,6 +131,111 @@ const storedFingerprint = sql<string>`md5(${agentSessions.messages}::text) || ':
 // cm:guard `is not distinct from`, never `=`: `failure_reason` is nullable, and a plain equality makes the whole conjunction NULL for a failed session carrying no reason — `NOT NULL` is NULL, the row matches nothing, and every derive on such a session silently writes nothing at all.
 const notUserCancelled = sql`not (${agentSessions.status} = 'failed' and ${agentSessions.failureReason} is not distinct from 'user_cancelled')`;
 
+/**
+ * Where one session's raw events live. A `job` carrier reads `job_events` by
+ * `job_id`; a `chat` carrier reads `agent_session_events` by `agent_session_id`.
+ * Nothing else about a derive differs, which is the point: one reducer, one
+ * compare-and-swap writer, one broadcast, two tables.
+ */
+export type TranscriptCarrier = { kind: 'job'; jobId: string } | { kind: 'chat' };
+
+/** The log fields that name which carrier a line is about. */
+function carrierLog(carrier: TranscriptCarrier, agentSessionId: string) {
+  return carrier.kind === 'job'
+    ? { jobId: carrier.jobId, agentSessionId }
+    : { carrier: 'chat' as const, agentSessionId };
+}
+
+/** One carrier row, narrowed to what the fold and the checkpoint read. */
+interface CarrierRow {
+  kind: string;
+  data: unknown;
+  ts: Date;
+  seq: number;
+}
+
+/**
+ * The rows of this carrier after `afterSeq`, in seq order, truncated at the
+ * first gap.
+ *
+ * cm:guard the truncation is a correctness requirement and not tidiness.
+ * `applyEventsToState` states its own contract — the events it is handed MUST
+ * start where the last call left off — because that is what makes an
+ * incremental flush the SAME computation as a full re-derive rather than an
+ * approximation of one. Before ISS-1030 nothing could produce a hole:
+ * `jobs/events-routes.ts` assigns `seq` server-side under an advisory lock, so
+ * insert order IS seq order. `agent_session_events` moves that assignment to the
+ * writer, so a batch that lands after a later one is now possible, and the
+ * checkpoint below advances only over the unbroken run. Rows past a gap are read
+ * again on the next pass, once the hole is filled; a hole that never fills holds
+ * the derive at the gap instead of skipping it for ever.
+ */
+async function readCarrierRows(
+  carrier: TranscriptCarrier,
+  agentSessionId: string,
+  afterSeq: number,
+): Promise<CarrierRow[]> {
+  const rows: CarrierRow[] =
+    carrier.kind === 'job'
+      ? await db
+          .select({ kind: jobEvents.kind, data: jobEvents.data, ts: jobEvents.ts, seq: jobEvents.seq })
+          .from(jobEvents)
+          .where(
+            afterSeq > 0
+              ? and(eq(jobEvents.jobId, carrier.jobId), gt(jobEvents.seq, afterSeq))
+              : eq(jobEvents.jobId, carrier.jobId),
+          )
+          .orderBy(asc(jobEvents.seq))
+      : await db
+          .select({
+            kind: agentSessionEvents.kind,
+            data: agentSessionEvents.data,
+            ts: agentSessionEvents.ts,
+            seq: agentSessionEvents.seq,
+          })
+          .from(agentSessionEvents)
+          .where(
+            afterSeq > 0
+              ? and(
+                  eq(agentSessionEvents.agentSessionId, agentSessionId),
+                  gt(agentSessionEvents.seq, afterSeq),
+                )
+              : eq(agentSessionEvents.agentSessionId, agentSessionId),
+          )
+          .orderBy(asc(agentSessionEvents.seq));
+
+  let expected = afterSeq + 1;
+  const prefix: CarrierRow[] = [];
+  for (const row of rows) {
+    if (row.seq !== expected) break;
+    prefix.push(row);
+    expected += 1;
+  }
+  return prefix;
+}
+
+/**
+ * Fold one contiguous run of carrier rows into `state`.
+ *
+ * Every row whose payload is a raw stream-json line goes through
+ * `applyEventsToState`, which is the one reducer for that wire. A `seed` row is
+ * the one thing that wire cannot carry: `parseStreamMessages` answers
+ * `{messages:[]}` for a `user` line holding no `tool_result`, so the prompt a
+ * person typed is not derivable from the stream at all, and core writes it as a
+ * canonical entry of its own. It is appended through `mergeMessages`, the same
+ * merge every other entry goes through, rather than pushed by a rule of its own.
+ */
+function applyCarrierRows(state: DeriveState, rows: CarrierRow[]): void {
+  for (const row of rows) {
+    if (row.kind !== 'seed') {
+      applyEventsToState(state, [row]);
+      continue;
+    }
+    const entry = (row.data as { entry?: unknown } | null | undefined)?.entry;
+    if (entry && typeof entry === 'object') mergeMessages(state.messages, [entry as AgentMessage]);
+  }
+}
+
 interface Resumed {
   lastSeq: number;
   state: DeriveState;
@@ -139,7 +251,7 @@ function resumeFrom(
   cp: Checkpoint | null,
   fingerprint: string,
   prevMessages: AgentMessage[],
-  ctx: { jobId: string; agentSessionId: string },
+  ctx: Record<string, unknown>,
 ): Resumed | null {
   if (!cp) {
     logger.debug(ctx, 'session-transcript: no checkpoint — deriving from every event');
@@ -173,11 +285,12 @@ type DeriveOutcome = 'written' | 'nothing-to-write' | 'lost-race';
  * so we can't fight the status owner or revive a cancelled row.
  */
 async function deriveOnce(
-  jobId: string,
+  carrier: TranscriptCarrier,
   agentSessionId: string,
   st: FlushState | null,
   finalizedAt: Date | null,
 ): Promise<DeriveOutcome> {
+  const log = carrierLog(carrier, agentSessionId);
   const [existing] = await db
     .select({
       id: agentSessions.id,
@@ -203,23 +316,30 @@ async function deriveOnce(
   const prevMessages = Array.isArray(existing.messages)
     ? (existing.messages as AgentMessage[])
     : [];
-  const resumed = resumeFrom(st?.checkpoint ?? null, existing.fingerprint, prevMessages, {
-    jobId,
-    agentSessionId,
-  });
+  const resumed = resumeFrom(st?.checkpoint ?? null, existing.fingerprint, prevMessages, log);
 
-  const rows = await db
-    .select({ kind: jobEvents.kind, data: jobEvents.data, ts: jobEvents.ts, seq: jobEvents.seq })
-    .from(jobEvents)
-    .where(
-      resumed
-        ? and(eq(jobEvents.jobId, jobId), gt(jobEvents.seq, resumed.lastSeq))
-        : eq(jobEvents.jobId, jobId),
-    )
-    .orderBy(asc(jobEvents.seq));
+  const rows = await readCarrierRows(carrier, agentSessionId, resumed?.lastSeq ?? 0);
+
+  // cm:guard a REBUILD over a history that does not start at seq 1 is the one
+  // failure this whole path exists to avoid: a rebuild replaces the transcript
+  // outright, so folding a suffix would overwrite a complete stored record with a
+  // shorter one and — on the final derive — mark that truncation finalised.
+  // `readCarrierRows` answers with nothing when the first row is not the one the
+  // cursor expects, so an empty answer with a stored transcript standing means
+  // the carrier can no longer rebuild it. ISS-1027's retention sweep is what
+  // makes that state reachable; `retention/statements.ts` releases a session's
+  // rows all or none for the same reason, and both halves are kept because
+  // either one alone still admits the truncation.
+  if (!resumed && rows.length === 0 && prevMessages.length > 0) {
+    logger.warn(
+      log,
+      'session-transcript: nothing to rebuild from and a transcript already stored — leaving it as it stands',
+    );
+    return 'nothing-to-write';
+  }
 
   const state = resumed?.state ?? createDeriveState();
-  applyEventsToState(state, rows);
+  applyCarrierRows(state, rows);
   const { messages, claudeSessionId } = state;
   if (messages.length === 0 && !claudeSessionId) return 'nothing-to-write';
   const lastSeq = rows[rows.length - 1]?.seq ?? resumed?.lastSeq ?? 0;
@@ -242,7 +362,7 @@ async function deriveOnce(
     if (!now) return 'nothing-to-write';
     if (now.status === 'failed' && now.failureReason === 'user_cancelled') {
       logger.debug(
-        { jobId, agentSessionId },
+        log,
         'session-transcript: the session was cancelled under this derive — nothing written',
       );
       return 'nothing-to-write';
@@ -339,29 +459,30 @@ async function markFinalized(agentSessionId: string, at: Date): Promise<void> {
  * the compare-and-swap loses. Always best-effort: swallows and logs all errors.
  */
 async function runDerive(
-  jobId: string,
+  carrier: TranscriptCarrier,
   agentSessionId: string,
   finalizedAt: Date | null = null,
 ): Promise<DeriveOutcome> {
   const st = flushStates.get(agentSessionId) ?? null;
+  const log = carrierLog(carrier, agentSessionId);
   try {
     for (let attempt = 1; attempt <= DERIVE_CAS_ATTEMPTS; attempt += 1) {
-      const outcome = await deriveOnce(jobId, agentSessionId, st, finalizedAt);
+      const outcome = await deriveOnce(carrier, agentSessionId, st, finalizedAt);
       if (outcome !== 'lost-race') return outcome;
       if (st) st.checkpoint = null;
       logger.warn(
-        { jobId, agentSessionId, attempt },
+        { ...log, attempt },
         'session-transcript: the stored transcript moved under this derive — re-deriving against it',
       );
     }
     logger.warn(
-      { jobId, agentSessionId, attempts: DERIVE_CAS_ATTEMPTS },
+      { ...log, attempts: DERIVE_CAS_ATTEMPTS },
       'session-transcript: lost the transcript write every attempt — nothing written',
     );
   } catch (err) {
     // cm:guard a checkpoint may only ever describe a write that committed, and this one did not. Leaving it standing is how the next flush folds new events onto a transcript that was never stored.
     if (st) st.checkpoint = null;
-    logger.warn({ err, jobId, agentSessionId }, 'session-transcript: derive failed');
+    logger.warn({ err, ...log }, 'session-transcript: derive failed');
   }
   // cm:guard both fall-throughs above are a derive that WROTE NOTHING, and this is the answer that says so. Returning 'written' or 'nothing-to-write' here would tell `deriveSessionFinal` to stamp the finalisation marker for a transcript that was never stored, and ISS-1027's retention rule reads that marker as permission to delete the events it would have been built from.
   return 'lost-race';
@@ -382,6 +503,15 @@ export function maybeDeriveIncremental(
   agentSessionId: string,
   newStdoutCount: number,
 ): Promise<void> | null {
+  return maybeDeriveIncrementalFor({ kind: 'job', jobId }, agentSessionId, newStdoutCount);
+}
+
+/** The same throttled flush, for whichever carrier holds this session's lines. */
+export function maybeDeriveIncrementalFor(
+  carrier: TranscriptCarrier,
+  agentSessionId: string,
+  newStdoutCount: number,
+): Promise<void> | null {
   const st = getState(agentSessionId);
   st.stdoutSinceFlush += newStdoutCount;
   if (st.finalized || st.inFlight) return null;
@@ -396,7 +526,7 @@ export function maybeDeriveIncremental(
 
   st.stdoutSinceFlush = 0;
   st.lastFlushAtMs = Date.now();
-  st.inFlight = runDerive(jobId, agentSessionId)
+  st.inFlight = runDerive(carrier, agentSessionId)
     .then(() => undefined)
     .finally(() => {
       const cur = flushStates.get(agentSessionId);
@@ -424,8 +554,38 @@ export async function deriveSessionFinal(jobId: string, agentSessionId: string):
   // cm:guard the terminal transcript is a full rebuild from every event, always. Dropping the checkpoint here is what makes that true: leave it and the last derive a session ever gets is an incremental one, and any event the cursor skipped is skipped for good.
   st.checkpoint = null;
   const finalizedAt = new Date();
-  const outcome = await runDerive(jobId, agentSessionId, finalizedAt);
+  const outcome = await runDerive({ kind: 'job', jobId }, agentSessionId, finalizedAt);
   // cm:guard a derive with nothing to write still FINALISED the session, and the marker has to say so: a job that produced no parseable event has no transcript to protect, and withholding the marker would hold its `job_events` rows for ever under ISS-1027's retention rule while the repair pass re-derived nothing, night after night. 'lost-race' is the other direction and gets no marker at all.
   if (outcome === 'nothing-to-write') await markFinalized(agentSessionId, finalizedAt);
   flushStates.delete(agentSessionId);
+}
+
+/**
+ * The authoritative derive at the end of one CHAT turn.
+ *
+ * A chat session has no terminal event of its own: it ends a turn, the person
+ * types again, and it runs another. So this fires per turn and the session's
+ * whole life is one growing carrier.
+ *
+ * cm:guard it does NOT drop the checkpoint, and the job path above does. That is
+ * not an oversight and not a weaker rule: the reason the job path rebuilds is
+ * that an incremental cursor could once step over an event, and
+ * `readCarrierRows` is what removed that possibility — it stops at the first gap
+ * rather than passing it, so a checkpoint can no longer name a seq the fold
+ * skipped. Rebuilding every turn instead would re-fold the session's entire
+ * history on each one, which is quadratic over the life of a long conversation.
+ * If the prefix rule is ever relaxed, this has to become a rebuild again.
+ */
+export async function deriveChatTurnFinal(agentSessionId: string): Promise<void> {
+  const st = getState(agentSessionId);
+  if (st.inFlight) {
+    try {
+      await st.inFlight;
+    } catch {
+      // runDerive never rejects, but guard regardless.
+    }
+  }
+  const finalizedAt = new Date();
+  const outcome = await runDerive({ kind: 'chat' }, agentSessionId, finalizedAt);
+  if (outcome === 'nothing-to-write') await markFinalized(agentSessionId, finalizedAt);
 }

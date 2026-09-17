@@ -157,6 +157,45 @@ const kernelTransitions: TableStatements = {
   `,
 };
 
+// cm:guard the scope is the SESSION and not the row, and that is what stops this
+// sweep destroying the record it protects. A transcript is rebuilt by folding
+// `seq` 1 upward, so a delete that took a session's oldest rows and left its
+// newest would turn the next rebuild into a truncation that then overwrites the
+// stored transcript. `NOT EXISTS (a row inside the window)` is what makes a
+// session's history leave whole or not at all.
+const SESSION_EVENTS_RELEASABLE = (days: number): SQL => sql`(
+  s.status IN ${SESSION_TERMINAL}
+  AND s.metadata ->> ${TRANSCRIPT_FINALIZED_KEY} IS NOT NULL
+  AND NOT EXISTS (
+    SELECT 1 FROM agent_session_events e2
+    WHERE e2.agent_session_id = e.agent_session_id
+      AND e2.ts >= now() - make_interval(days => ${days})
+  )
+)`;
+
+const AGENT_SESSION_EVENTS_SOURCE = sql`
+  FROM agent_session_events e
+  JOIN agent_sessions s ON s.id = e.agent_session_id
+`;
+
+const agentSessionEvents: TableStatements = {
+  deleteBatch: (days, limit) => sql`
+    DELETE FROM agent_session_events
+    WHERE id IN (
+      SELECT e.id ${AGENT_SESSION_EVENTS_SOURCE}
+      WHERE ${olderThan(sql`e.ts`, days)}
+        AND ${SESSION_EVENTS_RELEASABLE(days)}
+      LIMIT ${limit}
+    )
+    RETURNING id
+  `,
+  heldBack: (days) => sql`
+    SELECT count(*)::int AS n ${AGENT_SESSION_EVENTS_SOURCE}
+    WHERE ${olderThan(sql`e.ts`, days)}
+      AND NOT ${SESSION_EVENTS_RELEASABLE(days)}
+  `,
+};
+
 const retrievalAnalytics: TableStatements = {
   deleteBatch: (days, limit) => sql`
     DELETE FROM retrieval_analytics
@@ -173,6 +212,7 @@ const retrievalAnalytics: TableStatements = {
 /** Keyed by the physical table name a `RetentionRule` carries. */
 export const RETENTION_STATEMENTS: Readonly<Record<string, TableStatements>> = {
   job_events: jobEvents,
+  agent_session_events: agentSessionEvents,
   queue_snapshots: queueSnapshots,
   runner_events: runnerEvents,
   kernel_transitions: kernelTransitions,
