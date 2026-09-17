@@ -39,7 +39,15 @@ export async function detectRetryRescueThresholds(
       -- deployment. An empty array here would be the opposite answer and would
       -- silence the alert entirely.
       SELECT project_id, failure_reason, count(*)::int AS rescues
-      FROM ${retryRescuesSince(null, sql`${start}`)}
+      -- cm:guard the bound value is an ISO STRING with an explicit cast, never a \`Date\`.
+      -- \`db.execute\` binds parameters through the driver rather than through drizzle's
+      -- column encoders, and this driver refuses a \`Date\` outright:
+      -- \`The "string" argument must be of type string\`. The throw lands inside this
+      -- function's own catch, which logs and returns \`{ detected: 0, notified: 0 }\` — so the
+      -- alarm has reported nothing since it was written and every tick looked healthy.
+      -- Found by the integration case below it (ISS-1063); the same shape bit
+      -- \`pipeline/reevaluate-conditions.ts\` and \`pipeline/issue-run-invariant.ts\`.
+      FROM ${retryRescuesSince(null, sql`${start.toISOString()}::timestamptz`)}
       GROUP BY project_id, failure_reason
       HAVING count(*) >= ${RETRY_RESCUE_ALERT_THRESHOLD}
     `);

@@ -15,6 +15,7 @@ type JwtModule = typeof import('../../src/auth/jwt.js');
 type ErrorModule = typeof import('../../src/middleware/error.js');
 type HooksModule = typeof import('../../src/pipeline/hooks.js');
 type NotifyMentionsModule = typeof import('../../src/notifications/notify-mentions.js');
+type AttentionModule = typeof import('../../src/me/attention-buckets.js');
 
 // Integration coverage for ISS-276 PR-B — comment mentions + notification fan-out.
 //
@@ -29,6 +30,7 @@ type Mods = {
   errorHandler: ErrorModule['errorHandler'];
   hooks: HooksModule['hooks'];
   registerNotifyMentionsSubscriber: NotifyMentionsModule['registerNotifyMentionsSubscriber'];
+  selectMentions: AttentionModule['selectMentions'];
 };
 
 describe('ISS-276 comment mentions', () => {
@@ -51,12 +53,13 @@ describe('ISS-276 comment mentions', () => {
     process.env.CORS_ORIGINS ??= 'http://localhost:3000';
     process.env.NODE_ENV ??= 'test';
 
-    const [issuesMod, jwtMod, errMod, hooksMod, notifyMod] = await Promise.all([
+    const [issuesMod, jwtMod, errMod, hooksMod, notifyMod, attentionMod] = await Promise.all([
       import('../../src/issues/routes.js'),
       import('../../src/auth/jwt.js'),
       import('../../src/middleware/error.js'),
       import('../../src/pipeline/hooks.js'),
       import('../../src/notifications/notify-mentions.js'),
+      import('../../src/me/attention-buckets.js'),
     ]);
 
     mods = {
@@ -65,6 +68,7 @@ describe('ISS-276 comment mentions', () => {
       errorHandler: errMod.errorHandler,
       hooks: hooksMod.hooks,
       registerNotifyMentionsSubscriber: notifyMod.registerNotifyMentionsSubscriber,
+      selectMentions: attentionMod.selectMentions,
     };
 
     // The bus is module-singleton; src/index.ts is not imported in this
@@ -173,6 +177,24 @@ describe('ISS-276 comment mentions', () => {
     );
     expect(notifRows.length).toBe(1);
     expect((notifRows[0] as { user_id: string }).user_id).toBe(alice.id);
+  });
+
+  // ISS-1063 — the record no longer carries a recipient, so the Attention bucket reads
+  // mention -> delivery -> this user. The scope has to be on the RECORD as well as on the
+  // delivery: two people mentioned in one comment hold two records with the same issue_id,
+  // and a join that reaches the other person's record finds no delivery of it for you, so
+  // its NULL read_at reads as "you have not seen this" for ever.
+  it('a mention you have read leaves your bucket while another reader leaves theirs unread', async () => {
+    const { owner, alice, bob, issueId } = await seed();
+    const jwt = await mods.signUserToken(owner.id);
+    expect((await postComment(issueId, jwt, 'Hey @alice and @bob')).status).toBe(201);
+
+    await harness.db.execute(
+      sql`UPDATE notification_deliveries SET read_at = now() WHERE user_id = ${alice.id}`,
+    );
+
+    expect(await mods.selectMentions(alice.id)).toEqual([]);
+    expect(await mods.selectMentions(bob.id)).toHaveLength(1);
   });
 
   it('writes nothing when the comment has no mentions', async () => {

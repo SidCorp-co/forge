@@ -14,6 +14,18 @@ describe('ISS-826 retry_rescues', () => {
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
+    // The detector imports `db/client.js`, which validates the whole env at module load.
+    process.env.DATABASE_URL = harness.url;
+    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+    process.env.SMTP_HOST ??= 'localhost';
+    process.env.SMTP_PORT ??= '1025';
+    process.env.SMTP_USER ??= 'test';
+    process.env.SMTP_PASS ??= 'test';
+    process.env.SMTP_FROM ??= 'test@example.com';
+    process.env.APP_BASE_URL ??= 'http://localhost:3000';
+    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+    process.env.NODE_ENV ??= 'test';
   }, 60_000);
 
   afterAll(async () => {
@@ -92,6 +104,57 @@ describe('ISS-826 retry_rescues', () => {
     `);
 
     expect(rows).toEqual([{ failure_kind: 'infra', failure_reason: 'hooks_path' }]);
+  });
+
+  // ISS-1063 — `retry_rescue_threshold` is a condition declaring `pendingEvaluations: 2`,
+  // so the record this detector writes on its first sighting is delivered to nobody until a
+  // LATER emission of the same identity promotes it. The detector skipped on existence
+  // alone, so that later emission never happened: the alarm wrote a pending row every
+  // window and no human was ever told, which is green on every tick and silent in the one
+  // place it matters. This walks three evaluations through the real detector.
+  it('an alarm crossing the threshold is delivered on its second evaluation, once', async () => {
+    const owner = await createTestUser(harness.db);
+    const project = await createTestProject(harness.db, owner.id);
+    const runId = await insertRun(project.id);
+    for (let i = 0; i < 5; i += 1) {
+      const failed = await seedJob({
+        projectId: project.id,
+        pipelineRunId: runId,
+        status: 'failed',
+        failureKind: 'infra',
+        failureReason: 'hooks_path',
+      });
+      await seedJob({
+        projectId: project.id,
+        pipelineRunId: runId,
+        status: 'done',
+        retryOf: failed,
+      });
+    }
+    const { detectRetryRescueThresholds } = await import('../../src/pipeline/retry-rescue-alert.js');
+
+    const first = await detectRetryRescueThresholds();
+    expect(first).toEqual({ detected: 1, notified: 0 });
+    const [pending] = (await harness.db.execute(
+      sql`SELECT state FROM notifications WHERE type = 'retry_rescue_threshold'`,
+    )) as unknown as [{ state: string }];
+    expect(pending.state).toBe('pending');
+
+    // Two sweeps later, the condition is still true.
+    await harness.db.execute(
+      sql`UPDATE notifications SET pending_since = now() - interval '10 minutes'`,
+    );
+    const second = await detectRetryRescueThresholds();
+    expect(second).toEqual({ detected: 1, notified: 1 });
+
+    // …and a third pass tells nobody a second time.
+    const third = await detectRetryRescueThresholds();
+    expect(third).toEqual({ detected: 1, notified: 0 });
+    const [{ records, deliveries }] = (await harness.db.execute(sql`
+      SELECT (SELECT count(*)::int FROM notifications WHERE type = 'retry_rescue_threshold') AS records,
+             (SELECT count(*)::int FROM notification_deliveries) AS deliveries
+    `)) as unknown as [{ records: number; deliveries: number }];
+    expect({ records, deliveries }).toEqual({ records: 1, deliveries: 1 });
   });
 
   it('excludes unrescued chains and first-attempt successes', async () => {

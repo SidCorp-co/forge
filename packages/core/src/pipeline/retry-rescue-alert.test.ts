@@ -32,16 +32,20 @@ beforeEach(() => {
 });
 
 describe('detectRetryRescueThresholds', () => {
-  it('notifies once per reason/window even when the first alert was read', async () => {
+  // ISS-1063 — `notified` counts DELIVERIES, not emissions. This type declares a pending
+  // duration, so the first sighting writes a record nobody is told about and reports 0;
+  // what makes the alarm audible is the next pass re-emitting the same identity.
+  it('reports who was told, and re-emits a pending record so it can promote', async () => {
     const now = new Date('2026-08-12T10:15:00.000Z');
     execute.mockResolvedValueOnce([
       { project_id: 'project-1', failure_reason: 'hooks_path', rescues: '5' },
     ]);
     selectLimit.mockResolvedValueOnce([]).mockResolvedValueOnce([{ createdBy: 'owner-1' }]);
+    emitNotification.mockResolvedValueOnce({ id: 'notification-1', delivered: 0 });
 
     const first = await detectRetryRescueThresholds(now);
 
-    expect(first).toEqual({ detected: 1, notified: 1 });
+    expect(first).toEqual({ detected: 1, notified: 0 });
     expect(emitNotification).toHaveBeenCalledWith(
       expect.objectContaining({
         type: 'retry_rescue_threshold',
@@ -49,14 +53,30 @@ describe('detectRetryRescueThresholds', () => {
       }),
     );
 
+    // The next pass sees the same pending record and emits again: that emission IS its
+    // second evaluation. Skipping on existence alone left it pending until it went stale,
+    // so the alarm could never fire at all.
     execute.mockResolvedValueOnce([
       { project_id: 'project-1', failure_reason: 'hooks_path', rescues: 6 },
     ]);
-    selectLimit.mockResolvedValueOnce([{ id: 'already-alerted' }]);
+    selectLimit
+      .mockResolvedValueOnce([{ id: 'already-alerted', state: 'pending' }])
+      .mockResolvedValueOnce([{ createdBy: 'owner-1' }]);
+    emitNotification.mockResolvedValueOnce({ id: 'notification-1', delivered: 1 });
     const second = await detectRetryRescueThresholds(now);
 
-    expect(second).toEqual({ detected: 1, notified: 0 });
-    expect(emitNotification).toHaveBeenCalledTimes(1);
+    expect(second).toEqual({ detected: 1, notified: 1 });
+    expect(emitNotification).toHaveBeenCalledTimes(2);
+
+    // And once it is firing, the same window says nothing more.
+    execute.mockResolvedValueOnce([
+      { project_id: 'project-1', failure_reason: 'hooks_path', rescues: 7 },
+    ]);
+    selectLimit.mockResolvedValueOnce([{ id: 'already-alerted', state: 'firing' }]);
+    const third = await detectRetryRescueThresholds(now);
+
+    expect(third).toEqual({ detected: 1, notified: 0 });
+    expect(emitNotification).toHaveBeenCalledTimes(2);
   });
 
   it('continues after a concurrent alert insert wins', async () => {
@@ -72,7 +92,7 @@ describe('detectRetryRescueThresholds', () => {
       .mockResolvedValueOnce([{ createdBy: 'owner-2' }]);
     emitNotification
       .mockRejectedValueOnce(Object.assign(new Error('duplicate'), { code: '23505' }))
-      .mockResolvedValueOnce({ id: 'notification-2' });
+      .mockResolvedValueOnce({ id: 'notification-2', delivered: 1 });
 
     const result = await detectRetryRescueThresholds(now);
 
