@@ -91,7 +91,10 @@ function refusalFor(events: LineEvent[]): { seq: number; why: string } | null {
   const seen = new Set<number>();
   for (const event of events) {
     if (seen.has(event.seq)) {
-      return { seq: event.seq, why: 'appears twice in one batch; a seq is one line for the life of a session' };
+      return {
+        seq: event.seq,
+        why: 'appears twice in one batch; a seq is one line for the life of a session',
+      };
     }
     seen.add(event.seq);
     const why = unrepresentable(event);
@@ -118,7 +121,8 @@ agentSessionEventsRoutes.post(
     // router's dual-auth wildcard: a user JWT reaching this route would let a
     // browser write a session's raw transcript, which is the one thing the whole
     // derive exists to make underivable by hand.
-    if (!c.get('deviceId')) throw forbidden('only the device running this session may post its lines');
+    if (!c.get('deviceId'))
+      throw forbidden('only the device running this session may post its lines');
 
     const session = await loadSessionOr404(sessionId);
     assertDeviceOwnsSession(c, session);

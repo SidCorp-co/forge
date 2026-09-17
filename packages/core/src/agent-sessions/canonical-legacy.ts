@@ -44,7 +44,10 @@ const ROLE_TO_TYPE: Readonly<Record<string, string>> = {
 };
 
 /** One legacy `contentBlocks` member as the canonical `blocks` member. */
-function convertBlock(block: unknown, at: string): { ok: true; block: unknown } | { ok: false; why: string } {
+function convertBlock(
+  block: unknown,
+  at: string,
+): { ok: true; block: unknown } | { ok: false; why: string } {
   if (!block || typeof block !== 'object' || Array.isArray(block)) {
     return { ok: false, why: `${at} is not an object` };
   }
@@ -72,7 +75,10 @@ function convertBlock(block: unknown, at: string): { ok: true; block: unknown } 
  */
 export function toCanonicalEntry(raw: unknown): CanonicalConversion {
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) {
-    return { ok: false, why: `entry is ${Array.isArray(raw) ? 'an array' : typeof raw}, not an object` };
+    return {
+      ok: false,
+      why: `entry is ${Array.isArray(raw) ? 'an array' : typeof raw}, not an object`,
+    };
   }
   const entry = raw as Record<string, unknown>;
   const hasRole = entry.role !== undefined;
@@ -90,11 +96,17 @@ export function toCanonicalEntry(raw: unknown): CanonicalConversion {
   if (hasRole) {
     const role = entry.role;
     if (typeof role !== 'string') {
-      return { ok: false, why: `entry has a \`role\` of type ${typeof role}, which names no canonical kind` };
+      return {
+        ok: false,
+        why: `entry has a \`role\` of type ${typeof role}, which names no canonical kind`,
+      };
     }
     const type = ROLE_TO_TYPE[role];
     if (!type) {
-      return { ok: false, why: `entry has \`role: ${JSON.stringify(role)}\`, which names no canonical kind` };
+      return {
+        ok: false,
+        why: `entry has \`role: ${JSON.stringify(role)}\`, which names no canonical kind`,
+      };
     }
     // cm:guard an entry carrying BOTH `role` and `type` keeps its `type`: the
     // derive wrote that one, and a `role` beside it is the older reader's

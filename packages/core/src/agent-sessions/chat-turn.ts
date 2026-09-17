@@ -31,8 +31,8 @@ import {
   readPersistedPageContext,
   samePageContext,
 } from './page-context.js';
-import { readSessionModel } from './session-model.js';
 import { seedTurn } from './session-events.js';
+import { readSessionModel } from './session-model.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
 // cm:guard the SINGLE publisher of `agent:start` / `agent:send`, and every entry point funnels here — POST /start, POST /send, schedule.run, escalation, RocketChat agent-chat, schedule failover. That is what lets device selection, turn persistence and the ISS-927 token mint each exist in exactly one place; a caller that publishes its own frame gets none of them and drifts silently, which is the bug this module replaced.

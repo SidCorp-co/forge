@@ -2218,7 +2218,10 @@ export const agentSessionEvents = pgTable(
   (t) => ({
     // cm:guard the identity the writer assigns, and the reason `ON CONFLICT DO
     // NOTHING` makes a retried batch a no-op rather than a second copy.
-    sessionSeqIdx: uniqueIndex('agent_session_events_session_id_seq_idx').on(t.agentSessionId, t.seq),
+    sessionSeqIdx: uniqueIndex('agent_session_events_session_id_seq_idx').on(
+      t.agentSessionId,
+      t.seq,
+    ),
     // cm:guard `(agent_session_id, seq)` above cannot answer `max(ts)` for one
     // session — it orders by `seq` — so the retention sweep would read a
     // session's whole history to age it. ISS-1013 measured the same thing on

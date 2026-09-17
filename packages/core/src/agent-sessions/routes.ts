@@ -15,6 +15,7 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
+import { deriveChatTurnFinal } from '../jobs/session-transcript.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -32,16 +33,19 @@ import {
   usageTotalsSelection,
 } from '../usage-records/rollup.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
+import { toCanonicalMessages } from './canonical-legacy.js';
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
-import { deriveChatTurnFinal } from '../jobs/session-transcript.js';
-import { toCanonicalMessages } from './canonical-legacy.js';
 import { createChatSessionRow } from './chat-turn.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
-import { BLIND_SCHEDULE_RUN_REASON, isBlindScheduleRun } from './schedule-evidence.js';
+import {
+  BLIND_SCHEDULE_RUN_REASON,
+  countTranscriptToolCalls,
+  isBlindScheduleRun,
+} from './schedule-evidence.js';
 import { agentSessionListColumns } from './service.js';
 import {
   assertAgentChatOwner,
@@ -57,6 +61,7 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
+import { recordTurnError } from './session-events.js';
 import { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } from './session-failure.js';
 import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
@@ -99,7 +104,15 @@ const patchSchema = z
     usage: z.unknown().optional(),
     metadata: z.unknown().optional(),
     diff: z.unknown().optional(),
+    // cm:hack ISS-1030 until: no device below the runner release carrying the
+    // raw-line route has reported in 30 days — then this field goes with
+    // `messages`. A daemon on that release counts its own tool calls because its
+    // transcript could not; one on this release has a transcript that can.
     toolCallCount: z.number().int().min(0).optional(),
+    // cm:guard the runner reports an error STRING and core writes the transcript
+    // entry. The runner used to append a `system` entry to a `messages` array it
+    // sent itself, which is the second producer ISS-1030 removed.
+    turnError: z.string().max(4000).optional(),
     runtimeState: z.enum(sessionRuntimeStates).nullable().optional(),
   })
   .strict()
@@ -559,7 +572,7 @@ agentSessionRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    const existing = await loadSessionOr404(id);
+    let existing = await loadSessionOr404(id);
 
     // A CLI runner streams its chat reply back here with a device token. Scope
     // it tightly: a device may write ONLY the session that was dispatched to it.
@@ -570,6 +583,29 @@ agentSessionRoutes.patch(
       const access = await loadProjectAccess(existing.projectId, userId);
       assertProjectRole(access, 'member');
       assertSessionOwnerOrAdmin(existing, access, userId);
+    }
+
+    // cm:guard the error a failed turn reports becomes a transcript entry HERE,
+    // written into the carrier so the fold puts it in its place in the
+    // conversation. It is written before the derive below, which is what makes it
+    // appear on the transcript this PATCH persists rather than on the next one.
+    if (patch.turnError !== undefined && c.get('principal') === 'device') {
+      await recordTurnError(id, patch.turnError);
+    }
+
+    // cm:guard the turn's authoritative derive runs BEFORE the write and before
+    // the bridges, and both orderings matter. Before the write, because the
+    // blind-schedule rule below reads how many tools this run called off the
+    // transcript, and a transcript as of the last throttled flush is missing the
+    // tail of the turn. Before the bridges, because a bridge builds what it
+    // delivers from `agent_sessions.messages`.
+    // cm:edge lockstep -> packages/core/src/jobs/session-transcript.ts — the chat
+    // path's counterpart of `deriveSessionFinal`, which the pipeline path fires
+    // from `jobs/lifecycle-routes.ts` on job terminal.
+    let derivedTranscript = false;
+    if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
+      derivedTranscript = await deriveChatTurnFinal(id);
+      if (derivedTranscript) existing = await loadSessionOr404(id);
     }
 
     const patchNow = new Date();
@@ -697,20 +733,29 @@ agentSessionRoutes.patch(
       updates.metadata = restMeta;
     }
 
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/agent_sessions.rs — SessionPatch.tool_call_count; the runner OMITS it when it cannot count, and isBlindScheduleRun turns only a reported 0 into a failure
-    if (patch.toolCallCount !== undefined && c.get('principal') === 'device') {
+    // cm:guard the TRANSCRIPT answers where there is one, and the runner's own
+    // count only where there is not. A daemon on this release stopped counting —
+    // `count_tool_uses` existed in `chat.rs` solely because the transcript could
+    // not answer, and it is deleted — so a session whose lines core folded reads
+    // its own record. One on the previous release still reports, under the same
+    // amnesty as `messages`.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/agent_sessions.rs — SessionPatch no longer carries `tool_call_count`; the field on `patchSchema` is what a daemon below that release still sends.
+    const reportedToolCalls = derivedTranscript
+      ? countTranscriptToolCalls(existing.messages)
+      : patch.toolCallCount;
+    if (reportedToolCalls !== undefined && c.get('principal') === 'device') {
       const metaBase =
         (updates.metadata as Record<string, unknown> | undefined) ??
         existingMetaForSkillCheck ??
         {};
-      updates.metadata = { ...metaBase, toolCallCount: patch.toolCallCount };
+      updates.metadata = { ...metaBase, toolCallCount: reportedToolCalls };
     }
     if (
       isBlindScheduleRun({
         resolvedStatus: (updates.status as AgentSessionStatus | undefined) ?? patch.status,
         metadata:
           (updates.metadata as Record<string, unknown> | undefined) ?? existingMetaForSkillCheck,
-        toolCallCount: patch.toolCallCount,
+        toolCallCount: reportedToolCalls,
         principal: c.get('principal'),
       })
     ) {
@@ -812,17 +857,7 @@ agentSessionRoutes.patch(
     });
 
     // cm:guard the bridges read the REPORTED `patch.status` while everything above reads the PERSISTED `updated.status`. The split is deliberate and is NOT a bug fix — every rewrite core performs today maps one terminal status onto another (ISS-733 skill-not-synced, `audit_ran_blind`), so the two agree and no test can tell them apart. It is priced as hardening in one direction: a `...Once` bridge that fires on a status core did not accept sends a duplicate room reply, while a revoke that does kills the credential of a session still running. `writeBackScheduleLastStatus` above already reads the persisted value for its own version of this reason. The condition that would end the split is a rewrite mapping a terminal report onto a NON-terminal status — none exists, and if one is added it belongs here first.
-    // cm:guard the turn's authoritative derive runs BEFORE the bridges, and the
-    // order is the point: a bridge reads `agent_sessions.messages` to build what
-    // it delivers, so firing it first would hand it the transcript as of the last
-    // throttled flush rather than the whole turn. It is awaited for the same
-    // reason. A session with no delivered lines returns immediately — see the
-    // guard on `deriveChatTurnFinal`.
-    // cm:edge lockstep -> packages/core/src/jobs/session-transcript.ts — this is
-    // the chat path's counterpart of `deriveSessionFinal`, which the pipeline
-    // path fires from `jobs/lifecycle-routes.ts` on job terminal.
     if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
-      await deriveChatTurnFinal(id);
       await onTerminalPatch(updated);
     }
 

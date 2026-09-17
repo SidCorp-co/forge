@@ -160,7 +160,7 @@ export interface AppendMessageArgs {
    * The row's id, where the caller must know it BEFORE the insert; the column
    * default mints one otherwise.
    */
-  // cm:guard this exists so a streamed transcript entry and the row it becomes share ONE identity. `POST /api/chat` emits the entry as it grows, and a client keyed by `id` must reduce those frames and the final one to a single turn — with the id minted here at insert time, the growing frames carried one and the settled frame another, and a reducer saw two assistant turns for one answer (ISS-1029 review, F1, confirmed on beta: 19 frames under one id, the 20th under the row's).
+  // cm:guard this exists so a streamed transcript entry and the row it becomes share ONE identity. the socket emits the entry as it grows, and a client keyed by `id` must reduce those frames and the final one to a single turn — with the id minted here at insert time, the growing frames carried one and the settled frame another, and a reducer saw two assistant turns for one answer (ISS-1029 review, F1, confirmed on beta: 19 frames under one id, the 20th under the row's).
   id?: string | undefined;
   role: ConversationMessageRole;
   content: string;

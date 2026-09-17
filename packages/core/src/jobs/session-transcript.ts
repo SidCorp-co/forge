@@ -178,7 +178,12 @@ async function readCarrierRows(
   const rows: CarrierRow[] =
     carrier.kind === 'job'
       ? await db
-          .select({ kind: jobEvents.kind, data: jobEvents.data, ts: jobEvents.ts, seq: jobEvents.seq })
+          .select({
+            kind: jobEvents.kind,
+            data: jobEvents.data,
+            ts: jobEvents.ts,
+            seq: jobEvents.seq,
+          })
           .from(jobEvents)
           .where(
             afterSeq > 0
@@ -576,24 +581,29 @@ export async function deriveSessionFinal(jobId: string, agentSessionId: string):
  * history on each one, which is quadratic over the life of a long conversation.
  * If the prefix rule is ever relaxed, this has to become a rebuild again.
  */
-export async function deriveChatTurnFinal(agentSessionId: string): Promise<void> {
-  // cm:guard a session whose carrier holds no delivered LINE is not this
+export async function deriveChatTurnFinal(agentSessionId: string): Promise<boolean> {
+  // cm:guard a session whose carrier holds nothing but PROMPTS is not this
   // path's, and the check is what keeps the amnesty working. A daemon on the
-  // previous release still PATCHes its whole `messages` array; its session has
-  // seed rows and nothing else, so a derive here would replace that transcript
-  // with the prompts alone. `seed` rows are core's own and prove nothing about
-  // who is writing the answers.
+  // previous release still PATCHes its whole `messages` array, and core writes a
+  // prompt seed for every turn whoever runs it — so a derive on prompt rows alone
+  // would replace that daemon's transcript with the questions and none of the
+  // answers.
+  // cm:guard the `system` seed counts, and leaving it out is the case that
+  // caught this: a turn refused before its first line delivers no `stdout` at
+  // all, and its recorded failure would sit in the carrier unread while the
+  // session looked like it had simply gone quiet — which is precisely what
+  // `recordTurnError` exists to prevent.
   const [delivered] = await db
     .select({ seq: agentSessionEvents.seq })
     .from(agentSessionEvents)
     .where(
       and(
         eq(agentSessionEvents.agentSessionId, agentSessionId),
-        eq(agentSessionEvents.kind, 'stdout'),
+        sql`(${agentSessionEvents.kind} = 'stdout' OR ${agentSessionEvents.data} -> 'entry' ->> 'type' = 'system')`,
       ),
     )
     .limit(1);
-  if (!delivered) return;
+  if (!delivered) return false;
 
   const st = getState(agentSessionId);
   if (st.inFlight) {
@@ -606,4 +616,5 @@ export async function deriveChatTurnFinal(agentSessionId: string): Promise<void>
   const finalizedAt = new Date();
   const outcome = await runDerive({ kind: 'chat' }, agentSessionId, finalizedAt);
   if (outcome === 'nothing-to-write') await markFinalized(agentSessionId, finalizedAt);
+  return outcome === 'written';
 }

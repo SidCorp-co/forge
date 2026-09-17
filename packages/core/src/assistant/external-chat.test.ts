@@ -352,3 +352,56 @@ describe('runExternalChatTurn — who the turn speaks as, and to', () => {
     expect(buildSystemPromptCalls[0]?.self).toEqual(turnSelf.self);
   });
 });
+
+/**
+ * ISS-1029 — what a turn does when the transcript refuses an event, and
+ * ISS-1030 — where that property is now asserted.
+ *
+ * The accumulator refuses a tool result naming no call this turn made, by name
+ * (`transcript-entry.test.ts` proves the refusal itself). This is the other
+ * half: the refusal must end the TURN loudly rather than be swallowed by the
+ * loop that is watching. It used to be asserted against `run-turn.ts`, the SSE
+ * door's own turn loop; that door is gone and this is the surviving loop the
+ * same `cm:guard` sits on — the conversation progress observer raises exactly
+ * this, and `conversation-progress.ts` is the accumulator's caller.
+ */
+describe('a transcript refusal ends the turn rather than being swallowed', () => {
+  it('throws the refusal verbatim and closes the provider stream on the way out', async () => {
+    selectCall = 0;
+    let returned = false;
+    const refusing = {
+      id: 'mock',
+      defaultModel: 'm',
+      async *stream(): AsyncIterable<{ type: 'chunk'; text: string } | { type: 'done' }> {
+        try {
+          yield { type: 'chunk' as const, text: 'the model is still talking' };
+          yield { type: 'done' as const };
+        } finally {
+          // cm:guard this is what `gen.return()` reaches. Without it a refused
+          // turn leaves the provider stream open and the connection with it.
+          returned = true;
+        }
+      },
+    };
+    const registry = await import('./providers/registry.js');
+    const resolve = vi
+      .spyOn(registry, 'resolveForProject')
+      .mockResolvedValue({ provider: refusing, model: 'm' } as never);
+
+    await expect(
+      runExternalChatTurn({
+        projectId: 'p1',
+        adapter: 'rocketchat' as const,
+        conversationId: 'conv-1',
+        message: 'how many?',
+        userId: null,
+        onTurnEvent: () => {
+          throw new Error('transcript: tool result for zz names no tool call this turn made');
+        },
+      }),
+    ).rejects.toThrow('transcript: tool result for zz names no tool call this turn made');
+
+    expect(returned).toBe(true);
+    resolve.mockRestore();
+  });
+});

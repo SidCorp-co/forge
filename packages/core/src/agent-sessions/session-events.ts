@@ -13,13 +13,14 @@
  * re-derive of a chat session equal to the incremental one — which is the
  * property the whole checkpoint design rests on.
  */
+import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import type { db as dbClient } from '../db/client.js';
+import { db } from '../db/client.js';
 import { agentSessionEvents } from '../db/schema.js';
 import { toCanonicalMessages } from './canonical-legacy.js';
 
-type Tx = Parameters<Parameters<typeof dbClient.transaction>[0]>[0];
-export type DbOrTx = typeof dbClient | Tx;
+type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
+export type DbOrTx = typeof db | Tx;
 
 /** The highest `seq` this session's carrier holds, under a lock that makes it usable. */
 // cm:why an ADVISORY lock here and none on `POST /:id/events`: this is the one
@@ -82,4 +83,37 @@ export async function seedTurn(
   await tx.insert(agentSessionEvents).values(values);
   seq += values.length - 1;
   return { lastSeq: seq };
+}
+
+/**
+ * Record what went wrong with a turn, as a transcript entry of its own.
+ *
+ * cm:guard core writes this entry and the runner does not. The runner reports a
+ * string on `PATCH /:id`; making it send a `system` message of its own is what
+ * made it a producer of transcript entries, and the reason every chat session's
+ * transcript was a different shape from every pipeline session's.
+ * cm:guard a turn that ends badly must SAY so on the transcript. A refused batch
+ * or an undelivered tail that only logged would leave a turn that stops
+ * mid-sentence and a session that reads as having finished — which is the silent
+ * substitution this repository refuses by name.
+ */
+export async function recordTurnError(agentSessionId: string, error: string): Promise<void> {
+  const at = new Date();
+  await db.transaction(async (tx) => {
+    const seq = await nextSeq(tx, agentSessionId);
+    await tx.insert(agentSessionEvents).values({
+      agentSessionId,
+      kind: 'seed' as const,
+      data: {
+        entry: {
+          id: randomUUID(),
+          type: 'system',
+          timestamp: at.getTime(),
+          content: error,
+        },
+      },
+      seq,
+      ts: at,
+    });
+  });
 }

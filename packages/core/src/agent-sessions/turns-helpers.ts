@@ -1,9 +1,6 @@
 import { and, asc, eq, gt, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  type AgentSessionTurnRole,
-  agentSessionTurns,
-} from '../db/schema.js';
+import { type AgentSessionTurnRole, agentSessionTurns } from '../db/schema.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** Either the top-level db client or an in-flight drizzle transaction. */
