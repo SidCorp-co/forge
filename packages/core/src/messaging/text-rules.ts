@@ -54,7 +54,9 @@ export const LEAD_HAS_TEXT: MessageRule = {
   example: 'The comment screen admits a 1,662-character wall on one line.',
   needs: [],
   check: (text) =>
-    text.trim() ? none : one('the record carries a lead with no text, so it says nothing was found'),
+    text.trim()
+      ? none
+      : one('the record carries a lead with no text, so it says nothing was found'),
 };
 
 const SHOUT_RE = /(^|\s)@(all|here|channel)\b/i;

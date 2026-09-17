@@ -31,10 +31,7 @@ const DOC = readFileSync(
 // cell — being reached by the parse rather than by a segment is no reason to be undocumented
 // (ISS-1089).
 const ruleIds = [
-  ...new Set([
-    ...registeredCells().flatMap((c) => c.rules.map((r) => r.id)),
-    ...RECORD_RULE_IDS,
-  ]),
+  ...new Set([...registeredCells().flatMap((c) => c.rules.map((r) => r.id)), ...RECORD_RULE_IDS]),
 ].sort();
 
 describe('the shape document', () => {

@@ -105,7 +105,9 @@ describe('the grammar, which is the writer’s and not this file’s', () => {
 
 describe('the fields ISS-1089 asks for and contract 1 does not carry', () => {
   it('reports `lead` absent, and puts nothing in its place', () => {
-    const parsed = parseForgeRecord(record('detail: A sentence that would make a fine lead. Then more.'));
+    const parsed = parseForgeRecord(
+      record('detail: A sentence that would make a fine lead. Then more.'),
+    );
     expect({ lead: parsed?.lead, absent: parsed?.absent }).toEqual({
       lead: null,
       absent: ['lead', 'beside'],
@@ -121,7 +123,9 @@ describe('the fields ISS-1089 asks for and contract 1 does not carry', () => {
   });
 
   it('reports neither absent where the record carries both', () => {
-    const parsed = parseForgeRecord(record('lead: One sentence.\nbeside: Another issue’s finding.'));
+    const parsed = parseForgeRecord(
+      record('lead: One sentence.\nbeside: Another issue’s finding.'),
+    );
     expect(parsed?.absent).toEqual([]);
   });
 

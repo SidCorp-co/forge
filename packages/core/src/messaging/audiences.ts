@@ -37,7 +37,8 @@ const SHIPPED: readonly AudienceSpec[] = [
   },
   {
     id: ROLE_TECHNICAL,
-    reader: 'somebody holding a role, on a project at least one human member of which reads as technical',
+    reader:
+      'somebody holding a role, on a project at least one human member of which reads as technical',
   },
 ];
 

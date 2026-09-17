@@ -33,3 +33,12 @@ difference read row by row, or a second rule that only the lead cells carry — 
 half, because a lead is one sentence and the false-positive cost a whole reply would pay is not
 paid there. The corpus is already the instrument: the rows above are labelled with what the screen
 does today, so a change to either rule shows up as an exact-equality failure naming its own row.
+
+## Honest costs
+
+| what it costs | who pays it |
+|---|---|
+| False refusals in `public:report`, which carries the same rule. ISS-1057 undid exactly this shape there: a rule refusing an issue key quoted back out of a title took a single-issue task from working to 0 of 6, with a correct first attempt every time. `the fix is in registry.test.ts` is one word away from prose. | every stakeholder reply, on every project |
+| A repair budget spent on the rewrite. `chat-sync` declares one repair and it is a full model turn inside the handler timeout, so a refusal that fires on ordinary prose is the reply arriving late or not at all. | whoever is waiting on that reply |
+| Reading `legacy-verdicts.fixture.json` row by row after regenerating it. The differential test compares lists rather than sets, so a regeneration nobody reads turns the one artefact saying the replacement changed nothing into one saying whatever the new code does. | whoever takes the change |
+| The narrower option — a second rule only the lead cells carry — buys nothing for the reader `no-developer-detail` was written for, so the gap stays open in `public:report` and somebody meets it again. | the next reader of this file |

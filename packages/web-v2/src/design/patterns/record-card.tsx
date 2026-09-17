@@ -61,6 +61,18 @@ function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }):
   );
 }
 
+/** Each field with a key of its own: its name, and how many of that name preceded it. */
+function keyed(
+  fields: readonly ForgeRecordFieldView[],
+): Array<[string, ForgeRecordFieldView]> {
+  const seen = new Map<string, number>();
+  return fields.map((field) => {
+    const at = seen.get(field.key) ?? 0;
+    seen.set(field.key, at + 1);
+    return [`${field.key}#${at}`, field];
+  });
+}
+
 export function RecordCard({ record, lens = "product", className }: RecordCardProps): ReactNode {
   // cm:guard a record carrying no `lead` draws NO lead line and nothing standing in for one. Taking
   // the first field's text as a headline is the substitution the parse refuses to make one layer
@@ -77,14 +89,15 @@ export function RecordCard({ record, lens = "product", className }: RecordCardPr
         {lead === null ? null : <span className="fg-body-sm min-w-0 flex-1 text-fg">{lead}</span>}
       </header>
       <div>
-        {record.fields.map((field, at) => (
+        {keyed(record.fields).map(([id, field]) => (
           <Field
-            // cm:guard keyed on the POSITION and not on the key: a key repeated inside one fence is
-            // two fields, which is what the writer wrote, so `field.key` alone is a DUPLICATE React
-            // key across siblings. Both rows still draw, which is why this is easy to ship — what
-            // goes wrong is reconciliation: on a re-render React may match a row to the wrong
-            // sibling, and an open fold moves to a field the reader did not open.
-            key={`${field.key}.${at}`}
+            // cm:guard the key counts how many fields of this name came BEFORE it, rather than
+            // being the array index or the bare key. A key repeated inside one fence is two fields,
+            // which is what the writer wrote, so `field.key` alone is a duplicate React key across
+            // siblings: both rows still draw, which is why it is easy to ship, and what goes wrong
+            // is reconciliation — on a re-render React may match a row to the wrong sibling and an
+            // open fold moves to a field the reader did not open.
+            key={id}
             field={field}
             open={lens === "technical"}
           />

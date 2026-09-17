@@ -137,7 +137,10 @@ describe('the lead, screened alone', () => {
   });
 
   it('reads a product lead against no-developer-detail', () => {
-    const verdict = screenLead('The fix is in packages/core/src/comments/screen.ts:24.', ROLE_PRODUCT);
+    const verdict = screenLead(
+      'The fix is in packages/core/src/comments/screen.ts:24.',
+      ROLE_PRODUCT,
+    );
     expect(verdict.ok ? [] : verdict.refusals.map((r) => r.rule)).toEqual(['no-developer-detail']);
   });
 

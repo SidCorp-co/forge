@@ -472,9 +472,7 @@
       "kind": "correction",
       "field": "why",
       "lead": "The record did not say where the change grew, and the mark refused to earn developed until it did.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -484,9 +482,7 @@
       "kind": "park",
       "field": "why",
       "lead": "3 reclaims of in_progress, so the status and not the run is where this dies.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -496,9 +492,7 @@
       "kind": "correction",
       "field": "why",
       "lead": "The hold is an artefact of my own claim, not a crash: the auto-park counts reclaims at in_progress and my `forge claim --stopped` was the third, so the counter fired on a lease I took deliberately after the previous run's worktree was reaped.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -508,9 +502,7 @@
       "kind": "verdict",
       "field": "why",
       "lead": "e2e 'a replayed opened leaves the status Forge last set' transitions the row to in_progress, replays opened, and asserts the status is still in_progress.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -520,9 +512,7 @@
       "kind": "verdict",
       "field": "why",
       "lead": "e2e 'a closed delivery leaves the status untouched' transitions the row to in_progress, delivers issues.closed, and asserts the status is still in_progress with actions 0.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -532,9 +522,7 @@
       "kind": "verdict",
       "field": "criterion",
       "lead": "2 — The grader passes a reply that names only states from the list, in prose or arrows, and treats `in_progress` as one token.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -544,9 +532,7 @@
       "kind": "verdict",
       "field": "criterion",
       "lead": "9 — `prompt/tools.ts` states that an issue waiting on more information is at `needs_info`, read with `forge issue --status needs_info`, and that a draft is unfiled, not waiting; `compose.test.ts` MANIFEST claims `project-waiting-issue` under `tools` with that reason.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -556,9 +542,7 @@
       "kind": "verdict",
       "field": "criterion",
       "lead": "8 — A `check_run` delivery that would move a stored run backwards from `completed` to `queued` or `in_progress` leaves that run's stored state unchanged.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -568,9 +552,7 @@
       "kind": "correction",
       "field": "why",
       "lead": "Step 11 is the convention the plan declared reversed: recoverStrandedReleasing had one destination, reopen, and now chooses between the project gate status, reopen and leaving the roster at releasing by what the run recorded.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -580,9 +562,7 @@
       "kind": "confirmation",
       "field": "detail",
       "lead": "Rule 4 sweep is answered by a reading, not a mechanical edit: search.ts:158 is the ONLY sql-aliased subquery field in packages/core/src whose alias is referenced from a join predicate.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -592,9 +572,7 @@
       "kind": "confirmation",
       "field": "where",
       "lead": "packages/core/src/db/schema.ts:2750 (agentAccess column, ISS-1071 cm:guard); packages/core/src/integrations/agent-access.ts; packages/core/src/integrations/agent-access-store.ts; packages/core/src/integrations/agent-declaration.ts; packages/core/src/integrations/github/ (22 files incl.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -604,9 +582,7 @@
       "kind": "finding",
       "field": "quoted",
       "lead": "From the code review of ed22130a, 13:09Z, outcome changes-requested: \"F11 - blocker - daemon/mod.rs:115, count_live_runs.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -616,9 +592,7 @@
       "kind": "correction",
       "field": "why",
       "lead": "CodeQL attributed one high alert to this PR — js/double-escaping at scripts/build-flow-map.mjs:18, opened 2026-09-11, five days before this branch was cut, and reached this PR only because the sweep deleted three comment lines from that file and the diff is too large for CodeQL to attribute correctly, which its own summary says.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -628,9 +602,7 @@
       "kind": "confirmation",
       "field": "detail",
       "lead": "Out of reach of this issue and reported rather than fixed here: agent-sessions/routes.ts:779 holds 'if (TERMINAL_SESSION_STATUSES.has(updated.status)) {}' — an empty branch under a 6-line cm:guard about bridges that no longer live in it.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -640,9 +612,7 @@
       "kind": "confirmation",
       "field": "detail",
       "lead": "Two corrections to the body follow as records: (1) preferences extend the existing user_preferences table and /preferences route rather than a new record; (2) today's promotion rule counts handles (ISS-1011 guard at conversation-routes.ts:220), so a live-derived shape must keep two-handle rooms as group — 'handles do not count' would narrow readability of existing rooms and is not taken.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -652,9 +622,7 @@
       "kind": "verdict",
       "field": "why",
       "lead": "STALE_AFTER_MS is declared once at waiting.ts:19 with one consumer in the same file.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -664,9 +632,7 @@
       "kind": "confirmation",
       "field": "detail",
       "lead": "Still true, verbatim. parse_assistant_message keeps assistant text and returns None for every other stream-json line, and its own test at chat.rs:749 asserts is_none for a tool-only line.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -676,9 +642,7 @@
       "kind": "verdict",
       "field": "why",
       "lead": "Proven by mutation at the merge head: a tenth member planted in AUTONOMOUS_LABELS fails the web-v2 typecheck in exactly one file, src/features/issues/derive.ts:75, the LABEL_WORDS registry - TS2741, property missing in Record<AutonomousLabel, string>.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -688,9 +652,7 @@
       "kind": "confirmation",
       "field": "detail",
       "lead": "Confirmed by reading, not by a live call: routes.ts:132 has no .strict() and routes.ts:318-322 pushes a condition only per known key.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     },
     {
@@ -700,9 +662,7 @@
       "kind": "confirmation",
       "field": "detail",
       "lead": "Verified, not taken on the report's word: derive.ts:253 is literally ISSUE_STATUSES.filter(s => s !== from && s !== 'draft'), and the three consumers (StatusEdit, useRowMenuItems, BulkActionBar) all render exactly that list.",
-      "product": [
-        "no-developer-detail"
-      ],
+      "product": ["no-developer-detail"],
       "technical": []
     }
   ]

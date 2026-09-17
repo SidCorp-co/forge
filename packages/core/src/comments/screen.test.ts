@@ -151,7 +151,9 @@ describe('the record inside the comment, screened field by field', () => {
   });
 
   it('writes a record whose every field is inside the budget', async () => {
-    await expect(screen(record(`why: ${'x'.repeat(400)}\nfinding: holds`))).resolves.toBeUndefined();
+    await expect(
+      screen(record(`why: ${'x'.repeat(400)}\nfinding: holds`)),
+    ).resolves.toBeUndefined();
   });
 
   // cm:guard the two halves of criterion 14: a comment with no fence is measured against nothing
@@ -160,7 +162,9 @@ describe('the record inside the comment, screened field by field', () => {
   // so an implementation that ran either pass unconditionally reds here rather than passing quietly.
   it('leaves a comment carrying no record exactly as it was', async () => {
     await expect(screen(`${over}x`)).resolves.toBeUndefined();
-    await expect(screen('The cause is packages/core/src/comments/screen.ts:24.')).resolves.toBeUndefined();
+    await expect(
+      screen('The cause is packages/core/src/comments/screen.ts:24.'),
+    ).resolves.toBeUndefined();
   });
 
   it('refuses a body screen and a record screen together, rather than one at a time', async () => {

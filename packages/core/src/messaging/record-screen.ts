@@ -18,6 +18,7 @@ import type { Audience, MessageRefusal, MessageVerdict } from './contract.js';
 // for the browser, and re-declared here because core may not value-import that package
 // (`contracts-runtime-boundary.test.ts`). `forge-record-wire.test.ts` holds the two level.
 export type RecordLens = 'product' | 'technical';
+
 import {
   FORGE_RECORD_FIELD_BUDGET,
   type ForgeRecord,
