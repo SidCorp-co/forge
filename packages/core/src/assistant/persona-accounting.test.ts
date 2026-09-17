@@ -55,7 +55,8 @@ const withoutGuide = (text: string): string => text.replace(GUIDE_BODY, '');
 const FRAGMENTS: Record<Owner, string> = {
   guide: ASSISTANT_METHOD_GUIDE.body,
   sharedOpening: withoutGuide(assistantOpening({ ...OPENING, venue: 'somewhere' }).join('\n')),
-  rocketchatOnly: rocketChatChannelLines('bob', { botName: 'Bao' }).join('\n'),
+  // cm:guard rendered with a cut so the room fragment is its WIDEST text: the mid-conversation line drops to nothing on a quiet window, and a fragment missing it would fail its own claim (ISS-1086).
+  rocketchatOnly: rocketChatChannelLines('bob', { botName: 'Bao', cut: 'deadline' }).join('\n'),
   webOnly: webDoorLines('alpha', 'Alice').join('\n'),
   webAgentOnly: webAgentDoorLines('Alice').join('\n'),
   personaStyle: MIGRATION_SQL,
@@ -69,6 +70,7 @@ const RENDERED: Array<{ door: string; text: string; fragments: Owner[] }> = [
       projectSlug: 'alpha',
       webBaseUrl: 'https://forge.example.co',
       botName: 'Bao',
+      cut: 'deadline',
     }),
     fragments: ['sharedOpening', 'rocketchatOnly'],
   },
@@ -100,7 +102,8 @@ describe('the persona claim ledger', () => {
     // 33 through ISS-1057; ISS-1064 added the tracker's word for a waiting issue (`waiting-issue-is-needs-info`)
     // 34 through ISS-1064; ISS-1039 added Agent mode's own five, which contradict the web door's
     // sentence by sentence and therefore cannot share its rows
-    expect(LEDGER).toHaveLength(39);
+    // 39 through ISS-1039; ISS-1086 added the room's mid-conversation line (`mid-conversation-turn`)
+    expect(LEDGER).toHaveLength(40);
   });
 
   it('gives each claim exactly one owner', () => {

@@ -1586,7 +1586,7 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
 // cm:guard the queue is NOT embedded here, and that absence is what let the quiet gate go. Dispatch reads it itself with its own ranking verb, so a snapshot typed at the master is a second copy already stale by the time the turn reaches it — and a prompt that queued behind a turn then acted on that copy is exactly what the deleted quiet gate existed to prevent (ISS-933 criterion 17).
 // cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill hands every pass to `forge:dispatch`, and this prompt is what must not contradict it by naming a phase, a width or a queue of its own (ISS-964 criterion 29).
 fn nudge() -> String {
-    "Pass. Hand it to the dispatch skill, and say what you dispatched and what you did not.".into()
+    "Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.".into()
 }
 
 /// Tell a master there is something to look at.

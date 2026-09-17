@@ -5,7 +5,7 @@
 // knows the pair `(adapter, externalId)` that names it and the handle that
 // gives it its scope.
 
-import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
@@ -278,9 +278,17 @@ export async function appendMessagesIn(
 // cm:guard the range is applied in SQL and BEFORE the limit, never by filtering the newest rows afterwards: a window claimed while its successor collects can have its whole contents pushed out of the newest `cap` rows, and the filter would then find nothing and close a person's question `unreachable` for good (ISS-1004, review pass 1 F4).
 export async function readMessagesInRange(
   conversationId: string,
-  range: { firstSeq: number; lastSeq: number; limit: number },
+  range: {
+    firstSeq: number;
+    lastSeq: number;
+    limit: number;
+    /** Which end of the range `limit` keeps; the newest, absent. */
+    // cm:guard the router asks for the OLDEST, because a window that collected more than a turn may carry is answered from its head and its tail is split off to the successor: keeping the newest here is how the first fifty messages of a busy room vanished without a row saying so (ISS-1086 criterion 10). Every other reader wants the newest and says nothing.
+    order?: 'newest-first' | 'oldest-first';
+  },
   tx: Executor = defaultDb,
 ): Promise<StoredConversationMessage[]> {
+  const oldestFirst = range.order === 'oldest-first';
   const rows = await tx
     .select()
     .from(conversationMessages)
@@ -291,9 +299,9 @@ export async function readMessagesInRange(
         lte(conversationMessages.seq, range.lastSeq),
       ),
     )
-    .orderBy(desc(conversationMessages.seq))
+    .orderBy(oldestFirst ? asc(conversationMessages.seq) : desc(conversationMessages.seq))
     .limit(range.limit);
-  return rows.reverse().map(toStored);
+  return (oldestFirst ? rows : rows.reverse()).map(toStored);
 }
 
 /** The last `limit` turns, oldest first. */
