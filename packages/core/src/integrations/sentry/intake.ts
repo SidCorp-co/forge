@@ -50,6 +50,9 @@ import {
 } from '../store.js';
 import { judgeSentryIssue } from './admission.js';
 import { listSentryIssues, type SentryAdapterContext } from './issues.js';
+// cm:edge contract -> packages/core/src/integrations/sentry/listing.ts — the reach constant and the
+// partial-failure carrier are the LISTING's, taken from it directly rather than through `issues.ts`.
+import { SENTRY_LIST_DEFAULT_LIMIT, SentryListingFailed } from './listing.js';
 import { resolveSentryTargets } from './targets.js';
 import type { SentryIssueDetail, SentryTarget } from './types.js';
 
@@ -59,7 +62,6 @@ export const SENTRY_FILED_STATUS = 'draft' as const;
 export const SENTRY_ISSUE_SOURCE = 'sentry' as const;
 
 const TITLE_CAP = 200;
-const OUTPUT_CAP = 16_000;
 
 export interface SentryPullOutcome {
   status: 'success' | 'skipped' | 'failed';
@@ -75,6 +77,8 @@ export interface SentrySightingRecord {
   lastSeen: string | null;
   permalink: string | null;
   seenAt: string;
+  /** Set where THIS sighting carried no event count and the one above was carried forward. */
+  countMissingAt?: string;
 }
 
 /**
@@ -154,15 +158,37 @@ export function sentryMetadataMerge(record: SentrySightingRecord): SQL {
   return sql`coalesce(${issues.metadata}, '{}'::jsonb) || ${JSON.stringify({ sentry: record })}::jsonb`;
 }
 
-function sighting(issue: SentryIssueDetail, shortId: string): SentrySightingRecord {
+/**
+ * What this sighting records, keeping the last KNOWN count where this one carries none.
+ *
+ * cm:guard `previous` is what the growth test compares against, so writing a null over an
+ * established count does not merely lose a number — it makes the NEXT real count look like a first
+ * observation, and an increase from 17 to 41 then passes in silence because 17 is no longer there
+ * to have been exceeded. A missing reading is a gap in what Sentry told us, never evidence that the
+ * count went away, so the last known value is carried forward and the gap is recorded beside it.
+ */
+function sighting(
+  issue: SentryIssueDetail,
+  shortId: string,
+  previous: SentrySightingRecord | null,
+): SentrySightingRecord {
   return {
     shortId,
-    count: issue.count,
-    userCount: issue.userCount,
-    lastSeen: issue.lastSeen,
-    permalink: issue.permalink,
+    count: issue.count ?? previous?.count ?? null,
+    userCount: issue.userCount ?? previous?.userCount ?? null,
+    lastSeen: issue.lastSeen ?? previous?.lastSeen ?? null,
+    permalink: issue.permalink ?? previous?.permalink ?? null,
     seenAt: new Date().toISOString(),
+    ...(issue.count === null ? { countMissingAt: new Date().toISOString() } : {}),
   };
+}
+
+/** The whole sighting the last observation stored, or `null` where none was ever stored. */
+export function recordedSighting(
+  metadata: Record<string, unknown> | null,
+): SentrySightingRecord | null {
+  const entry = (metadata?.sentry ?? null) as SentrySightingRecord | null;
+  return entry && typeof entry === 'object' ? entry : null;
 }
 
 interface ExistingIssue {
@@ -207,36 +233,46 @@ async function observe(
   shortId: string,
   authorId: string,
 ): Promise<'commented' | 'refreshed'> {
-  const previous = recordedCount(existing.metadata);
-  const grew = issue.count !== null && previous !== null && issue.count > previous;
+  // cm:guard ONE transaction, and the row is re-read inside it UNDER A LOCK. These are two writes
+  // and criterion 17 says exactly one comment, which neither ordering of two independent statements
+  // can promise: whichever goes first, a failure between them is either a note nobody ever gets or
+  // a note everybody gets twice, and two ticks overlapping read the same baseline and both comment.
+  // The lock is what makes the baseline this observation compares against the one no other observer
+  // can still be holding. `existing.metadata` from the pre-gate lookup is deliberately NOT reused
+  // here — it was read outside this transaction and may already be stale.
+  return db.transaction(async (tx) => {
+    const [locked] = await tx
+      .select({ metadata: issues.metadata })
+      .from(issues)
+      .where(eq(issues.id, existing.id))
+      .for('update')
+      .limit(1);
+    const previous = recordedSighting((locked?.metadata ?? null) as Record<string, unknown> | null);
+    const previousCount = previous?.count ?? null;
+    const grew = issue.count !== null && previousCount !== null && issue.count > previousCount;
 
-  // cm:guard THE COMMENT IS WRITTEN FIRST, and the order is the whole defence. These are two
-  // statements and nothing wraps them in one transaction, so one of them can land alone. Writing
-  // the counts first and the comment second means a comment that fails is a comment that NEVER
-  // arrives: the next tick reads the new count, finds no growth, and the person is never told. This
-  // way round, the worst a failure between them costs is the same comment twice — and a duplicate
-  // note is a thing a reader can see and dismiss, where a missing one is not.
-  if (grew) {
-    await db.insert(comments).values({
-      issueId: existing.id,
-      authorId,
-      body: [
-        `Sentry has seen \`${shortId}\` again.`,
-        '',
-        `- Events: ${issue.count} (was ${previous})`,
-        `- Users affected: ${issue.userCount ?? 'not reported'}`,
-        `- Last seen: ${issue.lastSeen ?? 'not reported'}`,
-        ...(issue.permalink ? ['', issue.permalink] : []),
-      ].join('\n'),
-    });
-  }
+    if (grew) {
+      await tx.insert(comments).values({
+        issueId: existing.id,
+        authorId,
+        body: [
+          `Sentry has seen \`${shortId}\` again.`,
+          '',
+          `- Events: ${issue.count} (was ${previousCount})`,
+          `- Users affected: ${issue.userCount ?? 'not reported'}`,
+          `- Last seen: ${issue.lastSeen ?? 'not reported'}`,
+          ...(issue.permalink ? ['', issue.permalink] : []),
+        ].join('\n'),
+      });
+    }
 
-  await db
-    .update(issues)
-    .set({ metadata: sentryMetadataMerge(sighting(issue, shortId)) })
-    .where(eq(issues.id, existing.id));
+    await tx
+      .update(issues)
+      .set({ metadata: sentryMetadataMerge(sighting(issue, shortId, previous)) })
+      .where(eq(issues.id, existing.id));
 
-  return grew ? 'commented' : 'refreshed';
+    return grew ? 'commented' : 'refreshed';
+  });
 }
 
 /**
@@ -301,7 +337,7 @@ async function pullOneTarget(
   report.push(`  target ${target.label}:`);
   if (listing.truncated) {
     report.push(
-      `    INCOMPLETE: stopped after ${listing.pages} page(s) and Sentry had more. Issues past that point were not seen this tick, and will not be on the next one either — raise the schedule's reach or narrow the query.`,
+      `    INCOMPLETE: this target holds more unresolved issues than one tick reads (${listing.pages} page(s) of ${SENTRY_LIST_DEFAULT_LIMIT}). Sentry orders by last seen, so the issues past that point are the SAME ones every tick and no later tick reaches them — this pull does not resume where it stopped, and that is recorded at docs/proposals/a-bounded-sentry-pull-does-not-resume.md. What helps today: give this target a narrower projectSlug, or resolve issues in Sentry so the list shortens.`,
     );
   }
   for (const refusal of listing.refused) {
@@ -331,7 +367,7 @@ async function pullOneTarget(
         projectId,
         createdById,
         buildSentryIssueRow(issue, verdict.externalId, verdict.detectorKey, listing.target),
-        sighting(issue, verdict.externalId),
+        sighting(issue, verdict.externalId, null),
       );
       if (outcome === 'filed') {
         filed += 1;
@@ -424,6 +460,17 @@ export async function runSentryPull(args: { projectId: string }): Promise<Sentry
       filed += got.filed;
       commented += got.commented;
     } catch (err) {
+      // cm:guard a listing that failed part way carries what it had already decided, and those
+      // named refusals go into the record BEFORE the failure line. Dropping them because the target
+      // ultimately failed would lose findings that are true whatever happened next.
+      if (err instanceof SentryListingFailed) {
+        report.push(
+          `  target ${target.label}: listing failed after ${err.partial.pages} page(s), with ${err.partial.refused.length} decision(s) already made`,
+        );
+        for (const refusal of err.partial.refused) {
+          report.push(`    confined out ${refusal.shortId ?? refusal.issueId}: ${refusal.reason}`);
+        }
+      }
       // cm:guard one target's failure does not take the others down, and it is NEVER swallowed: it
       // goes into `failures`, which makes the whole run `failed`. A pull that reached two of three
       // targets and reported success would be a state that lies about what it looked at.
@@ -437,25 +484,21 @@ export async function runSentryPull(args: { projectId: string }): Promise<Sentry
   }
 
   const summary = `${filed} issue(s) filed, ${commented} commented, across ${targets.length} target(s)`;
-  // cm:guard the FAILURES are placed above the per-issue detail, not appended after it, and the
-  // truncation says so out loud. `schedule_runs.output` is one text column and this report is the
-  // only record these decisions get, so the cap can and will eat the tail — appending failures last
-  // put the load-bearing lines exactly where the knife falls. A bare ellipsis would leave an
-  // operator reading a list that looks complete. What is NOT done here: persisting the whole report
-  // somewhere retrievable. That needs a store this change does not have, and the honest bound is to
-  // keep what matters and name what was dropped.
-  const head = [summary, ...failures, ...report];
-  const joined = head.join('\n');
-  const output =
-    joined.length > OUTPUT_CAP
-      ? `${joined.slice(0, OUTPUT_CAP - 120)}\n… TRUNCATED at ${OUTPUT_CAP} characters. ${joined.length - OUTPUT_CAP} more character(s) of decisions were dropped from this record.`
-      : joined;
-  if (failures.length > 0) {
-    return {
-      status: 'failed',
-      output,
-      error: `sentry pull: ${failures.length} of ${targets.length} target(s) failed`,
-    };
-  }
-  return { status: filed === 0 && commented === 0 ? 'skipped' : 'success', output };
+  // cm:guard NOT capped, and the cap that used to be here was the defect rather than the safeguard.
+  // This report is the only record these decisions ever get — every named refusal, every confinement
+  // and every incompleteness — and trimming it deletes exactly the lines it exists to carry, which
+  // is the silence this whole path is built to avoid, arriving through the one door that was meant
+  // to prevent it. `schedule_runs.output` is postgres `text` and is unbounded; the report's real
+  // bound is structural, since a listing walks at most SENTRY_LIST_MAX_PAGES pages per target.
+  // Failures still come first, because the head of a long record is what a person actually reads.
+  return failures.length > 0
+    ? {
+        status: 'failed',
+        output: [summary, ...failures, ...report].join('\n'),
+        error: `sentry pull: ${failures.length} of ${targets.length} target(s) failed`,
+      }
+    : {
+        status: filed === 0 && commented === 0 ? 'skipped' : 'success',
+        output: [summary, ...report].join('\n'),
+      };
 }

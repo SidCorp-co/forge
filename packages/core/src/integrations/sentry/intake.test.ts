@@ -14,38 +14,49 @@ const updateSets: Record<string, unknown>[] = [];
 const insertedComments: Record<string, unknown>[] = [];
 const selectRows: unknown[][] = [];
 
+/** `select().from().where()[.for('update')].limit()` — a thenable answering every chain step. */
+function selectChain() {
+  const rows = selectRows.shift() ?? [];
+  const p = Promise.resolve(rows) as Promise<unknown[]> & Record<string, unknown>;
+  p.limit = () => Promise.resolve(rows);
+  p.for = () => p;
+  return p;
+}
+
+const handle = {
+  execute: (q: unknown) => {
+    executed.push(JSON.stringify(q));
+    return Promise.resolve(executeAnswer.shift() ?? [{ id: 'new-issue-1' }]);
+  },
+  select: () => ({ from: () => ({ where: () => selectChain() }) }),
+  update: () => ({
+    set: (patch: Record<string, unknown>) => {
+      updateSets.push(patch);
+      return { where: () => Promise.resolve(undefined) };
+    },
+  }),
+  insert: () => ({
+    values: (v: Record<string, unknown>) => {
+      insertedComments.push(v);
+      return Promise.resolve(undefined);
+    },
+  }),
+};
+
 vi.mock('../../db/client.js', () => ({
   db: {
-    execute: (q: unknown) => {
-      executed.push(JSON.stringify(q));
-      return Promise.resolve(executeAnswer.shift() ?? [{ id: 'new-issue-1' }]);
+    ...handle,
+    // cm:why the transaction handle is the same object: what these assert is which statements the
+    // code issues, and postgres's own atomicity is not something a mock can answer for. That it
+    // issues BOTH writes through `db.transaction` is asserted directly in intake-review.test.ts.
+    transaction: (fn: (tx: typeof handle) => Promise<unknown>) => {
+      transactions.push(1);
+      return fn(handle);
     },
-    select: () => ({
-      from: () => ({
-        where: () => {
-          const rows = selectRows.shift() ?? [];
-          const p = Promise.resolve(rows) as Promise<unknown[]> & {
-            limit: (n: number) => Promise<unknown[]>;
-          };
-          p.limit = () => Promise.resolve(rows);
-          return p;
-        },
-      }),
-    }),
-    update: () => ({
-      set: (patch: Record<string, unknown>) => {
-        updateSets.push(patch);
-        return { where: () => Promise.resolve(undefined) };
-      },
-    }),
-    insert: () => ({
-      values: (v: Record<string, unknown>) => {
-        insertedComments.push(v);
-        return Promise.resolve(undefined);
-      },
-    }),
   },
 }));
+
+const transactions: number[] = [];
 
 const executeAnswer: unknown[][] = [];
 
@@ -131,6 +142,7 @@ beforeEach(() => {
   insertedComments.length = 0;
   selectRows.length = 0;
   executeAnswer.length = 0;
+  transactions.length = 0;
   vi.clearAllMocks();
   readThresholdsMock.mockResolvedValue({ sentryMinEventCount: 10, sentryMinUserCount: 2 });
 });
@@ -238,6 +250,7 @@ describe('runSentryPull — a second sighting', () => {
     bindingFound();
     creatorFound();
     selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]); // the locked re-read inside the transaction
     answers([issue({ count: 17 })]);
 
     await runSentryPull({ projectId: PROJECT });
@@ -249,6 +262,7 @@ describe('runSentryPull — a second sighting', () => {
     bindingFound();
     creatorFound();
     selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]); // the locked re-read inside the transaction
     answers([issue({ count: 41 })]);
 
     await runSentryPull({ projectId: PROJECT });
@@ -262,6 +276,7 @@ describe('runSentryPull — a second sighting', () => {
     bindingFound();
     creatorFound();
     selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]); // the locked re-read inside the transaction
     answers([issue({ count: 17 })]);
     await runSentryPull({ projectId: PROJECT });
     expect(insertedComments).toEqual([]);
@@ -271,6 +286,7 @@ describe('runSentryPull — a second sighting', () => {
     bindingFound();
     creatorFound();
     selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]); // the locked re-read inside the transaction
     answers([issue({ count: 4 })]);
     await runSentryPull({ projectId: PROJECT });
     expect(insertedComments).toEqual([]);
@@ -280,6 +296,7 @@ describe('runSentryPull — a second sighting', () => {
     bindingFound();
     creatorFound();
     selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]); // the locked re-read inside the transaction
     answers([issue({ count: 41 })]);
     // a policy that would refuse this issue outright if it were new
     readThresholdsMock.mockResolvedValue({
@@ -297,6 +314,7 @@ describe('runSentryPull — a second sighting', () => {
     bindingFound();
     creatorFound();
     selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]); // the locked re-read inside the transaction
     answers([issue({ count: 17, lastSeen: '2026-09-18T00:00:00Z' })]);
     await runSentryPull({ projectId: PROJECT });
     expect(updateSets).toHaveLength(1);

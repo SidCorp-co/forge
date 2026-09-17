@@ -33,6 +33,7 @@ import {
   listQuery,
   nextSentryCursor,
   SENTRY_LIST_MAX_PAGES,
+  SentryListingFailed,
   type SentryIssueListing,
   type SentryListRefusal,
   type SentryListRequest,
@@ -57,6 +58,7 @@ export {
   SENTRY_LIST_DEFAULT_QUERY,
   SENTRY_LIST_MAX_LIMIT,
   SENTRY_LIST_MAX_PAGES,
+  SentryListingFailed,
   type SentryIssueListing,
   type SentryListRefusal,
   type SentryListRequest,
@@ -430,10 +432,25 @@ export async function listSentryIssues(
           ...(cursor ? { cursor } : {}),
         });
         const out: { link: string | null } = { link: null };
-        const body = await callSentry(ctx, url, 'GET', undefined, out);
+        // cm:guard the partial travels WITH the failure. Everything decided on the pages already
+        // walked — every confinement refusal, by name — is local to this callback, so a bare throw
+        // deletes it and the operator is left a transport error where there were also six named
+        // refusals they have to act on.
+        let body: unknown;
+        try {
+          body = await callSentry(ctx, url, 'GET', undefined, out);
+        } catch (err) {
+          refused = turnedAway;
+          throw new SentryListingFailed(err instanceof Error ? err.message : 'unknown error', {
+            pages,
+            refused: turnedAway,
+          });
+        }
         if (!Array.isArray(body)) {
-          throw new Error(
+          refused = turnedAway;
+          throw new SentryListingFailed(
             `sentry: ${url} answered ${typeof body}, and an issue listing has to be an array`,
+            { pages, refused: turnedAway },
           );
         }
         pages += 1;

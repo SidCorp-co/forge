@@ -312,3 +312,79 @@ describe('listSentryIssues — pagination', () => {
     expect(deliveryResponse()).toMatchObject({ pages: 2, truncated: false, admitted: 2 });
   });
 });
+
+const { SentryListingFailed } = await import('./listing.js');
+
+describe('listSentryIssues — a walk that fails part way keeps what it decided', () => {
+  /** Page one answers; page two fails. */
+  function answerThenFail(firstPage: unknown[], status: number) {
+    let n = 0;
+    globalThis.fetch = vi.fn(async () => {
+      n += 1;
+      if (n === 1) {
+        return new Response(JSON.stringify(firstPage), {
+          status: 200,
+          headers: {
+            'content-type': 'application/json',
+            link: '<https://x>; rel="next"; results="true"; cursor="c1"',
+          },
+        });
+      }
+      return new Response('{"detail":"boom"}', {
+        status,
+        headers: { 'content-type': 'application/json' },
+      });
+    }) as unknown as typeof fetch;
+  }
+
+  // cm:guard this drives the REAL listing. An earlier version of this assertion built the error by
+  // hand in the intake test and passed against a `listSentryIssues` that filled the partial with
+  // nothing — the mutation that empties it survived. What is asserted here is that the production
+  // walk puts its own findings on the failure.
+  it('throws carrying the pages walked and the refusals already named', async () => {
+    answerThenFail(
+      [
+        sentryBody({ id: '1', shortId: 'A-1', project: { slug: 'forge-core' } }),
+        sentryBody({ id: '2', shortId: 'B-2', project: { slug: 'forge-web' } }),
+      ],
+      500,
+    );
+
+    const err = await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' }).catch(
+      (e: unknown) => e,
+    );
+
+    expect(err).toBeInstanceOf(SentryListingFailed);
+    const failed = err as InstanceType<typeof SentryListingFailed>;
+    expect(failed.partial.pages).toBe(1);
+    expect(failed.partial.refused).toEqual([
+      {
+        issueId: '2',
+        shortId: 'B-2',
+        belongsTo: 'forge-web',
+        reason: 'belongs to project forge-web, and target "forge-core" is scoped to forge-core',
+      },
+    ]);
+    expect(failed.message).toMatch(/Sentry answered HTTP 500/);
+  });
+
+  it('still settles the delivery row failed — the partial does not soften the failure', async () => {
+    answerThenFail([sentryBody({ id: '2', shortId: 'B-2', project: { slug: 'forge-web' } })], 500);
+    await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' }).catch(() => undefined);
+    expect(updateDeliveryMock.mock.calls.at(-1)?.[1]).toMatchObject({ status: 'failed' });
+  });
+
+  it('carries a partial of zero where page ONE is the one that failed', async () => {
+    answerThenFail([], 500);
+    globalThis.fetch = vi.fn(async () =>
+      new Response('{"detail":"boom"}', { status: 500 }),
+    ) as unknown as typeof fetch;
+
+    const err = (await listSentryIssues(buildCtx(), { targetLabel: 'forge-core' }).catch(
+      (e: unknown) => e,
+    )) as InstanceType<typeof SentryListingFailed>;
+
+    expect(err).toBeInstanceOf(SentryListingFailed);
+    expect(err.partial).toEqual({ pages: 0, refused: [] });
+  });
+});

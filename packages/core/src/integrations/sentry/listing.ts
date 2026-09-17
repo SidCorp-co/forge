@@ -14,7 +14,12 @@ import type { SentryIssueDetail } from './types.js';
 
 /** What a pull asks Sentry for when the caller names nothing narrower. */
 export const SENTRY_LIST_DEFAULT_QUERY = 'is:unresolved';
-export const SENTRY_LIST_DEFAULT_LIMIT = 25;
+// cm:why the default IS the maximum page, not a polite 25. This listing walks at most
+// SENTRY_LIST_MAX_PAGES pages and does not resume where it stopped, so the default limit is the
+// whole of how far one tick can see: at 25 that was 250 issues per target, and the ones past it are
+// the same ones on every tick forever. At 100 it is 1,000, which is the most this shape can honestly
+// offer without a resumable cursor.
+export const SENTRY_LIST_DEFAULT_LIMIT = 100;
 export const SENTRY_LIST_MAX_LIMIT = 100;
 /**
  * How many pages one listing will walk before it stops and SAYS it stopped.
@@ -121,4 +126,23 @@ export function confinementRefusal(
     return `belongs to project ${issue.projectSlug}, and target "${target.label}" is scoped to ${target.projectSlug}`;
   }
   return null;
+}
+
+/**
+ * A listing that failed PART WAY, carrying what it had already decided.
+ *
+ * cm:guard the partial goes on the ERROR rather than being swallowed into a successful-looking
+ * return. A listing that walked two pages, named six confinement refusals and then met an HTTP 500
+ * on page three has done two things: it failed, and it learned six things somebody needs. Throwing
+ * a bare error loses the six; returning a partial as if it were whole loses the failure. Both are
+ * the silent substitution this repo refuses, so the throw carries the findings with it.
+ */
+export class SentryListingFailed extends Error {
+  constructor(
+    message: string,
+    readonly partial: { pages: number; refused: SentryListRefusal[] },
+  ) {
+    super(message);
+    this.name = 'SentryListingFailed';
+  }
 }

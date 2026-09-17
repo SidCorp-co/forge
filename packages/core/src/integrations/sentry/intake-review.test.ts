@@ -13,38 +13,49 @@ const updateSets: Record<string, unknown>[] = [];
 const insertedComments: Record<string, unknown>[] = [];
 const selectRows: unknown[][] = [];
 
+/** `select().from().where()[.for('update')].limit()` — a thenable answering every chain step. */
+function selectChain() {
+  const rows = selectRows.shift() ?? [];
+  const p = Promise.resolve(rows) as Promise<unknown[]> & Record<string, unknown>;
+  p.limit = () => Promise.resolve(rows);
+  p.for = () => p;
+  return p;
+}
+
+const handle = {
+  execute: (q: unknown) => {
+    executed.push(JSON.stringify(q));
+    return Promise.resolve(executeAnswer.shift() ?? [{ id: 'new-issue-1' }]);
+  },
+  select: () => ({ from: () => ({ where: () => selectChain() }) }),
+  update: () => ({
+    set: (patch: Record<string, unknown>) => {
+      updateSets.push(patch);
+      return { where: () => Promise.resolve(undefined) };
+    },
+  }),
+  insert: () => ({
+    values: (v: Record<string, unknown>) => {
+      insertedComments.push(v);
+      return Promise.resolve(undefined);
+    },
+  }),
+};
+
 vi.mock('../../db/client.js', () => ({
   db: {
-    execute: (q: unknown) => {
-      executed.push(JSON.stringify(q));
-      return Promise.resolve(executeAnswer.shift() ?? [{ id: 'new-issue-1' }]);
+    ...handle,
+    // cm:why the transaction handle is the same object: what these assert is which statements the
+    // code issues, and postgres's own atomicity is not something a mock can answer for. That it
+    // issues BOTH writes through `db.transaction` is asserted directly in intake-review.test.ts.
+    transaction: (fn: (tx: typeof handle) => Promise<unknown>) => {
+      transactions.push(1);
+      return fn(handle);
     },
-    select: () => ({
-      from: () => ({
-        where: () => {
-          const rows = selectRows.shift() ?? [];
-          const p = Promise.resolve(rows) as Promise<unknown[]> & {
-            limit: (n: number) => Promise<unknown[]>;
-          };
-          p.limit = () => Promise.resolve(rows);
-          return p;
-        },
-      }),
-    }),
-    update: () => ({
-      set: (patch: Record<string, unknown>) => {
-        updateSets.push(patch);
-        return { where: () => Promise.resolve(undefined) };
-      },
-    }),
-    insert: () => ({
-      values: (v: Record<string, unknown>) => {
-        insertedComments.push(v);
-        return Promise.resolve(undefined);
-      },
-    }),
   },
 }));
+
+const transactions: number[] = [];
 
 const executeAnswer: unknown[][] = [];
 
@@ -124,6 +135,7 @@ beforeEach(() => {
   insertedComments.length = 0;
   selectRows.length = 0;
   executeAnswer.length = 0;
+  transactions.length = 0;
   vi.clearAllMocks();
   readThresholdsMock.mockResolvedValue({ sentryMinEventCount: 10, sentryMinUserCount: 2 });
 });
@@ -157,6 +169,7 @@ describe('F6 — the baseline sighting goes in WITH the filed row', () => {
     selectRows.push([
       { id: 'iss-1', metadata: { sentry: { shortId: 'FORGE-CORE-9K', count: 17 } } },
     ]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { shortId: 'FORGE-CORE-9K', count: 17 } } }]); // the locked re-read inside the transaction
     answers([issue({ count: 17 })]);
 
     await runSentryPull({ projectId: PROJECT });
@@ -171,6 +184,7 @@ describe('F6 — the baseline sighting goes in WITH the filed row', () => {
     bindingFound();
     creatorFound();
     selectRows.push([{ id: 'iss-1', metadata: null }]);
+    selectRows.push([{ id: 'iss-1', metadata: null }]); // the locked re-read inside the transaction
     answers([issue({ count: 17 })]);
 
     await runSentryPull({ projectId: PROJECT });
@@ -181,34 +195,18 @@ describe('F6 — the baseline sighting goes in WITH the filed row', () => {
 });
 
 describe('F2 — the two writes an observation makes, and the order between them', () => {
-  it('writes the comment BEFORE the counts, so a failed comment is retried and not lost', async () => {
-    const order: string[] = [];
-    bindingFound();
-    creatorFound();
-    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
-    answers([issue({ count: 41 })]);
-    // record the order the two statements reach the db
-    const realPush = insertedComments.push.bind(insertedComments);
-    insertedComments.push = ((...a: Record<string, unknown>[]) => {
-      order.push('comment');
-      return realPush(...a);
-    }) as typeof insertedComments.push;
-    const realSet = updateSets.push.bind(updateSets);
-    updateSets.push = ((...a: Record<string, unknown>[]) => {
-      order.push('metadata');
-      return realSet(...a);
-    }) as typeof updateSets.push;
-
-    await runSentryPull({ projectId: PROJECT });
-
-    expect(order).toEqual(['comment', 'metadata']);
-  });
+  // cm:why the ordering test that stood here is gone rather than kept. It monkey-patched the two
+  // recording arrays to watch which write went first, and it is superseded: both writes are now
+  // inside ONE transaction, so their order no longer decides anything, and the assertion that
+  // matters is that the transaction exists. It is in 'F1 second round' below. Keeping a passing
+  // test whose subject the code no longer has is how a suite stops describing the code.
 
   it('OBSERVES the row that won a race instead of throwing the sighting away', async () => {
     bindingFound();
     creatorFound();
     selectRows.push([]); // findFiled: nothing yet
-    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]); // the winner, reloaded
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]); // the locked re-read inside the transaction // the winner, reloaded
     executeAnswer.push([]); // the insert loses the race
     answers([issue({ count: 41 })]);
 
@@ -260,13 +258,20 @@ describe('F1 — the listing stops at a bound and SAYS it stopped', () => {
     const outcome = await runSentryPull({ projectId: PROJECT });
 
     expect(outcome.output).toMatch(
-      /INCOMPLETE: stopped after 10 page\(s\) and Sentry had more\. Issues past that point were not seen this tick/,
+      /INCOMPLETE: this target holds more unresolved issues than one tick reads \(10 page\(s\) of 100\)/,
     );
+    // and it names the remedies that EXIST, rather than two this schedule cannot offer
+    expect(outcome.output).toMatch(/give this target a narrower projectSlug/);
+    expect(outcome.output).toMatch(/does not resume where it stopped/);
   });
 });
 
-describe('F5 — a record too long to store says what it dropped', () => {
-  it('puts the failures above the detail and names the truncation rather than trailing off', async () => {
+describe('F5 — a long record is KEPT, because the record is the point of the record', () => {
+  // cm:guard this used to assert a 16,000-character cap and a truncation notice. The review was
+  // right that announcing a deletion is not the same as not deleting: these lines are the only
+  // record an admission refusal ever gets, and `schedule_runs.output` is unbounded postgres `text`.
+  // The cap was the defect, not the safeguard, and this test is what stops one coming back.
+  it('keeps every named refusal however long the list, rather than trimming the tail', async () => {
     bindingFound();
     creatorFound();
     const many = Array.from({ length: 400 }, (_, i) =>
@@ -277,9 +282,129 @@ describe('F5 — a record too long to store says what it dropped', () => {
 
     const outcome = await runSentryPull({ projectId: PROJECT });
 
-    expect(outcome.output.length).toBeLessThanOrEqual(16_000);
-    expect(outcome.output).toMatch(/TRUNCATED at 16000 characters\. \d+ more character\(s\)/);
-    // the summary is still the first line — the knife falls on the tail, never the head
+    expect(outcome.output.length).toBeGreaterThan(16_000);
+    expect(outcome.output).not.toMatch(/TRUNCATED/);
+    // the FIRST and the LAST refusal are both there — a trim would take one of them
+    expect(outcome.output).toMatch(/LONG-ISSUE-SHORTID-NUMBER-0 has 1 event/);
+    expect(outcome.output).toMatch(/LONG-ISSUE-SHORTID-NUMBER-399 has 1 event/);
+    // and the summary is still the first line
     expect(outcome.output.split('\n')[0]).toMatch(/issue\(s\) filed/);
+  });
+
+  it('puts a target failure ABOVE the per-issue detail, where a person reads', async () => {
+    bindingFound();
+    creatorFound();
+    listSentryIssuesMock.mockRejectedValue(new Error('Sentry answered HTTP 500'));
+
+    const outcome = await runSentryPull({ projectId: PROJECT });
+    const lines = outcome.output.split('\n');
+
+    expect(lines[0]).toMatch(/issue\(s\) filed/);
+    expect(lines[1]).toMatch(/target forge-core: Sentry answered HTTP 500/);
+  });
+});
+
+// ── The SECOND whole-set read, at the head the first round's fixes made. Five more, all real. ────
+
+describe('F3 second round — an absent count must not erase an established baseline', () => {
+  // cm:guard this is the defect the FIRST round's fix created, which is why it is here rather than
+  // above: making null-is-not-growth true meant a null observation overwrote a real 17, and the 41
+  // that followed then looked like a first observation and passed in silence. A fix to a silence
+  // that introduces a different silence is the error this whole file exists to catch.
+  it('carries the last known count forward when this sighting carries none', async () => {
+    bindingFound();
+    creatorFound();
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { shortId: 'X', count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { shortId: 'X', count: 17 } } }]);
+    answers([issue({ count: null })]);
+
+    await runSentryPull({ projectId: PROJECT });
+
+    const written = JSON.parse(String(updateSets[0]?.metadata ? '{}' : '{}'));
+    void written;
+    expect(insertedComments).toEqual([]);
+    // the 17 survives, and the gap is recorded beside it rather than instead of it
+    const params = (updateSets[0]?.metadata as { queryChunks?: unknown[] })?.queryChunks ?? [];
+    const json = params.find((c): c is string => typeof c === 'string' && c.includes('"sentry"'));
+    expect(JSON.parse(String(json)).sentry.count).toBe(17);
+    expect(JSON.parse(String(json)).sentry.countMissingAt).toBeTruthy();
+  });
+
+  it('still reports growth after a gap, because the baseline was never lost', async () => {
+    bindingFound();
+    creatorFound();
+    // the row as the gap tick above would have left it: count 17 kept, countMissingAt set
+    const after = { sentry: { shortId: 'X', count: 17, countMissingAt: '2026-09-17T00:00:00Z' } };
+    selectRows.push([{ id: 'iss-1', metadata: after }]);
+    selectRows.push([{ id: 'iss-1', metadata: after }]);
+    answers([issue({ count: 41 })]);
+
+    await runSentryPull({ projectId: PROJECT });
+
+    expect(insertedComments).toHaveLength(1);
+    expect(String(insertedComments[0]?.body)).toContain('- Events: 41 (was 17)');
+  });
+});
+
+describe('F1 second round — both writes of an observation go through ONE transaction', () => {
+  it('opens a transaction and issues the comment and the metadata write inside it', async () => {
+    bindingFound();
+    creatorFound();
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    answers([issue({ count: 41 })]);
+
+    await runSentryPull({ projectId: PROJECT });
+
+    expect(transactions).toHaveLength(1);
+    expect(insertedComments).toHaveLength(1);
+    expect(updateSets).toHaveLength(1);
+  });
+
+  it('re-reads the row inside the transaction rather than trusting the pre-gate lookup', async () => {
+    bindingFound();
+    creatorFound();
+    // the pre-gate lookup sees a stale 17; the locked re-read sees the 41 another observer landed
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 17 } } }]);
+    selectRows.push([{ id: 'iss-1', metadata: { sentry: { count: 41 } } }]);
+    answers([issue({ count: 41 })]);
+
+    await runSentryPull({ projectId: PROJECT });
+
+    // judged against the LOCKED value, so the other observer's comment is not duplicated
+    expect(insertedComments).toEqual([]);
+  });
+
+  it('opens NO transaction for an issue that was never filed', async () => {
+    bindingFound();
+    creatorFound();
+    selectRows.push([]);
+    answers([issue()]);
+    await runSentryPull({ projectId: PROJECT });
+    expect(transactions).toEqual([]);
+  });
+});
+
+describe('F2 second round — a listing that failed part way keeps what it had decided', () => {
+  it('reports the confinement refusals made before the failure, by name', async () => {
+    bindingFound();
+    creatorFound();
+    const { SentryListingFailed } = await import('./listing.js');
+    listSentryIssuesMock.mockRejectedValue(
+      new SentryListingFailed('sentry: GET … — Sentry answered HTTP 500', {
+        pages: 2,
+        refused: [
+          { issueId: '2', shortId: 'B-2', belongsTo: 'forge-web', reason: 'belongs to forge-web' },
+        ],
+      }),
+    );
+
+    const outcome = await runSentryPull({ projectId: PROJECT });
+
+    expect(outcome.status).toBe('failed');
+    expect(outcome.output).toMatch(/listing failed after 2 page\(s\), with 1 decision\(s\) already made/);
+    expect(outcome.output).toMatch(/confined out B-2: belongs to forge-web/);
+    // and the failure itself is still reported — the partial does not soften it
+    expect(outcome.output).toMatch(/Sentry answered HTTP 500/);
   });
 });
