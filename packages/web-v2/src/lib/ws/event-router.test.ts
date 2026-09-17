@@ -159,13 +159,39 @@ describe("a turn arriving on the socket while it is still being written", () => 
     expect(c.wrote(["conversation-progress", "c1"])).toMatchObject({ replaced: true });
   });
 
-  // cm:guard cleared on SETTLED and not on the delivery: `conversation.message` goes out before the
-  // transcript row commits, so clearing there would leave the thread holding neither the live turn
-  // nor the answer for as long as the refetch took.
-  it("clears the live turn when the room settles, and not when the reply is delivered", () => {
-    expect(send("conversation.settled", { conversationId: "c1" }).written.has('["conversation-progress","c1"]')).toBe(true);
-    expect(send("conversation.settled", { conversationId: "c1" }).wrote(["conversation-progress", "c1"])).toBeNull();
-    expect(send("conversation.message", { conversationId: "c1" }).written.has('["conversation-progress","c1"]')).toBe(false);
+  // cm:guard the settle MARKS the live turn and does not delete it, and the delivery touches it at
+  // all: settlement says the server is done, not that this browser has the row, so a delete here
+  // leaves the thread holding neither the streamed answer nor the durable one until the refetch
+  // lands — and for a replaced reply it takes the withdrawal notice with it (consult F5).
+  it("marks the live turn settled rather than deleting it, and leaves it alone on a delivery", () => {
+    const c = capture();
+    routeEvent(
+      { event: "conversation.progress", data: { conversationId: "c1", entry }, timestamp: "t" },
+      c.qc,
+    );
+    routeEvent({ event: "conversation.settled", data: { conversationId: "c1" }, timestamp: "t" }, c.qc);
+    flushInvalidations();
+    const live = c.wrote(["conversation-progress", "c1"]) as { entry: unknown; settled: boolean };
+    expect(live.settled).toBe(true);
+    expect(live.entry).toEqual(entry);
+
+    expect(
+      send("conversation.message", { conversationId: "c1" }).written.has('["conversation-progress","c1"]'),
+    ).toBe(false);
+  });
+
+  // cm:guard the withdrawal is remembered against the ENTRY ID, so it outlives the live turn: the
+  // durable row carries the replacement's text and says nothing about it having replaced anything,
+  // and a notice that died with the streamed copy would be a correction a person had a second or
+  // two to catch — the silent substitution arriving late rather than never (consult F5).
+  it("remembers a replacement against its entry id", () => {
+    const c = send("conversation.progress", { conversationId: "c1", entry, replaced: true });
+    expect(c.wrote(["conversation-corrections", "c1"])).toEqual(["entry-1"]);
+  });
+
+  it("remembers an ordinary turn as no correction at all", () => {
+    const c = send("conversation.progress", { conversationId: "c1", entry });
+    expect(c.wrote(["conversation-corrections", "c1"])).toBeUndefined();
   });
 
   // cm:guard criterion 2's router half: acceptance is written, not invalidated, because the frame

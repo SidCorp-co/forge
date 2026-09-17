@@ -3,6 +3,7 @@
 // cm:guard a `features/*` hook must key its query under one of the prefixes invalidated below (e.g. ['projects']) — pick any other and the live update silently no-ops, with nothing red anywhere to say the screen stopped refreshing
 // cm:guard TWO keys are deliberately OUTSIDE every prefix invalidated below — `['conversation-progress', <id>]` and `['conversation-accepted', <id>]` — and that is the whole reason they are not spelled `['conversations', <id>, …]`: they are slots this router WRITES, not reads anyone fetches, and react-query matches by prefix, so under `['conversations', <id>]` the delivery event three cases up would refetch them to their empty value and undo the write in the same tick that made it. A refetch per progress frame is also the exact cost that chose this transport (ISS-1030), so nothing may invalidate these two (ISS-1078).
 import type { QueryClient } from "@tanstack/react-query";
+import type { ConversationProgress } from "@/features/conversations/types";
 import { invalidateThroughInFlight } from "./invalidate-through-inflight";
 import { scheduleInvalidation } from "./invalidation-coalescer";
 import { trackJobSeq } from "./seq-tracker";
@@ -89,12 +90,18 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		case "conversation.message": {
 			if (data?.conversationId) {
 				scheduleInvalidation(qc, ["conversations", data.conversationId]);
-				// cm:guard the live turn is cleared when the room SETTLES and not when the reply is
-				// delivered: `conversation.message` goes out before the transcript row commits, so
-				// dropping the streamed turn there would leave the thread with neither for as long as
-				// the refetch took. The settled event is published after the window closed (ISS-1078).
+				// cm:guard the live turn is MARKED settled here and not deleted, and the difference is a
+				// gap a person sees: settlement means the server is done, not that this browser has
+				// the row — the refetch this same case schedules has not landed yet. Deleting the
+				// streamed answer on arrival leaves the thread holding neither, and for a replaced
+				// reply it also takes away the only notice that a draft was withdrawn. What drops it
+				// is the durable row turning up under the same entry id, or the read that follows
+				// this settle completing; `conversation-chat.tsx` owns that hand-off (consult F5).
 				if (event === "conversation.settled") {
-					qc.setQueryData(["conversation-progress", data.conversationId], null);
+					qc.setQueryData<ConversationProgress | null>(
+						["conversation-progress", data.conversationId],
+						(prev) => (prev ? { ...prev, settled: true, settledAt: Date.now() } : prev),
+					);
 				}
 			}
 			scheduleInvalidation(qc, ["conversations", "list"]);
@@ -124,11 +131,25 @@ export function routeEvent(env: EventEnvelope, qc: QueryClient): void {
 		// sits under an invalidated prefix (ISS-1078 criterion 17).
 		case "conversation.progress": {
 			if (!data?.conversationId) return;
-			qc.setQueryData(["conversation-progress", data.conversationId], {
-				conversationId: data.conversationId,
-				entry: data.entry,
-				...(data.replaced ? { replaced: true } : {}),
-			});
+			qc.setQueryData<ConversationProgress | null>(
+				["conversation-progress", data.conversationId],
+				{
+					conversationId: data.conversationId,
+					entry: data.entry,
+					...(data.replaced ? { replaced: true } : {}),
+				},
+			);
+			// cm:guard a replacement is also remembered AGAINST ITS ENTRY ID, so the notice outlives
+			// the live turn: the durable row carries the replacement's text and nothing on it says the
+			// text was a correction, so a marker that vanished when the row arrived would be a
+			// withdrawal a person had a second or two to notice. That is the silent substitution the
+			// owner's decision refuses, arriving late instead of never (ISS-1078, consult F5).
+			if (data.replaced && data.entry?.id) {
+				qc.setQueryData<string[]>(
+					["conversation-corrections", data.conversationId],
+					(prev) => (prev?.includes(data.entry.id) ? prev : [...(prev ?? []), data.entry.id]),
+				);
+			}
 			return;
 		}
 		case "agent-session.created":

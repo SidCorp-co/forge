@@ -10,6 +10,7 @@
 // it alone — so all six stayed on the session surface, which keeps every
 // run-shaped verb it had.
 
+import { useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   AgentWorking,
@@ -25,6 +26,7 @@ import { formatApiError } from "@/lib/api/error";
 import {
   useAcceptedMessages,
   useConversation,
+  useConversationCorrections,
   useConversationProgress,
   useDraftAgentMode,
   useOpenConversation,
@@ -90,8 +92,10 @@ export function ConversationChat({
   // first send opens gets its mode from the same request that carries the message (ISS-1039).
   const [pick, setPick] = useState<ConversationMode>("assistant");
 
+  const qc = useQueryClient();
   const progressQ = useConversationProgress(resolvedId);
   const acceptedQ = useAcceptedMessages(resolvedId);
+  const correctionsQ = useConversationCorrections(resolvedId);
 
   const messages = useMemo(() => roomQ.data?.messages ?? [], [roomQ.data]);
   const windows = useMemo(() => roomQ.data?.windows ?? [], [roomQ.data]);
@@ -116,6 +120,25 @@ export function ConversationChat({
         .map((a) => a.clientToken as string),
     );
   }, [acceptedQ.data, messages]);
+
+  // cm:guard the live turn is handed off rather than deleted, and the hand-off waits for a room read
+  // taken AFTER the settle: settlement is a fact about the server, and dropping the streamed answer
+  // the moment it arrives leaves the thread holding neither it nor the durable row for as long as
+  // the refetch takes. A turn that settled on a silence has no row to arrive, which is why the read
+  // landing — and not the row — is what ends the wait (ISS-1078, consult F5).
+  useEffect(() => {
+    if (!resolvedId || !live?.settled) return;
+    if (roomQ.isFetching) return;
+    if (roomQ.dataUpdatedAt <= (live.settledAt ?? 0)) return;
+    qc.setQueryData(["conversation-progress", resolvedId], null);
+  }, [resolvedId, live, roomQ.isFetching, roomQ.dataUpdatedAt, qc]);
+
+  // cm:guard the growth of the LIVE turn is its own dependency, because nothing else moves while it
+  // streams: `itemCount` stays put — one live entry is one entry however long it gets — and `busy`
+  // never changes, so a reader pinned to the bottom would follow the first frame and then watch the
+  // text run off the end of the viewport. The value is the rendered length, which is what actually
+  // grew (ISS-1078, consult F6).
+  const streamedChars = useMemo(() => JSON.stringify(live?.entry ?? null).length, [live]);
 
   const shownOutbox = useMemo(
     () =>
@@ -151,6 +174,7 @@ export function ConversationChat({
     conversationKey: resolvedId,
     ready: roomQ.isSuccess,
     itemCount: messages.length + outbox.length + (live ? 1 : 0),
+    streamedChars,
     live: busy,
   });
 
@@ -312,6 +336,7 @@ export function ConversationChat({
               outbox={shownOutbox}
               agentTurns={agentTurns}
               progress={live}
+              corrections={correctionsQ.data ?? []}
               onRetry={retry}
             />
           )}

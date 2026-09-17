@@ -60,8 +60,28 @@ export interface SettledEntry {
 export interface ConversationProgressHandle {
   /** Fold one loop event into the entry and, on the window, publish it. */
   onTurnEvent: (event: ChatStreamEvent) => void;
-  /** The screen has settled on this exact text; publish any correction and say what to store. */
+  /** The screen has settled on this exact text; publish the final frame and say what to store. */
   onSettled: (deliveredText: string) => Promise<SettledEntry>;
+}
+
+/**
+ * A frozen copy of the entry as it stands right now.
+ */
+// cm:guard every frame is snapshot BEFORE it is queued, and the accumulator's own object is never
+// put on the wire: `entry()` returns the same mutable value each time and folds each later event
+// into it, so a frame queued behind a slow reader check would serialize the turn as it stood when
+// the publish finally ran rather than at its own flush boundary — a tool-call frame would arrive
+// already carrying its result, and the coalescing window would buy nothing at all (consult F1).
+function snapshot(entry: AgentMessage): AgentMessage {
+  return {
+    ...entry,
+    blocks: (entry.blocks ?? []).map((b) => ({
+      ...b,
+      ...(b.toolCall ? { toolCall: { ...b.toolCall } } : {}),
+      ...(b.todos ? { todos: b.todos.map((t) => ({ ...t })) } : {}),
+    })),
+    ...(entry.toolCalls ? { toolCalls: entry.toolCalls.map((t) => ({ ...t })) } : {}),
+  };
 }
 
 /** The turn's last text block — what the model finally said, as the socket carried it. */
@@ -82,11 +102,53 @@ function finalProse(entry: AgentMessage | null): string | null {
 /** The same blocks with every text block dropped. */
 // cm:guard what survives a REPLACEMENT is the tool record and nothing else: the text blocks hold the
 // draft the door refused, so storing them verbatim beside the replacement would put that draft into
-// the permanent record through `blocks` — the exact boundary the amnesty above is bounded by. The
-// interleaving of a reply nobody streamed is not known, and inventing one would be a fabrication, so
-// the delivered sentence lives in `content` alone and the blocks say only what the turn ran.
+// the permanent record through `blocks` — the exact boundary the amnesty above is bounded by.
 function toolBlocksOnly(blocks: readonly ContentBlock[]): ContentBlock[] {
   return blocks.filter((b) => b.type !== 'text');
+}
+
+/**
+ * The turn's blocks with the delivered sentence as their tail.
+ */
+// cm:guard this runs on EVERY turn and not only a replaced one, because the delivered string is the
+// screened one and the screen trims: `screened-reply.ts` hands `result.reply.trim()` to the door, so
+// the streamed tail and the delivered text differ by whitespace on an ordinary reply. Normalizing
+// the tail here is what keeps that difference from reading as a substitution — and what makes the
+// last frame on the socket and the row that follows it say the same sentence (consult F2, F3).
+// cm:guard a REPLACED turn keeps only its tool blocks PLUS the delivered sentence as its tail, and
+// that tail is not optional: the canonical reader takes a row's ordered `blocks` in preference to its
+// `content` whenever they are non-empty, so a row storing tool blocks alone renders as the lookups
+// with no answer under them — the delivered reply would be in the column and invisible on the screen
+// (consult F4). Putting it after the tools is the one interleaving the turn's own order supports.
+// An accepted turn keeps its whole ordered record, commentary included, and only its tail is
+// normalized.
+function withDeliveredTail(
+  entry: AgentMessage,
+  deliveredText: string,
+  replaced: boolean,
+): ContentBlock[] {
+  const blocks = entry.blocks ?? [];
+  if (replaced) {
+    const kept = toolBlocksOnly(blocks);
+    return deliveredText ? [...kept, { type: 'text', text: deliveredText }] : kept;
+  }
+  const out = blocks.map((b) => ({ ...b }));
+  for (let i = out.length - 1; i >= 0; i--) {
+    const block = out[i];
+    if (block?.type === 'text') {
+      block.text = deliveredText;
+      return out;
+    }
+  }
+  return deliveredText ? [...out, { type: 'text', text: deliveredText }] : out;
+}
+
+/** The canonical `content` of an entry: its text blocks, joined. */
+function contentOf(blocks: readonly ContentBlock[]): string {
+  return blocks
+    .filter((b) => b.type === 'text' && b.text)
+    .map((b) => b.text)
+    .join('');
 }
 
 /**
@@ -127,12 +189,13 @@ export function startConversationProgress(args: {
   // accumulator's own refusal, which `onTurnEvent` lets through so the turn ends on it.
   const send = (entry: AgentMessage, replaced?: true): void => {
     published = true;
+    const frame = snapshot(entry);
     chain = chain.then(() =>
       publish({
         event: WEB_CONVERSATION_PROGRESS_EVENT,
         data: {
           conversationId: args.conversationId,
-          entry,
+          entry: frame,
           ...(replaced ? { replaced: true, amnesty: AMNESTY } : {}),
         },
       }).catch((err: unknown) =>
@@ -162,26 +225,27 @@ export function startConversationProgress(args: {
     async onSettled(deliveredText: string): Promise<SettledEntry> {
       const entry = acc.entry();
       const streamed = finalProse(entry);
+      // cm:guard the comparison is TRIMMED on both sides, because the delivery path trims: a reply
+      // the screen accepted whole still reaches `deliver` as `result.reply.trim()`, so an untrimmed
+      // comparison would announce a correction — and drop every text block from the record — for any
+      // answer that merely ended in a newline (consult F3).
       // cm:guard a turn that published NOTHING has nothing to correct, whatever it delivers: an
       // Agent-mode divert and a room answered by a code-authored line never streamed a word, and
       // marking their reply a correction would tell a reader text was withdrawn that they never saw.
-      const replaced = published && streamed !== null && streamed !== deliveredText;
-      if (replaced && entry) {
-        // cm:guard the replacement is published as its OWN final frame carrying the delivered text,
-        // marked, rather than the draft being edited away: swapping it in place is the silent
-        // substitution the owner's decision refuses — a reader who read the draft is owed the fact
-        // that it was withdrawn, not a screen that quietly disagrees with what they remember.
-        send(
-          {
-            ...entry,
-            blocks: [...toolBlocksOnly(entry.blocks ?? []), { type: 'text', text: deliveredText }],
-            content: deliveredText,
-          },
-          true,
-        );
+      const replaced = published && streamed !== null && streamed.trim() !== deliveredText.trim();
+      // cm:guard a turn the model never ran — an Agent-mode divert, a code-authored refusal — stores
+      // NO blocks at all rather than a single invented text block: that row is a text-only row and
+      // `toCanonicalEntry` has answered for those since ISS-1029. Manufacturing blocks for it would
+      // make an empty turn indistinguishable from one that produced exactly one sentence.
+      const blocks = entry ? withDeliveredTail(entry, deliveredText, replaced) : [];
+      // cm:guard the LAST frame is always sent once anything was published, replaced or not: the
+      // turn's closing chunks usually land inside the coalescing window, so without this the socket's
+      // final view of an ordinary answer is a truncated one until the durable row arrives. Sending it
+      // also makes the last frame and the row agree by construction rather than by luck (consult F2).
+      if (published && entry) {
+        send({ ...entry, blocks, content: contentOf(blocks) }, replaced ? true : undefined);
       }
       await chain;
-      const blocks = replaced && entry ? toolBlocksOnly(entry.blocks ?? []) : (acc.blocks() ?? []);
       return { entryId, blocks: blocks.length > 0 ? blocks : null };
     },
   };

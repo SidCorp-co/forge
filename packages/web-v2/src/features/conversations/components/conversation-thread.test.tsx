@@ -311,6 +311,102 @@ describe("ConversationThread", () => {
     expect(screen.getByTestId("thread-live-turn")).toHaveTextContent("reading the issues");
   });
 
+  // cm:guard consult F4, and it is the case the socket-is-not-the-record boundary turns on at the
+  // READING end: a replaced turn stores its tool blocks plus the delivered sentence, and the
+  // canonical reader takes a row's `blocks` in preference to its `content` whenever they are
+  // non-empty. A row whose blocks held the lookups alone would render as cards with no answer under
+  // them — the reply would be in the column and invisible on the screen.
+  it("draws the delivered answer of a replaced turn, not just its lookups", () => {
+    render(
+      <ConversationThread
+        messages={[
+          {
+            ...asked,
+            id: "entry-1",
+            seq: 1,
+            role: "assistant",
+            authorLabel: null,
+            content: "the reply that was sent",
+            blocks: [
+              { type: "tool", toolCall: { id: "t1", name: "forge_issues", input: {} } },
+              { type: "text", text: "the reply that was sent" },
+            ],
+          },
+        ]}
+        windows={[]}
+      />,
+    );
+    expect(screen.getByText("the reply that was sent")).toBeInTheDocument();
+    expect(screen.getByText(/forge_issues/)).toBeInTheDocument();
+  });
+
+  // cm:guard consult F5's other half: the durable row carries the replacement's text and nothing on
+  // it says it replaced anything, so the notice has to be drawn against the ROW once the live turn
+  // is gone. Without this the withdrawal is visible for about as long as one refetch takes.
+  it("keeps saying a stored turn was a replacement", () => {
+    render(
+      <ConversationThread
+        messages={[
+          {
+            ...asked,
+            id: "entry-1",
+            seq: 1,
+            role: "assistant",
+            authorLabel: null,
+            content: "the reply that was sent",
+            blocks: null,
+          },
+        ]}
+        windows={[]}
+        corrections={["entry-1"]}
+      />,
+    );
+    expect(screen.getByTestId("thread-correction")).toHaveTextContent(
+      /replaced what it was writing/i,
+    );
+    expect(screen.getByText("the reply that was sent")).toBeInTheDocument();
+  });
+
+  it("says nothing of the kind about a turn nobody replaced", () => {
+    render(
+      <ConversationThread
+        messages={[
+          {
+            ...asked,
+            id: "entry-1",
+            seq: 1,
+            role: "assistant",
+            authorLabel: null,
+            content: "hello",
+            blocks: null,
+          },
+        ]}
+        windows={[]}
+        corrections={["some-other-entry"]}
+      />,
+    );
+    expect(screen.queryByTestId("thread-correction")).toBeNull();
+  });
+
+  // cm:guard consult F5: a settled turn whose row has not arrived is still DRAWN — the settle is a
+  // fact about the server, not about this browser's cache — and only its caret stops. Dropping it
+  // here leaves the thread holding neither the streamed answer nor the durable one.
+  it("keeps drawing a settled turn whose durable row has not arrived, without the caret", () => {
+    const { container } = render(
+      <ConversationThread
+        messages={[asked]}
+        windows={[closed("answered")]}
+        progress={{
+          conversationId: "c1",
+          settled: true,
+          entry: { id: "entry-1", type: "assistant", content: "there are two open issues." },
+        }}
+      />,
+    );
+    expect(screen.getByTestId("thread-live-turn")).toHaveTextContent("there are two open issues.");
+    expect(container.querySelectorAll(".forge-caret")).toHaveLength(0);
+  });
+
   // cm:guard criterion 1 on the screen: the row a person just typed stops saying "Sending…" the
   // moment the server has filed it, and it is still there — the label goes, the words do not.
   it("drops the Sending label on an accepted row without dropping the row", () => {

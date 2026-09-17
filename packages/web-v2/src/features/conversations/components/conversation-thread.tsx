@@ -47,7 +47,7 @@ function CanonicalTurn({
   return <Conversation items={items} readOnly streaming={streaming} />;
 }
 
-function Said({ message }: { message: ConversationMessage }) {
+function Said({ message, corrected }: { message: ConversationMessage; corrected?: boolean }) {
   // cm:guard a row carrying a `silence_reason` is a turn that RAN and said nothing, and it renders as that rather than as an empty bubble — an assistant message with no text and no label is indistinguishable on screen from one still streaming.
   if (message.silenceReason) {
     return (
@@ -87,14 +87,27 @@ function Said({ message }: { message: ConversationMessage }) {
   // `parseMessages` reads through its `content` branch — so it renders as text rather than as an
   // empty turn (ISS-1078 criterion 12).
   return (
-    <CanonicalTurn
-      entry={{
-        id: message.id,
-        type: "assistant",
-        content: message.content,
-        ...(message.blocks ? { blocks: message.blocks } : {}),
-      }}
-    />
+    <>
+      {/* cm:guard the notice is drawn on the stored ROW and not only on the live turn: the row holds
+          the replacement's text and carries nothing saying it replaced anything, so a marker that
+          lived only as long as the streamed copy would give a person a second or two to notice a
+          withdrawal. This is what keeps the correction from becoming a silent substitution that is
+          merely late (ISS-1078, consult F5). */}
+      {corrected && (
+        <p className="fg-caption flex items-center gap-1.5 text-muted" data-testid="thread-correction">
+          <Icon name="alert" size={12} className="flex-none" />
+          The agent replaced what it was writing — this is the reply that was sent.
+        </p>
+      )}
+      <CanonicalTurn
+        entry={{
+          id: message.id,
+          type: "assistant",
+          content: message.content,
+          ...(message.blocks ? { blocks: message.blocks } : {}),
+        }}
+      />
+    </>
   );
 }
 
@@ -145,6 +158,7 @@ export function ConversationThread({
   outbox = [],
   agentTurns = [],
   progress,
+  corrections = [],
   onRetry,
 }: {
   messages: ConversationMessage[];
@@ -155,6 +169,8 @@ export function ConversationThread({
   agentTurns?: AgentTurn[];
   /** The turn being written right now, as the socket carries it (ISS-1078). */
   progress?: ConversationProgress | null;
+  /** Entry ids this tab watched a draft be replaced under, so the stored row still says so. */
+  corrections?: string[];
   onRetry?: (id: string) => void;
 }) {
   const entries = threadEntries(messages, windows, outbox, agentTurns);
@@ -167,7 +183,14 @@ export function ConversationThread({
   return (
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
-        if (entry.kind === "said") return <Said key={entry.key} message={entry.message} />;
+        if (entry.kind === "said")
+          return (
+            <Said
+              key={entry.key}
+              message={entry.message}
+              corrected={corrections.includes(entry.message.id)}
+            />
+          );
         if (entry.kind === "outbox")
           return <Unsent key={entry.key} item={entry.item} onRetry={onRetry} />;
         if (entry.kind === "pending") {
@@ -204,7 +227,13 @@ export function ConversationThread({
               The agent replaced what it was writing — this is the reply that was sent.
             </p>
           )}
-          <CanonicalTurn entry={progress.entry} streaming={!progress.replaced} />
+          {/* cm:guard the caret stops on a replacement AND on a settle, for the same reason in two
+              shapes: the turn is over. One is the reply that went out and the other is the room
+              saying it is done, and a caret under either says the agent is still writing. */}
+          <CanonicalTurn
+            entry={progress.entry}
+            streaming={!progress.replaced && !progress.settled}
+          />
         </div>
       )}
     </div>

@@ -535,6 +535,38 @@ describe("ConversationChat · a message the server has filed", () => {
     );
   });
 
+  // cm:guard consult F5, and it is a GAP rather than a wrong value, so it is asserted across the
+  // whole of the moment: settlement arrives, and the streamed answer must still be on screen right
+  // through it, until a room read taken after the settle has landed. Reading only the end state
+  // passes against a screen that blanked for a second in the middle.
+  it("keeps the answer on screen from the settle until the room read lands", async () => {
+    hangingSend();
+    const { qc } = mountOpenRoom();
+    await screen.findByRole("button", { name: "send" });
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+
+    const frame = {
+      conversationId: "c1",
+      entry: { id: "entry-1", type: "assistant", content: "there are two open issues." },
+    };
+    await act(async () => {
+      routeEvent({ event: "conversation.progress", data: frame, timestamp: "t" }, qc);
+      flushInvalidations();
+    });
+    await waitFor(() =>
+      expect(screen.getByText("there are two open issues.")).toBeInTheDocument(),
+    );
+
+    // The room settles. The server is done; this browser still has no durable row.
+    await act(async () => {
+      routeEvent({ event: "conversation.settled", data: { conversationId: "c1" }, timestamp: "t" }, qc);
+      flushInvalidations();
+    });
+    expect(screen.getByText("there are two open issues.")).toBeInTheDocument();
+  });
+
   // cm:guard criteria 3 to 5 and 7 where a person meets them: the turn draws as it arrives, and the
   // "Agent is working…" placeholder — which was the whole of what a person saw — goes the moment
   // there is something real to show instead.

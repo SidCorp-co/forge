@@ -107,6 +107,16 @@ export interface ConversationProgress {
   // reach the room is paid for by telling the reader the sentence they read was withdrawn, and a
   // silent substitution is exactly what that decision refuses (core `conversation-progress.ts`).
   replaced?: boolean;
+  /**
+   * The room has settled; this is the last view of the turn before its row replaces it.
+   */
+  // cm:guard a mark and not a delete, because settlement is a fact about the SERVER: the browser
+  // does not have the durable row yet, so dropping the streamed turn on this signal leaves the
+  // thread holding neither it nor the answer. The caret stops here; the entry itself goes when its
+  // own row turns up or when the read that follows the settle lands (ISS-1078, consult F5).
+  settled?: boolean;
+  /** When the settle arrived, so a reader can tell a room read taken after it from one taken before. */
+  settledAt?: number;
 }
 
 export interface ConversationWindow {

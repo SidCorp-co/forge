@@ -141,6 +141,22 @@ export function useAcceptedMessages(id: string | undefined) {
   });
 }
 
+/**
+ * Which of this room's turns were shown as corrections, for as long as this tab is open.
+ */
+// cm:guard the same slot-not-a-read rule as the two above. It exists because the durable row carries
+// the replacement's text and nothing on the row says it WAS a replacement — so without this the
+// withdrawal notice would live only as long as the live turn did, which is a second or two (ISS-1078).
+export function useConversationCorrections(id: string | undefined) {
+  return useQuery<string[]>({
+    queryKey: ["conversation-corrections", id],
+    enabled: !!id,
+    initialData: [],
+    staleTime: Number.POSITIVE_INFINITY,
+    queryFn: () => [],
+  });
+}
+
 export function useDraftAgentMode(projectId: string | undefined, enabled: boolean) {
   return useQuery({
     queryKey: ["conversations", "agent-mode", projectId],
