@@ -44,22 +44,70 @@ describe('config/env', () => {
     expect(env.SMTP_PORT).toBe(2525);
   });
 
-  it('throws at import time when a required var is missing', async () => {
+  // cm:guard these four used to read "throws at import time", and the import is exactly where the
+  // throw must NOT be now: a module-scope throw here reaches every importer of `db/client.js`, and
+  // the failure it produces names no test and carries no assertion — three stack frames and three
+  // skipped cases, as CI reported on PR #457. The refusal is unchanged; only its moment moved
+  // (ISS-1067).
+  it('does not throw at import when a required var is missing', async () => {
     delete process.env.JWT_SECRET;
 
-    await expect(import('./env.js')).rejects.toThrow(/JWT_SECRET/);
+    await expect(import('./env.js')).resolves.toBeDefined();
   });
 
-  it('throws at import time when DATABASE_URL is not a valid URL', async () => {
+  it('throws on the first read when a required var is missing', async () => {
+    delete process.env.JWT_SECRET;
+
+    const { env } = await import('./env.js');
+    expect(() => env.PORT).toThrow(/JWT_SECRET/);
+  });
+
+  it('does not throw at import when DATABASE_URL is not a valid URL', async () => {
     process.env.DATABASE_URL = 'not-a-url';
 
-    await expect(import('./env.js')).rejects.toThrow(/DATABASE_URL/);
+    await expect(import('./env.js')).resolves.toBeDefined();
   });
 
-  it('throws when secrets are shorter than the minimum length', async () => {
+  it('throws on the first read when DATABASE_URL is not a valid URL', async () => {
+    process.env.DATABASE_URL = 'not-a-url';
+
+    const { env } = await import('./env.js');
+    expect(() => env.DATABASE_URL).toThrow(/DATABASE_URL/);
+  });
+
+  it('throws on the first read when secrets are shorter than the minimum length', async () => {
     process.env.DEVICE_TOKEN_PEPPER = 'short';
 
-    await expect(import('./env.js')).rejects.toThrow(/DEVICE_TOKEN_PEPPER/);
+    const { env } = await import('./env.js');
+    expect(() => env.PORT).toThrow(/DEVICE_TOKEN_PEPPER/);
+  });
+
+  // cm:guard the snapshot of `process.env` moved into the loader with the parse. Left at module
+  // scope the laziness would be cosmetic: the parse would still be measured against the environment
+  // as it stood at import, and this case is what tells the two apart.
+  it('reads a variable supplied between the import and the first read', async () => {
+    delete process.env.JWT_SECRET;
+    const { env } = await import('./env.js');
+
+    process.env.JWT_SECRET = 'z'.repeat(32);
+
+    expect(env.JWT_SECRET).toBe('z'.repeat(32));
+  });
+
+  it('parses once and answers the memoised value afterwards', async () => {
+    const { env } = await import('./env.js');
+    expect(env.PORT).toBe(8080);
+
+    process.env.PORT = '9999';
+
+    expect(env.PORT).toBe(8080);
+  });
+
+  it('enumerates the parsed keys rather than the empty proxy target', async () => {
+    const { env } = await import('./env.js');
+
+    expect(Object.keys(env)).toContain('DATABASE_URL');
+    expect('JWT_SECRET' in env).toBe(true);
   });
 });
 
@@ -85,14 +133,16 @@ describe('config/env retired rate-limit variables', () => {
 
   it('refuses the boot when RATE_LIMIT_PAT_MAX is set, naming both replacements', async () => {
     process.env.RATE_LIMIT_PAT_MAX = '600';
-    await expect(import('./env.js')).rejects.toThrow(
+    const { env } = await import('./env.js');
+    expect(() => env.PORT).toThrow(
       /RATE_LIMIT_PAT_MAX is retired; set RATE_LIMIT_PAT_READ_MAX and RATE_LIMIT_PAT_WRITE_MAX/,
     );
   });
 
   it('refuses the boot when RATE_LIMIT_PAT_WINDOW_MS is set, naming both replacements', async () => {
     process.env.RATE_LIMIT_PAT_WINDOW_MS = '60000';
-    await expect(import('./env.js')).rejects.toThrow(
+    const { env } = await import('./env.js');
+    expect(() => env.PORT).toThrow(
       /RATE_LIMIT_PAT_WINDOW_MS is retired; set RATE_LIMIT_PAT_READ_WINDOW_MS and RATE_LIMIT_PAT_WRITE_WINDOW_MS/,
     );
   });

@@ -61,7 +61,7 @@ vi.mock('./outbound.js', () => ({
   sendFixedReply: (...a: unknown[]) => sendFixedReply(...a),
 }));
 
-vi.mock('./connection-manager.js', () => ({ webBaseUrl: 'https://forge.example.co' }));
+vi.mock('./connection-manager.js', () => ({ webBaseUrl: () => 'https://forge.example.co' }));
 vi.mock('./persona.js', () => ({ rocketChatPersona: () => 'PERSONA' }));
 
 const findConversation = vi.fn(async (..._a: unknown[]) => null as unknown);
