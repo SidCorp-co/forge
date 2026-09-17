@@ -112,6 +112,10 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+
+- **A request that never reached the API is now reported.** The browser collapses CORS, DNS and
+  TLS failures into one opaque error, and until now they reached nobody. A response the API
+  answered stays the API's to report.
 - **You can see the assistant think.** A turn now shows how long the model paused before answering,
   and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
 
