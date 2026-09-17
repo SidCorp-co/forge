@@ -369,8 +369,7 @@ export async function recordAndDeliver(
     // condition that started pending while the deployment was healthy and matures two
     // minutes into a wedge is a child of that wedge, and promoting it to `firing` on the
     // state of the world two minutes ago reports the cause twice.
-    const inhibitedNow =
-      ripe || existing.state === 'firing' ? await inhibitor(input) : null;
+    const inhibitedNow = ripe || existing.state === 'firing' ? await inhibitor(input) : null;
     const promote = ripe && !inhibitedNow;
     await db
       .update(notifications)
