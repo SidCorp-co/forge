@@ -9,6 +9,7 @@ import {
   createTestUser,
   setupTestDatabase,
   type TestDatabase,
+  type TestDb,
   truncateAll,
 } from '../helpers/index.js';
 
@@ -29,6 +30,49 @@ interface SeedJobOpts {
   agentSessionId?: string | null;
   archivePath?: string | null;
   payload?: Record<string, unknown>;
+}
+
+/**
+ * Two usage rows keyed on the AGENT SESSION, and one decoy keyed on the job id — the column
+ * this route filtered by until ISS-1015. The decoy must contribute nothing; without it every
+ * assertion on the totals passes against either column, which is how this case stayed green
+ * while the route reported null for every live job.
+ */
+async function seedUsageAndJobIdDecoy(
+  db: TestDb,
+  projectId: string,
+  sessionId: string,
+  jobId: string,
+): Promise<void> {
+  for (const row of [
+    { input: 100, output: 50, cacheRead: 10, cacheCreate: 5, cost: 0.001 },
+    { input: 200, output: 75, cacheRead: 20, cacheCreate: 7, cost: 0.002 },
+  ]) {
+    await seedUsageRow(db, projectId, sessionId, row);
+  }
+  const decoy = { input: 9999, output: 9999, cacheRead: 9999, cacheCreate: 9999, cost: 9.99 };
+  await seedUsageRow(db, projectId, jobId, decoy);
+}
+
+/** One usage_records row, for the cases that key rows on a session id and a decoy on a job id. */
+async function seedUsageRow(
+  db: TestDb,
+  projectId: string,
+  sessionId: string,
+  row: { input: number; output: number; cacheRead: number; cacheCreate: number; cost: number },
+): Promise<void> {
+  await db.execute(sql`
+    INSERT INTO usage_records (
+      id, project_id, source, model, input_tokens, output_tokens,
+      cache_read_tokens, cache_creation_tokens, estimated_cost,
+      request_count, session_id, recorded_at
+    )
+    VALUES (
+      ${randomUUID()}, ${projectId}, 'cli', 'claude-opus-4-7',
+      ${row.input}, ${row.output}, ${row.cacheRead}, ${row.cacheCreate},
+      ${row.cost}, 1, ${sessionId}, now()
+    )
+  `);
 }
 
 describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
@@ -309,37 +353,7 @@ describe('GET /api/jobs/:id/prompt (W2.1.2)', () => {
       userPromptSnapshot: 'body',
       agentSessionId,
     });
-    for (const row of [
-      { input: 100, output: 50, cacheRead: 10, cacheCreate: 5, cost: 0.001, count: 1 },
-      { input: 200, output: 75, cacheRead: 20, cacheCreate: 7, cost: 0.002, count: 1 },
-    ]) {
-      await harness.db.execute(sql`
-        INSERT INTO usage_records (
-          id, project_id, source, model, input_tokens, output_tokens,
-          cache_read_tokens, cache_creation_tokens, estimated_cost,
-          request_count, session_id, recorded_at
-        )
-        VALUES (
-          ${randomUUID()}, ${project.id}, 'cli', 'claude-opus-4-7',
-          ${row.input}, ${row.output}, ${row.cacheRead}, ${row.cacheCreate},
-          ${row.cost}, ${row.count}, ${agentSessionId}, now()
-        )
-      `);
-    }
-
-    // The decoy: keyed on the job id, the column the old filter read. It must
-    // contribute nothing, or every assertion below passes against either one.
-    await harness.db.execute(sql`
-      INSERT INTO usage_records (
-        id, project_id, source, model, input_tokens, output_tokens,
-        cache_read_tokens, cache_creation_tokens, estimated_cost,
-        request_count, session_id, recorded_at
-      )
-      VALUES (
-        ${randomUUID()}, ${project.id}, 'cli', 'claude-opus-4-7',
-        9999, 9999, 9999, 9999, 9.99, 9, ${jobId}, now()
-      )
-    `);
+    await seedUsageAndJobIdDecoy(harness.db, project.id, agentSessionId, jobId);
 
     const token = await signUserToken(user.id);
     const res = await getPrompt(jobId, token);

@@ -25,6 +25,8 @@
 
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
+import { agentSessions, jobs as jobsTable, usageRecords } from '../../src/db/schema.js';
+import { canonicalSessionId, usageSessionMatch } from '../../src/usage-records/rollup.js';
 import {
   createTestProject,
   createTestUser,
@@ -94,10 +96,12 @@ async function seedFixture(db: TestDb, projectId: string, ownerId: string): Prom
            'idle', now() - (g * interval '1 second')
     FROM generate_series(1, ${SESSIONS}) g`);
 
-  // Jobs 1..8000 carry sessions 1..8000. `status` cycles so the view's row set
-  // holds finished, failed and cancelled jobs, and every 500th job's span is
-  // inverted (finished before started) so the `duration_seconds` guard of 0128
-  // is exercised on both sides.
+  // Jobs 1..8000 carry sessions 1..8000. `status` cycles through the REAL members of
+  // `jobStatuses` — `done`, `failed`, `cancelled` — because the view yields a duration only
+  // for `done`: seeded with a status the enum does not hold, every row's `duration_seconds`
+  // is NULL and the equivalence case cannot tell the two views' duration expressions apart.
+  // Every 500th job's span is inverted, finished before started, so the guard 0128 added is
+  // exercised on both of its sides.
   await db.execute(sql`
     INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status,
                       agent_session_id, dispatched_at, finished_at, model_used)
@@ -105,10 +109,10 @@ async function seedFixture(db: TestDb, projectId: string, ownerId: string): Prom
            ('30000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${ISSUES}) + 1), 10, '0'))::uuid,
            ('20000000-0000-4000-8000-ab' || lpad(to_hex(((g - 1) % ${RUNS}) + 1), 10, '0'))::uuid,
            ${ownerId}, 'plan',
-           (ARRAY['succeeded','failed','cancelled'])[(g % 3) + 1]::text,
+           (ARRAY['done','failed','cancelled'])[(g % 3) + 1]::text,
            ('10000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid,
            now() - (g * interval '1 second'),
-           CASE WHEN g % 500 = 0 THEN now() - (g * interval '2 second')
+           CASE WHEN g % 500 = 0 THEN now() - (g * interval '1 second') - interval '5 second'
                 ELSE now() - (g * interval '1 second') + interval '30 second' END,
            'claude-opus-4-7'
     FROM generate_series(1, ${JOBS}) g`);
@@ -120,7 +124,7 @@ async function seedFixture(db: TestDb, projectId: string, ownerId: string): Prom
                       agent_session_id, dispatched_at, finished_at, model_used)
     SELECT ('50000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid, ${projectId}, NULL,
            ('20000000-0000-4000-8000-ab' || lpad(to_hex(g), 10, '0'))::uuid, ${ownerId}, 'plan',
-           'succeeded',
+           'done',
            CASE WHEN g % 2 = 0 THEN NULL
                 ELSE ('10000000-0000-4000-8000-ab' || lpad(to_hex(${SESSIONS} + g), 10, '0'))::uuid END,
            now() - interval '1 hour', now() - interval '30 minute', NULL
@@ -176,11 +180,16 @@ async function expectViewMatchesLegacy(db: TestDb): Promise<void> {
       SELECT count(*) FILTER (WHERE cost_usd = 0)::text AS costless,
              count(*) FILTER (WHERE cost_usd > 0)::text AS priced,
              count(*) FILTER (WHERE duration_seconds IS NULL)::text AS no_duration,
+           count(*) FILTER (WHERE duration_seconds > 0)::text AS positive_duration,
              count(DISTINCT step)::text AS steps
       FROM pipeline_run_step_durations`);
   expect(Number(shapes?.costless)).toBeGreaterThan(0);
   expect(Number(shapes?.priced)).toBeGreaterThan(0);
   expect(Number(shapes?.no_duration)).toBeGreaterThan(0);
+  // cm:guard BOTH sides of the 0128 duration guard, because only one of them is free: a fixture
+  // whose jobs never reach `done` yields NULL for every row, and the equality above then holds
+  // between two views whose duration expressions could differ in any way at all.
+  expect(Number(shapes?.positive_duration)).toBeGreaterThan(0);
 }
 
 describe('ISS-1015 · usage_records rollups are index-served', () => {
@@ -207,13 +216,20 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
     return [...rows].map((r) => Object.values(r)[0]).join('\n');
   };
 
-  /** What every index-served assertion here means, in one place. */
+  /**
+   * What every index-served assertion here means, in one place.
+   *
+   * cm:guard the predicate under EXPLAIN is built by the REAL `usageSessionMatch` and
+   * `canonicalSessionId` rather than hand-copied into this file. A likeness would make the
+   * negative control prove only that Postgres distinguishes two predicates — true and not
+   * the claim — while a regression in the helper kept every case green.
+   */
   const expectIndexServed = (text: string) => {
     expect(text).toContain('usage_records_session_id_idx');
     expect(text).not.toContain('Seq Scan on usage_records');
   };
 
-  const totals = sql`coalesce(sum(estimated_cost), 0)::float AS cost, count(*)::int AS n`;
+  const totals = sql`coalesce(sum(${usageRecords.estimatedCost}), 0)::float AS cost, count(*)::int AS n`;
 
   it('seeds the fixture at the deployment order of magnitude and cardinality', async () => {
     const [counts] = await harness.db.execute<{ n: string; sessions: string }>(sql`
@@ -225,31 +241,35 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
   // criteria 1 — one session out of 16,000: about 2 rows, 0.008% of the table.
   it('serves GET /agent-sessions/:id/cost from the index', async () => {
     expectIndexServed(
-      await plan(sql`
-        SELECT ${totals} FROM usage_records WHERE session_id = ${sessionId(42)}::uuid::text`),
+      await plan(
+        sql`SELECT ${totals} FROM ${usageRecords} WHERE ${usageSessionMatch(sql`= ${canonicalSessionId(sessionId(42))}`)}`,
+      ),
     );
   });
 
   // criteria 2 — a list page of 25 sessions: about 38 rows, 0.16%.
   it('serves the agent-sessions list-page cost rollup from the index', async () => {
     const page = sql.join(
-      Array.from({ length: 25 }, (_, i) => sql`${sessionId(i + 1)}::uuid::text`),
+      Array.from({ length: 25 }, (_, i) => canonicalSessionId(sessionId(i + 1))),
       sql`, `,
     );
     expectIndexServed(
-      await plan(sql`
-        SELECT session_id, ${totals} FROM usage_records
-        WHERE session_id IN (${page}) GROUP BY session_id`),
+      await plan(
+        sql`SELECT ${usageRecords.sessionId}, ${totals} FROM ${usageRecords}
+            WHERE ${usageSessionMatch(sql`IN (${page})`)} GROUP BY ${usageRecords.sessionId}`,
+      ),
     );
   });
 
   // criteria 3 — one issue's sessions: 4 sessions, about 6 rows.
   it('serves GET /issues/:id/cost-summary from the index', async () => {
+    const sessionIds = sql`(
+      SELECT DISTINCT ${jobsTable.agentSessionId}::text FROM ${jobsTable}
+      WHERE ${jobsTable.issueId} = ${issueId(7)} AND ${jobsTable.agentSessionId} IS NOT NULL)`;
     expectIndexServed(
-      await plan(sql`
-        SELECT ${totals} FROM usage_records WHERE session_id IN (
-          SELECT DISTINCT agent_session_id::text FROM jobs
-          WHERE issue_id = ${issueId(7)} AND agent_session_id IS NOT NULL)`),
+      await plan(
+        sql`SELECT ${totals} FROM ${usageRecords} WHERE ${usageSessionMatch(sql`IN ${sessionIds}`)}`,
+      ),
     );
   });
 
@@ -269,10 +289,13 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
   it('serves the issues-list rollup from the index for one issue', async () => {
     expectIndexServed(
       await plan(sql`
-        SELECT p.issue_id, coalesce(sum(u.estimated_cost), 0)::float AS cost
-        FROM (SELECT DISTINCT issue_id, agent_session_id::text AS session_id FROM jobs
-              WHERE issue_id = ${issueId(7)} AND agent_session_id IS NOT NULL) p
-        INNER JOIN usage_records u ON u.session_id = p.session_id
+        SELECT p.issue_id, coalesce(sum(${usageRecords.estimatedCost}), 0)::float AS cost
+        FROM (SELECT DISTINCT ${jobsTable.issueId} AS issue_id,
+                     ${jobsTable.agentSessionId}::text AS session_id
+              FROM ${jobsTable}
+              WHERE ${jobsTable.issueId} = ${issueId(7)}
+                AND ${jobsTable.agentSessionId} IS NOT NULL) p
+        INNER JOIN ${usageRecords} ON ${usageSessionMatch(sql`= p.session_id`)}
         GROUP BY p.issue_id`),
     );
   });
@@ -307,11 +330,12 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
 
   // criteria 5 — one run (about 3 sessions), then a page of 25 runs (about 75, 0.5%).
   it('serves both pipeline-run cost rollups from the index', async () => {
+    const joinOn = usageSessionMatch(sql`= ${agentSessions.id}::text`);
     expectIndexServed(
       await plan(sql`
-        SELECT ${totals} FROM usage_records u
-        INNER JOIN agent_sessions s ON u.session_id = s.id::text
-        WHERE s.pipeline_run_id = ${runId(11)}`),
+        SELECT ${totals} FROM ${usageRecords}
+        INNER JOIN ${agentSessions} ON ${joinOn}
+        WHERE ${agentSessions.pipelineRunId} = ${runId(11)}`),
     );
     const page = sql.join(
       Array.from({ length: 25 }, (_, i) => sql`${runId(i + 1)}`),
@@ -319,9 +343,10 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
     );
     expectIndexServed(
       await plan(sql`
-        SELECT s.pipeline_run_id, ${totals} FROM usage_records u
-        INNER JOIN agent_sessions s ON u.session_id = s.id::text
-        WHERE s.pipeline_run_id IN (${page}) GROUP BY s.pipeline_run_id`),
+        SELECT ${agentSessions.pipelineRunId}, ${totals} FROM ${usageRecords}
+        INNER JOIN ${agentSessions} ON ${joinOn}
+        WHERE ${agentSessions.pipelineRunId} IN (${page})
+        GROUP BY ${agentSessions.pipelineRunId}`),
     );
   });
 
@@ -368,8 +393,9 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
       );
       return row;
     };
-    const canonical = await read(sql`${upper}::uuid::text`);
-    expect(canonical).toEqual(await read(sql`${lower}::uuid::text`));
+    // through the real helper, so a canonicalisation that regresses fails here too
+    const canonical = await read(canonicalSessionId(upper));
+    expect(canonical).toEqual(await read(canonicalSessionId(lower)));
     expect(canonical?.n).toBeGreaterThan(0);
     expect((await read(sql`${upper}`))?.n).toBe(0);
   });

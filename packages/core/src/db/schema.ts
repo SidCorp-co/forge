@@ -20,6 +20,7 @@ import {
   uuid,
   varchar,
 } from 'drizzle-orm/pg-core';
+import { canonicalUuidText, orgHandleText } from './column-checks.js';
 import * as axes from './release-axes.js';
 import { identSearchColumn, MEMORY_EMBEDDING_DIM, pgVector, tsVector } from './schema-types.js';
 
@@ -256,10 +257,7 @@ export const organizationMembers = pgTable(
     orgHandleUnique: uniqueIndex('organization_members_org_handle_uniq')
       .on(t.orgId, t.handle)
       .where(sql`handle IS NOT NULL`),
-    handleShape: check(
-      'organization_members_handle_shape',
-      sql`${t.handle} IS NULL OR ${t.handle} ~ '^[a-z0-9][a-z0-9-]{1,38}[a-z0-9]$'`,
-    ),
+    handleShape: check('organization_members_handle_shape', orgHandleText(t.handle)),
   }),
 );
 
@@ -1953,11 +1951,7 @@ export const usageRecords = pgTable(
     // cm:guard ISS-1022 — the admin spend readers (`admin/aggregate-routes.ts`, `admin/metric-series.ts`, `admin/alert-queries.ts` A4) are cross-tenant and constrain `recorded_at` alone, which leaves the composite above with an unbound leading column: Postgres then scans the whole of it (cost 1,010 on beta, 2026-09-15) instead of a range. A4 runs on the 5-minute sweeper as well as the GET.
     recordedAtIdx: index('usage_records_recorded_at_idx').on(t.recordedAt),
     sessionIdIdx: index('usage_records_session_id_idx').on(t.sessionId),
-    // cm:guard ISS-1015 — this constraint is what lets every cost rollup reach the index above by plain text equality. `session_id` is an `agent_sessions.id` in a TEXT column, and a row holding some other spelling — uppercase hex, an unhyphenated uuid, a non-uuid string — is not an error any surface reports: it is a row every cost figure silently omits, which is the substitution `usageSessionMatch`'s old regex-and-cast was hiding. Validated against all 24,085 rows on beta (2026-09-17): every one already fits, so adding it discards nothing, and a deploy where one does not fit aborts naming the row rather than cleaning it away.
-    sessionIdCanonicalChk: check(
-      'usage_records_session_id_uuid_chk',
-      sql`${t.sessionId} IS NULL OR ${t.sessionId} ~ '^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$'`,
-    ),
+    sessionIdChk: check('usage_records_session_id_uuid_chk', canonicalUuidText(t.sessionId)),
     jobIdUq: uniqueIndex('usage_records_job_id_key').on(t.jobId).where(sql`job_id IS NOT NULL`),
   }),
 );
