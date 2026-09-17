@@ -251,6 +251,24 @@ describe('what the request path does with GitHub s answer', () => {
     expect(got.body).not.toContain('ghs_');
   });
 
+  // The token `installationToken` answers is FRESH per call, so redacting with a second mint
+  // redacts a string the text cannot contain. The read has one in hand already, and that is the one
+  // a workflow echoing `${{ secrets.GITHUB_TOKEN }}` would have printed.
+  it('redacts the token THIS request was made with, not whatever a second mint answers', async () => {
+    installationTokenMock.mockReset();
+    installationTokenMock
+      .mockResolvedValueOnce('ghs_the_one_the_request_used')
+      .mockResolvedValue('ghs_a_later_different_token');
+    globalThis.fetch = vi.fn(
+      async () => new Response('echo: ghs_the_one_the_request_used\ndone', { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const client = await githubAgentClient(PROJECT);
+    const got = await client.text({ path: '/x', accept: 'text/plain', maxBytes: 10_000 });
+    expect(got.body).not.toContain('ghs_the_one_the_request_used');
+    expect(got.body).toContain('done');
+  });
+
   // Answers finding F4. A log is read for its END — the failure — and a cap that keeps the head
   // returns output from before it, under a `truncated` flag that says something was dropped but not
   // which end.

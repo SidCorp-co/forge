@@ -229,9 +229,17 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
     }
   };
 
-  // A mint failure here must not lose the generic scrub: the token is ONE of the shapes, and
-  // returning unscrubbed text because the extra one could not be resolved is the worst of both.
-  const scrubText = async (text: string): Promise<string> => {
+  /**
+   * Redact, with the credential this client uses added to the generic shapes.
+   *
+   * `using` is the token a caller already has in hand. Minting a second one instead would redact a
+   * credential the text cannot contain: `installationToken` returns a FRESH token per call, so the
+   * one a request was made with and the one a later mint answers are different strings, and the
+   * scrubber would be handed the wrong one.
+   */
+  // cm:guard a mint failure must not lose the generic scrub: the token is ONE of the shapes, and returning unscrubbed text because the extra one could not be resolved is the worst of both outcomes.
+  const scrubText = async (text: string, using?: string): Promise<string> => {
+    if (using) return scrubLogText(text, [using]);
     let extra: string[] = [];
     try {
       extra = [await mint()];
@@ -282,9 +290,10 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
       maxBytes: number;
       keep?: 'head' | 'tail';
     }): Promise<{ body: string; bytes: number; truncated: boolean }> {
+      const bearer = await token();
       const res = await fetch(`${base}${args.path}`, {
         headers: {
-          Authorization: `Bearer ${await token()}`,
+          Authorization: `Bearer ${bearer}`,
           Accept: args.accept,
           'X-GitHub-Api-Version': '2022-11-28',
         },
@@ -297,7 +306,7 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
           await githubMessage(res),
         );
       }
-      const redacted = await scrubText(await res.text());
+      const redacted = await scrubText(await res.text(), bearer);
       const buf = Buffer.from(redacted, 'utf8');
       const bytes = buf.byteLength;
       if (bytes <= args.maxBytes) return { body: redacted, bytes, truncated: false };
@@ -306,7 +315,7 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
       return { body: kept.toString('utf8'), bytes, truncated: true };
     },
 
-    scrub: scrubText,
+    scrub: (text: string) => scrubText(text),
   };
 }
 
