@@ -8,8 +8,11 @@
  * produced 0 of 4,436 issues, so there was nothing in the field to keep
  * working.
  *
- * Outbound (open a pull request, review one) lands next and is refused by name
- * until it does.
+ * Outbound (open a pull request, review one) is not implemented, and the
+ * declaration says so rather than promising it: `canDispatch: false` with no
+ * `dispatchOutbound` at all, which `check-integration-declarations.mjs` holds to
+ * the adapter since ISS-1062. Each face turns on in the change that implements
+ * it — the check run is ISS-1072, the merge ISS-1073.
  */
 
 import type { BindingRole } from '../../db/schema.js';
@@ -113,12 +116,6 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     }
   },
 
-  dispatchOutbound() {
-    throw new Error(
-      'github: dispatchOutbound is not supported yet — the pull-request verbs are not implemented',
-    );
-  },
-
   async handleInbound(
     ctx: AdapterContext<GitHubConfig, GitHubSecrets>,
     input: InboundDispatchInput,
@@ -156,7 +153,16 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       status: 'ok',
     });
 
-    const result = await handleGitHubEvent(ctx.projectId, eventType, payload);
+    const result = await handleGitHubEvent(
+      {
+        projectId: ctx.projectId,
+        bindingId: ctx.bindingId,
+        config: ctx.config ?? {},
+        secrets: ctx.secrets ?? {},
+      },
+      eventType,
+      payload,
+    );
     return { deliveryId, actions: result.actions };
   },
 };

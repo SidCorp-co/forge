@@ -112,6 +112,10 @@ for (const decl of listIntegrations()) {
         buildEntryType: path && typeOf(path.buildEntry),
       },
     },
+    adapter: {
+      present: Boolean(decl && decl.adapter),
+      dispatchOutboundType: typeOf(decl && decl.adapter && decl.adapter.dispatchOutbound),
+    },
     schemas: !decl || !decl.schemas ? { present: false } : {
       present: true,
       declaredKeys: Object.keys(decl.schemas),

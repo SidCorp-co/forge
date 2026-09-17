@@ -11,7 +11,7 @@ import { findConnectionById, updateConnection } from '../store.js';
 import {
   declareIntegration,
   type HealthCheckResult,
-  type IntegrationAdapterMethods,
+  type DispatchingAdapterMethods,
   type OutboundDispatchInput,
   type OutboundDispatchResult,
 } from '../types.js';
@@ -77,7 +77,7 @@ function describeCoolifyFailure(err: unknown): string {
   return err instanceof Error ? err.message : 'unknown error';
 }
 
-const coolifyAdapterMethods: IntegrationAdapterMethods<CoolifyConfig, CoolifySecrets> = {
+const coolifyAdapterMethods: DispatchingAdapterMethods<CoolifyConfig, CoolifySecrets> = {
   async healthcheck(ctx) {
     const started = Date.now();
     const client = buildClient(ctx);

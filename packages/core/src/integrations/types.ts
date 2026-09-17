@@ -9,12 +9,7 @@ export type IntegrationProvider =
   | 'rocketchat'
   | 'github'
   | 'google'
-  // cm:why `agent` carries a DECLARATION and no adapter methods — nothing is integrated. It is a
-  // release CHANNEL declaration (which box may ship, how to prove it shipped, how to undo it), and
-  // the deploy itself is the project's own script run by the release session. `getAdapter` answers
-  // `undefined` for it and every caller already guards that, so the absence is a supported shape.
-  // What ISS-1071 changed is that the absence of METHODS no longer means absence from the registry:
-  // its schemas and its `agentPath: none` are declared there like every other provider's.
+  // cm:why `agent` carries a DECLARATION and no adapter methods — nothing is integrated. It is a release CHANNEL declaration (which box may ship, how to prove it shipped, how to undo it), and the deploy itself is the project's own script run by the release session. `getAdapter` answers `undefined` for it and every caller already guards that, so the absence is a supported shape. What ISS-1071 changed is that the absence of METHODS no longer means absence from the registry: its schemas and its `agentPath: none` are declared there like every other provider's.
   | 'agent';
 
 /**
@@ -128,11 +123,7 @@ export interface InboundDispatchResult {
  * key reaches the runner AND core answers `forge_storefront_target` from the same binding. The
  * `kind` names the RISK; `tools` names the core-mediated surface the same grant gates.
  */
-// cm:guard `justification` is required on `direct-mcp` and on no other arm, and it is the whole of
-// how ISS-1071 rule 2 ("a new provider defaults to core-mediated; direct-mcp is for providers that
-// offer no other route, and the registry records that intent") is kept honest. Deleting the field
-// does not weaken a message — it removes the only place the decision to export a project's
-// credential to a runner box is written down, and `check-integration-declarations.mjs` reads it.
+// cm:guard `justification` is required on `direct-mcp` and on no other arm, and it is the whole of how ISS-1071 rule 2 ("a new provider defaults to core-mediated; direct-mcp is for providers that offer no other route, and the registry records that intent") is kept honest. Deleting the field does not weaken a message — it removes the only place the decision to export a project's credential to a runner box is written down, and `check-integration-declarations.mjs` reads it.
 export type AgentPath =
   | { readonly kind: 'none' }
   | { readonly kind: 'core-mediated'; readonly tools: readonly string[] }
@@ -336,7 +327,21 @@ export interface IntegrationAdapterMethods<
     config: Record<string, unknown>;
   }): Promise<Record<string, unknown>>;
   healthcheck(ctx: AdapterContext<TConfig, TSecrets>): Promise<HealthCheckResult>;
-  dispatchOutbound(
+  /**
+   * Core's outbound call, present exactly where `capabilities.canDispatch` is true.
+   *
+   * Optional since ISS-1062, and the two must agree: `check-integration-declarations.mjs` refuses a
+   * declaration where one is true and the other absent, in either direction. Until then this was
+   * required, six of seven adapters satisfied it with a stub that threw by name, and `canDispatch`
+   * had no reader anywhere in core — so github could have declared `true` beside a throwing stub and
+   * all 22 verify checks would have stayed green. ISS-1062's own rule is that a capability is
+   * declared or it is absent, never declared and unimplemented; an absent method is how a type
+   * system can hold that rule, and a stub is how it could not.
+   *
+   * A caller that does not know which provider it has asks `registry.ts:dispatchThrough`, which is
+   * the one place the refusal is worded.
+   */
+  dispatchOutbound?(
     ctx: AdapterContext<TConfig, TSecrets>,
     input: OutboundDispatchInput,
   ): Promise<OutboundDispatchResult>;
@@ -345,6 +350,20 @@ export interface IntegrationAdapterMethods<
     input: InboundDispatchInput,
   ): Promise<InboundDispatchResult>;
 }
+
+/**
+ * An adapter that implements core's outbound call.
+ *
+ * What `canDispatch: true` commits a provider to, expressed so the compiler holds it at the one
+ * place it is written rather than at every call site: a caller holding a `DispatchingAdapterMethods`
+ * calls `dispatchOutbound` without a guard, and a caller holding a bare `IntegrationAdapterMethods`
+ * is made to ask `registry.ts:dispatchThrough` instead.
+ */
+export type DispatchingAdapterMethods<
+  TConfig extends Record<string, unknown> = Record<string, unknown>,
+  TSecrets extends Record<string, unknown> = Record<string, unknown>,
+> = IntegrationAdapterMethods<TConfig, TSecrets> &
+  Required<Pick<IntegrationAdapterMethods<TConfig, TSecrets>, 'dispatchOutbound'>>;
 
 /**
  * ONE object per provider, and the only place a provider is described. Every generic path resolves

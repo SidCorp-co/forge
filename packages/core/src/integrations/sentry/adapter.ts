@@ -160,10 +160,6 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
     }
   },
 
-  async dispatchOutbound() {
-    return notSupported('dispatchOutbound');
-  },
-
   async handleInbound() {
     return notSupported('handleInbound');
   },

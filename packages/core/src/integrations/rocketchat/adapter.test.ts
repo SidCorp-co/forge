@@ -73,9 +73,9 @@ describe('rocketChatAdapter.healthcheck', () => {
     const caps = rocketchatIntegration.capabilities;
     expect(caps?.canDispatch).toBe(false);
     expect(caps?.canReceiveWebhook).toBe(false);
-    expect(() =>
-      rocketChatAdapter.dispatchOutbound(ctx(), { eventName: 'x', payload: {} }),
-    ).toThrow(/not supported/);
+    // ISS-1062 — the stub that threw is gone. `canDispatch: false` and an absent method are one
+    // statement now, and `check-integration-declarations.mjs` refuses them when they disagree.
+    expect(rocketChatAdapter.dispatchOutbound).toBeUndefined();
   });
 
   it('declares no agent path at all, so no grant on it can ever hold', () => {

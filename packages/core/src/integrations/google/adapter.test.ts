@@ -258,11 +258,13 @@ describe('test-connection mints fresh (criterion 7)', () => {
 });
 
 describe('the surfaces this provider does not have', () => {
-  it('refuses an outbound dispatch by name instead of accepting and dropping it', async () => {
-    await expect(
-      // biome-ignore lint/suspicious/noExplicitAny: exercising the refusal, not the signature
-      googleAdapter.dispatchOutbound(buildCtx({}), {} as any),
-    ).rejects.toThrow(/forge_google_sheets/);
+  // ISS-1062 — the refusal moved off the adapter and onto the registry. A stub that threw made
+  // `dispatchOutbound` look implemented to the type system on a provider that implements none, which
+  // is exactly the state the declaration checker now refuses; absence is the honest shape and
+  // `dispatchThrough` is the one place the sentence lives.
+  it('implements no outbound dispatch at all, which is what its declaration says', () => {
+    expect(googleAdapter.dispatchOutbound).toBeUndefined();
+    expect(googleIntegration.capabilities.canDispatch).toBe(false);
   });
 
   it('refuses an inbound webhook by name', async () => {

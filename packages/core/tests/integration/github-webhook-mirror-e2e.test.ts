@@ -56,6 +56,19 @@ describe('handleGitHubEvent E2E', () => {
     projectId = project.id;
   });
 
+  // ISS-1062 — the handler takes the delivery's own binding rather than a project id, because the
+  // projection half needs to know WHICH repository the delivery was about and whose credential may
+  // re-read it. The mirror half below reads only `projectId`, which is why these cases carry a
+  // binding id that resolves to nothing: none of them reaches the projection.
+  function evCtx() {
+    return {
+      projectId,
+      bindingId: '00000000-0000-4000-8000-000000000000',
+      config: {},
+      secrets: {},
+    };
+  }
+
   async function rows() {
     return (await harness.db.execute(sql`
       SELECT external_id, status, merged_at, source FROM issues WHERE project_id = ${projectId}
@@ -68,7 +81,7 @@ describe('handleGitHubEvent E2E', () => {
   }
 
   it('mirrors an opened GitHub issue', async () => {
-    const r = await mods.handleGitHubEvent(projectId, 'issues', {
+    const r = await mods.handleGitHubEvent(evCtx(), 'issues', {
       action: 'opened',
       issue: { id: 7001, title: 'upstream bug', body: 'from GitHub' },
     });
@@ -80,11 +93,11 @@ describe('handleGitHubEvent E2E', () => {
   });
 
   it('closing a mirrored issue leaves merged_at NULL', async () => {
-    await mods.handleGitHubEvent(projectId, 'issues', {
+    await mods.handleGitHubEvent(evCtx(), 'issues', {
       action: 'opened',
       issue: { id: 7002, title: 'wontfix upstream', body: null },
     });
-    const r = await mods.handleGitHubEvent(projectId, 'issues', {
+    const r = await mods.handleGitHubEvent(evCtx(), 'issues', {
       action: 'closed',
       issue: { id: 7002 },
     });
@@ -96,7 +109,28 @@ describe('handleGitHubEvent E2E', () => {
   });
 
   it('an opened pull request creates no issue', async () => {
-    const r = await mods.handleGitHubEvent(projectId, 'pull_request', { action: 'opened' });
+    const r = await mods.handleGitHubEvent(evCtx(), 'pull_request', { action: 'opened' });
+    expect(r.actions).toBe(0);
+    expect(await rows()).toHaveLength(0);
+  });
+
+  // ISS-1062 — the payload that USED to file an issue per opened PR now carries a head, a base and a
+  // number, so it reaches the projection instead. This asserts the issues table stays empty on the
+  // shape that is no longer inert: a projection write that leaked into the mirror would show up here
+  // as a row, and nowhere else.
+  it('a full pull_request payload writes no issue either', async () => {
+    const r = await mods.handleGitHubEvent(evCtx(), 'pull_request', {
+      action: 'opened',
+      pull_request: {
+        number: 41,
+        title: 'a change under review',
+        state: 'open',
+        updated_at: '2026-09-17T01:00:00Z',
+        head: { ref: 'ISS-9999-nothing', sha: 'a'.repeat(40) },
+        base: { ref: 'main', sha: 'b'.repeat(40) },
+      },
+      repository: { full_name: 'SidCorp-co/forge' },
+    });
     expect(r.actions).toBe(0);
     expect(await rows()).toHaveLength(0);
   });
