@@ -177,14 +177,19 @@ async function insertEdge(
   `);
 }
 
+// cm:guard the budget is TEN SECONDS and not the one second 40x25ms bought, because the row this
+// waits for is written by a DETACHED insert (`memory/search-service.ts` voids it so a search is
+// never blocked by its own analytics). Under four vitest workers on a loaded box one second is not
+// enough and this failed once in two runs of the same commit, which reads as a broken change
+// rather than as a wait that was too short (measured against d0389485c on ISS-1027).
 async function lastAnalytics(projectId: string): Promise<Record<string, unknown>> {
-  for (let i = 0; i < 40; i++) {
+  for (let i = 0; i < 200; i++) {
     const rows = await harness.db.execute<{ metadata: Record<string, unknown> }>(sql`
       SELECT metadata FROM retrieval_analytics WHERE project_id = ${projectId}
       ORDER BY created_at DESC LIMIT 1
     `);
     if (rows[0]) return rows[0].metadata;
-    await new Promise((r) => setTimeout(r, 25));
+    await new Promise((r) => setTimeout(r, 50));
   }
   throw new Error('no retrieval_analytics row was written');
 }

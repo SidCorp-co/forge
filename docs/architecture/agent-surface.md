@@ -25,7 +25,7 @@ flowchart LR
 
   subgraph CORE["forge · core"]
     API["API · REST /api/*"]
-    MCP["MCP · /mcp<br/>59 tools"]
+    MCP["MCP · /mcp<br/>61 tools"]
     WS["WS · /ws"]
   end
 
@@ -161,6 +161,7 @@ the other's half, which is why a skill never names `runner-v*` or any project's 
 | **stay** | `forge_step_start`, `forge_phase`, `forge_step_handoff.*`, `forge_uploads` | the four families `ISS-931` rule 2 names, asserted by `packages/core/src/mcp/keep-forever-tools.test.ts`. `step_start` opens the session every other call reports into and returns the issue body the runner did not inline; `uploads` returns an image content block, which a shell process cannot produce; `phase` and `step_handoff.*` are session-lifecycle hooks, not data queries. **All four have REST twins, so the twin test does not protect them — this row does.** The wave-3 pass surfaced `forge_step_handoff.delete` as a device-free candidate on exactly that reasoning |
 | **blocked on a fleet upgrade** | wrapped verbs: `forge_issues` `forge_comments` `forge_config` `forge_guide` `forge_knowledge` `forge_memory.search` `forge_project_pm` `forge_projects.get` `forge_projects.list` · reached through `forge call`: `forge_memory.write` `forge_memory.feedback` | what the installed plugin CLI names — counted by grepping the artifact, not this repo, because this repo cannot see it. That CLI has moved to `/api`; the copies on the boxes have not. **This CLI holds a PAT, so `ISS-931` did not take its access away** — its calls are ordinary `token_id` traffic. The second group is not hard-coded anywhere: `forge call <tool>` is a raw `tools/call` passthrough, and the CLI's own guide text tells agents to reach the memory verbs through it (`src/guides/guides.mjs`) |
 | **paused, not cleared** | ~20 that took device-token calls | `ISS-931` made `/mcp` refuse a device and `mcp/config.rs` write a credential `/mcp` accepts, so `mcp/server.ts` stamps `device_id` NULL on every new row. That did NOT retire these callers: it 401s them until their box installs a `runner-v*` that writes one, at which point **the same sessions return, calling the same tools, on a PAT**. A non-zero device count is therefore a forecast, not history — read the rule below. `runner-v0.12.1` is that release and `forge-vm` is on it as of 2026-09-08, so the return has begun and this row is now discharged **per tool by reappearing `token_id` traffic**, never by the tag existing |
+| **added deliberately, wave ISS-1074** | `forge_github` | the GitHub integration's agent face (ISS-1062 layer 5). It has no REST twin and is not a data query: core holds the GitHub App credential and makes the call, so an agent reads a diff, reads a failing check run's log, comments, opens a pull request, requests a review and submits a verdict without a personal `gh` credential on the box. Its own gate is the binding's `agent_access`, not RBAC, and `integrations/github/agent-declaration.test.ts` refuses a declaration naming a tool this array does not carry. Nothing on it merges — that is the dispatch face's and ISS-1073's |
 | **fenced by design** | `forge_orgs.list` `forge_orgs.members` `forge_collaborators` | they resolve no project, so a project-scoped PAT there is an account-scoped credential in disguise. Session only, on every transport |
 | **free to go** | the rest, and only after all three rows above are checked against it | each has a REST twin — see [data-plane-surface.md](data-plane-surface.md). A REST twin is necessary and not sufficient, and this row has been wrong three times for that reason: `forge_memory.search`, `forge_projects.get` and `forge_projects.list` all sat here with twins while the fleet's CLI called the tool and not the route |
 
@@ -222,12 +223,13 @@ correctly under the new credential: `forge_skill_facts.get` had 23 **device** ca
 a PAT, and is on `PAT_ALLOWED_PREFIXES` — which is exactly the point. Check which species the
 callers hold and which the middleware admits, not whether a route is mounted.
 
-**The device counts are frozen, and that is the pruner's doing rather than `ISS-931`'s.** They
-could not fall before either: the table declares 90-day retention and nothing calls
-`enforceMcpAuditRetention`. Wiring it would drain every device count to zero within 90 days of the
-last device call — and that must not be read as clearing 20 tools at once, because rule 1 above is
-about callers who return, not about rows that expire. Whoever wires the pruner rewrites rule 1 in
-the same commit, or the drain silently licenses the deletions it was never evidence for.
+**The device counts are frozen, and that is retention's doing rather than `ISS-931`'s.** They
+cannot fall: `mcp_audit_log` has no retention window at all, which `pipeline/retention/policy.ts` states
+and `GET /api/admin/mcp-audit/tools` returns in its `retention` field. A window would drain every
+device count to zero within it of the last device call — and that must not be read as clearing 20
+tools at once, because rule 1 above is about callers who return, not about rows that expire.
+Whoever gives this table a window rewrites rule 1 in the same commit, or the drain silently
+licenses the deletions it was never evidence for.
 
 **The zero-rows amnesty survives, unchanged and still priced.** A tool at zero rows lifetime under
 both spellings has nobody to strand and nobody to come back, so it needs no reachable replacement.
@@ -236,15 +238,17 @@ It is available exactly once per tool, buys nothing for any tool with traffic, a
 appears in `mcp_audit_log` after a deletion taken this way, the reading was wrong and the tool
 comes back.
 
-**"Whole table" is a lifetime count only while the pruner stays unwired.** `mcp_audit_log` declares
-90-day retention — `drizzle/migrations/0063_mcp_audit_log.sql` says so and
-`auth/mcp-audit.ts:enforceMcpAuditRetention` implements it — and **nothing calls that function**.
-So today a zero really does mean "never called". Wire it to a tick and the same query answers
-"not called in 90 days", which would license deleting a quarterly-called tool with nothing going
-red: the `7f0c5a56` shape again, arriving through the measurement rather than the column. Whoever
-wires the pruner rewrites this paragraph in the same commit. Until then, read that function before
-spending a zero, and note that `forge_memory.revisions` — added `f568c503` on 2026-09-05, deleted
-the next day — is a zero under any retention, so it did not test this clause.
+**"Whole table" is a lifetime count because this table has no retention window.**
+`pipeline/retention/policy.ts` is where that is stated, and it states the reason as this paragraph:
+`mcp_audit_log` is the one append-only table ISS-1027 left unswept, because a window turns the
+query below from "never called" into "not called lately" and would license deleting a
+quarterly-called tool with nothing going red — the `7f0c5a56` shape again, arriving through the
+measurement rather than through the column. `drizzle/migrations/0063_mcp_audit_log.sql` declares 90
+days in a comment and is superseded by that entry; the `enforceMcpAuditRetention` that implemented
+those 90 days and that nothing ever called was deleted with it. What would end the exception is a
+per-tool lifetime aggregate that survives deletion, and whoever builds one rewrites this paragraph
+and rule 1 in the same commit. Note that `forge_memory.revisions` — added `f568c503` on 2026-09-05,
+deleted the next day — is a zero under any retention, so it did not test this clause.
 
 
 Read `mcp_audit_log` split on `device_id IS NOT NULL` / `token_id IS NOT NULL` — never on
@@ -297,11 +301,12 @@ option `ISS-946` listed — gate deletions on something an agent *can* read — 
 reason the section above gives: `forge call <tool>` makes static evidence insufficient for every
 tool, so there is nothing greppable to promote into a clearance.
 
-`enforceMcpAuditRetention` is still unwired, so these are lifetime counts — and the route does not
-merely assert that. It returns `oldestRow`, the oldest row in the table, so a reader sees the
-window instead of trusting this paragraph. Wire the pruner and that field starts reading ~90 days
-back, which is the signal that this page's rule 1 and the "whole table" clause both need rewriting
-in that same commit.
+`mcp_audit_log` has no retention window, so these are lifetime counts — and the route does not
+merely assert that. It returns the stated rule in `retention`, and `oldestRow`, the oldest row in
+the table, so a reader sees the rule and the evidence for it together instead of trusting this
+paragraph. A `retention.days` that is ever not `null`, or an `oldestRow` that starts tracking a
+window, is the signal that this page's rule 1 and the "whole table" clause both need rewriting in
+that same commit.
 
 ## Who delivers the target
 

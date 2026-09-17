@@ -426,6 +426,55 @@ describe('poolBacklog (ISS-917)', () => {
   });
 });
 
+describe('githubIntake (ISS-1076)', () => {
+  it('keeps the key it declares, so the setting reaches its reader', () => {
+    const out = pipelineConfigSchema.safeParse({ githubIntake: { enabled: true } });
+    expect(out.success).toBe(true);
+    if (!out.success) return;
+    expect(out.data.githubIntake).toEqual({ enabled: true });
+  });
+
+  it('keeps an explicit false, which is not the same document as an absent key', () => {
+    const out = pipelineConfigSchema.safeParse({ githubIntake: { enabled: false } });
+    expect(out.success).toBe(true);
+    if (!out.success) return;
+    expect(out.data.githubIntake).toEqual({ enabled: false });
+  });
+
+  // cm:guard the default IS the safety property, so it must be the ABSENCE of the key and never a `.default()`: a document that arrives carrying `enabled: false` is an operator's answer, and one carrying nothing is a project that was never asked. Both read as closed, and only the reader decides that.
+  it('gives an absent key no value of its own', () => {
+    const out = pipelineConfigSchema.safeParse({});
+    expect(out.success).toBe(true);
+    if (!out.success) return;
+    expect(out.data.githubIntake).toBeUndefined();
+    expect('githubIntake' in out.data).toBe(false);
+  });
+
+  it('refuses a key the object does not declare rather than storing it beside enabled', () => {
+    expect(
+      pipelineConfigSchema.safeParse({ githubIntake: { enabled: true, notify: true } }).success,
+    ).toBe(false);
+  });
+
+  it('refuses a non-boolean enabled, which a truthy string would otherwise open the door with', () => {
+    expect(pipelineConfigSchema.safeParse({ githubIntake: { enabled: 'yes' } }).success).toBe(
+      false,
+    );
+    expect(pipelineConfigSchema.safeParse({ githubIntake: {} }).success).toBe(false);
+  });
+
+  it('is independent of intakeGate, which answers the other question', () => {
+    const out = pipelineConfigSchema.safeParse({
+      githubIntake: { enabled: true },
+      intakeGate: { enabled: false },
+    });
+    expect(out.success).toBe(true);
+    if (!out.success) return;
+    expect(out.data.githubIntake?.enabled).toBe(true);
+    expect(out.data.intakeGate?.enabled).toBe(false);
+  });
+});
+
 describe('statusEntryCriteria (ISS-959)', () => {
   it('accepts a declaration whose keys are statuses and whose values are implemented criteria', () => {
     const out = pipelineConfigSchema.safeParse({

@@ -207,6 +207,13 @@ export const conversationMessages = pgTable(
 export const conversationWindowOrigins = ['inbound', 'heartbeat'] as const;
 export type ConversationWindowOrigin = (typeof conversationWindowOrigins)[number];
 
+/**
+ * Why a window stopped collecting when it was claimed (ISS-1086).
+ */
+// cm:guard three and not two: `overflow` is told apart from `deadline` because the turn's instruction is the same but the room's state is not — a deadline cut leaves nothing behind, an overflow cut leaves a collecting successor holding the tail, and a reader of the decision asking "was anything left unanswered here" is owed the difference.
+export const conversationWindowCutReasons = ['quiet', 'deadline', 'overflow'] as const;
+export type ConversationWindowCutReason = (typeof conversationWindowCutReasons)[number];
+
 export const conversationWindowDecisions = [
   'answered',
   'nothing-to-say',
@@ -238,7 +245,7 @@ export const conversationWindows = pgTable(
     // cm:guard carried on the window rather than joined off the conversation so a drain loop asks for ITS OWN adapter's work in one index scan: a loop that read every open window and then filtered would claim windows for a transport it cannot deliver through.
     adapter: text('adapter', { enum: conversationAdapters }).notNull(),
     openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
-    // cm:guard the SETTLE clock, moved by every later message: a window closes on quiet rather than on a count, so two messages typed seconds apart are one decision and one cost.
+    // cm:guard the SETTLE clock, moved by every later message: a window closes on quiet rather than on a count, so two messages typed seconds apart are one decision and one cost. Quiet is one of two ways to become due since ISS-1086 — `opened_at` reaching the hold is the other — because a room whose messages never pause moved this clock forever and was never answered.
     extendedAt: timestamp('extended_at', { withTimezone: true }).notNull().defaultNow(),
     firstSeq: integer('first_seq').notNull(),
     lastSeq: integer('last_seq').notNull(),
@@ -250,6 +257,11 @@ export const conversationWindows = pgTable(
     deliveryReservedAt: timestamp('delivery_reserved_at', { withTimezone: true }),
     /** Which core holds it — for the log, never for the claim, which is the conditional UPDATE. */
     claimedBy: text('claimed_by'),
+    /**
+     * Why this window stopped collecting when it was claimed.
+     */
+    // cm:guard stamped ONCE, at the first claim, and never rewritten by a re-claim: a window cut by the hold and re-claimed after its holder died has by then been quiet for the whole lease, and re-deriving the reason there would tell the turn the room had finished speaking when it was cut mid-sentence (ISS-1086 criterion 5). Null on a row claimed before this column existed, which the router reads as quiet and says so in its detail.
+    cutReason: text('cut_reason', { enum: conversationWindowCutReasons }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
     decision: text('decision', { enum: conversationWindowDecisions }),
     decisionDetail: jsonb('decision_detail'),
@@ -268,6 +280,10 @@ export const conversationWindows = pgTable(
     dueIdx: index('conversation_windows_due_idx')
       .on(t.adapter, t.extendedAt)
       .where(sql`closed_at IS NULL`),
+    // cm:guard the hold's own index, because the due predicate is now an OR over two clocks and the settle index cannot serve the second: without it every drain tick reads every unclaimed window of the adapter to find the ones that aged past the hold (ISS-1086).
+    holdIdx: index('conversation_windows_hold_idx')
+      .on(t.adapter, t.openedAt)
+      .where(sql`claimed_at IS NULL`),
     conversationIdx: index('conversation_windows_conversation_idx').on(
       t.conversationId,
       t.closedAt,
@@ -276,6 +292,10 @@ export const conversationWindows = pgTable(
     adapterKnown: check(
       'conversation_windows_adapter_known',
       sql`${t.adapter} IN ('web','widget','rocketchat','telegram')`,
+    ),
+    cutReasonKnown: check(
+      'conversation_windows_cut_reason_known',
+      sql`${t.cutReason} IS NULL OR ${t.cutReason} IN ('quiet','deadline','overflow')`,
     ),
     decisionKnown: check(
       'conversation_windows_decision_known',

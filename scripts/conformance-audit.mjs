@@ -224,7 +224,22 @@ function unresolvableEdges() {
     return { declared, blocked: '.forge/archmap/archmap is not executable here' };
   // cm:guard match BOTH phrasings archmap has printed — `N unresolvable edges` (<=0.1.2) and `N unresolvable of M possible edges` (0.1.3+). A regex that stops matching yields measured:null, which FAILS this rule rather than passing it, so a wording change is loud rather than silent — but it also fails a repo whose gate is fine, which is why the pattern must track the tool.
   const m = /(\d+)\s+unresolvable(?:\s+of\s+\d+\s+possible)?\s+edges/.exec(r.stdout ?? '');
-  return { declared, measured: m ? Number(m[1]) : null };
+  if (m) return { declared, measured: Number(m[1]) };
+  // cm:guard a child that STARTED and then DIED is not a wording change, and reporting it as one
+  // sends a reader to this regex over a machine that ran out of memory. `couldNotStart` above
+  // catches only a spawn that never happened; a kill by signal, or a non-zero exit with no count in
+  // what it printed, is the tool failing to answer — `could not run`, which `verify` reports as
+  // exit 2, rather than a violation of the ceiling. The count is read FIRST, so an archmap that
+  // exits non-zero because it found violations is still measured on what it printed.
+  if (r.signal || r.status !== 0) {
+    const how = r.signal ? `was killed by ${r.signal}` : `exited ${r.status}`;
+    const said = (r.stderr ?? '').trim().split('\n').pop() ?? '';
+    return {
+      declared,
+      blocked: `archmap check --stats ${how} before printing a count${said ? ` — ${said.slice(0, 120)}` : ''}`,
+    };
+  }
+  return { declared, measured: null };
 }
 
 const resolution = unresolvableEdges();
@@ -357,9 +372,9 @@ console.log(`\nconformance-audit: ${RULES.length} rules evaluated`);
 // cm:guard before EITHER profile verdict, and before the undeclared-profile branch below. Both of those are claims about whether this repo meets a standard, and an audit that could not run one of its rules has not established either answer.
 if (blocked > 0) {
   console.error(
-    `\nconformance-audit: ${blocked} rule(s) could not be evaluated — the tool they run is not\n` +
-      'on disk. No claim is made about the profile either way: a rule that did not run is\n' +
-      'not a rule this repo fails. Exit 2.\n',
+    `\nconformance-audit: ${blocked} rule(s) could not be evaluated — the tool they run gave\n` +
+      'no measurement. No claim is made about the profile either way: a rule that did not run\n' +
+      'is not a rule this repo fails. Each line below says which tool and why. Exit 2.\n',
   );
   for (const r of RULES.filter((x) => x.blocked)) console.error(`  ${r.id}: ${r.blocked}`);
   console.error('');

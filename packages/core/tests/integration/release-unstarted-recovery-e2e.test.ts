@@ -285,10 +285,22 @@ describe('a fence whose cleanup never ran', () => {
     expect(await reapConcludedRuns(anHourOn)).toEqual({ reaped: 1 });
 
     expect(await runStatus(runId)).toBe('cancelled');
+    // cm:guard the poll reads the STATUS AND THE CLAIM together, because `recoverStrandedReleasing`
+    // writes them in that order and in two statements: `transitionIssueStatus` per issue first, then
+    // one `UPDATE issues SET release_batch_run_id = NULL` over the roster. Polling the status alone
+    // and then reading the claim settles inside that window, and this case failed on `expected
+    // '<uuid>' to be null` twice under the full suite while passing alone — a flake in the assertion
+    // rather than in the chain it is about. The recover-then-clear order is deliberate and documented
+    // on that function: the claim column is the only index onto the batch's issues.
     await expect
-      .poll(async () => (await stored(a)).status, { timeout: 5_000 })
-      .toBe('awaiting_release');
-    expect((await stored(a)).claim).toBeNull();
+      .poll(
+        async () => {
+          const row = await stored(a);
+          return { status: row.status, claim: row.claim };
+        },
+        { timeout: 5_000 },
+      )
+      .toEqual({ status: 'awaiting_release', claim: null });
   });
 });
 

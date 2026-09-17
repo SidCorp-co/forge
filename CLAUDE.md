@@ -221,7 +221,13 @@ line number — a line number is stale the moment anything above it moves, and s
   already in the target DB** — drizzle reads the single highest `created_at` once and skips lower
   entries **silently, forever**, so the container starts and serves new code against an old schema
   (ISS-807: a live 500 on `GET /me/attention` for every signed-in user). Take `max(when)` across the
-  journal and add `86400000`; never a real timestamp. Gated by `db/migrations-journal.test.ts`.
+  journal and add whole days — `86400000` when yours is the only migration open, more when it is
+  not. **Read every unmerged sibling's journal immediately before the landing push and clear the
+  highest `when` you find there**: branches each deriving `+86400000` from one `main` all land on
+  the SAME number, and whichever merges first silently kills the rest — measured twice on
+  2026-09-17, four open migrations, three of them holding `1796083200000`. Never a real
+  timestamp. Gated by `db/migrations-journal.test.ts`, which reads only your own journal and so
+  cannot see a sibling; the looking is yours.
 
 
 ## Where the detail lives

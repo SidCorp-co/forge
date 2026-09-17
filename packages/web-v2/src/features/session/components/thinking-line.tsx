@@ -6,8 +6,8 @@
 // provider encrypted it, and a bare count — the Claude Code derive's
 // `thinkingCount`, which is the only producer of that form. Kit-only: imports
 // from @/design, semantic tokens, no hex.
-import { useState } from "react";
 import { Icon } from "@/design";
+import { useDisclosure } from "../disclosure";
 
 /** *4s* · *0.4s* · *840ms* — short enough to sit inside a label. */
 function spent(ms: number): string {
@@ -54,13 +54,16 @@ export function ThinkingLine({
   durationMs,
   count,
   streaming,
+  blockKey,
 }: {
   text?: string | undefined;
   durationMs?: number | undefined;
   count?: number | undefined;
   streaming?: boolean | undefined;
+  /** This pause's identity in the thread's disclosure state (ISS-1083). */
+  blockKey?: string | undefined;
 }) {
-  const [open, setOpen] = useState(false);
+  const [open, toggle] = useDisclosure(blockKey);
   const label = thinkingLabel({ text, durationMs, count, streaming });
   const expandable = typeof text === "string" && text.length > 0;
 
@@ -79,7 +82,7 @@ export function ThinkingLine({
         type="button"
         data-testid="thinking-line-toggle"
         aria-expanded={open}
-        onClick={() => setOpen((v) => !v)}
+        onClick={toggle}
         className="flex w-fit items-center gap-1.5 rounded text-subtle hover:text-default"
         style={{ fontSize: 12 }}
       >

@@ -112,6 +112,37 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Sentry errors can become Forge issues on a schedule.** Forge files the ones clearing an
+  admission bar you set on the Ops Console, as drafts. Everything it turns away is named in the
+  run's record, and a repeat sighting comments.
+
+- **A release-batch schedule's run history is readable again.** Its outcomes were stored and then
+  shown as an empty list. Both kinds of schedule that run inside Forge now answer with what they did.
+
+- **Six tables that only ever grew now have a retention rule and a nightly sweep.** The operator
+  sets each window, and the sweep reports what it removed and kept. The runner Activity
+  panel says how long that history lasts.
+
+- **A job's events are no longer deleted before the transcript they rebuild is written.** Events are
+  kept until the session records its transcript as final. Where that never happened, the sweep
+  writes the transcript instead of letting them expire.
+
+- **Forge can now close a Sentry issue from this side.** It reads an issue and sets its status on
+  a Sentry project you named. One you did not name is refused, and every call shows in the
+  delivery log.
+
+- **A request that never reached the API is now reported.** The browser collapses CORS, DNS and
+  TLS failures into one opaque error, and until now they reached nobody. A response the API
+  answered stays the API's to report.
+
+- **Agents read and write your pull requests through Forge, not a personal GitHub account on a
+  build box** — diff, failing check log, comment, new pull request, review request, verdict. Off
+  until you grant it. Merging stays Forge's step.
+
+- **A review is one record instead of two.** A review left on GitHub, by a person or by an agent,
+  now appears as a comment on the Forge issue its branch names — once, however often GitHub
+  resends it.
+
 - **You can see the assistant think.** A turn now shows how long the model paused before answering,
   and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
 
@@ -2293,6 +2324,20 @@
 
 ### Removed
 
+- **GitHub issues are no longer copied into your project, and no GitHub event changes or closes a
+  Forge issue.** A project that wants outside reports admits them once, through a setting that
+  starts closed everywhere:
+
+  ```
+  PATCH /api/projects/<projectId>/pipeline-config
+  { "githubIntake": { "enabled": true } }
+  ```
+
+  An organisation admin makes that request; `GET` the same path back and
+  `pipelineConfig.githubIntake.enabled` reads `true`. Opening it admits new reports only; the edit
+  and close copying is gone for every project and no setting restores it. Issues already copied are
+  untouched.
+
 - **Nine days of maintenance on prompts nothing could ever read, ended.** When the staged pipeline
   was removed, the instructions written for its nine stages were left behind: eight blocks of
   per-stage guidance and nine pieces of process knowledge, all addressed to steps that can no longer
@@ -2878,6 +2923,32 @@
   set is now 59.
 
 ### Fixed
+
+- **A finished release no longer holds a job slot.** Two ended release batches held a runner's
+  whole pane budget for four hours, stopping every project on that box. The box now learns when a
+  job is over.
+
+- **An assistant reply fits the panel it is in.** Two nested 85% caps left a blank column beside
+  every answer, growing as the panel shrank. One place now sets the measure: full width, up to a
+  readable line length.
+
+- **A tool card says what came back instead of dumping it.** It printed 240 characters of minified
+  JSON, cut mid-key. It now names the result's shape and size in one line, and opens onto the whole
+  of it.
+
+- **The typing cursor sits after the last word, not on the line below it.** It was an element after
+  the prose, so every streaming reply was a line taller than the reply it became.
+
+- **A turn says whether it is working, responding or failed.** A turn that had produced nothing
+  showed empty space, and a spinner sat under prose it had already written. The cursor now follows
+  only text that is still growing.
+
+- **Older turns fold their tool cards to one row that opens back.** The newest turn keeps
+  everything. Nothing folds while you are scrolled up or inside it, and new output you cannot see is
+  announced rather than scrolled to.
+
+- **A stuck issue now stands out on the Issues list.** A row that sat too long was meant to read
+  amber beside its clock, and the colour never reached the screen. It does now.
 
 - **A release job opens in the checkout, not the daemon's home directory.** A repo path that
   belongs to another box is skipped instead of silently becoming `$HOME`; a job with no checkout
@@ -5390,6 +5461,10 @@
 - **Session lists no longer read every transcript just to count it.** The length comes from the
   turn record instead. Sessions older than July show no length rather than zero, because zero
   would call them empty when they are not.
+
+- **A migration may now clear a sibling branch's timestamp.** The journal gate demanded exactly
+  one day above the last, so every open branch derived the same number and whichever merged first
+  silently skipped the rest. Whole days now pass.
 
 - **The issues list and the search send far less down the wire.** Both included the whole of
   every issue on the page — bodies, plans, criteria — which neither screen showed. Searching for

@@ -16,6 +16,7 @@ import {
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
+import { resolvedWindowDaysFor } from '../pipeline/retention/policy.js';
 import { projectRoom } from '../ws/rooms.js';
 import { roomManager } from '../ws/server.js';
 import { clearRunnerQuarantine } from './quarantine.js';
@@ -307,7 +308,12 @@ runnerRoutes.get(
           .limit(limit)
       : [];
 
-    return c.json({ events, sessions });
+    // cm:edge contract -> packages/web-v2/src/features/runners/components/project-runners-screen.tsx — `retentionDays` is what that panel's empty state renders, so the copy on the screen is this deployment's ACTUAL window rather than a number typed into a string: an operator who moves `RETENTION_RUNNER_EVENTS_DAYS` moves the sentence with it (ISS-1027).
+    return c.json({
+      events,
+      sessions,
+      retentionDays: resolvedWindowDaysFor('runner_events'),
+    });
   },
 );
 

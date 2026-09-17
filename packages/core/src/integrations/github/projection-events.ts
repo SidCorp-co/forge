@@ -2,9 +2,10 @@
  * Which of the four events writes what, and what each one then re-reads.
  *
  * The routing lives here rather than in `webhooks/github-adapter.ts` because
- * that file is the GitHub Issues mirror and has no other reason to know a pull
- * request exists; and rather than in `projection.ts`, which is deliberately
- * payload-only and holds no credential.
+ * that file is the intake door an outside contributor's report enters by
+ * (ISS-1076 replaced the GitHub Issues mirror it used to be) and has no other
+ * reason to know a pull request exists; and rather than in `projection.ts`,
+ * which is deliberately payload-only and holds no credential.
  */
 
 import { logger } from '../../logger.js';
@@ -28,6 +29,7 @@ import {
   refreshStoredPullRequest,
   storeRefreshRefusal,
 } from './projection-refresh.js';
+import { noteReviewOnIssue } from './review-note.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
 /** The events this projection is built from. Anything else falls through. */
@@ -116,6 +118,40 @@ async function onPush(ctx: DeliveryContext, payload: PushPayload): Promise<numbe
   return touched;
 }
 
+/**
+ * Store the review, and write it onto the issue its head branch names.
+ *
+ * The two halves answer different questions and neither replaces the other: the projection holds
+ * every review still standing on a pull request, which is state a master reads; the comment is the
+ * REVIEW THREAD, and ISS-1074's rule is that there is one of those whichever side wrote into it.
+ */
+// cm:guard the note is written for a SUBMISSION and not for a dismissal. A dismissal retracts a review GitHub already delivered, and the comment recording that the review was submitted stays true — a second comment saying it was withdrawn would be a second record of one event, which is the thing this write-back exists to stop. The retraction is in the projection, where `dismissed` is a flag beside the state.
+// cm:guard the note runs even when the projection wrote NOTHING. `applyReviewEvent` answers 0 for a pull request it holds no row for, and that is exactly the case the tracker record is most needed in: deliveries are unordered, so a review can reach Forge before the `pull_request` event that would have created the row.
+async function onReview(ctx: DeliveryContext, payload: ReviewPayload): Promise<number> {
+  const written = await applyReviewEvent(ctx, payload);
+  const review = payload.review;
+  const headRef = payload.pull_request?.head?.ref;
+  const number = payload.pull_request?.number;
+  if (payload.action === 'dismissed' || !review?.id || !headRef || typeof number !== 'number') {
+    return written;
+  }
+  const noted = await noteReviewOnIssue({
+    projectId: ctx.projectId,
+    headRef,
+    repository: `${ctx.config.owner ?? ''}/${ctx.config.repo ?? ''}`,
+    number,
+    review: {
+      id: String(review.id),
+      reviewer: review.user?.login ?? '(unknown)',
+      state: (review.state ?? 'commented').toLowerCase(),
+      submittedAt: review.submitted_at ?? null,
+      url: review.html_url ?? null,
+      body: review.body ?? null,
+    },
+  });
+  return noted.outcome === 'written' ? written + 1 : written;
+}
+
 /** Apply one delivery to the projection, and report how many rows it moved. */
 export async function applyProjectedEvent(
   ctx: DeliveryContext,
@@ -128,7 +164,7 @@ export async function applyProjectedEvent(
     case 'check_run':
       return applyCheckRunEvent(ctx, payload as CheckRunPayload);
     case 'pull_request_review':
-      return applyReviewEvent(ctx, payload as ReviewPayload);
+      return onReview(ctx, payload as ReviewPayload);
     case 'push':
       return onPush(ctx, payload as PushPayload);
   }
