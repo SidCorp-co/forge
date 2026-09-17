@@ -475,17 +475,26 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     return { kind: 'undeliverable', reason: err instanceof Error ? err.message : String(err) };
   }
 
-  // cm:guard resolved from the DELIVERED text and not from the turn, so a screened replacement is
-  // stored under the identity the browser drew and with blocks that belong to what went out.
-  const entry = req.replyEntry?.(reply.message.text);
-  // cm:guard the row holds the text the room was SHOWN: a transport that addressed the reply on the way out says so in `deliveredText`, and a transcript holding the unaddressed text beside a room holding the addressed one is two records of one message (ISS-1088 criterion 22).
-  await recordDeliveredReply({
-    conversationId: conversation.id,
-    projectId: req.venue.projectId,
-    text: receipt.deliveredText ?? reply.message.text,
-    receipt,
-    deliveryKey: req.deliveryKey,
-    ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
-  });
+  // cm:guard once the door has TAKEN the text, nothing after it may turn the answer into a failure: the room holds the reply, and a throw here — the caller's `replyEntry` hook, the transcript — would reach the route's catch and read as a turn that posted nothing, which is the opposite of what happened. Logged, captured, and the outcome stays `delivered` (ISS-1088; whole-set review, pass A F1 recheck).
+  try {
+    // cm:guard resolved from the DELIVERED text and not from the turn, so a screened replacement is
+    // stored under the identity the browser drew and with blocks that belong to what went out.
+    const entry = req.replyEntry?.(reply.message.text);
+    // cm:guard the row holds the text the room was SHOWN: a transport that addressed the reply on the way out says so in `deliveredText`, and a transcript holding the unaddressed text beside a room holding the addressed one is two records of one message (ISS-1088 criterion 22).
+    await recordDeliveredReply({
+      conversationId: conversation.id,
+      projectId: req.venue.projectId,
+      text: receipt.deliveredText ?? reply.message.text,
+      receipt,
+      deliveryKey: req.deliveryKey,
+      ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
+    });
+  } catch (err) {
+    logger.error(
+      { err, ...req.log, adapter: req.venue.adapter, externalId: req.venue.externalId },
+      'conversations: delivered, but recording the reply failed; the outcome stays delivered',
+    );
+    Sentry.captureException(err, { tags: { area: 'conversations', phase: 'record' } });
+  }
   return { kind: 'delivered', messageId: receipt.messageId };
 }
