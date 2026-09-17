@@ -24,7 +24,20 @@ import type {
   OutboundDispatchInput,
   OutboundDispatchResult,
 } from '../types.js';
-import { sentryIssueUrl } from './endpoints.js';
+import { sentryIssueUrl, sentryOrgIssuesUrl } from './endpoints.js';
+// cm:edge contract -> packages/core/src/integrations/sentry/listing.ts — the listing's vocabulary
+// and its pure decisions live there; this file makes the call and owns the delivery row.
+import {
+  assertListLimit,
+  confinementRefusal,
+  listQuery,
+  nextSentryCursor,
+  SENTRY_LIST_MAX_PAGES,
+  type SentryIssueListing,
+  SentryListingFailed,
+  type SentryListRefusal,
+  type SentryListRequest,
+} from './listing.js';
 import { type ResolvedSentryTarget, resolveSentryTarget } from './targets.js';
 import {
   SENTRY_ISSUE_STATUSES,
@@ -36,11 +49,31 @@ import {
 
 const CALL_TIMEOUT_MS = 15_000;
 
+// cm:why re-exported rather than left to `listing.js` alone: `issues.ts` is the module the adapter,
+// the tests and the intake path already import from, and splitting a file for a LINE BUDGET must
+// not move every caller's import. The definitions live in one place; this is the door.
+export {
+  nextSentryCursor,
+  SENTRY_LIST_DEFAULT_LIMIT,
+  SENTRY_LIST_DEFAULT_QUERY,
+  SENTRY_LIST_MAX_LIMIT,
+  SENTRY_LIST_MAX_PAGES,
+  type SentryIssueListing,
+  SentryListingFailed,
+  type SentryListRefusal,
+  type SentryListRequest,
+} from './listing.js';
+
 export const SENTRY_ISSUE_READ = 'sentry.issue.read';
 export const SENTRY_ISSUE_SET_STATUS = 'sentry.issue.set-status';
+export const SENTRY_ISSUE_LIST = 'sentry.issue.list';
 
 /** Every event name `dispatchOutbound` implements. Named in the refusal for anything else. */
-export const SENTRY_DISPATCH_EVENTS = [SENTRY_ISSUE_READ, SENTRY_ISSUE_SET_STATUS] as const;
+export const SENTRY_DISPATCH_EVENTS = [
+  SENTRY_ISSUE_READ,
+  SENTRY_ISSUE_SET_STATUS,
+  SENTRY_ISSUE_LIST,
+] as const;
 
 export type SentryAdapterContext = AdapterContext<SentryConfig, SentrySecrets>;
 
@@ -62,7 +95,7 @@ export interface SentryIssueCall {
 }
 
 type Attempt =
-  | { kind: 'ok'; body: unknown }
+  | { kind: 'ok'; body: unknown; link: string | null }
   | { kind: 'refused'; status: number; health: HealthStatus; reason: string };
 
 async function attempt(
@@ -84,7 +117,7 @@ async function attempt(
       ...(body ? { body: JSON.stringify(body) } : {}),
       signal: controller.signal,
     });
-    if (res.ok) return { kind: 'ok', body: await res.json() };
+    if (res.ok) return { kind: 'ok', body: await res.json(), link: res.headers.get('link') };
     // cm:guard 401 and 403 are different verdicts and must not collapse — a 403 read as
     // `needs_reauth` sends the operator to replace a token that works (ISS-924).
     if (res.status === 401) {
@@ -126,6 +159,8 @@ async function callSentry(
   url: string,
   method: 'GET' | 'PUT',
   body?: Record<string, unknown>,
+  /** Filled with the response's `Link` header where the caller cares; the other two do not. */
+  out?: { link: string | null },
 ): Promise<unknown> {
   const authToken = ctx.secrets?.authToken;
   if (!authToken) {
@@ -168,6 +203,7 @@ async function callSentry(
   if (res.kind !== 'ok') {
     throw new Error(`sentry: ${method} ${url} — ${res.reason}`);
   }
+  if (out) out.link = res.link;
   return res.body;
 }
 
@@ -354,6 +390,125 @@ export async function setSentryIssueStatus(
 }
 
 /**
+ * Every unresolved Sentry issue a target holds, confined to that target.
+ *
+ * TWO halves, and the second is not redundant. The query carries `project:<slug>` so Sentry does
+ * the narrowing, and every answer is then checked against the target again — because a filter that
+ * is only ever ASKED for is a filter nobody has verified, and `forge-core` and `forge-web` both sit
+ * under the `canawan` organization, so an org-scoped listing reaches both. An answer that fails
+ * confinement is not dropped quietly: it is named in the delivery row by its Sentry issue id and
+ * the project it belongs to, which is what an operator needs to fix a mis-declared target.
+ */
+export async function listSentryIssues(
+  ctx: SentryAdapterContext,
+  input: SentryListRequest,
+  requestId?: string,
+): Promise<SentryIssueListing> {
+  let target!: ResolvedSentryTarget;
+  let refused: SentryListRefusal[] = [];
+  let pages = 0;
+  let truncated = false;
+  const { result, value } = await withDelivery(
+    ctx,
+    SENTRY_ISSUE_LIST,
+    { ...input },
+    requestId,
+    async () => {
+      target = resolveSentryTarget(ctx.config, input.targetLabel);
+      const limit = assertListLimit(input.limit);
+      const query = listQuery(input.query, target);
+      const admitted: SentryIssueDetail[] = [];
+      const turnedAway: SentryListRefusal[] = [];
+      let cursor: string | undefined;
+
+      // cm:guard the cursor is FOLLOWED, and the bound is SPOKEN. Sentry orders by last seen, so
+      // the issues past the last page this walk takes are the same ones on the next tick and the
+      // one after — a listing that read page one and reported an ordinary success would be a
+      // permanent blind spot nobody could see from the run record.
+      while (pages < SENTRY_LIST_MAX_PAGES) {
+        const url = sentryOrgIssuesUrl(ctx.config.host, target.organizationSlug, {
+          query,
+          limit,
+          ...(cursor ? { cursor } : {}),
+        });
+        const out: { link: string | null } = { link: null };
+        // cm:guard the partial travels WITH the failure. Everything decided on the pages already
+        // walked — every confinement refusal, by name — is local to this callback, so a bare throw
+        // deletes it and the operator is left a transport error where there were also six named
+        // refusals they have to act on.
+        let body: unknown;
+        try {
+          body = await callSentry(ctx, url, 'GET', undefined, out);
+        } catch (err) {
+          refused = turnedAway;
+          throw new SentryListingFailed(err instanceof Error ? err.message : 'unknown error', {
+            pages,
+            refused: turnedAway,
+          });
+        }
+        if (!Array.isArray(body)) {
+          refused = turnedAway;
+          throw new SentryListingFailed(
+            `sentry: ${url} answered ${typeof body}, and an issue listing has to be an array`,
+            { pages, refused: turnedAway },
+          );
+        }
+        pages += 1;
+        for (const raw of body) {
+          const issue = projectIssue(raw, '');
+          const why = confinementRefusal(issue, target);
+          if (why === null) admitted.push(issue);
+          else {
+            turnedAway.push({
+              issueId: issue.id,
+              shortId: issue.shortId,
+              belongsTo: issue.projectSlug,
+              reason: why,
+            });
+          }
+        }
+        const next = nextSentryCursor(out.link);
+        if (!next) {
+          refused = turnedAway;
+          return {
+            value: admitted,
+            // cm:guard the refusals go in the RESPONSE, not only in the return value — the delivery
+            // log is where an operator looks, and a confinement that refused forty answers while
+            // the row says `ok` with ten issues is a state that lies about itself.
+            response: {
+              query,
+              limit,
+              pages,
+              truncated,
+              admitted: admitted.length,
+              refused: turnedAway,
+            },
+          };
+        }
+        cursor = next;
+      }
+
+      // The bound was reached and Sentry still had more. This is not an error and it is not a
+      // success either — it is a named incompleteness, and it is the caller's to report onward.
+      truncated = true;
+      refused = turnedAway;
+      return {
+        value: admitted,
+        response: {
+          query,
+          limit,
+          pages,
+          truncated,
+          admitted: admitted.length,
+          refused: turnedAway,
+        },
+      };
+    },
+  );
+  return { result, target, issues: value, refused, pages, truncated };
+}
+
+/**
  * The generic door's implementation — `registry.ts:dispatchThrough` reaches this.
  *
  * An unrecognised event is refused BY NAME and leaves a failed delivery row, rather than being
@@ -369,6 +524,10 @@ export async function dispatchSentryOutbound(
   }
   if (input.eventName === SENTRY_ISSUE_SET_STATUS) {
     return (await setSentryIssueStatus(ctx, payload, input.requestId)).result;
+  }
+  if (input.eventName === SENTRY_ISSUE_LIST) {
+    const listInput = (input.payload ?? {}) as SentryListRequest;
+    return (await listSentryIssues(ctx, listInput, input.requestId)).result;
   }
   const { result } = await withDelivery(
     ctx,
