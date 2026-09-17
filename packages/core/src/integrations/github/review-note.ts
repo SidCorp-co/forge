@@ -70,6 +70,17 @@ export function reviewMarker(reviewId: string): string {
   return `[github-review:${reviewId}]`;
 }
 
+/**
+ * The LIKE pattern that finds a comment this function wrote for this review, and no other comment.
+ *
+ * Anchored to the end of the body, behind a newline, because that is the only place `reviewNoteBody`
+ * ever puts the marker.
+ */
+// cm:guard the anchor is the finding, not decoration. A reviewer who pastes Forge's own comment back into their review — a normal thing to do when answering it — puts `[github-review:123]` inside a quoted line of some LATER review's body, and an unanchored `%marker%` then reads that as review 123's record and drops review 123 in silence. The quote prefix `> ` is what the anchor tells apart: a quoted marker is preceded by `> `, never by a newline, and is never the last thing in the body.
+function terminalMarkerPattern(reviewId: string): string {
+  return `%\n${reviewMarker(reviewId)}`;
+}
+
 const VERDICT_WORD: Record<string, string> = {
   approved: 'approved',
   changes_requested: 'requested changes on',
@@ -77,7 +88,13 @@ const VERDICT_WORD: Record<string, string> = {
   dismissed: 'had a review dismissed on',
 };
 
-/** The comment a review becomes. The reviewer's own words are quoted, never paraphrased. */
+/**
+ * The comment a review becomes. The reviewer's own words are quoted, never paraphrased.
+ *
+ * The marker is the LAST thing in the body, behind a newline and on a line of its own, which is
+ * what `terminalMarkerPattern` anchors to. Moving it anywhere else in this string widens the
+ * duplicate check back into the collision that anchor exists to close.
+ */
 export function reviewNoteBody(args: {
   review: ReviewToNote;
   repository: string;
@@ -147,7 +164,7 @@ export async function noteReviewOnIssue(args: {
     return { outcome: 'no-author', issueId, commentId: null };
   }
 
-  const marker = reviewMarker(args.review.id);
+  const pattern = terminalMarkerPattern(args.review.id);
   // cm:guard the lock is on the ISSUE and it is what makes two doors one writer: the tool's own call and the App's webhook echo can land within milliseconds of each other, and a check-then-insert without it lets both find nothing and both write. The issue row is the right thing to lock because it is the one row both paths have resolved by the time they get here.
   return db.transaction(async (tx) => {
     const [locked] = await tx
@@ -161,7 +178,7 @@ export async function noteReviewOnIssue(args: {
     const [already] = await tx
       .select({ id: comments.id })
       .from(comments)
-      .where(and(eq(comments.issueId, issueId), like(comments.body, `%${marker}%`)))
+      .where(and(eq(comments.issueId, issueId), like(comments.body, pattern)))
       .limit(1);
     if (already) {
       return { outcome: 'already-noted' as const, issueId, commentId: already.id };

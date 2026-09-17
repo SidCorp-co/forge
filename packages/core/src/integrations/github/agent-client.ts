@@ -87,15 +87,19 @@ export interface GitHubAgentClient {
   /** A JSON request as the installation: the reads and every write the agent face makes. */
   json<T>(args: { method: 'GET' | 'POST' | 'PATCH'; path: string; body?: unknown }): Promise<T>;
   /**
-   * A request whose answer is TEXT rather than JSON — a diff, a job log — capped at `maxBytes`.
+   * A request whose answer is TEXT rather than JSON — a diff, a job log — redacted, then capped at
+   * `maxBytes`.
    *
-   * `bytes` is the length of everything GitHub sent, not of what came back, so a caller reading
-   * `truncated` learns how much it is missing rather than only that something is.
+   * `bytes` is the length of the whole redacted answer, not of what came back, so a caller reading
+   * `truncated` learns how much it is missing rather than only that something is. `keep` says which
+   * end survives the cap: `head` (the default) for a diff, `tail` for a log whose failure is at its
+   * end.
    */
   text(args: {
     path: string;
     accept: string;
     maxBytes: number;
+    keep?: 'head' | 'tail';
   }): Promise<{ body: string; bytes: number; truncated: boolean }>;
   /**
    * Redact this client's own credential out of third-party text, on top of the generic shapes.
@@ -225,6 +229,18 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
     }
   };
 
+  // A mint failure here must not lose the generic scrub: the token is ONE of the shapes, and
+  // returning unscrubbed text because the extra one could not be resolved is the worst of both.
+  const scrubText = async (text: string): Promise<string> => {
+    let extra: string[] = [];
+    try {
+      extra = [await mint()];
+    } catch {
+      extra = [];
+    }
+    return scrubLogText(text, extra);
+  };
+
   return {
     bindingId: validated.bindingId,
     owner: validated.owner,
@@ -257,11 +273,14 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
       return (await res.json()) as T;
     },
 
+    // cm:guard the redaction runs on EVERYTHING GitHub sent, before either the cap or a caller's own tail. Scrubbing what survives a slice would leave half a credential behind whenever one straddles the cut, and would have to be re-reasoned about every time a caller's trimming rule changed. `bytes` is the whole answer's length after redaction, which is the text this returns a piece of.
     // cm:guard the cap SLICES and reports the whole length, it does not ask GitHub for less. There is no range GitHub honours for a diff, so a caller told `bytes: 4_000_000, truncated: true` knows to ask for the files instead — where a returned length were reported, a truncated diff and a small one would read identically and an agent would reason about a change it has a twentieth of (ISS-1074 criterion 5).
+    // cm:guard `keep` is the answer to which END survives the cap, and it has no default that suits both callers: a diff is read from the top, and a job log's failure is its last lines. Keeping the head of a log over the cap returns the tail of its BEGINNING — output from before the failure, under a `truncated` flag that says something was dropped but not that the end was.
     async text(args: {
       path: string;
       accept: string;
       maxBytes: number;
+      keep?: 'head' | 'tail';
     }): Promise<{ body: string; bytes: number; truncated: boolean }> {
       const res = await fetch(`${base}${args.path}`, {
         headers: {
@@ -278,27 +297,16 @@ export async function githubAgentClient(projectId: string): Promise<GitHubAgentC
           await githubMessage(res),
         );
       }
-      const whole = await res.text();
-      const bytes = Buffer.byteLength(whole, 'utf8');
-      if (bytes <= args.maxBytes) return { body: whole, bytes, truncated: false };
-      return {
-        body: Buffer.from(whole, 'utf8').subarray(0, args.maxBytes).toString('utf8'),
-        bytes,
-        truncated: true,
-      };
+      const redacted = await scrubText(await res.text());
+      const buf = Buffer.from(redacted, 'utf8');
+      const bytes = buf.byteLength;
+      if (bytes <= args.maxBytes) return { body: redacted, bytes, truncated: false };
+      const kept =
+        args.keep === 'tail' ? buf.subarray(bytes - args.maxBytes) : buf.subarray(0, args.maxBytes);
+      return { body: kept.toString('utf8'), bytes, truncated: true };
     },
 
-    async scrub(text: string): Promise<string> {
-      // A mint failure here must not lose the generic scrub: the token is ONE of the shapes, and
-      // returning unscrubbed text because the extra one could not be resolved is the worst of both.
-      let extra: string[] = [];
-      try {
-        extra = [await mint()];
-      } catch {
-        extra = [];
-      }
-      return scrubLogText(text, extra);
-    },
+    scrub: scrubText,
   };
 }
 

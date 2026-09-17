@@ -38,6 +38,7 @@ import {
 } from '../../integrations/github/agent-ops.js';
 import { GitHubClientError } from '../../integrations/github/client.js';
 import { noteReviewOnIssue } from '../../integrations/github/review-note.js';
+import { logger } from '../../logger.js';
 import {
   assertPrincipalIsMember,
   assertPrincipalIsWriter,
@@ -253,19 +254,42 @@ async function submitAndNote(
       },
     };
   }
-  const noted = await noteReviewOnIssue({
-    projectId,
-    headRef: review.headRef,
-    repository: review.repository,
-    number: review.number,
-    review: {
-      id: String(review.reviewId),
-      reviewer: review.reviewer,
-      state: review.state,
-      submittedAt: review.submittedAt,
-      url: review.url,
-      body: input.body ?? null,
-    },
-  });
-  return { ...review, issueComment: noted };
+  // cm:guard the catch is what makes the docstring above true, and without it the tool did the
+  // opposite of what it says: a tracker write that threw rejected the whole call, and an agent
+  // reading a rejection resubmits — a SECOND review on GitHub, under a second id, which the marker
+  // cannot reconcile with the first. The verdict is already on the pull request by the time this
+  // runs, so the answer says so and names what did not happen beside it.
+  try {
+    const noted = await noteReviewOnIssue({
+      projectId,
+      headRef: review.headRef,
+      repository: review.repository,
+      number: review.number,
+      review: {
+        id: String(review.reviewId),
+        reviewer: review.reviewer,
+        state: review.state,
+        submittedAt: review.submittedAt,
+        url: review.url,
+        body: input.body ?? null,
+      },
+    });
+    return { ...review, issueComment: noted };
+  } catch (err) {
+    logger.error(
+      { projectId, reviewId: review.reviewId, err },
+      'forge_github review: the verdict reached GitHub and the issue comment did not',
+    );
+    return {
+      ...review,
+      issueComment: {
+        outcome: 'not-recorded',
+        reason:
+          `the review was accepted by GitHub as ${review.reviewId} and the comment on the Forge ` +
+          `issue could not be written: ${err instanceof Error ? err.message : String(err)}. Do NOT ` +
+          'submit the verdict again — that would put a second review on the pull request. Say what ' +
+          'you decided in a comment on the issue instead.',
+      },
+    };
+  }
 }

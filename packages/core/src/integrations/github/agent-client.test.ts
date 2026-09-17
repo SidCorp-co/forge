@@ -229,6 +229,52 @@ describe('what the request path does with GitHub s answer', () => {
     expect(over).toMatchObject({ bytes: 1001, truncated: true });
   });
 
+  // Answers finding F3 of ISS-1074's whole-set review: `text` returned third-party text unredacted,
+  // and only the check-log caller scrubbed what it got. A diff carries credentials as readily as a
+  // log does — a committed `.env`, a workflow file — and the caller that forgot is the one that
+  // leaks.
+  it('redacts the WHOLE answer before the cap, so a credential straddling the cut leaves nothing', async () => {
+    const token = 'ghs_installation_token_value';
+    const whole = `${'a'.repeat(900)}\nsecret=${token}\nAuthorization: Bearer abcdef123456\n${'b'.repeat(900)}`;
+    globalThis.fetch = vi.fn(
+      async () => new Response(whole, { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const client = await githubAgentClient(PROJECT);
+    // The cut is placed 14 characters INTO the token (900 filler + `\nsecret=` is 908, and the
+    // token is 28 long): a scrub applied to the slice instead keeps `ghs_installat`, which is a
+    // credential fragment and the start of a real one. Measured — at a cut of 910 the slice holds
+    // two characters of it and the assertion below cannot fail.
+    const got = await client.text({ path: '/x', accept: 'text/plain', maxBytes: 922 });
+    expect(got.truncated).toBe(true);
+    expect(got.body).not.toContain('ghs_installation');
+    expect(got.body).not.toContain('ghs_');
+  });
+
+  // Answers finding F4. A log is read for its END — the failure — and a cap that keeps the head
+  // returns output from before it, under a `truncated` flag that says something was dropped but not
+  // which end.
+  it('keeps the END of an over-cap answer when the caller asks for the tail', async () => {
+    const whole = `${'x'.repeat(5000)}\nFAILED: the sentinel line`;
+    globalThis.fetch = vi.fn(
+      async () => new Response(whole, { status: 200 }),
+    ) as unknown as typeof fetch;
+
+    const client = await githubAgentClient(PROJECT);
+    const tail = await client.text({
+      path: '/x',
+      accept: 'text/plain',
+      maxBytes: 40,
+      keep: 'tail',
+    });
+    expect(tail.body).toContain('FAILED: the sentinel line');
+    expect(tail.truncated).toBe(true);
+    expect(tail.bytes).toBe(Buffer.byteLength(whole, 'utf8'));
+
+    const head = await client.text({ path: '/x', accept: 'text/plain', maxBytes: 40 });
+    expect(head.body).not.toContain('FAILED');
+  });
+
   // cm:guard the raw body is NOT what a caller is handed. GitHub's error body is a third party's response and has carried internal hostnames; `message` is the field it documents as the human-readable refusal, and everything else is dropped.
   it('carries GitHub s own message and nothing else off a refusal', async () => {
     globalThis.fetch = vi.fn(

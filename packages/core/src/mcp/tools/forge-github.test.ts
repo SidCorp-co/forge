@@ -232,6 +232,36 @@ describe('a review through this tool is the same one record', () => {
     expect(answered.issueComment.outcome).toBe('no-issue');
     expect(noteSpy).not.toHaveBeenCalled();
   });
+
+  // Answers finding F2 of ISS-1074's whole-set review. The verdict is on the pull request by the
+  // time the tracker write runs, so a rejection here tells the caller the one thing that is
+  // certainly false — and an agent reading a rejection retries, which puts a SECOND review on the
+  // pull request under a second id that no marker can reconcile with the first.
+  it('keeps the accepted verdict when the tracker write fails, and says not to resubmit', async () => {
+    pushAdminOk();
+    reviewSpy.mockResolvedValue({
+      reviewId: 9003,
+      headRef: 'ISS-1074',
+      number: 481,
+      repository: 'SidCorp-co/forge-dev',
+      url: 'https://github.com/SidCorp-co/forge-dev/pull/481#pullrequestreview-9003',
+    });
+    noteSpy.mockRejectedValue(new Error('deadlock detected'));
+
+    const answered = (await tool().handler({
+      action: 'review',
+      projectId: PROJECT_ID,
+      pullRequest: 481,
+      verdict: 'APPROVE',
+      body: 'ship it',
+    })) as { reviewId: number; url: string; issueComment: { outcome: string; reason: string } };
+
+    expect(answered.reviewId).toBe(9003);
+    expect(answered.url).toContain('pullrequestreview-9003');
+    expect(answered.issueComment.outcome).toBe('not-recorded');
+    expect(answered.issueComment.reason).toMatch(/[Dd]o NOT\b.*again|not.*submit.*again/);
+    expect(answered.issueComment.reason).toContain('deadlock detected');
+  });
 });
 
 describe('what a caller is told rather than left to infer', () => {

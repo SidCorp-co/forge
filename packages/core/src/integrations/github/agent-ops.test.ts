@@ -27,11 +27,12 @@ interface Recorded {
   path: string;
   body?: unknown;
   accept?: string;
+  keep?: 'head' | 'tail';
 }
 
 function recorder(answers: {
   json?: (args: { method: string; path: string; body?: unknown }) => unknown;
-  text?: (args: { path: string; accept: string; maxBytes: number }) => {
+  text?: (args: { path: string; accept: string; maxBytes: number; keep?: 'head' | 'tail' }) => {
     body: string;
     bytes: number;
     truncated: boolean;
@@ -47,9 +48,19 @@ function recorder(answers: {
       calls.push({ method: args.method, path: args.path, body: args.body });
       return (answers.json?.(args) ?? {}) as T;
     },
-    async text(args: { path: string; accept: string; maxBytes: number }) {
-      calls.push({ method: 'GET', path: args.path, accept: args.accept });
-      return answers.text?.(args) ?? { body: '', bytes: 0, truncated: false };
+    // The recorder redacts, because the real `text` does: ISS-1074's review found the redaction
+    // living in ONE of its two callers, and it now runs on everything the client read, before the
+    // cap and before any caller's tail. A recorder handing back raw text would let a caller that
+    // depends on that pass with the redaction deleted.
+    async text(args: { path: string; accept: string; maxBytes: number; keep?: 'head' | 'tail' }) {
+      calls.push({
+        method: 'GET',
+        path: args.path,
+        accept: args.accept,
+        ...(args.keep ? { keep: args.keep } : {}),
+      });
+      const got = answers.text?.(args) ?? { body: '', bytes: 0, truncated: false };
+      return { ...got, body: got.body.replace(/ghs_[A-Za-z0-9_]+/g, '[Filtered]') };
     },
     async scrub(text: string) {
       return text.replace(/ghs_[A-Za-z0-9_]+/g, '[Filtered]');
@@ -129,6 +140,20 @@ describe('reading a check run s log', () => {
     expect(got.refusal).toBeNull();
     expect(got.conclusion).toBe('failure');
     expect(calls[1]?.path).toBe('/repos/SidCorp-co/forge-dev/actions/jobs/12345/logs');
+  });
+
+  // Answers finding F4 of ISS-1074's whole-set review. The cap and the tail are the same
+  // requirement at two scales, and the cap was the one reading from the wrong end: a log past
+  // `LOG_CAP_BYTES` gave this function its first 2 MiB, whose last hundred lines are output from
+  // before the failure the caller asked to see.
+  it('asks GitHub s answer to be kept from its END, which is where a failure is', async () => {
+    const { client, calls } = recorder({
+      json: () => ({ details_url: ACTIONS_URL, app: { slug: 'github-actions' } }),
+      text: () => ({ body: 'earlier\nFAILED here', bytes: 19, truncated: false }),
+    });
+    const got = await readCheckRunLog(client, { checkRunId: 77, lines: 1 });
+    expect(calls[1]?.keep).toBe('tail');
+    expect(got.log).toBe('FAILED here');
   });
 
   it('scrubs before it tails, so a credential on a dropped line is still not returned', async () => {

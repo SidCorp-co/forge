@@ -113,6 +113,34 @@ describe("a human's GitHub review flows back onto the issue", () => {
     expect(rows[1]?.body).toContain('**junixlabs** approved');
   });
 
+  // Answers finding F1 of ISS-1074's whole-set review. Quoting Forge's own comment back is what a
+  // reviewer does when answering it, and the marker comes with the quote — so an unanchored
+  // `%marker%` finds review 5001's id inside review 5002's body and drops review 5001 in silence.
+  // The comment is built the way `reviewNoteBody` builds one, so the row is real prose and not a
+  // string chosen to trip a pattern.
+  it('writes the review whose marker an EARLIER comment merely quotes', async () => {
+    const issueId = await ground.seedIssue(ground.projectId, 4242);
+    await ground.mods.applyProjectedEvent(
+      deliveryCtx(),
+      'pull_request_review',
+      reviewEvent({
+        id: 5002,
+        body: 'Answering the last one:\n\n> ## GitHub review\n>\n> [github-review:5001]',
+      }),
+    );
+    expect(await commentsOn(issueId)).toHaveLength(1);
+
+    await ground.mods.applyProjectedEvent(
+      deliveryCtx(),
+      'pull_request_review',
+      reviewEvent({ id: 5001, state: 'approved', body: 'the one that was quoted' }),
+    );
+    const rows = await commentsOn(issueId);
+    expect(rows).toHaveLength(2);
+    expect(rows[1]?.body).toContain('the one that was quoted');
+    expect(rows[1]?.body.endsWith('[github-review:5001]')).toBe(true);
+  });
+
   // ISS-1074 criterion 22 — an ordinary answer and never an error. A dependabot bump's branch names
   // no issue, and the review on it is still a review this repository had.
   it('writes nothing and raises nothing for a branch that names no issue', async () => {

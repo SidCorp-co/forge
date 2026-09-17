@@ -14,10 +14,10 @@
 import type { GitHubAgentClient } from './agent-client.js';
 import { GitHubAgentCallError } from './agent-client.js';
 
-/** A diff over this is sliced, and the whole length is reported beside the slice. */
+/** A diff over this is sliced from the top, and the whole length is reported beside the slice. */
 export const DIFF_CAP_BYTES = 256 * 1024;
 
-/** A job log is read up to this, then tailed to the lines asked for. */
+/** A job log is read up to this FROM ITS END, then tailed to the lines asked for. */
 const LOG_CAP_BYTES = 2 * 1024 * 1024;
 const DEFAULT_LOG_LINES = 100;
 
@@ -57,13 +57,21 @@ export function kernelVerbRefusal(action: string): string {
 export interface PullRequestDiff {
   number: number;
   repository: string;
-  /** The length of everything GitHub sent, not of `diff`. */
+  /** The length of the whole redacted answer, not of `diff`. */
   bytes: number;
   truncated: boolean;
+  /** The diff, redacted and then capped from the top. */
   diff: string;
 }
 
-/** One pull request's diff, as the App. */
+/**
+ * One pull request's diff, as the App — redacted, then capped from the top.
+ *
+ * A diff is third-party text as much as a log is: a contributor who committed a `.env`, or a
+ * workflow file carrying a token, puts a live credential in it, and this face hands what it reads
+ * to an agent that will quote it. The redaction is `client.text`'s and runs on everything GitHub
+ * sent before the cap, so there is one place it happens rather than one per caller.
+ */
 export async function readPullRequestDiff(
   client: GitHubAgentClient,
   args: { number: number; maxBytes?: number },
@@ -168,6 +176,7 @@ export async function readCheckRunLog(
       path: `/repos/${client.owner}/${client.repo}/actions/jobs/${jobId}/logs`,
       accept: 'application/vnd.github+json',
       maxBytes: LOG_CAP_BYTES,
+      keep: 'tail',
     });
   } catch (err) {
     if (err instanceof GitHubAgentCallError) {
@@ -185,8 +194,8 @@ export async function readCheckRunLog(
     throw err;
   }
 
-  // cm:guard the scrub runs before the tail and on EVERYTHING that was read, not on what survives it: a credential on a line the tail drops is not a credential this function returned, but a scrub applied after would have to be re-reasoned about every time the tail's rule changes.
-  const tailed = tailLines(await client.scrub(raw.body), args.lines ?? DEFAULT_LOG_LINES);
+  // cm:guard `keep: 'tail'` above and this tail are the same requirement at two scales, and the cap's end is the one that was wrong: a 40 MiB log capped from the TOP gives this function the first 2 MiB, and the last hundred lines of that are output from long before the failure the caller asked to see. The redaction is `client.text`'s and has already run on the whole answer, so nothing survives here that the tail merely failed to drop.
+  const tailed = tailLines(raw.body, args.lines ?? DEFAULT_LOG_LINES);
   return {
     ...base,
     log: tailed.text,
