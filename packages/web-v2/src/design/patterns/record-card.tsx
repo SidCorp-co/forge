@@ -47,13 +47,21 @@ function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }):
     </div>
   );
   return (
-    <div className="grid grid-cols-[minmax(4.5rem,max-content)_1fr] gap-x-3 gap-y-1 border-b border-line-subtle px-3 py-2 last:border-b-0">
-      <div className="fg-caption pt-0.5 font-mono text-muted">{fieldLabel(field.key)}</div>
+    // cm:guard the value cell carries `min-w-0`, and without it the card overflows its own column at
+    // 375: a grid item's `min-width` defaults to `auto`, which refuses to shrink below the content's
+    // minimum, so one long path in a `where:` field made the card 476px wide inside a 265px column.
+    // Measured on the walk at 2026-09-17; `[overflow-wrap:anywhere]` on the text alone does not
+    // reach it, because the constraint is the track's and not the text's.
+    <div className="grid grid-cols-[minmax(4.5rem,max-content)_minmax(0,1fr)] gap-x-3 gap-y-1 border-b border-line-subtle px-3 py-2 last:border-b-0">
+      <div className="fg-caption min-w-0 break-words pt-0.5 font-mono text-muted [overflow-wrap:anywhere]">
+        {fieldLabel(field.key)}
+      </div>
       {field.over > 0 ? (
         // cm:guard `<details>` and not a height clamp: the whole value is in the DOM either way, so
         // a reader searching the page finds it and a copy takes all of it. A clamp that renders
         // fewer characters is the truncation this card exists not to do.
         <details
+          className="min-w-0"
           open={shown}
           onToggle={(e) => setShown((e.currentTarget as HTMLDetailsElement).open)}
         >
@@ -63,7 +71,7 @@ function Field({ field, open }: { field: ForgeRecordFieldView; open: boolean }):
           <div className="mt-1">{body}</div>
         </details>
       ) : (
-        body
+        <div className="min-w-0">{body}</div>
       )}
     </div>
   );
