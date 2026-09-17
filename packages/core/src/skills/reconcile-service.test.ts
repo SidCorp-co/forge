@@ -322,10 +322,14 @@ describe('spawnReconcileRun — refusal events', () => {
 });
 
 describe('reconcile gate notifications (ISS-807)', () => {
+  // cm:guard ISS-1021 — the member rows carry the KEY the batched lookup groups on
+  // (`projectId` / `orgId`), because `projectAdminUserIdsFor` now answers for a set of projects in
+  // one query per table and assembles the answer in JS. A row without its key is silently dropped
+  // into no bucket, which reads exactly like a project with no admins.
   const adminRows = new Map<unknown, unknown[]>([
     [projects, [{ id: 'proj-1', orgId: 'org-1', name: 'Acme' }]],
-    [projectMembers, [{ userId: 'admin-1' }]],
-    [organizationMembers, [{ userId: 'org-admin-1' }]],
+    [projectMembers, [{ projectId: 'proj-1', userId: 'admin-1' }]],
+    [organizationMembers, [{ orgId: 'org-1', userId: 'org-admin-1' }]],
   ]);
 
   beforeEach(() => {

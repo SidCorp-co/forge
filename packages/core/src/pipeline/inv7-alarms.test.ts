@@ -30,7 +30,7 @@ vi.mock('./run-pause.js', () => ({
 
 const gateReasons = vi.fn(async (_projectId: string) => new Map<string, string>());
 vi.mock('../jobs/queued-gates.js', () => ({
-  gateReasonsForQueuedJobs: (projectId: string) => gateReasons(projectId),
+  gateReasonsForQueuedJobsIn: (projectIds: readonly string[]) => gateReasons(projectIds),
 }));
 
 // cm:edge contract -> packages/core/src/jobs/loop-monitor.ts — RESULT_QUIET_MINUTES sets this alarm's default threshold; importing the real module pulls queue/boss.ts, whose load-time env validation throws under vitest
@@ -173,7 +173,11 @@ describe('alarmStalledQueuedJobs', () => {
     expect(emitWedgeMock).not.toHaveBeenCalled();
   });
 
-  it('reads the gate once per project, not once per job', async () => {
+  // cm:guard ISS-1021 — ONE read for the whole page, and the assertion is on the call count rather
+  // than on the result, because the result is identical either way. Three jobs over two projects
+  // used to cost two reads and now costs one; a revert to the per-project loop makes this 2 and a
+  // revert to a per-job read makes it 3, so the number is what the change is.
+  it('reads the gate once for the whole page, not once per project or once per job', async () => {
     dbExecute.mockResolvedValue([
       candidate,
       { ...candidate, job_id: 'job-2', iss_seq: 43 },
@@ -182,7 +186,12 @@ describe('alarmStalledQueuedJobs', () => {
 
     await alarmStalledQueuedJobs(NOW);
 
-    expect(gateReasons).toHaveBeenCalledTimes(2);
+    expect(gateReasons).toHaveBeenCalledTimes(1);
+    // Every project on the page reaches the one call — a batched read that quietly dropped a
+    // project would alarm on jobs whose gate it never asked about.
+    expect(gateReasons.mock.calls[0]?.[0]).toEqual(
+      expect.arrayContaining(['proj-1', 'proj-2']),
+    );
   });
 });
 

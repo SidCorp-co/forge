@@ -4,6 +4,15 @@ const updateWhereMock = vi.fn();
 const updateSetMock = vi.fn();
 const updateWhereArgMock = vi.fn();
 const deleteWhereMock = vi.fn();
+// cm:guard ISS-1021 — `where()` RESOLVES here and there is no `returning` in the chain, which is
+// the shape the subject now runs. A stub still offering `.returning()` would let a regression that
+// re-added it pass: the whole point of the change is that these two statements report their counts
+// from the command tag instead of materialising every affected id.
+//
+// What the stub cannot prove is that `.count` IS the affected-row count — that is postgres-js's
+// behaviour, not this file's, and a mock returning `{ count: 2 }` proves only that the subject
+// reads the property it was handed. Measured against a real Postgres instead, and asserted in
+// `tests/integration/memory-decay-count.test.ts`.
 vi.mock('../db/client.js', () => ({
   db: {
     update: () => ({
@@ -12,13 +21,13 @@ vi.mock('../db/client.js', () => ({
         return {
           where: (w: unknown) => {
             updateWhereArgMock(w);
-            return { returning: () => updateWhereMock(w) };
+            return updateWhereMock(w);
           },
         };
       },
     }),
     delete: () => ({
-      where: (w: unknown) => ({ returning: () => deleteWhereMock(w) }),
+      where: (w: unknown) => deleteWhereMock(w),
     }),
   },
 }));
@@ -61,8 +70,11 @@ beforeEach(() => {
   updateSetMock.mockReset();
   updateWhereArgMock.mockReset();
   deleteWhereMock.mockReset();
-  updateWhereMock.mockResolvedValue([{ id: 'a' }, { id: 'b' }]);
-  deleteWhereMock.mockResolvedValue([{ id: 'c' }]);
+  // postgres-js returns a RowList: an array (empty without RETURNING) carrying the command tag's
+  // affected-row count on `.count`. The empty array is deliberate — a stub whose array length
+  // happened to match the count would hide the subject reading the wrong one.
+  updateWhereMock.mockResolvedValue(Object.assign([], { count: 2 }));
+  deleteWhereMock.mockResolvedValue(Object.assign([], { count: 1 }));
 });
 
 describe('runMemoryDecay', () => {

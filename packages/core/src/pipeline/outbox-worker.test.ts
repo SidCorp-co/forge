@@ -211,7 +211,10 @@ describe('outbox-worker', () => {
     expect(wedgeMock).not.toHaveBeenCalled();
   });
 
-  it('processes a batch of rows from a single claim call', async () => {
+  // cm:guard ISS-1021 — ONE processed UPDATE for the whole batch, and both ids must be IN it. The
+  // count alone is not enough: a batched write that dropped a row would also be one statement, and
+  // an outbox row left `processed_at IS NULL` is re-delivered forever rather than lost loudly.
+  it('marks a whole batch processed in one UPDATE naming every delivered id', async () => {
     const rA = row({ id: 'aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa', issue_id: 'iss-A' });
     const rB = row({ id: 'bbbbbbbb-1111-4bbb-8bbb-bbbbbbbbbbbb', issue_id: 'iss-B' });
     claimQueue.push([rA, rB]);
@@ -220,7 +223,35 @@ describe('outbox-worker', () => {
 
     expect(result.processed).toBe(2);
     expect(emitMock).toHaveBeenCalledTimes(2);
-    expect(updateCalls.filter((c) => c.kind === 'processed')).toHaveLength(2);
+    const processed = updateCalls.filter((c) => c.kind === 'processed');
+    expect(processed).toHaveLength(1);
+    const ids = JSON.stringify(processed[0]?.chunks ?? []);
+    expect(ids).toContain('aaaaaaaa-1111-4aaa-8aaa-aaaaaaaaaaaa');
+    expect(ids).toContain('bbbbbbbb-1111-4bbb-8bbb-bbbbbbbbbbbb');
+  });
+
+  // cm:guard a FAILURE inside a batch stays its own row-level write, carrying its own last_error
+  // and re-stamping its own lease. Batching failures would put every failed row on one lease clock
+  // and lose the per-row message the operator reads.
+  it('keeps a failure inside a batch on its own row-level write', async () => {
+    const rOk = row({ id: 'aaaaaaaa-2222-4aaa-8aaa-aaaaaaaaaaaa', issue_id: 'iss-ok' });
+    const rBad = row({ id: 'bbbbbbbb-2222-4bbb-8bbb-bbbbbbbbbbbb', issue_id: 'iss-bad' });
+    claimQueue.push([rOk, rBad]);
+    emitMock.mockImplementationOnce(async () => ({ results: [], failures: [] }));
+    emitMock.mockImplementationOnce(async () => {
+      throw new Error('subscriber exploded');
+    });
+
+    const result = await drainOutboxOnce();
+
+    expect(result.processed).toBe(1);
+    expect(result.failed).toBe(1);
+    expect(updateCalls.filter((c) => c.kind === 'failed')).toHaveLength(1);
+    const processed = updateCalls.filter((c) => c.kind === 'processed');
+    expect(processed).toHaveLength(1);
+    const ids = JSON.stringify(processed[0]?.chunks ?? []);
+    expect(ids).toContain('aaaaaaaa-2222-4aaa-8aaa-aaaaaaaaaaaa');
+    expect(ids).not.toContain('bbbbbbbb-2222-4bbb-8bbb-bbbbbbbbbbbb');
   });
 
   it('claim query filters expired leases via a CLAIM_LEASE_MS-based interval', async () => {

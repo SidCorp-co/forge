@@ -63,15 +63,12 @@ export async function projectAdminUserIdsFor(
   }
 
   for (const project of projectRows) {
-    out.set(
-      project.id,
-      [
-        ...new Set([
-          ...(explicitByProject.get(project.id) ?? []),
-          ...(orgAdminsByOrg.get(project.orgId) ?? []),
-        ]),
-      ],
-    );
+    out.set(project.id, [
+      ...new Set([
+        ...(explicitByProject.get(project.id) ?? []),
+        ...(orgAdminsByOrg.get(project.orgId) ?? []),
+      ]),
+    ]);
   }
   return out;
 }
