@@ -162,11 +162,11 @@ export interface CarrierRow {
  * `applyEventsToState` states its own contract — the events it is handed MUST
  * start where the last call left off — because that is what makes an incremental
  * flush the SAME computation as a full re-derive rather than an approximation of
- * one. Before ISS-1030 nothing could produce a hole: `jobs/events-routes.ts`
- * assigns `seq` server-side under an advisory lock, so insert order IS seq order.
- * `agent_session_events` moves that assignment to the writer, so a batch that
- * lands after a later one is now possible, and the checkpoint may advance only
- * over the unbroken run. Rows past a gap are read again on the next pass, once
+ * one. It applies to the CHAT carrier, and only there: `jobs/events-routes.ts`
+ * assigns `seq` server-side under an advisory lock, so a job's insert order IS
+ * seq order. `agent_session_events` moves that assignment to the writer, so a
+ * batch that lands after a later one is now possible, and the checkpoint may
+ * advance only over the unbroken run. Rows past a gap are read again on the next pass, once
  * the hole is filled; a hole that never fills holds the derive at the gap instead
  * of skipping it for ever.
  */
@@ -182,8 +182,17 @@ export function contiguousPrefix(rows: readonly CarrierRow[], afterSeq: number):
 }
 
 /**
- * The rows of this carrier after `afterSeq`, in seq order, truncated at the
- * first gap — see `contiguousPrefix` for why the truncation is load-bearing.
+ * The rows of this carrier after `afterSeq`, in seq order — truncated at the
+ * first gap on the CHAT carrier only.
+ *
+ * cm:guard the truncation follows who assigns `seq`, and applying it to both
+ * carriers is a regression rather than symmetry. `jobs/events-routes.ts` assigns
+ * `seq` server-side under an advisory lock, so a job's rows cannot arrive out of
+ * order — but they CAN be swept: retention deletes old `job_events`, and a
+ * rebuild from `afterSeq = 0` then starts at a seq that is not 1. Truncating
+ * there would fold nothing and hold the transcript at a hole that can never
+ * fill. The runner assigns `seq` on the chat carrier, where a late batch is
+ * exactly the hole `contiguousPrefix` exists to wait for.
  */
 async function readCarrierRows(
   carrier: TranscriptCarrier,
@@ -224,7 +233,7 @@ async function readCarrierRows(
           )
           .orderBy(asc(agentSessionEvents.seq));
 
-  return contiguousPrefix(rows, afterSeq);
+  return carrier.kind === 'chat' ? contiguousPrefix(rows, afterSeq) : rows;
 }
 
 /**
