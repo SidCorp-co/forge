@@ -240,7 +240,12 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     projectId: req.venue.projectId,
     adapter: req.venue.adapter,
     conversationId: ctx.conversationId,
-    record: req.questionAlreadyRecorded ? ('silence-only' as const) : ('question-only' as const),
+    // cm:guard in `tool` mode the model turn persists NOTHING and this runner files the one row the turn earns after it has read the capture: `external-chat.ts` files `empty-reply` on any turn whose prose is empty, which in tool mode is the ordinary shape of a turn that answered through `room_send`, and a transcript holding that row beside the delivered answer says the agent said nothing and also what it said (ISS-1087 criterion 19; whole-set review, round 4 F1).
+    record: capture
+      ? ('nothing' as const)
+      : req.questionAlreadyRecorded
+        ? ('silence-only' as const)
+        : ('question-only' as const),
     userId: req.principalUserId,
     userKey: req.speakerKey,
     speakerUserId,
@@ -265,7 +270,16 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   if (late) return late;
 
   // cm:guard in `tool` mode the model's OWN prose is never the reply: what it captured through `room_send` is, and a turn that captured nothing is a named silence rather than an unnamed one — `tool-not-called` is the row a person reads when a room in this mode goes quiet (ISS-1087 criteria 19, 20). A finished turn with no capture is judged before the decline check below, so the sentinel path never sees the model's prose.
-  if (capture && result.terminal === 'done') {
+  if (capture) {
+    if (result.terminal !== 'done') {
+      const reason = result.error ?? result.terminal;
+      await recordSilence({
+        conversationId: ctx.conversationId,
+        projectId: req.venue.projectId,
+        reason,
+      });
+      return { send: false, reason, declined: true };
+    }
     const captured = capture.captured();
     if (captured === null) {
       await recordSilence({

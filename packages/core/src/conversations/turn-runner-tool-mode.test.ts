@@ -235,6 +235,40 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
     expect(recordSilence).toHaveBeenCalledWith(expect.objectContaining({ reason: 'turn-failed' }));
   });
 
+  it('refuses `null` arguments to room_send by name, and the turn is tool-not-called', async () => {
+    let refusal: unknown;
+    modelTurn(async (tools) => {
+      refusal = await tools?.execute('room_send', 'null');
+    });
+    const out = await runConversationTurn(request({ sendMode: 'tool', mayDecline: true }));
+    expect(JSON.stringify(refusal)).toMatch(/not a JSON object/);
+    expect(out).toEqual({ kind: 'declined', reason: 'tool-not-called' });
+  });
+
+  // cm:guard the model turn persists nothing in tool mode and the runner files the one row: without it every turn that answered through room_send would also carry an `empty-reply` silence row (criterion 19; whole-set review, round 4 F1).
+  it('persists nothing from the model turn in tool mode, and files a failed turn once', async () => {
+    modelTurn(send('posted by the tool'));
+    await runConversationTurn(
+      request({ sendMode: 'tool', mayDecline: true, questionAlreadyRecorded: true }),
+    );
+    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({ record: 'nothing' });
+    await runConversationTurn(request({ mayDecline: true, questionAlreadyRecorded: true }));
+    expect(runExternalChatTurn.mock.calls[1]?.[0]).toMatchObject({ record: 'silence-only' });
+    runExternalChatTurn.mockResolvedValue({
+      ...answered,
+      reply: '',
+      terminal: 'error',
+      error: 'provider exploded',
+    });
+    const out = await runConversationTurn(request({ sendMode: 'tool', mayDecline: true }));
+    expect(out).toEqual({ kind: 'declined', reason: 'provider exploded' });
+    expect(recordSilence).toHaveBeenCalledTimes(1);
+    expect(recordSilence).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'provider exploded' }),
+    );
+    expect(deliver).toHaveBeenCalledTimes(2);
+  });
+
   it('keeps the first message when room_send is called twice', async () => {
     modelTurn(async (tools) => {
       await tools?.execute('room_send', JSON.stringify({ text: 'first' }));

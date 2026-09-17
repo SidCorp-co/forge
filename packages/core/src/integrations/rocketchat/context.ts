@@ -188,12 +188,9 @@ export function buildRocketChatHistoryToolset(auth: RocketChatRestAuth, rid: str
         `rocketchat_history is capped at ${HISTORY_MAX_CALLS_PER_TURN} calls per turn — answer with what you have`,
       );
     }
-    let args: { before?: string; count?: number } = {};
-    try {
-      args = argsJson.trim() ? (JSON.parse(argsJson) as typeof args) : {};
-    } catch {
-      return toolError('arguments were not valid JSON');
-    }
+    const read = readToolArgs<{ before?: string; count?: number }>(argsJson);
+    if ('error' in read) return toolError(read.error);
+    const args = read.args;
     const count = Math.min(
       Math.max(1, typeof args.count === 'number' ? Math.floor(args.count) : HISTORY_MAX_PER_CALL),
       HISTORY_MAX_PER_CALL,
@@ -224,6 +221,21 @@ export const QUOTE_TOKENS_PER_TURN = 2000;
 const QUOTE_THREAD_PAGE = 50;
 
 const estimateTokens = (text: string): number => Math.ceil(text.length / 4);
+
+/** A tool's JSON arguments as an object, or the refusal a caller is owed. */
+// cm:guard `null` and a bare scalar are valid JSON and not an object, and a read of `.messageId` off them throws out of the tool instead of refusing by name (whole-set review, round 4 F1).
+function readToolArgs<T extends object>(argsJson: string): { args: T } | { error: string } {
+  if (!argsJson.trim()) return { args: {} as T };
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(argsJson);
+  } catch {
+    return { error: 'arguments were not valid JSON' };
+  }
+  if (parsed === null || typeof parsed !== 'object')
+    return { error: 'arguments were not a JSON object' };
+  return { args: parsed as T };
+}
 
 interface QuoteNeighbourhood {
   before: RocketChatRestMessage[];
@@ -322,13 +334,9 @@ export function buildRocketChatQuoteContextToolset(
 
   async function execute(name: string, argsJson: string): Promise<CallToolResult> {
     if (name !== QUOTE_CONTEXT_TOOL_NAME) return toolError(`unknown tool "${name}"`);
-    let args: { messageId?: unknown } = {};
-    try {
-      args = argsJson.trim() ? (JSON.parse(argsJson) as typeof args) : {};
-    } catch {
-      return toolError('arguments were not valid JSON');
-    }
-    const messageId = typeof args.messageId === 'string' ? args.messageId.trim() : '';
+    const read = readToolArgs<{ messageId?: unknown }>(argsJson);
+    if ('error' in read) return toolError(read.error);
+    const messageId = typeof read.args.messageId === 'string' ? read.args.messageId.trim() : '';
     if (!messageId) return toolError(`${QUOTE_CONTEXT_TOOL_NAME} needs a \`messageId\``);
     if (!targets.has(messageId) && targets.size >= QUOTE_TARGETS_PER_TURN) {
       return toolError(

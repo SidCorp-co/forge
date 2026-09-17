@@ -48,7 +48,10 @@ export function roomSendCapture(): RoomSendCapture {
       if (name !== ROOM_SEND_TOOL_NAME) return toolError(`unknown tool "${name}"`);
       let args: { text?: unknown } = {};
       try {
-        args = argsJson.trim() ? (JSON.parse(argsJson) as typeof args) : {};
+        const parsed: unknown = argsJson.trim() ? JSON.parse(argsJson) : {};
+        if (parsed === null || typeof parsed !== 'object')
+          return toolError('arguments were not a JSON object');
+        args = parsed as typeof args;
       } catch {
         return toolError('arguments were not valid JSON');
       }

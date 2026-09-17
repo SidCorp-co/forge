@@ -238,6 +238,17 @@ const body = async (set: ChatToolset, id: string): Promise<Record<string, unknow
 describe('buildRocketChatQuoteContextToolset (ISS-1087)', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it('refuses `null` arguments by name instead of throwing', async () => {
+    serve({});
+    const r = await buildRocketChatQuoteContextToolset(auth, 'R1').execute(
+      'rocketchat_quote_context',
+      'null',
+    );
+    expect(r.isError).toBe(true);
+    expect(JSON.stringify(r.content)).toMatch(/not a JSON object/);
+    expect(calls).toEqual([]);
+  });
+
   it('advertises rocketchat_quote_context (criterion 24)', () => {
     const set = buildRocketChatQuoteContextToolset(auth, 'R1');
     expect(set.tools.map((t) => t.function.name)).toEqual(['rocketchat_quote_context']);
