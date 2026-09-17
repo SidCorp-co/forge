@@ -1,0 +1,709 @@
+{
+  "takenFrom": "forge-dev",
+  "takenAt": "2026-09-17",
+  "rule": "every `forge-record` fence on ISS-910 to ISS-1089 was parsed with the writer's own grammar, and the FIRST SENTENCE of each field — 25 to 400 characters, ending on a full stop, on one line — was taken verbatim as the lead that field would have opened with. 5,884 such sentences exist across 1,884 fenced comments, of which the product-lens screen refuses 92. These 66 rows are the refused ones up to a cap per cause, plus an admitted sample spread evenly across the twelve record kinds.",
+  "reviewed": "each row read by hand against the two cells before the screen was run over it, and all 20 refusals agree with that reading: 11 quote a path carrying a line number, 9 name a raw pipeline status. No label was edited to match an output. Two disagreements stand UNRESOLVED and are recorded rather than hidden, because closing either means moving a rule this issue puts out of scope: a lead carrying a bare file path with no line number, and one carrying a commit sha, are both admitted, and a product reader should see neither. `no-developer-detail` is shared with the `public:report` cell and frozen by `legacy-verdicts.fixture.json`, so widening it here would move a second cell nobody asked about. Priced in docs/proposals/no-developer-detail-admits-bare-paths.md.",
+  "note": "`product` and `technical` are the rule ids each lens refuses the lead for, in order — an empty list is a lead that cell admits. A row whose two lists differ is the lens doing the one thing ISS-1089 gives it to do.",
+  "rows": [
+    {
+      "commentId": "d822fb7c-80a0-4f2c-9d49-2275a59a13c2",
+      "onIssue": "ISS-1080",
+      "postedAt": "2026-09-17T03:52:29.758Z",
+      "kind": "baseline",
+      "field": "result",
+      "lead": "Clean. 23 of 23 checks pass at fa6ecb212; 1 does not run -- behaviour/flow-coverage, which skips itself naming a prerequisite absent locally and which CI runs.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "84edd372-4515-48a2-bc45-76cd380bf279",
+      "onIssue": "ISS-1085",
+      "postedAt": "2026-09-17T11:19:41.956Z",
+      "kind": "confirmation",
+      "field": "detail",
+      "lead": "Judged against origin/main 601958da1 at 2026-09-19T11:19Z - correction, 2026-09-17T11:19Z.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "5d2adc3e-c637-48f6-9ada-72ecb2f9e428",
+      "onIssue": "ISS-1085",
+      "postedAt": "2026-09-17T12:09:02.740Z",
+      "kind": "correction",
+      "field": "why",
+      "lead": "Widening dispatchThrough's provider parameter to a string split its refusal into two messages, and registry.test.ts still asserted the old combined one - pnpm test caught it, verify did not.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "0f91ac04-08b5-4624-bef8-14d2e40f1a64",
+      "onIssue": "ISS-1083",
+      "postedAt": "2026-09-17T08:29:33.307Z",
+      "kind": "decision",
+      "field": "decision",
+      "lead": "The turn's stages are read off the turn state the transport already carries, and no block type is invented to represent one | conversation-thread.tsx's cm:guard says an entry carrying nothing renders nothing because a placeholder would claim a turn the record does not, and that guard is right.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "66dc1d79-0402-4915-ae4d-7ca0ce8fa3a7",
+      "onIssue": "ISS-1080",
+      "postedAt": "2026-09-17T07:21:39.371Z",
+      "kind": "finding",
+      "field": "seen",
+      "lead": "Both are true, and they are about different things.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "56248900-1941-467e-8ede-716ddd3df240",
+      "onIssue": "ISS-1062",
+      "postedAt": "2026-09-17T04:44:36.027Z",
+      "kind": "gap",
+      "field": "lacked",
+      "lead": "A route from the end-of-run record to the lease.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "68f7f7b4-8d07-4715-99e4-c6ad3d6fcdb2",
+      "onIssue": "ISS-1069",
+      "postedAt": "2026-09-17T08:40:10.323Z",
+      "kind": "park",
+      "field": "why",
+      "lead": "The plan declared a screen change and named criteria 36-40 under \"Witnessed on screen\", so this waits on a person looking at the Testing tab before it ships.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "2b11eabc-a67d-43e3-83c1-7e120ece7347",
+      "onIssue": "ISS-1036",
+      "postedAt": "2026-09-16T04:49:22.503Z",
+      "kind": "question",
+      "field": "reading",
+      "lead": "No Google credential is supplied -> criterion 9 is recorded as proved only to the boundary Forge owns — the request Forge sends to Google is asserted byte for byte and the response is a fixture — and its verdict says in the open that nothing here proves Google accepts the assertion.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "f03ac16f-b258-405b-8bce-e38a1e0d4374",
+      "onIssue": "ISS-1045",
+      "postedAt": "2026-09-16T03:36:44.146Z",
+      "kind": "review",
+      "field": "finding",
+      "lead": "F8 rejected: no pnpm lockfile has produced a value carrying another URL scheme in a query string, and token-aware scheme matching buys that fiction at the price of a form that could be wrong about a real ssh:// resolution.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "3a9d9082-3b9d-4a14-b18b-e6979b8389d6",
+      "onIssue": "ISS-974",
+      "postedAt": "2026-09-11T04:47:19.986Z",
+      "kind": "routed",
+      "field": "what",
+      "lead": "A lease's recorded pid is the OS pid of the host claude process, not of the agent session that took the lease, so a stopped run's lease never reads as dead and forge claim's documented reclaim path can never fire.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "501f924e-66ce-4180-a36c-e39101f86f51",
+      "onIssue": "ISS-1086",
+      "postedAt": "2026-09-17T13:28:38.414Z",
+      "kind": "verdict",
+      "field": "criterion",
+      "lead": "4 — A window claimed because it reached the hold carries `cut_reason = 'deadline'`.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "8d738423-8ca0-4f76-81c1-f3a22594e8f2",
+      "onIssue": "ISS-1071",
+      "postedAt": "2026-09-17T02:00:36.894Z",
+      "kind": "verification",
+      "field": "where",
+      "lead": "forge-beta (Coolify staging - previewDeploy.notes states environment=staging IS the live beta and there is no production env).",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "90a71142-a808-47a6-adfd-8ce28f34df78",
+      "onIssue": "ISS-1052",
+      "postedAt": "2026-09-16T06:34:21.492Z",
+      "kind": "baseline",
+      "field": "result",
+      "lead": "Nothing already fails. pnpm verify: 19 passed, 1 did not run (behaviour/flow-coverage, prerequisite absent locally, CI runs it), exit 0 — on the first attempt it exited 2 because @forge/observability had not been built in this fresh worktree, which is the tree and not the repo, and pnpm build cleared it.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "157a10ef-3155-4e1d-8b78-ffc07a3162bd",
+      "onIssue": "ISS-1061",
+      "postedAt": "2026-09-16T15:07:08.789Z",
+      "kind": "confirmation",
+      "field": "is",
+      "lead": "Task carries id, intent, budgetSeconds, fixtures (firstOpenIssue, projectName), preference, turns; no capability and no per-task judge rubric.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "463bb9e3-312a-429a-b312-5ba7174dcf0d",
+      "onIssue": "ISS-1058",
+      "postedAt": "2026-09-16T09:06:16.295Z",
+      "kind": "correction",
+      "field": "why",
+      "lead": "the plan's Files touched named compare.ts with 'history/compare.ts likewise' and listed the three test files in one line; the tracker reads a path per line, so they are named here.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "3b5f5a20-2282-41c3-8ddd-672ee73b5b72",
+      "onIssue": "ISS-1068",
+      "postedAt": "2026-09-16T23:47:14.345Z",
+      "kind": "decision",
+      "field": "decision",
+      "lead": "ALWAYS_INJECT_ENFORCEMENT_NOTE keeps its lesson and loses its worked example, saying that nothing on this deployment reads an always-inject rule back and naming ISS-1068 as the retirement of the one subsystem that tried | The note exists to tell an owner what the always-inject flag does and does not guarantee (ISS-936).",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "140a294f-3ad5-467d-bb5c-2cdb8914a755",
+      "onIssue": "ISS-1069",
+      "postedAt": "2026-09-17T08:41:22.847Z",
+      "kind": "finding",
+      "field": "expected",
+      "lead": "A route refusing a nested field names that field: a bad environments.live.url comes back as a message pointing at live.url, because \"wrong input is refused by name\" is the deliverable and a refusal that does not name the field is half of one.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "a8b30853-4635-47a9-b393-dee07b843bbd",
+      "onIssue": "ISS-1017",
+      "postedAt": "2026-09-15T03:25:20.289Z",
+      "kind": "gap",
+      "field": "where",
+      "lead": "Phase 5 of issue-flow, on an issue whose plan declares a screen change.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "03b122ad-053a-44ee-a62f-9b2a33259002",
+      "onIssue": "ISS-1040",
+      "postedAt": "2026-09-15T16:58:47.809Z",
+      "kind": "park",
+      "field": "why",
+      "lead": "3 reclaims of confirmed, so the status and not the run is where this dies.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "43d91f39-818c-445c-975a-976e32abdcb3",
+      "onIssue": "ISS-1013",
+      "postedAt": "2026-09-15T14:44:08.346Z",
+      "kind": "question",
+      "field": "reading",
+      "lead": "Leave it unreachable -> the evidence is the seeded fixture alone: criterion 3 asserts the fixture row count, per-job distribution and physical order against the figures the filing measured, and criteria 4-8 read the plan and the buffer counts on it.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "6a0f262b-e92e-4480-91ac-3d4d0239886d",
+      "onIssue": "ISS-1029",
+      "postedAt": "2026-09-15T05:37:14.247Z",
+      "kind": "review",
+      "field": "finding",
+      "lead": "F2 rejected: the reload path does not go through toCanonicalEntry.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "6f62b755-b4e8-40dc-8264-406d3026620e",
+      "onIssue": "ISS-934",
+      "postedAt": "2026-09-08T14:39:10.196Z",
+      "kind": "routed",
+      "field": "to",
+      "lead": "the forge-plugin project's own backlog, where it is already filed five times: ISS-720, ISS-473, ISS-709, ISS-710, ISS-718.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "8df1ea37-1ce5-400b-bda9-9ed6c738c8d7",
+      "onIssue": "ISS-1062",
+      "postedAt": "2026-09-17T04:38:46.231Z",
+      "kind": "verdict",
+      "field": "why",
+      "lead": "repo-projection-e2e.test.ts \"stores the reviewer and the state, lower-cased as GitHub's API spells it\" — the reviews map is keyed on pull_request_review.id and carries reviewer, state and submitted_at.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "f1c497e3-d967-41cb-90c6-48c1015d0d45",
+      "onIssue": "ISS-1047",
+      "postedAt": "2026-09-16T10:59:40.485Z",
+      "kind": "verification",
+      "field": "where",
+      "lead": "forge-beta, https://forge-beta-api.sidcorp.co, the staging Coolify target on the forge-dev project (integration 83ad5102, resource y8w4c4kss8ogo8gc44ow44kc).",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "fe40d8de-7f2f-40e0-83a8-b0c33a5316ee",
+      "onIssue": "ISS-1027",
+      "postedAt": "2026-09-17T11:00:54.698Z",
+      "kind": "baseline",
+      "field": "result",
+      "lead": "Green, with one flake named.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "6e209006-af5f-4ab9-90bd-9274a2a1e90c",
+      "onIssue": "ISS-1038",
+      "postedAt": "2026-09-17T04:26:40.434Z",
+      "kind": "confirmation",
+      "field": "is",
+      "lead": "The outcome this issue asked for has shipped on main under ISS-1071 (merged 2026-09-17T00:03Z, PR 463 plus two follow-ups).",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "5e574fe1-fd67-4c50-998e-d17391305bd6",
+      "onIssue": "ISS-1046",
+      "postedAt": "2026-09-16T16:05:28.733Z",
+      "kind": "correction",
+      "field": "why",
+      "lead": "The compile-time assertions I just added could not go red anywhere, which makes them exactly the green-that-is-evidence-for-nothing this repo refuses.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "0d6695b5-98cf-4099-9737-675079121564",
+      "onIssue": "ISS-1039",
+      "postedAt": "2026-09-15T16:38:05.755Z",
+      "kind": "decision",
+      "field": "decision",
+      "lead": "Passed over this wave at rank 2, 32 points.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "fc51f618-1b33-410e-994e-a932ebd6e80e",
+      "onIssue": "ISS-1050",
+      "postedAt": "2026-09-16T13:55:19.924Z",
+      "kind": "finding",
+      "field": "seen",
+      "lead": "Neither holds on the code that merged.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "b2e9f118-afee-4e6c-9590-ac0f0b0fcaa9",
+      "onIssue": "ISS-1012",
+      "postedAt": "2026-09-15T02:23:27.602Z",
+      "kind": "gap",
+      "field": "lacked",
+      "lead": "The `fix` rung told this run three times that the release note is not owed (`forge advance --owed`: \"at awaiting_release not owed: a release note … the withholding is the rule and not a record to type\"; the `forge claim` lane: \"awaiting_release verification; no note at this rung\"; `forge guide contract awaiting_release --rung fix`, same line).",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "44a98128-017f-4d89-a87d-621a8d73aa4f",
+      "onIssue": "ISS-1001",
+      "postedAt": "2026-09-14T00:14:01.973Z",
+      "kind": "park",
+      "field": "why",
+      "lead": "Criterion 35 — \"Rocket.Chat reaches the conversation store only through the four adapter ports\" — is recorded as a FAIL at the landed head, and I am not going to make the lane move by rewriting either the criterion or the verdict.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "09cdb396-9133-41c6-92b1-09b6deb7c8bd",
+      "onIssue": "ISS-953",
+      "postedAt": "2026-09-07T08:48:32.647Z",
+      "kind": "question",
+      "field": "reading",
+      "lead": "A) X-Forge-Job-Id header on the per-job MCP config, plus a NEW per-project AAT delivery path to each box -> the header is ~10 lines in forge-runner-core/src/mcp/config.rs and one read in require-pat.ts, but it is gated behind machinery that does not exist: nothing today puts a project-reaching, agent-owned credential on a runner box.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "efe041e1-e2d0-471a-96e0-d6c1564c1706",
+      "onIssue": "ISS-1004",
+      "postedAt": "2026-09-14T13:33:30.098Z",
+      "kind": "review",
+      "field": "reviewer",
+      "lead": "forge codex consult (cx/gpt-5.6-sol, high effort) — one bodies pass over the whole set this change touches, at the head pushed to PR #389; the two minor findings it raised were fixed in the same three files and cleared by --recheck, which returned 0 findings.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "491d383d-f54f-4585-be8f-5a289b95e6c3",
+      "onIssue": "ISS-931",
+      "postedAt": "2026-09-08T15:09:02.811Z",
+      "kind": "routed",
+      "field": "what",
+      "lead": "forge advance judges entry criteria against a forge_comments page it never walks to the end.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "9aeca443-c4ff-4061-ab03-a2853eb46418",
+      "onIssue": "ISS-1042",
+      "postedAt": "2026-09-16T08:18:09.460Z",
+      "kind": "verdict",
+      "field": "why",
+      "lead": "Unit. method.test.ts > assertMethodFor > \"refuses a run whose announcement names another skill, naming both\", with \"passes a run that announced the skill its job names\" as the positive and \"admits a run that announced it could NOT load its method, which is the priced amnesty\" as the deliberate third case.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "ea457966-59bc-4e9c-845a-676ea143442e",
+      "onIssue": "ISS-1024",
+      "postedAt": "2026-09-15T14:06:41.201Z",
+      "kind": "verification",
+      "field": "where",
+      "lead": "forge-beta (https://forge-beta-api.sidcorp.co), re-walked at 14:06Z against sourceCommit b3cf4c41 on the BARE /version route.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "bc40a213-60ab-40ac-83da-287e986235ed",
+      "onIssue": "ISS-1007",
+      "postedAt": "2026-09-14T18:29:31.172Z",
+      "kind": "baseline",
+      "field": "result",
+      "lead": "clean: verify 22 passed / 1 did not run (cargo gates, no crate diff), turbo test 6 of 6 tasks green, build green.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "d0ca1ddd-681e-4948-a52d-bfbf104a53c3",
+      "onIssue": "ISS-1016",
+      "postedAt": "2026-09-17T02:33:28.055Z",
+      "kind": "confirmation",
+      "field": "is",
+      "lead": "Every claim holds and two more sit beside them.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "94951af7-2449-4068-a90a-28bfb2bfdb35",
+      "onIssue": "ISS-1025",
+      "postedAt": "2026-09-15T03:48:36.967Z",
+      "kind": "correction",
+      "field": "why",
+      "lead": "CHANGELOG.md: the record axis owns it and the activity-history cap is the one outcome a consumer sees, so the entry is owed.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "fa644295-8ec0-49bb-a0a9-4858d6f8a23d",
+      "onIssue": "ISS-1024",
+      "postedAt": "2026-09-15T04:01:06.836Z",
+      "kind": "decision",
+      "field": "decision",
+      "lead": "The batched knowledge upsert de-duplicates its inputs by slug, keeping the last.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "c276aebe-9072-4d76-b22a-c29750b69d55",
+      "onIssue": "ISS-1042",
+      "postedAt": "2026-09-16T10:40:50.256Z",
+      "kind": "finding",
+      "field": "quoted",
+      "lead": "GET https://forge-beta.sidcorp.co/projects/forge-dev/releases/<uuid> -> HTTP 200, rendering: \"Couldn t load this release run / Not found.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "2cdec041-7046-44d1-b0ac-a55acd3833fe",
+      "onIssue": "ISS-988",
+      "postedAt": "2026-09-12T15:21:24.045Z",
+      "kind": "gap",
+      "field": "did",
+      "lead": "Implemented one field per set, named it for whichever criterion was more specific, and stated the mismatch as an explicit NAME DEVIATION in the verdict for the losing criterion rather than silently picking a side or claiming both were met.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "d188c9d3-e01b-4af0-b3e5-7d89e2e94503",
+      "onIssue": "ISS-978",
+      "postedAt": "2026-09-12T13:05:34.769Z",
+      "kind": "park",
+      "field": "why",
+      "lead": "BLOCKED-FIXTURE: merged at ca28999e and live on forge-beta, but the acceptance walk needs the chat channel.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "09cdb396-9133-41c6-92b1-09b6deb7c8bd",
+      "onIssue": "ISS-953",
+      "postedAt": "2026-09-07T08:48:32.647Z",
+      "kind": "question",
+      "field": "reading",
+      "lead": "B) Keep a short-lived job: token beside the AAT; delete NEITHER job-token.ts NOR the actor_agency columns -> ISS-953 becomes a no-op and closes as intended-behaviour: 'one credential species' means one TABLE, which ISS-932 already achieved, not one ROW per project.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "3cb67f7a-5ec8-41a3-8a1c-e62e64b7b2e8",
+      "onIssue": "ISS-984",
+      "postedAt": "2026-09-12T07:16:52.043Z",
+      "kind": "review",
+      "field": "finding",
+      "lead": "F2 rejected: the shipped checks DO pass on the whole b4850a2e description.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "57a45a99-c81f-425f-93fc-c8b8c7d4e33c",
+      "onIssue": "ISS-925",
+      "postedAt": "2026-09-06T19:42:06.231Z",
+      "kind": "routed",
+      "field": "none",
+      "lead": "nothing left this run. The flow-coverage function-level defect I would otherwise have filed is already owned by the ISS-863 session (iss-863-bf), which found it first and holds the coverage report as evidence; filing a second row for it would be the duplicate the dispatch brief warns about.",
+      "product": [],
+      "technical": []
+    },
+    {
+      "commentId": "26e8ebcd-083b-4b76-98c2-631c44de4d5b",
+      "onIssue": "ISS-1078",
+      "postedAt": "2026-09-17T07:03:52.159Z",
+      "kind": "correction",
+      "field": "why",
+      "lead": "The record did not say where the change grew, and the mark refused to earn developed until it did.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "6c646c2e-2323-4ed8-bec2-d0c85b5e6e9e",
+      "onIssue": "ISS-1078",
+      "postedAt": "2026-09-17T09:18:46.221Z",
+      "kind": "park",
+      "field": "why",
+      "lead": "3 reclaims of in_progress, so the status and not the run is where this dies.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "21f7e56f-aaf4-402d-922c-1b07f4fdfdd2",
+      "onIssue": "ISS-1078",
+      "postedAt": "2026-09-17T09:19:25.770Z",
+      "kind": "correction",
+      "field": "why",
+      "lead": "The hold is an artefact of my own claim, not a crash: the auto-park counts reclaims at in_progress and my `forge claim --stopped` was the third, so the counter fired on a lease I took deliberately after the previous run's worktree was reaped.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "0af118d0-b66e-43f4-9987-590f87af959b",
+      "onIssue": "ISS-1076",
+      "postedAt": "2026-09-17T11:07:25.656Z",
+      "kind": "verdict",
+      "field": "why",
+      "lead": "e2e 'a replayed opened leaves the status Forge last set' transitions the row to in_progress, replays opened, and asserts the status is still in_progress.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "003348e7-8ca9-478f-a088-fe1c7b9c387f",
+      "onIssue": "ISS-1076",
+      "postedAt": "2026-09-17T11:07:47.593Z",
+      "kind": "verdict",
+      "field": "why",
+      "lead": "e2e 'a closed delivery leaves the status untouched' transitions the row to in_progress, delivers issues.closed, and asserts the status is still in_progress with actions 0.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "734b4318-12d0-4e3a-92be-01e62e3ddb3c",
+      "onIssue": "ISS-1065",
+      "postedAt": "2026-09-16T18:44:25.286Z",
+      "kind": "verdict",
+      "field": "criterion",
+      "lead": "2 — The grader passes a reply that names only states from the list, in prose or arrows, and treats `in_progress` as one token.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "59ed77f2-77ca-4a52-97a5-55cd3d79650a",
+      "onIssue": "ISS-1064",
+      "postedAt": "2026-09-16T20:20:16.529Z",
+      "kind": "verdict",
+      "field": "criterion",
+      "lead": "9 — `prompt/tools.ts` states that an issue waiting on more information is at `needs_info`, read with `forge issue --status needs_info`, and that a draft is unfiled, not waiting; `compose.test.ts` MANIFEST claims `project-waiting-issue` under `tools` with that reason.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "8df1ea37-1ce5-400b-bda9-9ed6c738c8d7",
+      "onIssue": "ISS-1062",
+      "postedAt": "2026-09-17T04:38:46.231Z",
+      "kind": "verdict",
+      "field": "criterion",
+      "lead": "8 — A `check_run` delivery that would move a stored run backwards from `completed` to `queued` or `in_progress` leaves that run's stored state unchanged.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "90cacb5f-d9ee-4994-92a0-06cfd159ec9e",
+      "onIssue": "ISS-1042",
+      "postedAt": "2026-09-16T03:13:50.301Z",
+      "kind": "correction",
+      "field": "why",
+      "lead": "Step 11 is the convention the plan declared reversed: recoverStrandedReleasing had one destination, reopen, and now chooses between the project gate status, reopen and leaving the roster at releasing by what the run recorded.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "e511deaa-efa1-4124-adc0-0ce0e7a9df49",
+      "onIssue": "ISS-1081",
+      "postedAt": "2026-09-17T03:46:11.705Z",
+      "kind": "confirmation",
+      "field": "detail",
+      "lead": "Rule 4 sweep is answered by a reading, not a mechanical edit: search.ts:158 is the ONLY sql-aliased subquery field in packages/core/src whose alias is referenced from a join predicate.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "382cdb0e-146c-46cc-95cc-2f3cb31dc1ca",
+      "onIssue": "ISS-1074",
+      "postedAt": "2026-09-17T10:39:38.431Z",
+      "kind": "confirmation",
+      "field": "where",
+      "lead": "packages/core/src/db/schema.ts:2750 (agentAccess column, ISS-1071 cm:guard); packages/core/src/integrations/agent-access.ts; packages/core/src/integrations/agent-access-store.ts; packages/core/src/integrations/agent-declaration.ts; packages/core/src/integrations/github/ (22 files incl.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "fc51f618-1b33-410e-994e-a932ebd6e80e",
+      "onIssue": "ISS-1050",
+      "postedAt": "2026-09-16T13:55:19.924Z",
+      "kind": "finding",
+      "field": "quoted",
+      "lead": "From the code review of ed22130a, 13:09Z, outcome changes-requested: \"F11 - blocker - daemon/mod.rs:115, count_live_runs.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "d308437e-83e5-480d-a18c-f5a3e85ebc02",
+      "onIssue": "ISS-1049",
+      "postedAt": "2026-09-16T14:59:21.291Z",
+      "kind": "correction",
+      "field": "why",
+      "lead": "CodeQL attributed one high alert to this PR — js/double-escaping at scripts/build-flow-map.mjs:18, opened 2026-09-11, five days before this branch was cut, and reached this PR only because the sweep deleted three comment lines from that file and the diff is too large for CodeQL to attribute correctly, which its own summary says.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "7497f00b-cfeb-41f5-8042-ce30def088ce",
+      "onIssue": "ISS-1039",
+      "postedAt": "2026-09-16T20:42:17.803Z",
+      "kind": "confirmation",
+      "field": "detail",
+      "lead": "Out of reach of this issue and reported rather than fixed here: agent-sessions/routes.ts:779 holds 'if (TERMINAL_SESSION_STATUSES.has(updated.status)) {}' — an empty branch under a 6-line cm:guard about bridges that no longer live in it.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "9ce3da0a-8661-49d0-a43a-92b795800cf0",
+      "onIssue": "ISS-1034",
+      "postedAt": "2026-09-15T10:31:39.827Z",
+      "kind": "confirmation",
+      "field": "detail",
+      "lead": "Two corrections to the body follow as records: (1) preferences extend the existing user_preferences table and /preferences route rather than a new record; (2) today's promotion rule counts handles (ISS-1011 guard at conversation-routes.ts:220), so a live-derived shape must keep two-handle rooms as group — 'handles do not count' would narrow readability of existing rooms and is not taken.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "d61c747f-9994-40da-bd13-eb03a3bab6a8",
+      "onIssue": "ISS-1033",
+      "postedAt": "2026-09-17T11:12:18.910Z",
+      "kind": "verdict",
+      "field": "why",
+      "lead": "STALE_AFTER_MS is declared once at waiting.ts:19 with one consumer in the same file.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "c28f2e21-7a39-4f5d-94bd-6549977e1180",
+      "onIssue": "ISS-1030",
+      "postedAt": "2026-09-17T07:07:39.918Z",
+      "kind": "confirmation",
+      "field": "detail",
+      "lead": "Still true, verbatim. parse_assistant_message keeps assistant text and returns None for every other stream-json line, and its own test at chat.rs:749 asserts is_none for a tool-only line.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "632a7210-0114-4439-a0cd-bd9f194909fa",
+      "onIssue": "ISS-999",
+      "postedAt": "2026-09-13T19:16:16.092Z",
+      "kind": "verdict",
+      "field": "why",
+      "lead": "Proven by mutation at the merge head: a tenth member planted in AUTONOMOUS_LABELS fails the web-v2 typecheck in exactly one file, src/features/issues/derive.ts:75, the LABEL_WORDS registry - TS2741, property missing in Record<AutonomousLabel, string>.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "6e26ba1e-3b40-441a-af84-b6298ff3a794",
+      "onIssue": "ISS-991",
+      "postedAt": "2026-09-13T11:14:44.903Z",
+      "kind": "confirmation",
+      "field": "detail",
+      "lead": "Confirmed by reading, not by a live call: routes.ts:132 has no .strict() and routes.ts:318-322 pushes a condition only per known key.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    },
+    {
+      "commentId": "e0ab3c96-b364-4610-a530-5a0c84f4572d",
+      "onIssue": "ISS-982",
+      "postedAt": "2026-09-11T12:00:46.898Z",
+      "kind": "confirmation",
+      "field": "detail",
+      "lead": "Verified, not taken on the report's word: derive.ts:253 is literally ISSUE_STATUSES.filter(s => s !== from && s !== 'draft'), and the three consumers (StatusEdit, useRowMenuItems, BulkActionBar) all render exactly that list.",
+      "product": [
+        "no-developer-detail"
+      ],
+      "technical": []
+    }
+  ]
+}
