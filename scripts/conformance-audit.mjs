@@ -362,9 +362,9 @@ console.log(`\nconformance-audit: ${RULES.length} rules evaluated`);
 // cm:guard before EITHER profile verdict, and before the undeclared-profile branch below. Both of those are claims about whether this repo meets a standard, and an audit that could not run one of its rules has not established either answer.
 if (blocked > 0) {
   console.error(
-    `\nconformance-audit: ${blocked} rule(s) could not be evaluated — the tool they run is not\n` +
-      'on disk. No claim is made about the profile either way: a rule that did not run is\n' +
-      'not a rule this repo fails. Exit 2.\n',
+    `\nconformance-audit: ${blocked} rule(s) could not be evaluated — the tool they run gave\n` +
+      'no measurement. No claim is made about the profile either way: a rule that did not run\n' +
+      'is not a rule this repo fails. Each line below says which tool and why. Exit 2.\n',
   );
   for (const r of RULES.filter((x) => x.blocked)) console.error(`  ${r.id}: ${r.blocked}`);
   console.error('');
