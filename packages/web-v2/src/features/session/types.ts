@@ -12,6 +12,7 @@
 // `@forge/contracts` has no agent-session-turn types yet, so these are re-typed
 // locally (same note as ISS-291's `features/sessions/types.ts`).
 
+import { decodeToolOutput } from "./result-summary";
 import type { ModelTier } from "@forge/contracts";
 
 export type { ModelTier };
@@ -309,7 +310,12 @@ function toToolCallData(tc: CanonicalToolCall): ToolCallData {
     id: tc.id,
     name: tc.name,
     input: tc.input,
-    result: tc.result ?? tc.output,
+    // cm:guard `result` is read by KEY and `output` is DECODED, and both halves matter. `??` used to
+    // skip an explicit `result: null` — a call that answered nothing — and hand the card `undefined`,
+    // which the summary reads as still running. And `output` arrives serialized on every path, so
+    // passing it through made every card say `Text · N characters` (ISS-1083, implementation consult
+    // F1).
+    result: tc.result !== undefined ? tc.result : decodeToolOutput(tc.output),
     durationMs: tc.durationMs,
     isError: tc.isError,
   };
@@ -342,7 +348,7 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
         out.push(
           b.tool.name === "TodoWrite"
             ? todoWriteToTodos(b.tool.input)
-            : { type: "tool", tool: b.tool },
+            : { type: "tool", tool: toToolCallData(b.tool) },
         );
       } else if (b.type === "todos") {
         out.push({ type: "todos", todos: b.todos });
@@ -352,8 +358,19 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
     }
   } else {
     if (entry.toolCalls?.length) {
+      // cm:guard EVERY tool call reaches a card through `toToolCallData`, these two v1 paths
+      // included. They used to hand their calls through untouched, which was harmless while the
+      // card only previewed `result`: a CLI-derived entry carries its output on `output`, so
+      // `result` was undefined and the card showed nothing. Since ISS-1083 the card reads an absent
+      // result as `Running…`, and a settled turn in history claiming a call is still in flight is
+      // worse than showing nothing. Found by asking what bypasses the decoder rather than by a
+      // failing test, which is why the assertion below it exists.
       for (const tc of entry.toolCalls) {
-        out.push(tc.name === "TodoWrite" ? todoWriteToTodos(tc.input) : { type: "tool", tool: tc });
+        out.push(
+          tc.name === "TodoWrite"
+            ? todoWriteToTodos(tc.input)
+            : { type: "tool", tool: toToolCallData(tc) },
+        );
       }
     }
     const text = entryText(entry.content);

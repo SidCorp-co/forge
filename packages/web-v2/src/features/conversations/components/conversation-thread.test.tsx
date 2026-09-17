@@ -9,7 +9,7 @@
 import { Conversation } from "@/features/session/components/conversation";
 import { type CanonicalBlock, type MessageEntry, parseMessages } from "@/features/session/types";
 import * as matchers from "@testing-library/jest-dom/matchers";
-import { cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import type {
   AgentTurn,
@@ -246,7 +246,12 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
       />,
     );
     expect(screen.getByText("Read release.md")).toBeInTheDocument();
-    expect(screen.getByText("three issues, one blocked")).toBeInTheDocument();
+    // cm:guard the output is one click away rather than inline since ISS-1083 — the card summarizes
+    // what came back and opens onto it — so this asserts the same property through the new
+    // affordance rather than being dropped: the stored block's OUTPUT reaches the screen.
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Text · 25 characters");
+    fireEvent.click(screen.getByTestId("tool-result-toggle"));
+    expect(screen.getByTestId("tool-result-body")).toHaveTextContent("three issues, one blocked");
     // cm:guard the text either SIDE of the tool call, in order: a renderer that appended the cards
     // after the prose would satisfy an assertion on the card alone while losing what ISS-348 fixed.
     expect(screen.getByText("let me look")).toBeInTheDocument();
@@ -475,5 +480,162 @@ describe("ConversationThread \u00b7 the canonical entry, drawn (ISS-1078)", () =
       expect(screen.getByText("two issues left")).toBeInTheDocument();
       expect(screen.queryByTestId("thread-pending")).toBeNull();
     });
+  });
+});
+
+// cm:guard the compounding defect could only be seen through BOTH components at once: each file's
+// cap was correct on its own, and nested they multiplied to 0.85 x 0.85 = 0.7225 — a turn got 72%
+// of the panel. `conversation-width.test.tsx` counts the caps inside the shared renderer; this one
+// counts them through the wrapper, which is the render a person was actually looking at (ISS-1083).
+describe("the assistant column, drawn through the chat wrapper", () => {
+  const answered: ConversationMessage = {
+    id: "m1",
+    seq: 1,
+    role: "assistant",
+    authorUserId: null,
+    authorLabel: null,
+    content: "Two issues are left.",
+    silenceReason: null,
+    createdAt: "2026-09-14T00:00:02.000Z",
+  };
+
+  it("carries exactly one restricting max-width, not one per component", () => {
+    const { container } = render(<ConversationThread messages={[asked, answered]} windows={[]} />);
+    const capped = Array.from(container.querySelectorAll<HTMLElement>("*"))
+      .map((el) => el.getAttribute("class") ?? "")
+      .filter((cls) => /(?:^|\s)(?:sm:)?max-w-\[/.test(cls));
+    // One for the person's bubble, one for the assistant column. Never two for either.
+    expect(capped).toHaveLength(2);
+    expect(capped.filter((c) => c.includes("max-w-[72ch]"))).toHaveLength(1);
+    expect(capped.filter((c) => c.includes("max-w-[88%]"))).toHaveLength(1);
+    for (const cls of capped) expect(cls).not.toContain("sm:max-w-");
+  });
+});
+
+// cm:guard the wire's OWN shape, end to end, because the unit tests around `summarizeResult` fed it
+// objects and every real path hands it a string: the accumulator writes
+// `JSON.stringify(ev.result ?? '')` into `output` and the CLI path lifts the stream-json result's
+// text. A summary that met only objects read `Text · N characters` on every card in the product
+// while 31 assertions stayed green (ISS-1083, implementation consult F1).
+describe("a tool's output as the wire actually carries it", () => {
+  const replied = (over: Partial<ConversationMessage> = {}): ConversationMessage => ({
+    ...asked,
+    id: "m1",
+    seq: 1,
+    role: "assistant",
+    authorUserId: null,
+    authorLabel: null,
+    content: "two issues left",
+    createdAt: "2026-09-14T00:00:01.000Z",
+    ...over,
+  });
+
+  const withOutput = (output: string): CanonicalBlock[] => [
+    { type: "tool", toolCall: { id: "t9", name: "forge_projects_get", input: { slug: "erp" }, output } },
+  ];
+
+  it("summarizes a serialized object as the object, and opens onto it pretty-printed", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: withOutput('{"project":{"slug":"erp"}}') })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Object · 1 field");
+    fireEvent.click(screen.getByTestId("tool-result-toggle"));
+    expect(screen.getByTestId("tool-result-body").textContent).toContain('\n  "project"');
+  });
+
+  it("summarizes a serialized empty array as an empty array", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: withOutput("[]") })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Array · 0 items");
+  });
+
+  it("summarizes what the accumulator writes for a null result as no result", () => {
+    render(
+      <ConversationThread
+        messages={[asked, replied({ blocks: withOutput('""') })]}
+        windows={[closed("answered")]}
+      />,
+    );
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("No result");
+    expect(screen.queryByTestId("tool-result-toggle")).toBeNull();
+  });
+});
+
+// cm:guard THE moment this store exists for (ISS-1083 criterion 24): a turn settling on this
+// surface is not a re-render, it is a SWAP — `threadEntries` stops emitting the `progress` entry and
+// emits a `said` row instead, so React unmounts `LiveTurn` and mounts `Said` at that position. A
+// tool result a reader had opened while the answer was arriving used to go with it, and no key
+// inside the turn survives that, because the component at the position changes type. The scope on
+// `ConversationThread` does.
+describe("what a reader has opened, across the settle", () => {
+  const blocks: CanonicalBlock[] = [
+    { type: "text", text: "let me look" },
+    {
+      type: "tool",
+      toolCall: { id: "t1", name: "Read", input: { file_path: "release.md" }, output: '{"open":3}' },
+    },
+    { type: "text", text: "two issues left" },
+  ];
+
+  // The id is the SAME on both sides, which is the store's own premise: a progress entry carries
+  // "the id the settled row will carry" and `parseMessages` passes it straight through.
+  const arriving: ConversationProgressEntry = {
+    conversationId: "c1",
+    rev: 4,
+    entry: {
+      id: "m1",
+      type: "assistant",
+      timestamp: Date.parse("2026-09-14T00:00:01.000Z"),
+      content: "two issues left",
+      blocks,
+    },
+  };
+  const stored: ConversationMessage = {
+    ...asked,
+    id: "m1",
+    seq: 1,
+    role: "assistant",
+    authorUserId: null,
+    authorLabel: null,
+    content: "two issues left",
+    createdAt: "2026-09-14T00:00:01.000Z",
+    blocks,
+  };
+
+  it("keeps a tool result open when the turn it is in settles", () => {
+    const { rerender } = render(
+      <ConversationThread messages={[asked]} windows={[]} progress={arriving} />,
+    );
+    fireEvent.click(screen.getByTestId("tool-result-toggle"));
+    expect(screen.getByTestId("tool-result-body")).toHaveTextContent('"open": 3');
+
+    // The turn settles: the stored row lands and the frames stop being a turn of their own.
+    rerender(
+      <ConversationThread messages={[asked, stored]} windows={[closed("answered")]} progress={null} />,
+    );
+
+    expect(screen.queryByTestId("thread-live-turn")).toBeNull();
+    expect(screen.getByTestId("tool-result-body")).toHaveTextContent('"open": 3');
+  });
+
+  // cm:guard and it was CLOSED before the settle, so what survives is the reader's decision either
+  // way rather than a card that happens to default open. Without this the case above would pass
+  // against an implementation that opened every card on a settled row.
+  it("keeps a tool result closed when the reader never opened it", () => {
+    const { rerender } = render(
+      <ConversationThread messages={[asked]} windows={[]} progress={arriving} />,
+    );
+    rerender(
+      <ConversationThread messages={[asked, stored]} windows={[closed("answered")]} progress={null} />,
+    );
+    expect(screen.queryByTestId("tool-result-body")).toBeNull();
+    expect(screen.getByTestId("tool-result-summary")).toHaveTextContent("Object · 1 field");
   });
 });
