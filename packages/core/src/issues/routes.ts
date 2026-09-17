@@ -18,13 +18,11 @@ import {
   jobs,
   jobTypes,
   projectMembers,
-  usageRecords,
 } from '../db/schema.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
 import { formatIssueRef, issueRefNeedsHeldPrefixes, parseIssueRef } from '../lib/issue-ref.js';
 import { listResponse, paginationSchema } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
-import { usageSessionMatch } from '../usage-records/rollup.js';
 import { logger } from '../logger.js';
 import { deleteMemory } from '../memory/indexer.js';
 import { type AuthVars, assertEmailVerified, requireAuth, restActor } from '../middleware/auth.js';
@@ -45,6 +43,7 @@ import { collectIssueFieldUpdates, SHARED_ISSUE_PATCH_FIELDS } from './patch-fie
 import { safeHydratePipelineHealthForIssues } from './pipeline-health.js';
 import { findIssueByDisplaySeq, findIssueById, type IssueRow } from './read-service.js';
 import { issueRelationInputSchema } from './relations-service.js';
+import { jobHistoryForStep } from './search.js';
 import { sessionContextExpectSchema, sessionContextSchema } from './session-context.js';
 import { buildIssueOrderBy, issueSortValues } from './sort.js';
 import {
@@ -491,24 +490,7 @@ issueRoutes.get(
     const access = await loadProjectAccess(issue.projectId, userId);
     if (!access.role) throw forbidden('not a project member');
 
-    const rows = await db
-      .select({
-        jobId: jobs.id,
-        status: jobs.status,
-        model: jobs.modelUsed,
-        startedAt: jobs.dispatchedAt,
-        finishedAt: jobs.finishedAt,
-        estTokens: jobs.promptInputTokenEst,
-        tokens: sql<number>`coalesce(sum(${usageRecords.inputTokens}), 0)`.mapWith(Number),
-        cost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
-      })
-      .from(jobs)
-      .leftJoin(usageRecords, usageSessionMatch(sql`= ${jobs.agentSessionId}::text`))
-      .where(and(eq(jobs.issueId, id), eq(jobs.type, step)))
-      .groupBy(jobs.id)
-      .orderBy(sql`coalesce(${jobs.dispatchedAt}, ${jobs.queuedAt}) desc`);
-
-    return c.json(rows);
+    return c.json(await jobHistoryForStep(id, step));
   },
 );
 

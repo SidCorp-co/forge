@@ -191,6 +191,11 @@ describe('usage_records.sessionId is a uuid or null', () => {
     });
   };
 
+  /* The row the route handed the insert. Undefined rather than a throw when nothing was
+     inserted, so the assertion that follows still names the value it wanted. */
+  const firstInserted = (): { sessionId?: string | null } =>
+    (insertValues.mock.calls[0]?.[0] as { sessionId?: string | null } | undefined) ?? {};
+
   const record = (extra: Record<string, unknown>) => ({
     projectId: PROJECT_ID,
     source: 'cli',
@@ -228,18 +233,18 @@ describe('usage_records.sessionId is a uuid or null', () => {
     insertReturning.mockResolvedValueOnce([{ id: RECORD_ID }]);
     const res = await post('/api/usage-records', record({ sessionId: UPPER }));
     expect(res.status).toBe(201);
-    expect((insertValues.mock.calls[0]?.[0] as { sessionId: string }).sessionId).toBe(LOWER);
+    expect(firstInserted().sessionId).toBe(LOWER);
   });
 
   it('still accepts an omitted sessionId, and an explicit null', async () => {
     insertReturning.mockResolvedValueOnce([{ id: RECORD_ID }]);
     expect((await post('/api/usage-records', record({}))).status).toBe(201);
-    expect((insertValues.mock.calls[0]?.[0] as { sessionId: null }).sessionId).toBeNull();
+    expect(firstInserted().sessionId).toBeNull();
 
     vi.clearAllMocks();
     insertReturning.mockResolvedValueOnce([{ id: RECORD_ID }]);
     expect((await post('/api/usage-records', record({ sessionId: null }))).status).toBe(201);
-    expect((insertValues.mock.calls[0]?.[0] as { sessionId: null }).sessionId).toBeNull();
+    expect(firstInserted().sessionId).toBeNull();
   });
 
   // cm:guard the batch routes validate the whole array before inserting any of it, which is their
