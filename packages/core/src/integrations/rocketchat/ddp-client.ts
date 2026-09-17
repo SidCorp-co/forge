@@ -359,6 +359,41 @@ export class RocketChatDdpClient {
     });
   }
 
+  /**
+   * Tell the room the bot is typing, or that it stopped.
+   */
+  // cm:guard the ONE write `stream-notify-room` accepts from a client is `<rid>/user-activity`, and the server checks `shownName` against the name it shows for this account — the username, or the display name under `UI_Use_Real_Name` — so a mismatch is an error frame and the caller's to retry under the other name. `['user-typing']` starts and `[]` stops; the client forgets an activity it has not heard about for 15 seconds, so a caller that wants it kept renews (ISS-1088 criterion 24).
+  notifyUserActivity(rid: string, shownName: string, on: boolean): Promise<void> {
+    return this.call('stream-notify-room', [
+      `${rid}/user-activity`,
+      shownName,
+      on ? ['user-typing'] : [],
+      {},
+    ]).then(() => undefined);
+  }
+
+  /** One DDP method call: resolves on the server's result, rejects on its error frame or the send timeout. */
+  private call(method: string, params: unknown[]): Promise<unknown> {
+    const id = this.nextId();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) reject(new Error(`${method} ack timed out`));
+      }, SEND_TIMEOUT_MS);
+      timer.unref?.();
+      this.pending.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
+      this.send({ msg: 'method', method, id, params });
+    });
+  }
+
   close(): void {
     this.stopWatchdog();
     try {

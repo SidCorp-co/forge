@@ -16,7 +16,9 @@ import type {
   ConversationAdapterPorts,
   ConversationHistoryMessage,
   ConversationVenue,
+  DeliveryOptions,
   DeliveryReceipt,
+  RequestAck,
   ScreenedMessage,
 } from '../../conversations/ports.js';
 import { db } from '../../db/client.js';
@@ -24,12 +26,14 @@ import { integrationBindings, integrationConnections } from '../../db/schema.js'
 import { logger } from '../../logger.js';
 import { decryptConnectionSecrets } from '../store.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
+import { type LiveConnection, liveConnectionFor } from './live-connections.js';
 import { FIXED_REPLY_CONSTANT, type ReplySendProof, sendFixedReply } from './outbound.js';
 import {
   fetchRoomHistory,
   fetchThreadMessages,
   type RocketChatRestAuth,
   type RocketChatRestMessage,
+  reactToMessage,
 } from './rest-client.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
 import type { RocketChatBindingConfig, RocketChatConfig, RocketChatSecrets } from './types.js';
@@ -66,11 +70,18 @@ export function parseRocketChatVenueId(externalId: string): RocketChatVenueParts
 // cm:guard the binding must also name THIS venue's project, with no single-connection shortcut: a conversation outlives the binding that opened it, so a room rebound from project A to project B still has A's durable venue pointing at it — right credential, somebody else's content.
 // cm:why having only one candidate connection on the server says nothing about which project owns the room today, which is why the old shortcut past the bindings is gone (ISS-1001 invariant 2).
 // cm:guard the choice among several candidates is ORDERED by connection id and never left to the row order the database happens to return: two connections can legitimately bind one room under one project, and an unordered pick makes the bot a conversation speaks as change between two consecutive replies for no reason a reader could find (ISS-1002).
-async function authForVenue(
+/** The connection a room is served through, and the REST credential it holds. */
+export interface VenueConnection {
+  connectionId: string;
+  auth: RocketChatRestAuth;
+}
+
+// cm:guard ONE selection for the answer, the history, the reaction and the activity: `connectionForVenue` returns the connection id beside the credential, so the port shows activity on the SAME bot's socket that reacts and answers, rather than on whichever connection happens to hold the room (ISS-1088 criterion 26; plan consult F6).
+async function connectionForVenue(
   namespace: string,
   rid: string,
   projectId: string,
-): Promise<RocketChatRestAuth | null> {
+): Promise<VenueConnection | null> {
   const rows = await db
     .select()
     .from(integrationConnections)
@@ -121,12 +132,65 @@ async function authForVenue(
     const secrets = decryptConnectionSecrets<RocketChatSecrets>(row);
     if (!secrets.authToken || !secrets.userId) continue;
     return {
-      serverUrl: config.serverUrl,
-      authToken: secrets.authToken,
-      userId: secrets.userId,
+      connectionId: row.id,
+      auth: {
+        serverUrl: config.serverUrl,
+        authToken: secrets.authToken,
+        userId: secrets.userId,
+      },
     };
   }
   return null;
+}
+
+async function authForVenue(
+  namespace: string,
+  rid: string,
+  projectId: string,
+): Promise<RocketChatRestAuth | null> {
+  return (await connectionForVenue(namespace, rid, projectId))?.auth ?? null;
+}
+
+/**
+ * The emoji a received request is marked with, and the one the terminal clear removes.
+ */
+// cm:guard ONE constant read by both halves: a set under one name and a clear under another leaves the first on the message for good (ISS-1088 criterion 30). `eyes` because it says "seen" and nothing about the answer.
+export const RECEIVED_EMOJI = 'eyes';
+
+/**
+ * Show the room the bot is typing, under the name the server will accept.
+ */
+// cm:guard the USERNAME first and the DISPLAY NAME once on a refusal: `stream-notify-room` validates the name against the one the server shows for the account, which `UI_Use_Real_Name` flips, and the port cannot read that setting — so it tries the two names a server can show and remembers a refusal under both per connection, logging it once rather than on every renewal (ISS-1088 criteria 24, 26, 27).
+async function showActivity(
+  live: LiveConnection,
+  connectionId: string,
+  rid: string,
+  on: boolean,
+): Promise<void> {
+  if (live.activityRefused || !live.username) return;
+  try {
+    await live.client.notifyUserActivity(rid, live.username, on);
+    return;
+  } catch (first) {
+    if (live.displayName && live.displayName !== live.username) {
+      try {
+        await live.client.notifyUserActivity(rid, live.displayName, on);
+        return;
+      } catch (second) {
+        live.activityRefused = true;
+        logger.warn(
+          { err: second, firstErr: first, connectionId, rid },
+          'rocketchat: the server refused the typing indicator under both of the bot names; no further attempts on this connection',
+        );
+        return;
+      }
+    }
+    live.activityRefused = true;
+    logger.warn(
+      { err: first, connectionId, rid },
+      'rocketchat: the server refused the typing indicator and the bot has no other name to try; no further attempts on this connection',
+    );
+  }
 }
 
 function toHistory(
@@ -188,7 +252,12 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
   },
 
   // cm:guard routes through `sendFixedReply` like every other reply path — `outbound.ts` is the ONE door to a room and `outbound.test.ts` fails CI on a second one. The screened value's own `problems` become the proof, so the verdict and the exact string that was screened travel together.
-  async deliver(venue: ConversationVenue, message: ScreenedMessage): Promise<DeliveryReceipt> {
+  // cm:guard the `@label` address is added HERE, after the screen and before the door, and reported back in `deliveredText`: the screen judged the answer and an address is not part of the answer, while the transcript must hold what the room saw (ISS-1088 criteria 20-22). An `anchor` threads the post under that message where the venue is not already a thread — the status a request is owed goes to the asker, not to the room.
+  async deliver(
+    venue: ConversationVenue,
+    message: ScreenedMessage,
+    opts?: DeliveryOptions,
+  ): Promise<DeliveryReceipt> {
     const parts = parseRocketChatVenueId(venue.externalId);
     if (!parts) {
       throw new Error(`rocketchat: "${venue.externalId}" is not a Rocket.Chat venue id`);
@@ -203,11 +272,31 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
       message.problems.length === 0
         ? FIXED_REPLY_CONSTANT
         : { ok: true, problems: [...message.problems] };
-    return sendFixedReply(
-      { kind: 'rest', auth, rid: parts.rid, tmid: parts.tmid ?? undefined },
-      message.text,
-      proof,
-    );
+    const text = opts?.addressee ? `@${opts.addressee} ${message.text}` : message.text;
+    const tmid = parts.tmid ?? opts?.anchor ?? undefined;
+    const receipt = await sendFixedReply({ kind: 'rest', auth, rid: parts.rid, tmid }, text, proof);
+    return text === message.text ? receipt : { ...receipt, deliveredText: text };
+  },
+
+  // cm:guard the reaction and the activity are DECORATION and never a message: Rocket.Chat notifies nobody of either, which is the one property an acknowledgement must have, and a port that fell back to posting when they failed would notify everybody about an answer not yet given (ISS-1088 criteria 25, 30). No live connection held by this core for the room's connection means no activity — the reaction still goes, it is REST.
+  async acknowledge(venue: ConversationVenue, ack: RequestAck): Promise<void> {
+    const parts = parseRocketChatVenueId(venue.externalId);
+    if (!parts) return;
+    const conn = await connectionForVenue(parts.namespace, parts.rid, venue.projectId);
+    if (!conn) return;
+    if (ack.kind === 'received') {
+      const ok = await reactToMessage(conn.auth, ack.messageId, RECEIVED_EMOJI, ack.on);
+      if (!ok) {
+        logger.warn(
+          { rid: parts.rid, messageId: ack.messageId, on: ack.on, connectionId: conn.connectionId },
+          'rocketchat: the server refused the receipt reaction',
+        );
+      }
+      return;
+    }
+    const live = liveConnectionFor(conn.connectionId);
+    if (!live) return;
+    await showActivity(live, conn.connectionId, parts.rid, ack.on);
   },
 
   // cm:guard the SAME `authForVenue` the delivery makes, asked early: a session runs long, and a room rebound while it ran is not this project's to answer into. It is not a substitute for the read `deliver` makes — that one is what stops the answer being posted — it is what stops a rebound room costing a failover redispatch and a screening turn first (ISS-1039).
