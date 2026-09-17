@@ -178,13 +178,33 @@
 @keyframes forge-highlight { 0% { background: var(--accent-tint); } 100% { background: transparent; } }
 .forge-highlight { animation: forge-highlight 1.2s var(--ease-out); }
 
-/* Streaming caret — blinks at the end of a token-streaming message. */
+/* Streaming caret — trails the last WORD of the block still being written, never sitting on a line
+   of its own. `.forge-caret` goes on the streaming block itself (`streaming-text.tsx`) and the bar
+   is drawn as an `::after` on the last child INSIDE the markdown wrapper, because an element placed
+   after that wrapper is an inline box following a block and starts a new line: measured in Chrome
+   on 2026-09-17, that made a one-line streaming block 44px tall against 20px settled.
+   Three selectors, one bar. A list is excluded from the first and answered by the second, because
+   `::after` on a `<ul>` renders after the list's content box — a bar floating under the bullets
+   rather than after the words, which is the defect this rule exists to remove, one shape along. The
+   third is the block that has arrived with nothing in it yet, where there is no last child to hang
+   the bar off at all.
+   What still falls to its own line, named rather than left to be discovered: a turn ending in a
+   fenced code block, a table, a rule, or a list whose last item holds a block of its own. Each of
+   those ends a line anyway, so a bar under it reads as it should — and each keeps exactly the
+   behaviour it had before this rule, rather than gaining anything from it.
+   `.forge-caret-anchor` is `Markdown`'s own wrapper, named by `streaming-text.tsx` so this rule does
+   not depend on that component's DOM staying one unnamed div deep (ISS-1083). */
 @keyframes forge-caret { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
-.forge-caret { display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: text-bottom; background: var(--accent); animation: forge-caret 1s steps(1) infinite; }
+.forge-caret > .forge-caret-anchor > :last-child:not(ul, ol)::after,
+.forge-caret > .forge-caret-anchor > :is(ul, ol):last-child > li:last-child::after,
+.forge-caret > .forge-caret-anchor:empty::after { content: ""; display: inline-block; width: 2px; height: 1em; margin-left: 1px; vertical-align: text-bottom; background: var(--accent); animation: forge-caret 1s steps(1) infinite; }
 
 /* ── Accessibility: respect reduced-motion ─────────────────── */
 @media (prefers-reduced-motion: reduce) {
-  .forge-pulse, .skeleton::after, .forge-indeterminate, .forge-highlight, .forge-caret,
+  .forge-pulse, .skeleton::after, .forge-indeterminate, .forge-highlight,
+  .forge-caret > .forge-caret-anchor > :last-child:not(ul, ol)::after,
+  .forge-caret > .forge-caret-anchor > :is(ul, ol):last-child > li:last-child::after,
+  .forge-caret > .forge-caret-anchor:empty::after,
   .fm-breathe, .fm-flameA, .fm-flameB, .fm-ringpulse { animation: none !important; }
   .skeleton::after { display: none; }
   *, *::before, *::after { animation-duration: 0.001ms !important; animation-iteration-count: 1 !important; transition-duration: 0.001ms !important; }

@@ -2887,6 +2887,9 @@
   JSON, cut mid-key. It now names the result's shape and size in one line, and opens onto the whole
   of it.
 
+- **The typing cursor sits after the last word, not on the line below it.** It was an element after
+  the prose, so every streaming reply was a line taller than the reply it became.
+
 - **A turn says whether it is working, responding or failed.** A turn that had produced nothing
   showed empty space, and a spinner sat under prose it had already written. The cursor now follows
   only text that is still growing.

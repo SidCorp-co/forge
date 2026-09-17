@@ -41,11 +41,14 @@ const agent = (blocks: RenderBlock[], id = "a1"): ConversationItem => ({
   editedAt: null,
 });
 
-/** Every caret in the tree, and the text its own block holds. */
+/** Every caret in the tree, and the text of the block carrying it. */
+// cm:guard `.forge-caret` is the STREAMING BLOCK itself since the caret became an `::after` on its
+// last line rather than an element after it (ISS-1083, `streaming-text.tsx`), so this reads the
+// element's own text. It used to read `parentElement`, which was the same string while a turn held
+// one block and the whole turn's text once it held several — the two cases below are why that
+// mattered.
 const carets = (root: HTMLElement): string[] =>
-  Array.from(root.querySelectorAll(".forge-caret")).map(
-    (c) => c.parentElement?.textContent?.replace("", "") ?? "",
-  );
+  Array.from(root.querySelectorAll(".forge-caret")).map((c) => c.textContent ?? "");
 
 describe("where the caret goes while a turn streams", () => {
   it("trails the prose a turn is writing", () => {
