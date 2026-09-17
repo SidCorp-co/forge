@@ -2,7 +2,7 @@
 // Workspace-global (NO projectId filter); the bell shows every notification
 // for the current user. Routes verified against core notifications/routes.ts.
 import { apiClient, apiClientList } from "@/lib/api/client";
-import type { NotificationRow, PendingInvitation } from "./types";
+import type { NotificationMember, NotificationRow, PendingInvitation } from "./types";
 
 /** How many rows the bell dropdown pulls. */
 export const BELL_PAGE_SIZE = 20;
@@ -12,8 +12,15 @@ export const notificationsApi = {
   list: () =>
     apiClientList<NotificationRow>(`/notifications?page=1&pageSize=${BELL_PAGE_SIZE}`),
 
-  /** `GET /api/notifications/unread-count` → `{ count }`. */
-  unreadCount: () => apiClient<{ count: number }>(`/notifications/unread-count`),
+  // cm:why ISS-1063 — `unread-count` is GONE, not redefined. It answered "how many
+  // have you not looked at"; the bell was asking "how many are still true", and the two
+  // disagreed by 5627 on the owner's account. A route that kept the old name and answered
+  // the new question would have made that disagreement permanent and invisible.
+  /** `GET /api/notifications/open-count` → `{ count }` — distinct records still true. */
+  openCount: () => apiClient<{ count: number }>(`/notifications/open-count`),
+
+  /** `GET /api/notifications/:id/members` — the records one delivery carries. */
+  members: (id: string) => apiClient<NotificationMember[]>(`/notifications/${id}/members`),
 
   /** `PATCH /api/notifications/:id` — mark a single notification read. */
   markRead: (id: string) =>

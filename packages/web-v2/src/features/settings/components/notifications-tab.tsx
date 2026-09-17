@@ -57,7 +57,7 @@ export function NotificationsTab() {
   const rows = notificationsQ.data?.items ?? [];
   const totalCount = notificationsQ.data?.totalCount ?? 0;
   const pageCount = Math.max(1, Math.ceil(totalCount / NOTIFICATIONS_PAGE_SIZE));
-  const hasUnread = rows.some((n) => !n.read);
+  const hasUnread = rows.some((n) => n.readAt === null);
 
   return (
     <div className="space-y-6">
@@ -284,10 +284,15 @@ function NotificationCard({ row }: { row: NotificationRow }) {
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <div className="flex items-center gap-2">
-              {!row.read && <Badge tone="accent">new</Badge>}
+              {row.readAt === null && <Badge tone="accent">new</Badge>}
               <p className="fg-body-sm font-medium text-fg">{row.title}</p>
             </div>
             {row.body && <p className="fg-caption mt-1">{row.body}</p>}
+            {row.members > 1 && (
+              <p className="fg-caption mt-1 text-muted">
+                {`${row.openMembers} of ${row.members} still open`}
+              </p>
+            )}
           </div>
           <span className="fg-caption flex-none whitespace-nowrap font-mono">
             {fmtTime(row.createdAt)}

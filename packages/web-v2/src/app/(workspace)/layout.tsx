@@ -29,7 +29,7 @@ import { OrgSwitcher } from "@/features/orgs/components/org-switcher";
 import { useAttention } from "@/features/attention/hooks";
 import { useWhatsNewStatus } from "@/features/whats-new/hooks";
 import { useUnblockCascadeToasts } from "@/features/issues/use-unblock-cascade";
-import { useUnreadCount } from "@/features/notifications/hooks";
+import { useOpenCount } from "@/features/notifications/hooks";
 import { NotificationsBell } from "@/features/notifications/components/notifications-bell";
 import {
   useSidebarContext,
@@ -86,9 +86,10 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
   const { hasUnseen: whatsNewUnseen } = useWhatsNewStatus();
 
   // TopBar bell badge. The bell cluster itself (dropdown, invitations,
-  // delivery + unread-indicator bridges) lives in <NotificationsBell> below —
-  // this query is shared with it via the React Query cache.
-  const { data: unread } = useUnreadCount();
+  // delivery + open-indicator bridges) lives in <NotificationsBell> below —
+  // this query is shared with it via the React Query cache. ISS-1063: the badge
+  // counts records still true for this reader, not deliveries they have not opened.
+  const { data: openCount } = useOpenCount();
 
   // Auth gate: once /auth/me has resolved, an unauthenticated visitor is sent
   // to /login (which also makes logout() "return here" effective). While the
@@ -422,7 +423,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             }
             onCommandPalette={() => setPaletteOpen(true)}
             onNotifications={() => setNotificationsOpen((o) => !o)}
-            notificationCount={unread?.count ?? 0}
+            notificationCount={openCount?.count ?? 0}
             onNewIssue={() =>
               slug
                 ? router.push(`/projects/${slug}/issues?new=1`)
@@ -436,7 +437,7 @@ function WorkspaceShell({ children }: { children: React.ReactNode }) {
             }
             scrolled={scrolled}
           />
-          {/* Bell dropdown + invitations + realtime delivery/unread bridges
+          {/* Bell dropdown + invitations + realtime delivery/open-count bridges
               (ISS-504/597/510/523) — always mounted, dropdown gated on open. */}
           <NotificationsBell open={notificationsOpen} onClose={closeNotifications} />
         </div>

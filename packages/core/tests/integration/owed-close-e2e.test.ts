@@ -11,7 +11,7 @@
 
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
-import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 
 process.env.JWT_SECRET ??= 'integration-test-secret-padded-to-32-chars-long';
 process.env.DEVICE_TOKEN_PEPPER ??= 'integration-test-pepper-padded-to-32-chars-long';
@@ -24,18 +24,6 @@ import {
   type TestDatabase,
   truncateAll,
 } from '../helpers/index.js';
-
-// cm:why ISS-1063 — this file is about what the DETECTOR writes, not about the emission
-// switch, and while the old notification surface is off the switch would suppress every
-// type this file asserts. Mocking it here rather than relaxing the assertions keeps the
-// detector's coverage intact for the whole of the silence; `src/notifications/emission-switch.test.ts`
-// is what covers the switch itself, including that ops_alert is the one exception.
-// cm:edge lockstep -> packages/core/src/notifications/emission-switch.ts — these mocks come out in the change that empties SUPPRESSED_TYPES; one left behind is a test asserting a surface nobody has turned back on
-vi.mock('../../src/notifications/emission-switch.js', () => ({
-  SUPPRESSED_TYPES: new Set<string>(),
-  emissionAllowed: () => true,
-  noteSuppressed: () => {},
-}));
 
 describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
   let harness: TestDatabase;
@@ -147,10 +135,23 @@ describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
   });
 
   describe('the sweep surfaces it instead', () => {
+    // cm:why every case here runs the detector TWICE before asserting `notified` (ISS-1063):
+    // `issue_stranded` declares a pending duration of two evaluations, so the pass that
+    // first sees a strand writes a `pending` record and tells nobody — an owed close that
+    // resolves itself inside two sweeps never reaches a human. `announce` ages
+    // `pending_since` and runs the second evaluation, which is the one that delivers.
+    async function announce(projectId: string): Promise<{ detected: number; notified: number }> {
+      expect((await detect(projectId)).notified).toBe(0);
+      await harness.db.execute(
+        sql`UPDATE notifications SET pending_since = now() - interval '10 minutes'`,
+      );
+      return detect(projectId);
+    }
+
     it('detects merged code under a live status with nothing running', async () => {
       const { projectId, issueId } = await seed({});
 
-      expect(await detect(projectId)).toEqual({ detected: 1, notified: 1 });
+      expect(await announce(projectId)).toEqual({ detected: 1, notified: 1 });
 
       const rows = await harness.db.execute<{ resolution_key: string; type: string }>(
         sql`SELECT resolution_key, type FROM notifications WHERE issue_id = ${issueId}`,
@@ -163,7 +164,7 @@ describe('ISS-940 shipped-but-never-closed (real Postgres)', () => {
     it('says nothing twice for one strand', async () => {
       const { projectId } = await seed({});
 
-      expect((await detect(projectId)).notified).toBe(1);
+      expect((await announce(projectId)).notified).toBe(1);
       expect((await detect(projectId)).notified).toBe(0);
     });
 

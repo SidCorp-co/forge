@@ -49,6 +49,7 @@ import {
   detectOrphanedRunAssertions,
   type IssueRunInvariantResult,
 } from './issue-run-invariant.js';
+import { type ReevaluateResult, reevaluateConditions } from './reevaluate-conditions.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
@@ -145,6 +146,8 @@ export interface SweepResult {
   owedCloses: StrandedIssuesResult;
   orphanedPauses: OrphanedPauseResult;
   retryRescueThresholds: RetryRescueAlertResult;
+  /** ISS-1063 — conditions re-derived: resolved, inhibited children released, stale pending dropped. */
+  reevaluated: ReevaluateResult;
   /** ISS-652 — Tier 1 ops alert engine push pass. */
   alerts: AlertSweepResult;
   queueSnapshots: number;
@@ -225,6 +228,9 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
     detectRetryRescueThresholds(now),
   );
+  // cm:why ISS-1063 — this runs AFTER every detector pass, so a condition raised this tick
+  // is re-derived from the next tick onward and never by the pass that just wrote it.
+  const reevaluated = await runPass('reevaluateConditions', () => reevaluateConditions(now));
   const alerts = await runPass('alertSweep', () => runAlertSweep(now));
   const queueSnapshots = await runPass('recordQueueSnapshots', () => recordQueueSnapshots());
 
@@ -261,6 +267,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     owedCloses: owedCloses as StrandedIssuesResult,
     orphanedPauses: orphanedPauses as OrphanedPauseResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
+    reevaluated: reevaluated as ReevaluateResult,
     alerts: alerts as AlertSweepResult,
     queueSnapshots: queueSnapshots as number,
   };

@@ -6,7 +6,6 @@ import { issues, notifications } from '../db/schema.js';
 import { activeIssuePrefix } from '../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
-import { AUTONOMOUS_QUESTION_STATUS } from '../pipeline/autonomous-mode.js';
 import type { HooksBus } from '../pipeline/hooks.js';
 import { isTerminalPlacement } from '../pipeline/status-assertions.js';
 import { owedCloseResolutionKey, strandedResolutionKey } from '../pipeline/stranded-issues.js';
@@ -35,24 +34,23 @@ const NOTIFY_ON_STATUS: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
   'closed',
 ]);
 
-/**
- * Problem statuses whose notification carries an auto-resolve `resolutionKey`
- * (`issue:<id>:status`): once the issue reaches a {@link HEALTHY_STATUSES}
- * state the matching unread row is cleared automatically.
+/*
+ * ISS-1063 — `PROBLEM_STATUSES`, `HEALTHY_STATUSES`, `statusResolutionKey`,
+ * `questionResolutionKey` and `resolutionKeyForStatus` were DELETED here, not disabled.
+ *
+ * `issue_status_changed` is a `signal`: an issue moved, and an event cannot stop having
+ * happened. It carried a condition's dedup key and a pair of clearers anyway, which is why
+ * 1771 of its 5444 rows on the replica wore one and 3333 of the owner's 5663 open rows were
+ * this type — a "condition" whose nature is never to resolve. The record layer now forbids
+ * it structurally (a CHECK constraint refuses `resolution_key` on a signal row), so keeping
+ * these helpers would mean computing a key the writer must then drop, which is the silent
+ * substitution this issue is about.
+ *
+ * What replaced the behaviour they bought: the `needs_info` park reaches a human through
+ * `GET /me/attention`'s `awaitingInput` bucket, which derives from LIVE issue state and so
+ * self-clears when the question is answered. That bucket, not a read flag on a row, is the
+ * durable surface — and it was already the one the product pointed people at.
  */
-const PROBLEM_STATUSES: ReadonlySet<IssueStatus> = new Set<IssueStatus>(['reopen', 'waiting']);
-
-/**
- * Healthy statuses that clear an outstanding `issue:<id>:status` problem
- * notification. Reaching any of these means the flagged condition is resolved.
- */
-const HEALTHY_STATUSES: ReadonlySet<IssueStatus> = new Set<IssueStatus>([
-  'developed',
-  'testing',
-  'tested',
-  'awaiting_release',
-  'closed',
-]);
 
 /** Per-`to`-status severity for the `issue_status_changed` notification. */
 function severityForStatus(to: IssueStatus): NotificationSeverity {
@@ -68,26 +66,6 @@ function severityForStatus(to: IssueStatus): NotificationSeverity {
     default:
       return 'info';
   }
-}
-
-/** Stable per-issue auto-resolve key for status-problem notifications. */
-function statusResolutionKey(issueId: string): string {
-  return `issue:${issueId}:status`;
-}
-
-// cm:guard the park gets its OWN key, never `statusResolutionKey` — that one is per-ISSUE and shared with `reopen`/`waiting`, so clearing it when a question is answered would also clear a `waiting` park nobody addressed. One key per park, or answering one question silently discards another park's notification.
-function questionResolutionKey(issueId: string): string {
-  return `issue:${issueId}:question`;
-}
-
-/**
- * The auto-resolve key a notification for `to` carries, or `null` when the
- * ping is informational (`tested` / `closed`) and nothing later clears it.
- */
-// cm:edge contract -> packages/core/src/pipeline/answer-resume.ts — the question key is only auto-resolvable because that module restarts THIS status on a human comment; point one of them at a different status and the notification carries a key nothing ever clears. Since the outbox hook carries the REWRITTEN status (ISS-886), an agent's `waiting` on an autonomous project now arrives here as `needs_info` and takes the question key rather than the `PROBLEM_STATUSES` one — correct, because that park is answerable, and the reason this branch must be read before the set below.
-function resolutionKeyForStatus(to: IssueStatus, issueId: string): string | null {
-  if (to === AUTONOMOUS_QUESTION_STATUS) return questionResolutionKey(issueId);
-  return PROBLEM_STATUSES.has(to) ? statusResolutionKey(issueId) : null;
 }
 
 /**
@@ -154,11 +132,6 @@ function bodyForStatus(to: IssueStatus, reason?: string): string {
  */
 export function registerTransitionNotifications(bus: HooksBus): void {
   bus.on('transition', async (p) => {
-    // cm:guard auto-resolve runs for ANY transition into a healthy status, including ones absent from `NOTIFY_ON_STATUS` — narrowing it to the notifying set leaves a `reopen`/`waiting` alarm standing after the issue recovered through a status nobody notifies on (ISS-510).
-    if (HEALTHY_STATUSES.has(p.to)) {
-      await resolveNotifications(statusResolutionKey(p.issueId));
-    }
-
     // cm:why ISS-762 — the stranded alarm asks a human to unpark; ANY move off `waiting` is that human answering, including a move to another unhealthy status. Gating this on HEALTHY_STATUSES would leave the alarm lit after the decision was made.
     if (p.to !== 'waiting') {
       await resolveNotifications(strandedResolutionKey(p.issueId));
@@ -167,11 +140,6 @@ export function registerTransitionNotifications(bus: HooksBus): void {
     // cm:why ISS-940 — the owed-close alarm asks for a terminal placement and nothing else clears it; `unmark` clears the mark instead and leaves the alarm lit until the next sweep re-reads the predicate and auto-resolve is not the path for that
     if (isTerminalPlacement(p.to)) {
       await resolveNotifications(owedCloseResolutionKey(p.issueId));
-    }
-
-    // cm:why same shape as the stranded rule above, and for the same reason: a move OFF the park is the human answering. It cannot be gated on HEALTHY_STATUSES — `answer-resume.ts` restarts the driver at AUTONOMOUS_ENTRY_STATUS (`open`), which is not healthy and never becomes healthy, so a health-gated key would stay lit from the answer until `developed`.
-    if (p.from === AUTONOMOUS_QUESTION_STATUS && p.to !== AUTONOMOUS_QUESTION_STATUS) {
-      await resolveNotifications(questionResolutionKey(p.issueId));
     }
 
     if (!NOTIFY_ON_STATUS.has(p.to)) return;
@@ -209,7 +177,8 @@ export function registerTransitionNotifications(bus: HooksBus): void {
         body: bodyForStatus(p.to, p.reason),
         issueId: p.issueId,
         severity: severityForStatus(p.to),
-        resolutionKey: resolutionKeyForStatus(p.to, p.issueId),
+        // cm:guard a signal carries NO resolution key, and `deliver.ts` refuses one by name rather than dropping it. Do not reintroduce a key here to make some reader clear a status ping: a status ping is not a condition, and the thing that clears is the issue's own state.
+        resolutionKey: null,
         dedupeKey,
       });
     } catch (err) {

@@ -235,6 +235,12 @@ export interface HookPayloads {
   notificationCreated: {
     notificationId: string;
     userId: string;
+    // ISS-1063 — whether this event may interrupt: a toast, a sound, a browser
+    // notification. Absent means yes, which is what every emitter outside the delivery
+    // layer means. The delivery layer sets it false for a record that JOINED an existing
+    // grouped delivery, so fifteen records grouped into one bell row interrupt once
+    // rather than fifteen times. The bell still refreshes on either value.
+    announce?: boolean;
     projectId: string | null;
     type: string;
     title: string;

@@ -23,6 +23,16 @@ export interface NotificationItem {
   hue: "amber" | "red" | "green" | "cobalt";
   /** Optional inline action buttons (e.g. Accept / Decline for invitations). */
   actions?: NotificationAction[];
+  /** ISS-1063 — set when this row is one delivery carrying several records. */
+  group?: { total: number; open: number };
+}
+
+/** A record behind an expanded grouped row. */
+export interface NotificationGroupMember {
+  id: string;
+  text: string;
+  time: string;
+  open: boolean;
 }
 
 const HUE_DOT: Record<NotificationItem["hue"], string> = {
@@ -39,6 +49,15 @@ export interface NotificationsMenuProps {
   loading?: boolean;
   error?: boolean;
   onRetry?: () => void;
+  // ISS-1063 — grouping is what turns fifteen bell rows into one, so the members
+  // have to stay reachable or the grouping is a loss of information rather than a
+  // saving of attention. The menu owns the disclosure; the feature owns the fetch.
+  /** Which grouped row is expanded, and what it holds. */
+  expandedId?: string | null;
+  expandedMembers?: NotificationGroupMember[];
+  expandedLoading?: boolean;
+  onToggleGroup?: (id: string) => void;
+  onSelectMember?: (memberId: string) => void;
 }
 
 export function NotificationsMenu({
@@ -48,6 +67,11 @@ export function NotificationsMenu({
   loading,
   error,
   onRetry,
+  expandedId,
+  expandedMembers,
+  expandedLoading,
+  onToggleGroup,
+  onSelectMember,
 }: NotificationsMenuProps) {
   const hasItems = items.length > 0;
   return (
@@ -114,6 +138,51 @@ export function NotificationsMenu({
                   </div>
                   <p className="fg-body-sm mt-1 text-fg">{n.text}</p>
                   {n.sub && <p className="fg-caption mt-0.5 whitespace-pre-line">{n.sub}</p>}
+                  {n.group && (
+                    <div className="mt-1.5">
+                      {/* The row itself is clickable, so every control inside it stops the
+                          event on the control — a wrapper div carrying the handlers would be
+                          a second static element with interactions in a file already
+                          carrying one. */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          onToggleGroup?.(n.id);
+                        }}
+                        disabled={!onToggleGroup}
+                        className="fg-caption text-link hover:underline disabled:cursor-default disabled:text-muted disabled:no-underline"
+                      >
+                        {`${n.group.open} of ${n.group.total} still open`}
+                        {expandedId === n.id ? " — hide" : " — show"}
+                      </button>
+                      {expandedId === n.id && (
+                        <ul className="mt-1.5 border-l border-line-subtle pl-2.5">
+                          {expandedLoading && <li className="fg-caption py-1">Loading…</li>}
+                          {!expandedLoading &&
+                            (expandedMembers ?? []).map((m) => (
+                              <li key={m.id}>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    onSelectMember?.(m.id);
+                                  }}
+                                  className="block w-full py-1 text-left hover:underline"
+                                >
+                                  <span
+                                    className={`fg-caption ${m.open ? "text-fg" : "text-muted line-through"}`}
+                                  >
+                                    {m.text}
+                                  </span>
+                                  <span className="fg-caption ml-2 text-muted">{m.time}</span>
+                                </button>
+                              </li>
+                            ))}
+                        </ul>
+                      )}
+                    </div>
+                  )}
                   {n.actions && n.actions.length > 0 && (
                     <div
                       className="mt-2 flex items-center gap-2"

@@ -8,8 +8,6 @@ import { createNotification } from './routes.js';
 // with packages/contracts/src/notifications.ts → NOTIFICATION_CONTRACT.
 const DEFAULT_SEVERITY_BY_TYPE: Record<NotificationType, string> = {
   issue_status_changed: 'info',
-  comment_added: 'info',
-  agent_completed: 'success',
   mention: 'info',
   pm_escalation: 'warning',
   pipeline_wedge: 'error',
@@ -40,7 +38,13 @@ function defaultSeverityForType(type: NotificationType): string {
  * gate, the row insert, and the `notificationCreated` hook all still live there.
  */
 export interface EmitNotificationInput {
-  userId: string;
+  /** One recipient. Prefer `recipients` where a condition is told to several people. */
+  userId?: string;
+  /**
+   * ISS-1063 — everybody told about this ONE record. A condition told to six project
+   * admins is one row here and six deliveries, where it used to be six rows.
+   */
+  recipients?: string[];
   projectId?: string | null;
   type: NotificationType;
   title: string;
@@ -55,11 +59,15 @@ export interface EmitNotificationInput {
   dedupeKey?: string | null;
   /** Set for `pm_escalation` — forwarded to the project-room WS bridge. */
   decisionId?: string | null;
+  /** ISS-1063 — records raised by one evaluation reach a reader as one delivery. */
+  groupKey?: string | null;
+  /** What that one delivery is called. */
+  groupTitle?: string | null;
 }
 
 export async function emitNotification(
   input: EmitNotificationInput,
-): Promise<{ id: string } | null> {
+): Promise<{ id: string; delivered: number } | null> {
   return createNotification({
     ...input,
     severity: input.severity ?? defaultSeverityForType(input.type),

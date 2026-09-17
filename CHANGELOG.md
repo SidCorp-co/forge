@@ -5347,6 +5347,9 @@
 - **Cost figures on sessions, issues and pipeline runs load faster.** Each read scanned the whole
   usage table; they now go straight to the rows for the session, and the run dashboards no longer
   re-read costs once per step.
+- **The bell counts what is still true, not what you have not opened.** One condition told to six
+  people is one record. Fifteen parks in a sweep are one line, and interrupt once. A silence is
+  yours alone, and expires.
 - **Forge has gone quiet.** Every notification type except ops alerts stops arriving, on purpose,
   until the new model lands: two thirds of what the bell said could not be acted on.
 

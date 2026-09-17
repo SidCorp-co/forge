@@ -1,25 +1,38 @@
-// web-v2 feature module: notifications (header bell). Mirrors the core
-// `notifications` row serializer (GET /api/notifications returns raw rows).
-// Workspace-global: the bell is NOT scoped to a single project.
+// web-v2 feature module: notifications (header bell).
+//
+// ISS-1063 — a row here is a DELIVERY, not a record. `GET /api/notifications`
+// returns one row per delivery with the record fields of its members folded in,
+// so a grouped delivery is one bell row naming many records. `id` is the
+// delivery's id — it is what `PATCH /api/notifications/:id` and
+// `GET /api/notifications/:id/members` take. Read state lives here; whether the
+// thing is still true lives on the record, which is what `openMembers` counts.
 import type { NotificationSeverity, NotificationType } from "@forge/contracts/notifications";
 
 export type { NotificationSeverity, NotificationType };
 
 export interface NotificationRow {
+  /** The DELIVERY id. Mark-read, done/dismiss and the member list all take it. */
   id: string;
-  userId: string;
+  /** The first member record's id — what the realtime bridge deep-links by. */
+  notificationId: string;
   projectId: string | null;
   type: string;
+  kind: string;
+  tier: string;
   title: string;
   body: string | null;
-  read: boolean;
-  // ISS-510 — explicit severity (drives bell hue + toast tone) and auto-resolve
-  // linkage. Nullable: legacy rows created before ISS-510 carry none.
+  /** When this person opened it. Null means unread; nothing else means unread. */
+  readAt: string | null;
+  /** Non-null when this delivery groups several records under one cause. */
+  groupKey: string | null;
+  /** True when this delivery announces that a condition CLEARED. */
+  resolvedNotice: boolean;
+  /** How many records this delivery carries, and how many are still true. */
+  members: number;
+  openMembers: number;
+  // ISS-510 — explicit severity (drives bell hue + toast tone). Nullable:
+  // legacy rows created before ISS-510 carry none.
   severity: NotificationSeverity | null;
-  resolutionKey: string | null;
-  // cm:why dedupeKey is internal-only (ISS-849 redelivery dedup) — kept here just to mirror the row shape, no UI reads it
-  dedupeKey: string | null;
-  resolvedAt: string | null;
   issueId: string | null;
   // ISS-619 — the actionable issue when it differs from `issueId` (e.g. a
   // dependency-stall wedge's blocker/child). `issueId` stays the row's primary
@@ -27,6 +40,24 @@ export interface NotificationRow {
   secondaryIssueId: string | null;
   agentSessionId: string | null;
   createdAt: string;
+}
+
+/** One record behind a delivery — `GET /api/notifications/:id/members`. */
+export interface NotificationMember {
+  id: string;
+  type: string;
+  kind: string;
+  state: string;
+  title: string;
+  body: string | null;
+  severity: NotificationSeverity | null;
+  projectId: string | null;
+  issueId: string | null;
+  secondaryIssueId: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+  /** Still true for this reader: a firing condition or an unfinished task. */
+  open: boolean;
 }
 
 // ISS-597 — pending invitation returned by GET /api/invitations/pending.
