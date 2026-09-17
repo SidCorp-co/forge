@@ -2924,6 +2924,17 @@
 
 ### Fixed
 
+- **A master that comes back after a crash now has to say what became of the work it was holding,
+  and closing that work is no longer a way of not saying.** A pane rebuilt over runs its predecessor
+  left is asked to decide, for each one, whether it continues, restarts or leaves it, and to say why
+  — so the issue underneath carries an account a person can read instead of going quiet. That
+  question was being asked, and then dropped the moment the pane tidied up: ending a run counted as
+  having answered for it, and ending it is the first thing a pane has to do before it can start
+  anything else. So on the ordinary path the question was never really asked. Two masters did decide,
+  and wrote their reasoning into the tidying-up instead, where nothing carried it to the issue; the
+  decision was never recorded anywhere a human would look. Ending a run now settles nothing on its
+  own, and the pane is told so in the refusal, naming the runs still owed an answer.
+
 - **A finished release no longer holds a job slot.** Two ended release batches held a runner's
   whole pane budget for four hours, stopping every project on that box. The box now learns when a
   job is over.
