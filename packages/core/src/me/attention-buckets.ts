@@ -358,9 +358,26 @@ export function selectMentions(userId: string): Promise<AttentionMentionRow[]> {
       // cm:why ISS-1063 — the join is now record → delivery → this user, because the record
       // no longer carries a recipient. The shape of the question is unchanged: has THIS user
       // seen a mention notification for THIS issue.
+      // cm:guard the EXISTS is the recipient scope this table used to carry as
+      // `notifications.user_id = comment_mentions.user_id`, and it is not optional. A
+      // mention record is one per mentioned person, so an issue mentioning Alice and Bob
+      // holds two `type = 'mention'` records with the same `issue_id`: without this, Alice's
+      // row also joins BOB's record, whose delivery fails the Alice-scoped join below and
+      // comes back with a NULL `read_at` that passes the unread test — so a mention Alice
+      // read stays in her Attention inbox for as long as Bob leaves his unread.
       .leftJoin(
         notifications,
-        and(eq(notifications.type, 'mention'), eq(notifications.issueId, comments.issueId)),
+        and(
+          eq(notifications.type, 'mention'),
+          eq(notifications.issueId, comments.issueId),
+          sql`EXISTS (
+            SELECT 1
+              FROM ${notificationDeliveryMembers} dm
+              JOIN ${notificationDeliveries} dd ON dd.id = dm.delivery_id
+             WHERE dm.notification_id = ${notifications.id}
+               AND dd.user_id = ${commentMentions.userId}
+          )`,
+        ),
       )
       .leftJoin(
         notificationDeliveryMembers,

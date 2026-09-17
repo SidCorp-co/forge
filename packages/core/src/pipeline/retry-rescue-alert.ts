@@ -48,7 +48,7 @@ export async function detectRetryRescueThresholds(
     for (const row of rows) {
       const resolutionKey = retryRescueResolutionKey(row.project_id, row.failure_reason, now);
       const [existing] = await db
-        .select({ id: notifications.id })
+        .select({ id: notifications.id, state: notifications.state })
         .from(notifications)
         .where(
           and(
@@ -57,7 +57,13 @@ export async function detectRetryRescueThresholds(
           ),
         )
         .limit(1);
-      if (existing) continue;
+      // cm:guard ISS-1063 — a `pending` record is re-emitted, and only a `pending` one.
+      // This type declares `pendingEvaluations: 2`, which means a LATER emission of the
+      // same identity is what promotes it to `firing` and delivers it. Short-circuiting on
+      // existence alone left the first pass writing a record nobody would ever be told
+      // about and every later pass skipping it, until `PENDING_STALE_MS` cleared it and the
+      // cycle began again: an alarm that can never fire, green on every tick.
+      if (existing && existing.state !== 'pending') continue;
 
       const [project] = await db
         .select({ createdBy: projects.createdBy })
@@ -68,7 +74,10 @@ export async function detectRetryRescueThresholds(
 
       const rescues = Number(row.rescues);
       try {
-        await emitNotification({
+        // cm:guard `notified` counts people newly told, which is what the log line beside
+        // it claims. Incrementing on the emission counted the first, pending, undelivered
+        // sighting as a notification.
+        const sent = await emitNotification({
           userId: project.createdBy,
           projectId: row.project_id,
           type: 'retry_rescue_threshold',
@@ -76,7 +85,7 @@ export async function detectRetryRescueThresholds(
           body: `“${row.failure_reason}” crossed the rescue threshold in this 24-hour window. The jobs eventually succeeded, but the repeated failure still needs attention.`,
           resolutionKey,
         });
-        notified++;
+        notified += sent?.delivered ?? 0;
       } catch (err) {
         if (!isUniqueViolation(err)) throw err;
       }

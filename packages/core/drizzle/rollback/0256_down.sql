@@ -32,6 +32,14 @@ ALTER TABLE "notifications" DROP CONSTRAINT IF EXISTS "notifications_tier_is_kno
 ALTER TABLE "notifications" ADD COLUMN "user_id" uuid REFERENCES "users"("id") ON DELETE cascade;
 ALTER TABLE "notifications" ADD COLUMN "read" boolean DEFAULT false NOT NULL;
 
+-- FIRST, before anything re-expands: 0256's unique index is on `resolution_key` ALONE,
+-- because under the split one active ops alert is one record however many admins hold a
+-- delivery of it. Re-expansion writes exactly the rows that index now forbids -- a second
+-- admin's copy of an active alert -- so leaving it in place aborts the rollback partway
+-- through, on a deployment that is already stopped. The recipient-scoped index this
+-- replaced is recreated at the foot of this file, once the copies are back.
+DROP INDEX IF EXISTS "notifications_ops_alert_active_uq";
+
 -- The first delivery of each record keeps the record's own row.
 UPDATE notifications n SET user_id = first.user_id, read = (first.read_at IS NOT NULL)
   FROM (

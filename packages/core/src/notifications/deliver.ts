@@ -30,6 +30,7 @@ import {
   notificationDeliveryMembers,
   notificationSilences,
   notifications,
+  userPreferences,
 } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { hooks } from '../pipeline/hooks.js';
@@ -70,13 +71,20 @@ export interface DeliverInput {
   groupTitle?: string | null;
 }
 
-/** A silence the reader set that covers this record. */
-async function silenced(input: DeliverInput, now: Date): Promise<boolean> {
+/** A silence THIS reader set that covers this record. */
+// cm:guard the `createdBy` match is what makes a silence a silence rather than a switch.
+// Without it one operator saying "stop telling me about this park for an hour" stops
+// telling EVERYBODY for an hour — which is the thing ISS-1063 was filed about, wearing a
+// deadline. `silences-routes.ts` lists only your own rows, so the screen would show the
+// silence to nobody but its author while it muted the whole deployment. Per-reader, and
+// evaluated inside the per-recipient loop below, is the whole contract.
+async function silencedFor(userId: string, input: DeliverInput, now: Date): Promise<boolean> {
   const rows = await db
     .select({ id: notificationSilences.id })
     .from(notificationSilences)
     .where(
       and(
+        eq(notificationSilences.createdBy, userId),
         gt(notificationSilences.expiresAt, now),
         sql`(${notificationSilences.type} IS NULL OR ${notificationSilences.type} = ${input.type})`,
         sql`(${notificationSilences.projectId} IS NULL OR ${notificationSilences.projectId} = ${input.projectId ?? null})`,
@@ -139,6 +147,19 @@ async function activeRecord(input: DeliverInput) {
 async function deliverTo(recordId: string, input: DeliverInput, now: Date): Promise<number> {
   let told = 0;
   for (const userId of input.recipients) {
+    // cm:guard both gates below are INSIDE the loop, and every path that delivers comes
+    // through here — first delivery, a pending record's promotion, and `deliverExisting`.
+    // A gate applied once at the record is a gate that reads one person's preferences and
+    // applies the answer to everybody, and a gate applied on the create path only is a
+    // gate a promotion walks around.
+    if (await silencedFor(userId, input, now)) {
+      logger.info(
+        { type: input.type, projectId: input.projectId, userId },
+        'notifications: silenced for this reader, nobody told',
+      );
+      continue;
+    }
+    if (!(await wantsDelivery(userId, input.type))) continue;
     // cm:guard a record reaches one person ONCE. Every periodic detector re-emits the same
     // condition on every tick, so without this the second sweep writes a second delivery
     // and the bell grows a row a minute for a condition nobody's state changed. `told`
@@ -176,7 +197,15 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
         .limit(1);
       deliveryId = existing?.id;
     }
+    // cm:guard ISS-1063 — the announcement is per DELIVERY, not per record. Fifteen
+    // records joining one grouped delivery used to fire fifteen `notificationCreated`
+    // hooks, so the bell collapsed to one row while the toast, the sound and the browser
+    // notification still interrupted fifteen times — the 11:21 burst of 2026-09-16
+    // surviving in the one channel that interrupts. The record that FOUNDS the delivery
+    // announces it; the rest join it quietly and only invalidate the bell.
+    let founded = false;
     if (!deliveryId) {
+      founded = true;
       const [created] = await db
         .insert(notificationDeliveries)
         .values({
@@ -200,6 +229,7 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
     await hooks.emit('notificationCreated', {
       notificationId: recordId,
       userId,
+      announce: founded,
       projectId: input.projectId ?? null,
       type: input.type,
       title: input.groupKey ? (input.groupTitle ?? input.title) : input.title,
@@ -213,6 +243,28 @@ async function deliverTo(recordId: string, input: DeliverInput, now: Date): Prom
     });
   }
   return told;
+}
+
+/**
+ * Whether this reader has opted out of being told about this type.
+ *
+ * One preference exists today and it is `notifyOnMention`. ISS-1063 moved it here from
+ * `notifications/routes.ts#createNotification`, where it gated the whole write: under the
+ * split the RECORD is the system's own account of what happened and is not one person's
+ * to suppress, so an opt-out now stops the delivery and leaves the record standing.
+ */
+// cm:guard this is the gate `routes.ts#createNotification` used to hold, and the only
+// place it lives now. Deleting it there without landing it here sent mentions to every
+// user who had turned them off, which compiles, passes every type check, and is invisible
+// until somebody who opted out is @-mentioned.
+async function wantsDelivery(userId: string, type: NotificationType): Promise<boolean> {
+  if (type !== 'mention') return true;
+  const [prefs] = await db
+    .select({ notifyOnMention: userPreferences.notifyOnMention })
+    .from(userPreferences)
+    .where(eq(userPreferences.userId, userId))
+    .limit(1);
+  return prefs ? prefs.notifyOnMention : true;
 }
 
 /**
@@ -285,12 +337,28 @@ export async function recordAndDeliver(
   if (existing) {
     const heldFor = existing.pendingSince ? now.getTime() - existing.pendingSince.getTime() : 0;
     const owed = pendingEvaluationsFor(input.type) * EVALUATION_MS;
-    const promote = existing.state === 'pending' && heldFor >= owed;
+    const ripe = existing.state === 'pending' && heldFor >= owed;
+    // cm:guard inhibition is rechecked AT the promotion, not only at the first sighting. A
+    // condition that started pending while the deployment was healthy and matures two
+    // minutes into a wedge is a child of that wedge, and promoting it to `firing` on the
+    // state of the world two minutes ago reports the cause twice.
+    const inhibitedNow = ripe ? await inhibitor(input) : null;
+    const promote = ripe && !inhibitedNow;
     await db
       .update(notifications)
-      .set({ lastSeenAt: now, ...(promote ? { state: 'firing' } : {}) })
+      .set({
+        lastSeenAt: now,
+        ...(promote ? { state: 'firing' as const } : {}),
+        ...(ripe && inhibitedNow ? { state: 'inhibited' as const, inhibitedBy: inhibitedNow } : {}),
+      })
       .where(eq(notifications.id, existing.id));
-    if (!promote) return { id: existing.id, delivered: 0 };
+    if (existing.state === 'pending' && !promote) return { id: existing.id, delivered: 0 };
+    if (existing.state === 'inhibited') return { id: existing.id, delivered: 0 };
+    // cm:guard a FIRING record re-emitted tries delivery again, and this is not a second
+    // notification: `deliverTo` skips anybody already holding a member link for it. What
+    // it catches is the reader who was gated out of the first delivery — silenced, or
+    // added to the project since — for whom returning early here meant a condition that
+    // is still true and that they were never told about, for as long as it lasted.
     const delivered = await deliverTo(existing.id, input, now);
     return { id: existing.id, delivered };
   }
@@ -333,10 +401,6 @@ export async function recordAndDeliver(
     return { id: record.id, delivered: 0 };
   }
   if (state === 'pending') return { id: record.id, delivered: 0 };
-  if (await silenced(input, now)) {
-    logger.info({ type: input.type, projectId: input.projectId }, 'notifications: silenced');
-    return { id: record.id, delivered: 0 };
-  }
 
   const delivered = await deliverTo(record.id, input, now);
   return { id: record.id, delivered };
