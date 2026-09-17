@@ -116,6 +116,8 @@
 - **The assistant's replies now stream.** Your question is confirmed as soon as it is filed, the
   answer appears as it is written, and each tool call shows as its own card — kept when the room is
   reopened.
+- **A long streaming reply keeps scrolling into view**, instead of stopping after the first few
+  words and growing off the bottom of the screen.
 
 - **Forge now holds what GitHub says about an issue's pull request** — branch, head, how far behind
   it is, whether it conflicts, which checks passed, which reviews are open. Work on a green build

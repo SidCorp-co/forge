@@ -22,6 +22,20 @@ import {
 } from '../lib/agent-stream-parser.js';
 import type { ChatStreamEvent } from './providers/types.js';
 
+/**
+ * How often a growing entry is re-sent while text streams in.
+ */
+// cm:why a coalescing window rather than a frame per event: this wire streams token by token and
+// each frame carries the WHOLE entry, so emitting per chunk re-sends every settled tool output on
+// every token. A tool call or its result flushes immediately regardless — those are the frames a
+// reader is waiting on, and there are few of them.
+// cm:guard ONE constant for every surface that streams this accumulator — `run-turn.ts`'s SSE frames
+// and `conversation-progress.ts`'s socket frames — because the two are one decision: the number was
+// chosen once, for this wire, and raising it for one surface and not the other gives two views of
+// the same turn two cadences with nothing saying why. It lived in both files until ISS-1078's
+// landing was read back.
+export const ENTRY_FLUSH_MS = 120;
+
 export interface TranscriptAccumulator {
   /** Fold one loop event into the entry. */
   apply(event: ChatStreamEvent): void;

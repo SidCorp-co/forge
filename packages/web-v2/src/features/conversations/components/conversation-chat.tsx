@@ -81,6 +81,10 @@ export function ConversationChat({
   const accepted = useAcceptedMessages(resolvedId);
   const progress = useConversationProgress(resolvedId);
   const withdrawn = useWithdrawnDrafts(resolvedId);
+  // cm:guard the rendered LENGTH of the live turn, which is the only thing that moves while it
+  // streams: it is what the scroller below follows, and it changes on every frame including the
+  // ones that only settle a tool result onto its card (ISS-1078 review F6).
+  const streamedChars = useMemo(() => JSON.stringify(progress?.entry ?? null).length, [progress]);
   const open = useOpenConversation();
   const send = useSendMessage();
 
@@ -149,6 +153,10 @@ export function ConversationChat({
     ready: roomQ.isSuccess,
     itemCount: messages.length + outbox.length,
     live: busy,
+    // cm:guard the streaming turn's own growth, because nothing else above moves while it arrives:
+    // `itemCount` counts rows and the live turn is not one, and `busy` was already true. Without it
+    // the thread follows the first frame and then stops (ISS-1078 review F6).
+    streamedChars,
   });
 
   // cm:guard the send is AWAITED and a failure rejects up into the composer, which is what keeps the typed text for a retry: resolving on a failure clears the box and the words are gone (ISS-462's contract, kept across the port).
