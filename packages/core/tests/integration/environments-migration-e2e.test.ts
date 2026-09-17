@@ -248,6 +248,37 @@ describe('a row the new shape cannot hold aborts by name, writing nothing', () =
     ['a row that already carries a preview key', { preview: { url: 'https://x' } }],
     ['a row that already carries a live key', { live: { url: 'https://x' } }],
     ['a row that already carries a limits key', { limits: 'already here' }],
+    // cm:guard an ELEMENT the new shape cannot hold, which a type check on the ARRAY misses. SQL
+    // would carry these across untouched and then `normalizeEnvironments` — which answers
+    // {label, url} rows and drops everything else — would read the project as having NO preview
+    // side while the column still held the address. Found by a codex review of the landing head.
+    ['a testingUrls entry that is a bare string', { testingUrls: ['https://beta.example.com'] }],
+    ['a testingUrls entry that is null', { testingUrls: [null] }],
+    ['a testingUrls entry that is a number', { testingUrls: [7] }],
+    ['a testCredentials entry that is a bare string', { testCredentials: ['admin'] }],
+    ['a testCredentials entry that is null', { testCredentials: [null] }],
+    // cm:guard the KNOWN FIELD types inside a row, which an element-shape check misses: the reading
+    // coerces with `String(row.url ?? '')`, so an object-valued `url` comes back as the literal text
+    // `[object Object]` and a missing `password` comes back as an empty string — a login that looks
+    // recorded and is not. These are the fields `testingUrlSchema` and `testCredentialSchema` make
+    // required strings, so every row refused here is one PATCH would refuse today.
+    [
+      'a testingUrls row whose url is an object',
+      { testingUrls: [{ label: 'Beta', url: { href: 'https://beta.example.com' } }] },
+    ],
+    [
+      'a testingUrls row whose label is a number',
+      { testingUrls: [{ label: 7, url: 'https://b.x' }] },
+    ],
+    ['a testingUrls row with no url at all', { testingUrls: [{ label: 'Beta' }] }],
+    [
+      'a testCredentials row with no password',
+      { testCredentials: [{ label: 'Admin', username: 'bot@x' }] },
+    ],
+    [
+      'a testCredentials row whose username is a number',
+      { testCredentials: [{ label: 'Admin', username: 7, password: 'p' }] },
+    ],
   ])('refuses %s', async (label, value) => {
     const slug = `offender-${label.replace(/[^a-z]+/gi, '-').toLowerCase()}`;
     const id = await seed(slug, typeof value === 'string' ? JSON.parse(value) : value);
@@ -343,6 +374,25 @@ describe('rollback/0264_down.sql', () => {
   // restoration is not byte-exact — and it costs nothing, because every reader in the tree goes
   // through `?? {}` and then a per-key `typeof` test. Stating it here is what stops the next
   // reader mistaking it for a bug.
+  // cm:guard a value INSIDE a row the forward migration never touched comes back byte for byte.
+  // This was `jsonb_strip_nulls(jsonb_build_object(…))`, which strips RECURSIVELY: a row carrying
+  // an explicit null under a key nobody here knows about lost it, and nothing told the operator.
+  // Found by a codex review of the landing head.
+  it('does not strip an explicit null inside a testing URL row it never touched', async () => {
+    const before = {
+      stagingUrl: 'https://stg.example.com',
+      testingUrls: [
+        { label: 'Beta', url: 'https://beta.example.com', future: { mode: null }, tag: null },
+      ],
+    };
+    const id = await seed('p-nested-null', before);
+
+    await runForward();
+    await runDown();
+
+    expect(await read(id, 'preview_deploy')).toEqual(before);
+  });
+
   it('brings an empty row back as {} whichever empty it was', async () => {
     const ids = await Promise.all([
       seed('p-e1', {}),

@@ -21,14 +21,21 @@ const PASSWORD_MAX = 500;
 const LIMITS_MAX = 8000;
 const COMMIT_PATH_MAX = 200;
 
+// cm:guard a ROW carries every key it was stored with, not only the two or three this screen
+// renders. The server's schema catchalls unknown keys at row level too (ISS-1069), so a row
+// rebuilt from the rendered fields alone deletes whatever a client one version ahead wrote — the
+// same clobber the top-level spread already guards against, one level down.
+type UrlRow = TestingUrl & Record<string, unknown>;
+type CredRow = TestCredential & Record<string, unknown>;
+
 interface Form {
   liveUrl: string;
   liveCommitUrl: string;
   liveCommitPath: string;
   previewUrl: string;
   previewApiUrl: string;
-  previewUrls: TestingUrl[];
-  testCredentials: TestCredential[];
+  previewUrls: UrlRow[];
+  testCredentials: CredRow[];
   limits: string;
 }
 
@@ -36,13 +43,27 @@ function text(value: unknown): string {
   return typeof value === "string" ? value : "";
 }
 
-function urlRows(value: unknown): TestingUrl[] {
+function objects(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
-    ? value.map((u) => ({
-        label: String((u as TestingUrl)?.label ?? ""),
-        url: String((u as TestingUrl)?.url ?? ""),
-      }))
+    ? value.filter((r): r is Record<string, unknown> => typeof r === "object" && r !== null)
     : [];
+}
+
+function urlRows(value: unknown): UrlRow[] {
+  return objects(value).map((u) => ({
+    ...u,
+    label: String(u.label ?? ""),
+    url: String(u.url ?? ""),
+  }));
+}
+
+function credRows(value: unknown): CredRow[] {
+  return objects(value).map((c) => ({
+    ...c,
+    label: String(c.label ?? ""),
+    username: String(c.username ?? ""),
+    password: String(c.password ?? ""),
+  }));
 }
 
 /** Read the stored jsonb blob into editable form state (defensive — jsonb is
@@ -58,15 +79,17 @@ function parse(raw: unknown): Form {
     previewUrl: text(preview.url),
     previewApiUrl: text(preview.apiUrl),
     previewUrls: urlRows(preview.urls),
-    testCredentials: Array.isArray(env.testCredentials)
-      ? env.testCredentials.map((c) => ({
-          label: String((c as TestCredential)?.label ?? ""),
-          username: String((c as TestCredential)?.username ?? ""),
-          password: String((c as TestCredential)?.password ?? ""),
-        }))
-      : [],
+    testCredentials: credRows(env.testCredentials),
     limits: text(env.limits),
   };
+}
+
+/** The stored preview side as an object, or `null` where the project declares none. */
+function storedPreviewOf(raw: unknown): Record<string, unknown> | null {
+  const preview = ((raw ?? {}) as EnvironmentsConfig).preview;
+  return typeof preview === "object" && preview !== null && !Array.isArray(preview)
+    ? (preview as Record<string, unknown>)
+    : null;
 }
 
 function isValidUrl(value: string): boolean {
@@ -82,38 +105,43 @@ function trimmedOrNull(value: string): string | null {
   return value.trim() === "" ? null : value.trim();
 }
 
-function keptUrlRows(rows: TestingUrl[]): TestingUrl[] {
+const RENDERED_PREVIEW_KEYS = new Set(["url", "apiUrl", "urls"]);
+
+function keptUrlRows(rows: UrlRow[]): UrlRow[] {
   return rows
     .filter((u) => u.label.trim() !== "" && u.url.trim() !== "")
-    .map((u) => ({ label: u.label.trim(), url: u.url.trim() }));
+    .map((u) => ({ ...u, label: u.label.trim(), url: u.url.trim() }));
 }
 
-function keptCredentials(rows: TestCredential[]): TestCredential[] {
+function keptCredentials(rows: CredRow[]): CredRow[] {
   return rows
     .filter((c) => c.label.trim() !== "")
-    .map((c) => ({ label: c.label.trim(), username: c.username.trim(), password: c.password }));
+    .map((c) => ({ ...c, label: c.label.trim(), username: c.username.trim(), password: c.password }));
 }
 
 // cm:guard the SAME emptiness rule `normalizeEnvironments` applies server-side, so a tab that touched no preview field saves the `preview: null` it was given rather than an empty object. A null preview is a one-box project SAYING it has no other side; writing `{}` over it turns a statement into a gap somebody has to re-derive (ISS-1069).
-function previewDeclared(form: Form): boolean {
+// cm:guard a preview whose only content is a key this screen does not render is DECLARED, not empty. Judging emptiness on the rendered fields alone would delete that key the first time somebody edited the limits — the one thing the top-level spread exists to prevent, arriving through the preview side instead.
+function previewDeclared(form: Form, storedPreview: Record<string, unknown> | null): boolean {
   return (
     form.previewUrl.trim() !== "" ||
     form.previewApiUrl.trim() !== "" ||
-    keptUrlRows(form.previewUrls).length > 0
+    keptUrlRows(form.previewUrls).length > 0 ||
+    (storedPreview !== null &&
+      Object.keys(storedPreview).some((k) => !RENDERED_PREVIEW_KEYS.has(k)))
   );
 }
 
 /** Canonical JSON of the known fields, used for dirty detection. Empty URL fields normalize to
  *  null; blank/partial rows are dropped — matching what the save path actually sends, so a
  *  freshly-loaded form reads as not-dirty. */
-function canonical(form: Form): string {
+function canonical(form: Form, storedPreview: Record<string, unknown> | null): string {
   return JSON.stringify({
     live: {
       url: trimmedOrNull(form.liveUrl),
       commitUrl: trimmedOrNull(form.liveCommitUrl),
       commitPath: trimmedOrNull(form.liveCommitPath),
     },
-    preview: previewDeclared(form)
+    preview: previewDeclared(form, storedPreview)
       ? {
           url: trimmedOrNull(form.previewUrl),
           apiUrl: trimmedOrNull(form.previewApiUrl),
@@ -137,8 +165,15 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
     setRevealed(new Set());
   }, [project.environments]);
 
-  const original = useMemo(() => canonical(parse(project.environments)), [project.environments]);
-  const dirty = canonical(form) !== original;
+  const storedPreview = useMemo(
+    () => storedPreviewOf(project.environments),
+    [project.environments],
+  );
+  const original = useMemo(
+    () => canonical(parse(project.environments), storedPreview),
+    [project.environments, storedPreview],
+  );
+  const dirty = canonical(form, storedPreview) !== original;
 
   // Validation — block save on malformed URLs or partially-filled rows.
   function urlError(value: string): string | undefined {
@@ -151,7 +186,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
   const previewUrlError = urlError(form.previewUrl);
   const previewApiUrlError = urlError(form.previewApiUrl);
 
-  function testingUrlError(row: TestingUrl): string | undefined {
+  function testingUrlError(row: UrlRow): string | undefined {
     const label = row.label.trim();
     const url = row.url.trim();
     if (label === "" && url === "") return undefined; // empty row — dropped on save
@@ -161,7 +196,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
     return undefined;
   }
 
-  function credentialError(row: TestCredential): string | undefined {
+  function credentialError(row: CredRow): string | undefined {
     if (row.label.trim() === "" && (row.username !== "" || row.password !== "")) {
       return "Label is required.";
     }
@@ -180,7 +215,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
     setForm((f) => ({ ...f, [key]: value }));
   }
 
-  function setUrlRow(index: number, patch: Partial<TestingUrl>) {
+  function setUrlRow(index: number, patch: Partial<UrlRow>) {
     setForm((f) => ({
       ...f,
       previewUrls: f.previewUrls.map((r, i) => (i === index ? { ...r, ...patch } : r)),
@@ -197,7 +232,7 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
     setForm((f) => ({ ...f, previewUrls: f.previewUrls.filter((_, i) => i !== index) }));
   }
 
-  function setCredRow(index: number, patch: Partial<TestCredential>) {
+  function setCredRow(index: number, patch: Partial<CredRow>) {
     setForm((f) => ({
       ...f,
       testCredentials: f.testCredentials.map((r, i) => (i === index ? { ...r, ...patch } : r)),
@@ -241,7 +276,6 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
     // `live.apiUrl`, and any deploy knob a later version adds through the catchall.
     const stored = (project.environments ?? {}) as Record<string, unknown>;
     const storedLive = (stored.live ?? {}) as Record<string, unknown>;
-    const storedPreview = (stored.preview ?? {}) as Record<string, unknown>;
     const environments: EnvironmentsConfig = {
       ...stored,
       live: {
@@ -250,9 +284,9 @@ export function TestingTab({ project, canEdit }: { project: ProjectDetail; canEd
         commitUrl: trimmedOrNull(form.liveCommitUrl),
         commitPath: trimmedOrNull(form.liveCommitPath),
       },
-      preview: previewDeclared(form)
+      preview: previewDeclared(form, storedPreview)
         ? {
-            ...storedPreview,
+            ...(storedPreview ?? {}),
             url: trimmedOrNull(form.previewUrl),
             apiUrl: trimmedOrNull(form.previewApiUrl),
             urls: keptUrlRows(form.previewUrls),

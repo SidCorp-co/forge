@@ -210,6 +210,44 @@ describe("Testing tab · what a save must not take with it (ISS-1069)", () => {
     });
   });
 
+  // cm:guard a ROW carries every key it was stored with. The server catchalls unknown keys at row
+  // level too, so a save that rebuilt rows from the rendered fields alone deleted whatever a client
+  // one version ahead had written there. Found by a codex review of the landing head.
+  it("keeps an unknown key inside a testing URL row and inside a credential row", () => {
+    renderTab({
+      ...STORED,
+      preview: {
+        url: "https://beta.example.com",
+        urls: [{ label: "Beta", url: "https://beta.example.com", rowKnob: "r" }],
+      },
+      testCredentials: [
+        { label: "Admin", username: "bot@example.com", password: "keep-me", credKnob: "c" },
+      ],
+    });
+    fireEvent.change(limitsBox(), { target: { value: "updated" } });
+    fireEvent.click(saveBtn());
+
+    const preview = sent().preview as { urls: Record<string, unknown>[] };
+    expect(preview.urls[0]?.rowKnob).toBe("r");
+    expect((sent().testCredentials as Record<string, unknown>[])[0]?.credKnob).toBe("c");
+  });
+
+  // cm:guard a preview whose only content is a key this screen does not render is DECLARED. The
+  // emptiness test read the rendered fields alone, so an unrelated save wrote `preview: null` over
+  // it — a silent delete arriving through the one side that is allowed to be null.
+  it("keeps a preview whose only content is a key the screen does not render", () => {
+    renderTab({ ...STORED, preview: { futureKnob: "keep" } });
+    fireEvent.change(limitsBox(), { target: { value: "updated" } });
+    fireEvent.click(saveBtn());
+
+    expect(sent().preview).toEqual({
+      futureKnob: "keep",
+      url: null,
+      apiUrl: null,
+      urls: [],
+    });
+  });
+
   it("clears the preview back to null when its last field is emptied", () => {
     renderTab({ ...STORED, preview: { url: "https://stg.example.com" } });
     fireEvent.change(field("Preview URL"), { target: { value: "  " } });

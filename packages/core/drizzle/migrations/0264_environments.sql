@@ -83,6 +83,38 @@ BEGIN
                WHEN jsonb_typeof(preview_deploy -> 'testCredentials') NOT IN ('array', 'null')
                  THEN format('`testCredentials` is a JSON %s, and it takes an array',
                              jsonb_typeof(preview_deploy -> 'testCredentials'))
+               -- An ELEMENT the new shape cannot hold is the case a type check on the ARRAY misses,
+               -- and it is the one that loses a value without telling anybody. SQL carries the row
+               -- across untouched and `normalizeEnvironments` then answers {label, url} strings and
+               -- nothing else, so an element that is not an object DISAPPEARS — a project whose only
+               -- preview address sat in `testingUrls: ["https://beta.example.com"]` reads as having
+               -- no preview side at all — and an element whose `url` is an object comes back as the
+               -- string `[object Object]`. Both are values an operator stored and nobody is told.
+               -- The fields checked here are exactly the ones `testingUrlSchema` and
+               -- `testCredentialSchema` make REQUIRED STRINGS, so a row refused below is a row
+               -- `PATCH /api/projects/:id` would refuse today. Types only: a label that is merely
+               -- too long survives the reading intact and is the operator's to shorten.
+               WHEN EXISTS (
+                      SELECT 1
+                        FROM jsonb_array_elements(
+                               CASE WHEN jsonb_typeof(preview_deploy -> 'testingUrls') = 'array'
+                                    THEN preview_deploy -> 'testingUrls'
+                                    ELSE '[]'::jsonb END) AS e
+                       WHERE jsonb_typeof(e) <> 'object'
+                          OR jsonb_typeof(e -> 'label') IS DISTINCT FROM 'string'
+                          OR jsonb_typeof(e -> 'url') IS DISTINCT FROM 'string')
+                 THEN 'a `testingUrls` entry is not an object carrying a string `label` and a string `url`, which is what `preview.urls` holds — carried across, every reader would drop it or read it as the literal text `[object Object]`'
+               WHEN EXISTS (
+                      SELECT 1
+                        FROM jsonb_array_elements(
+                               CASE WHEN jsonb_typeof(preview_deploy -> 'testCredentials') = 'array'
+                                    THEN preview_deploy -> 'testCredentials'
+                                    ELSE '[]'::jsonb END) AS e
+                       WHERE jsonb_typeof(e) <> 'object'
+                          OR jsonb_typeof(e -> 'label') IS DISTINCT FROM 'string'
+                          OR jsonb_typeof(e -> 'username') IS DISTINCT FROM 'string'
+                          OR jsonb_typeof(e -> 'password') IS DISTINCT FROM 'string')
+                 THEN 'a `testCredentials` entry is not an object carrying a string `label`, `username` and `password` — carried across, every reader would drop it or read a missing field as an empty one, which is a login that looks recorded and is not'
              END AS reason
         FROM projects
        WHERE preview_deploy IS NOT NULL

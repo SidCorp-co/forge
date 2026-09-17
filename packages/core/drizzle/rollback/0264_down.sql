@@ -73,17 +73,30 @@ ALTER TABLE "projects" RENAME COLUMN "environments" TO "preview_deploy";
 
 -- === 3. every row back into the old shape ====================================
 -- The inverse of section 3 of the forward migration, key for key. `preview: null` flattens to
--- nothing rather than to explicit nulls, which is the `{}` the old readers already handled, and
--- `jsonb_strip_nulls` is what drops a preview field that was null on the way in.
+-- nothing rather than to explicit nulls, which is the `{}` the old readers already handled.
+--
+-- Each preview field is emitted on its own, and a null one is simply not emitted. It is written
+-- this way rather than as one `jsonb_strip_nulls(jsonb_build_object(…))` because that function
+-- strips RECURSIVELY: a `testingUrls` row carrying `{"label":"Beta","url":"…","future":{"mode":null}}`
+-- came through the forward migration untouched and would have lost `mode` here. That is a value an
+-- operator stored and nothing would have told them it was gone — the opposite of what a rollback is
+-- for. `urls` is therefore copied VERBATIM and never rebuilt.
 UPDATE projects
    SET preview_deploy = (
          (preview_deploy - 'preview' - 'live' - 'limits')
          || CASE
-              WHEN jsonb_typeof(preview_deploy -> 'preview') = 'object'
-              THEN jsonb_strip_nulls(jsonb_build_object(
-                     'stagingUrl',    preview_deploy -> 'preview' -> 'url',
-                     'stagingApiUrl', preview_deploy -> 'preview' -> 'apiUrl',
-                     'testingUrls',   preview_deploy -> 'preview' -> 'urls'))
+              WHEN jsonb_typeof(preview_deploy -> 'preview' -> 'url') = 'string'
+              THEN jsonb_build_object('stagingUrl', preview_deploy -> 'preview' -> 'url')
+              ELSE '{}'::jsonb
+            END
+         || CASE
+              WHEN jsonb_typeof(preview_deploy -> 'preview' -> 'apiUrl') = 'string'
+              THEN jsonb_build_object('stagingApiUrl', preview_deploy -> 'preview' -> 'apiUrl')
+              ELSE '{}'::jsonb
+            END
+         || CASE
+              WHEN jsonb_typeof(preview_deploy -> 'preview' -> 'urls') = 'array'
+              THEN jsonb_build_object('testingUrls', preview_deploy -> 'preview' -> 'urls')
               ELSE '{}'::jsonb
             END
          || CASE
