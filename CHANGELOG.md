@@ -112,6 +112,13 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Six tables that only ever grew now have a retention rule and a nightly sweep.** The operator
+  sets each window, and the sweep reports what it removed and kept. The runner Activity
+  panel says how long that history lasts.
+
+- **A job's events are no longer deleted before the transcript they rebuild is written.** Events are
+  kept until the session records its transcript as final. Where that never happened, the sweep
+  writes the transcript instead of letting them expire.
 
 - **Forge can now close a Sentry issue from this side.** It reads an issue and sets its status on
   a Sentry project you named. One you did not name is refused, and every call shows in the
