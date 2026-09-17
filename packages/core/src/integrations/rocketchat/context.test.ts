@@ -168,125 +168,75 @@ describe('buildRocketChatHistoryToolset', () => {
   });
 });
 
+const auth = { serverUrl: 'https://chat.example.com', authToken: 't', userId: 'bot' };
+const ts = (n: number) => `2026-09-17T10:00:${String(n).padStart(2, '0')}.000Z`;
+const raw = (id: string, n: number, over: Record<string, unknown> = {}) => ({
+  _id: id,
+  rid: 'R1',
+  msg: `text of ${id}`,
+  ts: ts(n),
+  u: { _id: 'u1', username: 'alice' },
+  ...over,
+});
+/** The room: m1..m9 at one second apart; A5 is the anchor most cases quote. */
+const room = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => raw(`m${n}`, n));
+const calls: string[] = [];
+const serve = (
+  messages: Record<string, Record<string, unknown>> = {},
+  beside: (side: 'before' | 'after', t: string, count: number) => Record<string, unknown>[] = (
+    side,
+    t,
+    count,
+  ) =>
+    side === 'after'
+      ? room.filter((m) => m.ts > t).slice(0, count)
+      : room.filter((m) => m.ts < t).slice(-count),
+) => {
+  calls.length = 0;
+  vi.stubGlobal(
+    'fetch',
+    vi.fn(async (input: string) => {
+      const url = new URL(input);
+      const path = url.pathname.replace('/api/v1/', '');
+      calls.push(path);
+      const ok = (body: unknown) => ({ ok: true, json: async () => body }) as unknown as Response;
+      if (path === 'chat.getMessage') {
+        const m = messages[url.searchParams.get('msgId') ?? ''];
+        return m
+          ? ok({ message: m })
+          : ({ ok: false, json: async () => ({}) } as unknown as Response);
+      }
+      if (path === 'channels.messages') {
+        const q = JSON.parse(url.searchParams.get('query') ?? '{}') as {
+          ts: Record<string, { $date: string }>;
+        };
+        const side = '$gt' in q.ts ? 'after' : 'before';
+        const t = (q.ts.$gt ?? q.ts.$lt)?.$date ?? '';
+        return ok({ messages: beside(side, t, Number(url.searchParams.get('count'))) });
+      }
+      if (path === 'chat.getThreadMessages') {
+        return ok({
+          messages: [
+            raw('t2', 12, { tmid: 'T1' }),
+            raw('t3', 13, { tmid: 'T1' }),
+            raw('t4', 14, { tmid: 'T1' }),
+            raw('t5', 15, { tmid: 'T1' }),
+            raw('t6', 16, { tmid: 'T1' }),
+          ],
+        });
+      }
+      return { ok: false, json: async () => ({}) } as unknown as Response;
+    }),
+  );
+};
+const body = async (set: ChatToolset, id: string): Promise<Record<string, unknown>> => {
+  const r = await set.execute('rocketchat_quote_context', JSON.stringify({ messageId: id }));
+  const parsed = JSON.parse((r.content[0] as { text: string }).text) as Record<string, unknown>;
+  return { ...parsed, isError: r.isError };
+};
+
 describe('buildRocketChatQuoteContextToolset (ISS-1087)', () => {
-  const auth = { serverUrl: 'https://chat.example.com', authToken: 't', userId: 'bot' };
-  const ts = (n: number) => `2026-09-17T10:00:${String(n).padStart(2, '0')}.000Z`;
-  const raw = (id: string, n: number, over: Record<string, unknown> = {}) => ({
-    _id: id,
-    rid: 'R1',
-    msg: `text of ${id}`,
-    ts: ts(n),
-    u: { _id: 'u1', username: 'alice' },
-    ...over,
-  });
-  /** The room: m1..m9 at one second apart; A5 is the anchor most cases quote. */
-  const room = [1, 2, 3, 4, 5, 6, 7, 8, 9].map((n) => raw(`m${n}`, n));
-  const calls: string[] = [];
-  const serve = (
-    messages: Record<string, Record<string, unknown>> = {},
-    beside: (side: 'before' | 'after', t: string, count: number) => Record<string, unknown>[] = (
-      side,
-      t,
-      count,
-    ) =>
-      side === 'after'
-        ? room.filter((m) => m.ts > t).slice(0, count)
-        : room.filter((m) => m.ts < t).slice(-count),
-  ) => {
-    calls.length = 0;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: string) => {
-        const url = new URL(input);
-        const path = url.pathname.replace('/api/v1/', '');
-        calls.push(path);
-        const ok = (body: unknown) => ({ ok: true, json: async () => body }) as unknown as Response;
-        if (path === 'chat.getMessage') {
-          const m = messages[url.searchParams.get('msgId') ?? ''];
-          return m
-            ? ok({ message: m })
-            : ({ ok: false, json: async () => ({}) } as unknown as Response);
-        }
-        if (path === 'channels.messages') {
-          const q = JSON.parse(url.searchParams.get('query') ?? '{}') as {
-            ts: Record<string, { $date: string }>;
-          };
-          const side = '$gt' in q.ts ? 'after' : 'before';
-          const t = (q.ts.$gt ?? q.ts.$lt)?.$date ?? '';
-          return ok({ messages: beside(side, t, Number(url.searchParams.get('count'))) });
-        }
-        if (path === 'chat.getThreadMessages') {
-          return ok({
-            messages: [
-              raw('t2', 12, { tmid: 'T1' }),
-              raw('t3', 13, { tmid: 'T1' }),
-              raw('t4', 14, { tmid: 'T1' }),
-              raw('t5', 15, { tmid: 'T1' }),
-              raw('t6', 16, { tmid: 'T1' }),
-            ],
-          });
-        }
-        return { ok: false, json: async () => ({}) } as unknown as Response;
-      }),
-    );
-  };
-  const body = async (set: ChatToolset, id: string): Promise<Record<string, unknown>> => {
-    const r = await set.execute('rocketchat_quote_context', JSON.stringify({ messageId: id }));
-    const parsed = JSON.parse((r.content[0] as { text: string }).text) as Record<string, unknown>;
-    return { ...parsed, isError: r.isError };
-  };
-
   afterEach(() => vi.unstubAllGlobals());
-
-  it('names a side the room refused to read, rather than showing it empty (criterion 30)', async () => {
-    serve({ m5: raw('m5', 5) });
-    const inner = globalThis.fetch;
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: string) =>
-        new URL(input).pathname.endsWith('.messages')
-          ? ({ ok: false, json: async () => ({}) } as unknown as Response)
-          : inner(input),
-      ),
-    );
-    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'm5');
-    expect(out.isError).toBeUndefined();
-    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['m5']);
-    expect(out.limitation).toMatch(/before and after it, so that side is missing/);
-  });
-
-  it('refuses an anchor whose room the server did not name, fetching nothing around it (criterion 29)', async () => {
-    serve({ m5: raw('m5', 5, { rid: undefined }) });
-    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'm5');
-    expect(out.isError).toBe(true);
-    expect(JSON.stringify(out)).toMatch(/did not say which room/);
-    expect(JSON.stringify(out)).not.toMatch(/text of m5/);
-    expect(calls.filter((c) => c.endsWith('.messages'))).toHaveLength(0);
-  });
-
-  it('names the page end when the quoted reply is the last of a full thread page (criterion 30)', async () => {
-    serve({ t51: raw('t51', 51, { tmid: 'T1' }), T1: raw('T1', 1) });
-    const inner = globalThis.fetch;
-    const fifty = Array.from({ length: 50 }, (_, i) => raw(`t${i + 2}`, i + 2, { tmid: 'T1' }));
-    vi.stubGlobal(
-      'fetch',
-      vi.fn(async (input: string) =>
-        new URL(input).pathname.endsWith('chat.getThreadMessages')
-          ? ({ ok: true, json: async () => ({ messages: fifty }) } as unknown as Response)
-          : inner(input),
-      ),
-    );
-    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't51');
-    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['t49', 't50', 't51']);
-    expect(out.limitation).toMatch(/later replies may be missing/);
-  });
-
-  it('names a root it could not read when the quoted reply is the thread’s first (criterion 30)', async () => {
-    serve({ t2: raw('t2', 12, { tmid: 'T1' }) });
-    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't2');
-    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['t2', 't3', 't4']);
-    expect(out.limitation).toMatch(/root could not be read/);
-  });
 
   it('advertises rocketchat_quote_context (criterion 24)', () => {
     const set = buildRocketChatQuoteContextToolset(auth, 'R1');
@@ -373,6 +323,60 @@ describe('buildRocketChatQuoteContextToolset (ISS-1087)', () => {
       true,
     );
     expect(calls.filter((c) => c === 'chat.getMessage')).toHaveLength(1);
+  });
+});
+
+describe('what rocketchat_quote_context says it could not read (ISS-1087)', () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it('names a side the room refused to read, rather than showing it empty (criterion 30)', async () => {
+    serve({ m5: raw('m5', 5) });
+    const inner = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string) =>
+        new URL(input).pathname.endsWith('.messages')
+          ? ({ ok: false, json: async () => ({}) } as unknown as Response)
+          : inner(input),
+      ),
+    );
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'm5');
+    expect(out.isError).toBeUndefined();
+    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['m5']);
+    expect(out.limitation).toMatch(/before and after it, so that side is missing/);
+  });
+
+  it('refuses an anchor whose room the server did not name, fetching nothing around it (criterion 29)', async () => {
+    serve({ m5: raw('m5', 5, { rid: undefined }) });
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'm5');
+    expect(out.isError).toBe(true);
+    expect(JSON.stringify(out)).toMatch(/did not say which room/);
+    expect(JSON.stringify(out)).not.toMatch(/text of m5/);
+    expect(calls.filter((c) => c.endsWith('.messages'))).toHaveLength(0);
+  });
+
+  it('names the page end when the quoted reply is the last of a full thread page (criterion 30)', async () => {
+    serve({ t51: raw('t51', 51, { tmid: 'T1' }), T1: raw('T1', 1) });
+    const inner = globalThis.fetch;
+    const fifty = Array.from({ length: 50 }, (_, i) => raw(`t${i + 2}`, i + 2, { tmid: 'T1' }));
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string) =>
+        new URL(input).pathname.endsWith('chat.getThreadMessages')
+          ? ({ ok: true, json: async () => ({ messages: fifty }) } as unknown as Response)
+          : inner(input),
+      ),
+    );
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't51');
+    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['t49', 't50', 't51']);
+    expect(out.limitation).toMatch(/later replies may be missing/);
+  });
+
+  it('names a root it could not read when the quoted reply is the thread’s first (criterion 30)', async () => {
+    serve({ t2: raw('t2', 12, { tmid: 'T1' }) });
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't2');
+    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['t2', 't3', 't4']);
+    expect(out.limitation).toMatch(/root could not be read/);
   });
 
   it('states the limitation when a thread anchor lies past the fetched page', async () => {
