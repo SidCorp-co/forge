@@ -95,9 +95,10 @@ async function seed() {
     projectId: project.id,
     role: 'admin',
   });
-  const [{ org_id: orgId }] = await harness.db.execute<{ org_id: string }>(
+  const orgRows = await harness.db.execute<{ org_id: string }>(
     sql`SELECT org_id FROM projects WHERE id = ${project.id}`,
   );
+  const orgId = (orgRows[0] as { org_id: string }).org_id;
   const rows = await harness.db.execute<{ id: string }>(sql`
     INSERT INTO issues (project_id, title, created_by_id)
     VALUES (${project.id}, 'record-target', ${owner.id})
