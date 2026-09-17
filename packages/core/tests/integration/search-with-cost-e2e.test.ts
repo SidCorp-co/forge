@@ -100,16 +100,28 @@ async function insertIssue(title: string, projectId = project.id): Promise<strin
   return id;
 }
 
-/** One agent session, and one job of `issueId` that ran under it. */
+/**
+ * One job of `issueId` that ran under `sessionId`.
+ *
+ * No `agent_sessions` row is written, and that is the point: the rollup reaches
+ * usage from `jobs.agent_session_id` straight to `usage_records.session_id`,
+ * with no FK between them and no third table in the join. A fixture that seeded
+ * the session table would suggest a dependency the query does not have.
+ */
 async function insertJobWithSession(issueId: string, sessionId: string): Promise<void> {
+  const runId = randomUUID();
+  // `completed`, not `running`: `pipeline_runs_issue_open_uq` allows one open
+  // issue-run per issue, and several of these cases give one issue two or three
+  // jobs on purpose.
   await harness.db.execute(sql`
-    INSERT INTO agent_sessions (id, project_id, status, started_at)
-    VALUES (${sessionId}, ${project.id}, 'idle', now())
-    ON CONFLICT (id) DO NOTHING
+    INSERT INTO pipeline_runs (id, project_id, issue_id, kind, status, started_at)
+    VALUES (${runId}, ${project.id}, ${issueId}, 'issue', 'completed', now())
   `);
   await harness.db.execute(sql`
-    INSERT INTO jobs (id, project_id, issue_id, created_by, type, status, agent_session_id)
-    VALUES (${randomUUID()}, ${project.id}, ${issueId}, ${user.id}, 'plan', 'done', ${sessionId})
+    INSERT INTO jobs (id, project_id, issue_id, pipeline_run_id, created_by, type, status,
+                      agent_session_id)
+    VALUES (${randomUUID()}, ${project.id}, ${issueId}, ${runId}, ${user.id}, 'plan', 'done',
+            ${sessionId})
   `);
 }
 

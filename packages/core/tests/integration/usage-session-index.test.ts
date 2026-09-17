@@ -44,16 +44,8 @@ const JOBS = 8_000;
 const ISSUES = 2_000;
 const USAGE_ROWS = 24_000;
 
-/**
- * Deterministic uuids so a selection can be written without reading ids back.
- *
- * cm:guard the literal `ab` in every node is what keeps a hex LETTER in each id, and it
- * is not decoration. Without it `sessionId(1)` is `...000000000001`, all digits, and
- * `toUpperCase()` on it is a no-op — so the two cases below that exist to prove an
- * uppercase spelling is handled would have been comparing a string with itself. That
- * happened twice while this file was written; putting the letters in the generator is
- * what stops it happening a third time in whatever case someone adds next.
- */
+/** Deterministic uuids so a selection can be written without reading ids back. */
+// cm:guard the literal `ab` in every node is what keeps a hex LETTER in each id, and it is not decoration. Without it `sessionId(1)` is `...000000000001`, all digits, and `toUpperCase()` on it is a no-op — so the two cases below that exist to prove an uppercase spelling is handled would have been comparing a string with itself. That happened twice while this file was written; putting the letters in the generator is what stops it happening a third time in whatever case someone adds next.
 const node = (g: number) => `ab${g.toString(16).padStart(10, '0')}`;
 const runId = (g: number) => `20000000-0000-4000-8000-${node(g)}`;
 const sessionId = (g: number) => `10000000-0000-4000-8000-${node(g)}`;
@@ -198,14 +190,8 @@ async function expectViewMatchesLegacy(db: TestDb): Promise<void> {
   expect(Number(shapes?.positive_duration)).toBeGreaterThan(0);
 }
 
-/**
- * What every index-served assertion here means, in one place.
- *
- * cm:guard the predicate under EXPLAIN is built by the REAL `usageSessionMatch` and
- * `canonicalSessionId` rather than hand-copied into this file. A likeness would make the
- * negative control prove only that Postgres distinguishes two predicates — true and not
- * the claim — while a regression in the helper kept every case green.
- */
+/** What every index-served assertion here means, in one place. */
+// cm:guard the predicate under EXPLAIN is built by the REAL `usageSessionMatch`, `canonicalSessionId` and `issueCostRollupQuery` rather than hand-copied into this file. A likeness would make the negative control prove only that Postgres distinguishes two predicates — true and not the claim — while a regression in the helper kept every case green. ISS-1081 is what that costs when it slips: the issues-list case below asserted on a hand-written `p.session_id` and stayed green for a statement Postgres refused on every execution.
 function expectIndexServed(text: string) {
   expect(text).toContain('usage_records_session_id_idx');
   expect(text).not.toContain('Seq Scan on usage_records');
@@ -238,12 +224,8 @@ const ACCEPTED = 'accepted';
  * The constraint name is on the DRIVER error, not on the wrapper drizzle throws,
  * so read it rather than matching the wrapper's message — which names the query
  * and would match a syntax error just as happily.
- *
- * cm:guard naming the whole error when no constraint field is present, rather than
- * returning the same value an accepted write returns: the first version of this
- * helper answered `undefined` for both, so a run where the constraint did not exist
- * at all read identically to one where it refused.
  */
+// cm:guard naming the whole error when no constraint field is present, rather than returning the same value an accepted write returns: the first version of this helper answered `undefined` for both, so a run where the constraint did not exist at all read identically to one where it refused.
 async function constraintRefusing(db: TestDb, query: ReturnType<typeof sql>): Promise<string> {
   try {
     await db.execute(query);
@@ -260,16 +242,17 @@ async function constraintRefusing(db: TestDb, query: ReturnType<typeof sql>): Pr
  * The real `/api/agent-sessions` router, mounted so criterion 8 can be judged at
  * the route rather than at a predicate this file rebuilds. Module level for the
  * per-function line budget, like the 0177 view body above.
- *
- * cm:guard the router reads `db` off the environment at import, so `DATABASE_URL`
- * has to name the harness BEFORE the dynamic import below. A static import would
- * bind the module to whatever `DATABASE_URL` the shell happened to carry, and the
- * case would then pass or fail against a database that is not this fixture.
  */
+// cm:guard the router reads `db` off the environment at import, so `DATABASE_URL` has to name the harness BEFORE the dynamic import below. A static import would bind the module to whatever `DATABASE_URL` the shell happened to carry, and the case would then pass or fail against a database that is not this fixture.
 async function mountAgentSessions(
   url: string,
   userId: string,
-): Promise<{ app: Hono; token: string; issueContextPeakQuery: (issueId: string) => SQL }> {
+): Promise<{
+  app: Hono;
+  token: string;
+  issueContextPeakQuery: (issueId: string) => SQL;
+  issueCostRollupQuery: (issueIds: string[]) => { getSQL: () => SQL };
+}> {
   process.env.DATABASE_URL = url;
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
@@ -290,12 +273,15 @@ async function mountAgentSessions(
   // DATABASE_URL at import. Taken here so the index case explains the query the
   // production function runs rather than a copy that cannot observe a regression.
   const { issueContextPeakQuery } = await import('../../src/jobs/session-resume.js');
+  // Same reason again: the issues-list rollup is the query criterion 4 is about,
+  // and ISS-1081 is what it cost to assert on a rebuilt copy of it instead.
+  const { issueCostRollupQuery } = await import('../../src/issues/search.js');
 
   const app = new Hono();
   app.use('*', requestId());
   app.route('/api/agent-sessions', agentSessionRoutes);
   app.onError(errorHandler as unknown as Parameters<typeof app.onError>[0]);
-  return { app, token: await signUserToken(userId), issueContextPeakQuery };
+  return { app, token: await signUserToken(userId), issueContextPeakQuery, issueCostRollupQuery };
 }
 
 interface SessionCostBody {
@@ -324,6 +310,7 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
   let app: Hono;
   let ownerToken: string;
   let issueContextPeakQuery: (issueId: string) => SQL;
+  let issueCostRollupQuery: (issueIds: string[]) => { getSQL: () => SQL };
 
   beforeAll(async () => {
     harness = await setupTestDatabase();
@@ -335,6 +322,7 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
       app,
       token: ownerToken,
       issueContextPeakQuery,
+      issueCostRollupQuery,
     } = await mountAgentSessions(harness.url, owner.userId));
   }, 600_000);
 
@@ -402,44 +390,33 @@ describe('ISS-1015 · usage_records rollups are index-served', () => {
   // widths; that was wrong about the planner and is corrected on the issue rather than
   // relaxed here to match what got built.
   it('serves the issues-list rollup from the index for one issue', async () => {
-    expectIndexServed(
-      await plan(sql`
-        SELECT p.issue_id, coalesce(sum(${usageRecords.estimatedCost}), 0)::float AS cost
-        FROM (SELECT DISTINCT ${jobsTable.issueId} AS issue_id,
-                     ${jobsTable.agentSessionId}::text AS session_id
-              FROM ${jobsTable}
-              WHERE ${jobsTable.issueId} = ${issueId(7)}
-                AND ${jobsTable.agentSessionId} IS NOT NULL) p
-        INNER JOIN ${usageRecords} ON ${usageSessionMatch(sql`= p.session_id`)}
-        GROUP BY p.issue_id`),
-    );
+    expectIndexServed(await plan(issueCostRollupQuery([issueId(7)]).getSQL()));
   });
 
   it('joins a 25-issue page on the uncast column, and cheaper than the cast did', async () => {
+    const pageIds = Array.from({ length: 25 }, (_, i) => issueId(i + 1));
     const page = sql.join(
-      Array.from({ length: 25 }, (_, i) => sql`${issueId(i + 1)}`),
+      pageIds.map((id) => sql`${id}`),
       sql`, `,
     );
-    const pageCost = async (join: ReturnType<typeof sql>, subselect: ReturnType<typeof sql>) => {
-      const rows = await harness.db.execute<Record<string, string>>(sql`
-        EXPLAIN SELECT p.issue_id, coalesce(sum(u.estimated_cost), 0)::float AS cost
-        FROM (SELECT DISTINCT issue_id, ${subselect} FROM jobs
-              WHERE issue_id IN (${page}) AND agent_session_id IS NOT NULL) p
-        INNER JOIN usage_records u ON ${join}
-        GROUP BY p.issue_id`);
+    const costOf = async (query: SQL) => {
+      const rows = await harness.db.execute<Record<string, string>>(sql`EXPLAIN ${query}`);
       const text = [...rows].map((r) => Object.values(r)[0]).join('\n');
       return { text, total: Number(/cost=[\d.]+\.\.([\d.]+)/.exec(text)?.[1]) };
     };
-    const now = await pageCost(
-      sql`u.session_id = p.session_id`,
-      sql`agent_session_id::text AS session_id`,
-    );
-    const before = await pageCost(
-      sql`u.session_id ~ '^[0-9a-fA-F-]{36}$' AND u.session_id::uuid = p.agent_session_id`,
-      sql`agent_session_id`,
-    );
-    expect(now.text).not.toContain('(u.session_id)::uuid');
-    expect(before.text).toContain('(u.session_id)::uuid');
+    // The `now` side is the statement the route sends. The `before` side has to
+    // be spelled out, because it is the pre-ISS-1015 predicate and no code holds
+    // it any more — that is what a negative control is.
+    const now = await costOf(issueCostRollupQuery(pageIds).getSQL());
+    const before = await costOf(sql`
+        SELECT p.issue_id, coalesce(sum(u.estimated_cost), 0)::float AS cost
+        FROM (SELECT DISTINCT issue_id, agent_session_id FROM jobs
+              WHERE issue_id IN (${page}) AND agent_session_id IS NOT NULL) p
+        INNER JOIN usage_records u
+          ON u.session_id ~ '^[0-9a-fA-F-]{36}$' AND u.session_id::uuid = p.agent_session_id
+        GROUP BY p.issue_id`);
+    expect(now.text).not.toMatch(/session_id\)::uuid/);
+    expect(before.text).toMatch(/session_id\)::uuid/);
     expect(now.total).toBeLessThan(before.total);
   });
 
