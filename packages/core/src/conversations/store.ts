@@ -5,7 +5,7 @@
 // knows the pair `(adapter, externalId)` that names it and the handle that
 // gives it its scope.
 
-import { and, asc, desc, eq, gte, inArray, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
@@ -333,9 +333,14 @@ export async function assistantSentExternalIds(
   adapter: ConversationAdapter,
   handleUserIds: readonly string[],
   ids: readonly string[],
+  venueScope: string | null = null,
   tx: Executor = defaultDb,
 ): Promise<Set<string>> {
   if (ids.length === 0 || handleUserIds.length === 0) return new Set();
+  // cm:guard `venueScope` is the prefix the transport says every venue on the same SERVER shares, and the rows are read within it: a message id is unique within one installation only, so a handle bound on two servers must not have its message on one answer for an id quoted on the other (whole-set review F2, recheck). Null is one server, and no filter.
+  const withinScope = venueScope
+    ? [like(conversations.externalId, `${venueScope.replace(/[\\%_]/g, '\\$&')}%`)]
+    : [];
   const rows = await tx
     .select({ externalId: conversationMessages.externalId })
     .from(conversationMessages)
@@ -343,6 +348,7 @@ export async function assistantSentExternalIds(
     .where(
       and(
         eq(conversations.adapter, adapter),
+        ...withinScope,
         eq(conversationMessages.role, 'assistant'),
         inArray(conversationMessages.authorUserId, [...handleUserIds]),
         inArray(conversationMessages.externalId, [...ids]),

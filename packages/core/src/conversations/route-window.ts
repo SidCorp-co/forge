@@ -345,6 +345,7 @@ async function decide(
       venue.adapter,
       handles.map((h) => h.userId),
       replyTargetsOf(messages),
+      conversationTransport(venue.adapter)?.venueScope?.(venue.externalId) ?? null,
     );
     if (!windowAddressesAHandle(messages, names, sent)) {
       return { decision: 'nothing-to-say', detail: { reason: 'not-mentioned', handles: names } };

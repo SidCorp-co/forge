@@ -195,6 +195,28 @@ describe('the reply column and the handle’s own ids', () => {
     );
     expect([...sent]).toEqual(['rc-bot-9']);
   });
+
+  it('reads the handle’s ids within the room’s own server only (criterion 13)', async () => {
+    const ours = (await createTestUser(harness.db)).id;
+    const here = await room();
+    const elsewhere = await store.openConversation({
+      ...venue(),
+      externalId: 'chat.elsewhere.example room-9',
+    });
+    await store.appendMessages({
+      conversationId: elsewhere.id,
+      messages: [
+        { role: 'assistant', content: 'far', authorUserId: ours, externalId: 'rc-same-1' },
+      ],
+    });
+    const scope = `${here.externalId.split(' ')[0]} `;
+    expect([
+      ...(await store.assistantSentExternalIds('rocketchat', [ours], ['rc-same-1'], scope)),
+    ]).toEqual([]);
+    expect([
+      ...(await store.assistantSentExternalIds('rocketchat', [ours], ['rc-same-1'], null)),
+    ]).toEqual(['rc-same-1']);
+  });
 });
 
 describe('a room’s presence over HTTP', () => {
