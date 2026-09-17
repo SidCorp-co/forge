@@ -207,6 +207,31 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
   // under a reader. There is nothing for it to survive.
   const disclosures = useThreadDisclosures();
   const [unfolded, setUnfolded] = useState(false);
+
+  // cm:guard a turn folds ONLY at the moment it stops being the newest, and only if the reader was
+  // at the bottom of the thread then. Both halves answer the implementation consult's F2: a reader
+  // can be inside the turn that folds, below its cards, and then the height that vanishes is ABOVE
+  // them and what they are reading moves. A reader who IS at the bottom is held there by the
+  // browser's own clamp when content above them shrinks, so that case moves nothing — which is why
+  // this is a gate and not a line of scroll arithmetic.
+  // cm:guard latched, and never re-read: folding on `atBottom` as it changes would UNFOLD every old
+  // turn the moment a reader scrolled up, which is the same defect with the sign flipped and every
+  // turn in the thread moving at once instead of one.
+  const [latched, setLatched] = useState(
+    () => folded === true && disclosures?.atBottom !== false,
+  );
+  // cm:guard the latch is RELEASED when a turn becomes the newest again, which is not a hypothetical:
+  // regenerating or editing a turn drops the ones after it, and on the chat surface an optimistic
+  // entry can vanish. Without the release, a turn that had already folded once folded again the
+  // moment a replacement arrived — with the reader anywhere at all, because its permission was the
+  // one it captured minutes earlier (scroll consult F1).
+  const wasOld = useRef(folded === true);
+  useEffect(() => {
+    const old = folded === true;
+    if (old && !wasOld.current && disclosures?.atBottom !== false) setLatched(true);
+    if (!old && wasOld.current) setLatched(false);
+    wasOld.current = old;
+  }, [folded, disclosures?.atBottom]);
   const keys = disclosureKeys(item.id, item.blocks);
 
   // cm:guard focus MOVES into what the row revealed, because opening it REMOVES the control that
@@ -227,7 +252,7 @@ function AgentTurn({ item, streamingTail, folded, busy, readOnly, onRegenerate, 
       ?.focus();
   }, [unfolded]);
   const fold =
-    folded === true && !unfolded && disclosures?.touched(item.id) !== true
+    latched && folded === true && !unfolded && disclosures?.touched(item.id) !== true
       ? foldTurn(item.blocks)
       : null;
 

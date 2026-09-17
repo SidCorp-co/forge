@@ -30,7 +30,11 @@ export function NewOutput({ onGo }: { onGo: () => void }) {
         type="button"
         data-testid="new-output"
         onClick={onGo}
-        className="pointer-events-auto flex min-h-9 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 py-1.5 text-muted shadow-xs hover:bg-hover hover:text-default"
+        // cm:guard the elevation shadow REPLACES the global `:focus-visible` box-shadow unless the ring
+        // is re-declared here, so a keyboard user would reach this pill and see nothing happen.
+        // `design/focus-ring.test.ts` refuses the pair, and refused this button until the two
+        // `focus-visible:` utilities went on.
+        className="pointer-events-auto flex min-h-9 items-center gap-1.5 rounded-pill border border-line bg-surface px-3 py-1.5 text-muted shadow-xs hover:bg-hover hover:text-default focus-visible:outline-none focus-visible:shadow-[var(--shadow-focus)]"
         style={{ fontSize: 12 }}
       >
         <Icon name="chevronDown" size={12} className="flex-none" />

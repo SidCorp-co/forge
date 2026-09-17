@@ -1,6 +1,7 @@
 "use client";
 
-// Which of a thread's disclosures a reader has opened, held ABOVE the turns (ISS-1083).
+// What a thread knows about its reader, held ABOVE the turns (ISS-1083): which disclosures they
+// have opened, which turns they have been inside, and whether they are at the bottom.
 //
 // cm:guard this cannot live in the leaf that draws the chevron, and the reason is a component
 // SWAP rather than a re-render: when a turn settles on the chat surface, `threadEntries` stops
@@ -63,6 +64,15 @@ export interface ThreadDisclosures {
   toggle(key: string): void;
   /** Has the reader opened anything inside this turn, at any point in this thread's life? */
   touched(turnId: string): boolean;
+  /**
+   * Is the reader at the bottom of the thread right now?
+   */
+  // cm:guard this is here rather than drilled through four components because it is the same kind of
+  // fact as the two above it — what the thread knows about its reader — and it has exactly one
+  // consumer: a turn deciding whether it may fold. The implementation consult named why it must be
+  // consulted at all (F2): folding happens at TURN granularity, but a reader can be inside the turn
+  // that folds, below its cards, and then the height that vanishes is above them.
+  atBottom: boolean;
 }
 
 const Ctx = createContext<ThreadDisclosures | null>(null);
@@ -73,7 +83,14 @@ const turnOf = (key: string) => key.slice(0, key.indexOf(":"));
 /**
  * One thread's disclosure state, mounted above its turns.
  */
-export function DisclosureScope({ children }: { children: ReactNode }) {
+export function DisclosureScope({
+  children,
+  atBottom = true,
+}: {
+  children: ReactNode;
+  /** Whether the reader is at the bottom of this thread. Defaults to true, which is where a thread opens. */
+  atBottom?: boolean;
+}) {
   const [open, setOpen] = useState<ReadonlySet<string>>(() => new Set<string>());
   const [touched, setTouched] = useState<ReadonlySet<string>>(() => new Set<string>());
 
@@ -91,8 +108,9 @@ export function DisclosureScope({ children }: { children: ReactNode }) {
       isOpen: (key) => open.has(key),
       toggle,
       touched: (turnId) => touched.has(turnId),
+      atBottom,
     }),
-    [open, touched, toggle],
+    [open, touched, toggle, atBottom],
   );
 
   return <Ctx.Provider value={value}>{children}</Ctx.Provider>;

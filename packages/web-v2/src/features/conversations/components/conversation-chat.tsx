@@ -23,6 +23,7 @@ import {
   TurnStage,
   turnStageOf,
 } from "@/features/session/components/turn-stage";
+import { NewOutput } from "@/features/session/components/new-output";
 import { useStickToBottom } from "@/features/session/components/use-stick-to-bottom";
 import { parseMessages } from "@/features/session/types";
 import { formatApiError } from "@/lib/api/error";
@@ -152,7 +153,8 @@ export function ConversationChat({
   // a progress entry often carries `content` and no blocks at all, and the converter is the one
   // place that turns either shape into the render blocks the rule reads a tail off.
   const stage = turnStageOf({
-    live: (busy || progress != null) && !progress?.replaced,
+    // `streaming` above is `busy || progress != null` and says the same thing for the same reason.
+    live: streaming && !progress?.replaced,
     ...(progress ? { blocks: parseMessages([progress.entry])[0]?.blocks } : {}),
   });
 
@@ -174,7 +176,7 @@ export function ConversationChat({
   // cm:guard the composer is CLOSED before a person types rather than after they press enter, because the server refuses a turn in a room about more than one project by name — and a person who has written a paragraph into a box that was never going to send it has lost the paragraph and learned nothing. The reason and the way out below are the same ones that refusal carries (ISS-1011 criterion 33).
   const refusal = roomQ.data ? composerRefusal(roomQ.data) : null;
 
-  const { scrollRef, bottomRef, onScroll } = useStickToBottom({
+  const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: resolvedId,
     ready: roomQ.isSuccess,
     itemCount: messages.length + outbox.length,
@@ -345,6 +347,7 @@ export function ConversationChat({
             </div>
           ) : (
             <ConversationThread
+              atBottom={atBottom}
               messages={messages}
               windows={windows}
               outbox={outbox}
@@ -365,6 +368,11 @@ export function ConversationChat({
               <TurnStage stage={stage} />
             </div>
           )}
+          {/* cm:guard drawn INSIDE the scroller, which is the only element that knows where its own
+              viewport's bottom is (`new-output.tsx`). The other half of ISS-1078's scroll rule was
+              shipped as silence: a reader who scrolled up to re-read a card while an answer streamed
+              had no way to know it had finished (ISS-1083 criterion 28). */}
+          {newOutput && <NewOutput onGo={toBottom} />}
           <div ref={bottomRef} />
         </div>
       </div>

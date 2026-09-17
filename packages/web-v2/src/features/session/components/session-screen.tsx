@@ -46,9 +46,10 @@ import { Composer, ReadOnlyComposerNote } from "./composer";
 import { RunReport } from "./run-report/run-report";
 import { ContextRail } from "./context-rail";
 import { Conversation } from "./conversation";
+import { NewOutput } from "./new-output";
 import { DisclosureScope } from "../disclosure";
 import { TurnStage, sessionTurnStage } from "./turn-stage";
-import { useStickToBottom } from "./use-stick-to-bottom";
+import { tailOutputSize, useStickToBottom } from "./use-stick-to-bottom";
 
 interface SessionScreenProps {
   sessionId: string;
@@ -153,6 +154,8 @@ export function SessionScreen({
   const cancel = useCancelSession(sessionId);
   const rerun = useRerunSession(sessionId);
 
+  const streamedChars = useMemo(() => tailOutputSize(items), [items]);
+
   const display = session ? deriveSessionDisplayStatus(session) : "queued";
   const live = display === "running" || display === "stalled";
   const startMs = session?.startedAt
@@ -175,11 +178,19 @@ export function SessionScreen({
   // Auto-scroll the thread to the newest message (ISS-728) — this pane and the
   // mobile SlideOver reply panel both render this screen (embedded mode), so
   // one hook wiring covers both surfaces.
-  const { scrollRef, bottomRef, onScroll } = useStickToBottom({
+  const { scrollRef, bottomRef, onScroll, atBottom, newOutput, toBottom } = useStickToBottom({
     conversationKey: sessionId,
     ready: turnsQ.isSuccess,
     itemCount: items.length,
     live,
+    // cm:guard this surface passed NEITHER of the two below until ISS-1083, so it still had the
+    // defect PR #480 fixed for the chat panel: a turn's rows grow in place while it runs, so
+    // `itemCount` does not move and `live` was already true, and the thread followed the first
+    // frame and then stopped. The same derivation the chat uses, for the same reason — the rendered
+    // length of the turn in flight is the only thing that moves, and it moves for a tool result
+    // settling onto its card as well as for prose (scroll consult F3, ISS-1078 review F6).
+    streaming: live && !fromMessages,
+    streamedChars,
   });
 
   const goToSession = (id: string) =>
@@ -362,7 +373,7 @@ export function SessionScreen({
           disclosure a reader opened survives the turn settling under them: on the chat surface that
           settle swaps the whole live subtree for a stored one, and state held any lower goes with it
           (ISS-1083 criterion 24, and `disclosure.tsx` for why). */}
-      <DisclosureScope>
+      <DisclosureScope atBottom={atBottom}>
       <div className="flex min-h-0 flex-1">
         <div className="flex min-w-0 flex-1 flex-col">
           <div ref={scrollRef} onScroll={onScroll} className="flex-1 overflow-y-auto">
@@ -405,6 +416,12 @@ export function SessionScreen({
                   <TurnStage stage={stage} {...(elapsed ? { elapsed } : {})} />
                 </div>
               )}
+              {/* cm:guard drawn INSIDE the scroller, because it is pinned to that element's own
+                  viewport and nothing else on this screen knows where that is (`new-output.tsx`).
+                  It is the second half of ISS-1078's scroll behaviour: a reader who has scrolled up
+                  is not moved, and now is not left to find out by scrolling back either
+                  (criterion 28). */}
+              {newOutput && <NewOutput onGo={toBottom} />}
               <div ref={bottomRef} />
             </div>
           </div>

@@ -2879,6 +2879,22 @@
 
 ### Fixed
 
+- **An assistant reply fits the panel it is in.** Two nested 85% caps left a blank column beside
+  every answer, growing as the panel shrank. One place now sets the measure: full width, up to a
+  readable line length.
+
+- **A tool card says what came back instead of dumping it.** It printed 240 characters of minified
+  JSON, cut mid-key. It now names the result's shape and size in one line, and opens onto the whole
+  of it.
+
+- **A turn says whether it is working, responding or failed.** A turn that had produced nothing
+  showed empty space, and a spinner sat under prose it had already written. The cursor now follows
+  only text that is still growing.
+
+- **Older turns fold their tool cards to one row that opens back.** The newest turn keeps
+  everything. Nothing folds while you are scrolled up or inside it, and new output you cannot see is
+  announced rather than scrolled to.
+
 - **A release job opens in the checkout, not the daemon's home directory.** A repo path that
   belongs to another box is skipped instead of silently becoming `$HOME`; a job with no checkout
   here gives its hold back naming both paths.

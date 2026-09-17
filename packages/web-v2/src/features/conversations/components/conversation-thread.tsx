@@ -224,6 +224,7 @@ export function ConversationThread({
   agentTurns = [],
   progress,
   withdrawn = {},
+  atBottom,
   onRetry,
 }: {
   messages: ConversationMessage[];
@@ -236,6 +237,13 @@ export function ConversationThread({
   progress?: ConversationProgressEntry | null;
   /** Drafts the reply screen refused in this room, by the entry id that replaced each (ISS-1078). */
   withdrawn?: Record<string, string>;
+  /**
+   * Whether the reader is at the bottom of this thread (ISS-1083).
+   */
+  // cm:guard it reaches the turns through the scope rather than as a prop on each of them, because
+  // it is the same kind of fact as which disclosures they have opened — what this thread knows about
+  // its reader — and exactly one thing consults it: a turn deciding whether it may fold.
+  atBottom?: boolean;
   onRetry?: (id: string) => void;
 }) {
   const entries = threadEntries(messages, windows, outbox, agentTurns, progress);
@@ -250,7 +258,7 @@ export function ConversationThread({
     return id;
   }, undefined);
   return (
-    <DisclosureScope>
+    <DisclosureScope {...(atBottom !== undefined ? { atBottom } : {})}>
     <div className="flex flex-col gap-5">
       {entries.map((entry) => {
         if (entry.kind === "said")

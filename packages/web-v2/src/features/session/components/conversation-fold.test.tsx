@@ -270,3 +270,84 @@ describe("opening the row with a keyboard", () => {
     expect(document.activeElement).toBe(revealed);
   });
 });
+
+// cm:guard THE case the implementation consult's F2 named, and the one my own structural claim got
+// wrong: I had it at turn granularity — folding only touches the turn that just stopped being
+// newest, so the height that vanishes is at the bottom — and a reader can be INSIDE that turn,
+// below its cards, reading its closing prose. Then the height that vanishes is above them and what
+// they are reading moves. So a turn folds only if the reader was at the bottom at the moment it
+// stopped being newest.
+describe("a fold waits for the reader to be at the bottom", () => {
+  const scoped = (items: ConversationItem[], atBottom: boolean) => (
+    <DisclosureScope atBottom={atBottom}>
+      <Conversation items={items} readOnly />
+    </DisclosureScope>
+  );
+
+  it("does not fold a turn while the reader is somewhere up the thread", () => {
+    const { rerender } = render(scoped([older], false));
+    rerender(scoped([older, newest], false));
+    expect(within(turn("a1") as HTMLElement).queryByTestId("turn-fold")).toBeNull();
+    expect(within(turn("a1") as HTMLElement).getAllByTestId("tool-result-summary")).toHaveLength(2);
+  });
+
+  it("folds it when a newer turn arrives with the reader back at the bottom", () => {
+    const { rerender } = render(scoped([older], false));
+    rerender(scoped([older, newest], false));
+    expect(within(turn("a1") as HTMLElement).queryByTestId("turn-fold")).toBeNull();
+
+    // They scroll back down, and the next turn lands.
+    rerender(scoped([older, newest], true));
+    rerender(scoped([older, newest, newer], true));
+
+    expect(within(turn("a1") as HTMLElement).queryByTestId("turn-fold")).toBeNull();
+    expect(within(turn("a2") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
+  });
+
+  // cm:guard LATCHED, and this is the half that made the gate safe rather than the same defect with
+  // its sign flipped: read live, `atBottom` going false the moment a reader scrolls up would unfold
+  // every folded turn in the thread at once, and all of them would move.
+  it("does not unfold what it has folded when the reader scrolls away", () => {
+    const { rerender } = render(scoped([older, newest], true));
+    expect(within(turn("a1") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
+
+    rerender(scoped([older, newest], false));
+
+    expect(within(turn("a1") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
+  });
+
+  // cm:guard a thread MOUNTING already deep in history folds its old turns with no transition to
+  // watch, which is every reload: the scroll hook puts the reader at the bottom, so `atBottom` is
+  // true on the first render and there is no expanded frame to see.
+  it("opens a reloaded thread with its history already folded", () => {
+    render(scoped([older, newest, newer], true));
+    expect(within(turn("a1") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
+    expect(within(turn("a2") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
+  });
+});
+
+// cm:guard the latch is RELEASED when a turn becomes the newest again, and the sequence is not
+// hypothetical: regenerating or editing a turn drops the ones after it, and on the chat surface an
+// optimistic entry can vanish. Without the release the turn folded again on its second transition
+// with the permission it had captured on its first (scroll consult F1).
+describe("a turn that becomes the newest again", () => {
+  const scoped = (items: ConversationItem[], atBottom: boolean) => (
+    <DisclosureScope atBottom={atBottom}>
+      <Conversation items={items} readOnly />
+    </DisclosureScope>
+  );
+
+  it("asks again the next time it stops being newest", () => {
+    // It folds at the bottom, the turn after it is dropped, and it is newest once more.
+    const { rerender } = render(scoped([older, newest], true));
+    expect(within(turn("a1") as HTMLElement).getByTestId("turn-fold")).toBeInTheDocument();
+
+    rerender(scoped([older], true));
+    expect(within(turn("a1") as HTMLElement).queryByTestId("turn-fold")).toBeNull();
+
+    // A replacement lands while the reader is up the thread: its old permission must not apply.
+    rerender(scoped([older, newer], false));
+    expect(within(turn("a1") as HTMLElement).queryByTestId("turn-fold")).toBeNull();
+    expect(within(turn("a1") as HTMLElement).getAllByTestId("tool-result-summary")).toHaveLength(2);
+  });
+});
