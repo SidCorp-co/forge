@@ -168,8 +168,14 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
 };
 
 /**
- * GitHub's declaration. No agent path: the agent works the repository with the runner box's own git
- * credentials, never through Forge, so there is nothing here a grant could open.
+ * GitHub's declaration.
+ *
+ * `core-mediated` since ISS-1074: Forge holds the App credential and makes the call, and an agent
+ * asks for it through `forge_github`. It said `none` until then, and the sentence beside it — "the
+ * agent works the repository with the runner box's own git credentials" — was true of the TREE and
+ * wrong about the repository: reading a diff, reading a failing job's log and writing a review are
+ * not git, and every one of them was being done by shelling out to `gh` under a person's account.
+ * Tree work is still git's and is out of scope here.
  */
 export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>({
   provider: 'github',
@@ -182,7 +188,9 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     multiBinding: false,
     webhookHeader: 'x-github-event',
     structuredRollback: false,
-    agentPath: { kind: 'none' },
+    // cm:guard `core-mediated` and NOT `direct-mcp`, and the difference is the whole of ISS-1071's rule 2: `direct-mcp` renders the credential into a runner box's MCP config and puts Forge outside the call path. This App's private key is the identity every write to the repository is made under — it can open, comment and review on every repository the installation covers — so there is no version of handing it to a box that is worth the round trip it saves. Core holds it, core makes the call, and `forge_github` is where an agent asks.
+    // cm:guard `forge_github` is the WHOLE list on purpose. A verb that merges is not missing from it, it is refused by it: merging is a kernel transition on the dispatch face (ISS-1073), where the same operation stamps `merged_at`. `agent-ops.ts:kernelVerbRefusal` is the sentence a caller naming one gets.
+    agentPath: { kind: 'core-mediated', tools: ['forge_github'] },
   },
   schemas: {
     connectionConfig: githubConfigBase,
@@ -195,7 +203,10 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     independentSecretFields: [],
     bindingConfigKeys: GITHUB_BINDING_CONFIG_KEYS,
   },
-  usage: null,
+  // cm:why SHORT: this reaches every prompt on every project with github connected, and a playbook here is a tax each of them pays per job. What an action takes and what it answers lives in the tool's own `description`, which is what a model reads at the moment it calls.
+  usage: {
+    hint: "Read and write this repository through `forge_github` — a pull request diff, a failing check run's log, a comment, a new pull request, a review request, a review verdict. Never `gh`: the App is the identity, and no credential reaches this box. Nothing here merges.",
+  },
   // cm:why null rather than a card of its own — the GitHub card `status-service.ts` builds comes from the PROJECT'S repository and its devices' push credentials, which is a different subject from a binding's health. A second github card keyed off a binding would collide with it by key.
   presentation: null,
   adapter: githubAdapterMethods,

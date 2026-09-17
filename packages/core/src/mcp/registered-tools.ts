@@ -18,6 +18,7 @@ export const REGISTERED_TOOLS = [
   'forge_config',
   'forge_coolify_deploy',
   'forge_feedback',
+  'forge_github',
   'forge_google_sheets',
   'forge_guide',
   'forge_health',
