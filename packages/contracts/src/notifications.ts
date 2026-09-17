@@ -10,6 +10,13 @@
 // Core's `emitNotification` reads `defaultSeverityForType`; web-v2's realtime
 // delivery bridge reads `channelsFor` to decide whether an incoming
 // `notification.created` event pops a toast and/or a browser notification.
+//
+// ISS-1063 — the matrix here is the first of two gates on the transient surfaces, and it is
+// still the one that decides WHICH surfaces a type can reach. The second is per EVENT rather
+// than per type and is not declared here: a record joining a grouped delivery somebody has
+// already been interrupted by carries `announce: false` on the event, and the bridge fires
+// nothing transient for it. Fifteen conditions from one sweep are one bell row and one
+// interruption. Nothing about a type's declared channels changes.
 
 // cm:why ISS-1063 removed `comment_added` and `agent_completed`. Neither had an emitter
 // ANYWHERE — the strings appeared only in this list and in core's column — and neither had
