@@ -16,8 +16,8 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { describe, expect, it, vi } from 'vitest';
 import { getTableName, isTable } from 'drizzle-orm';
+import { describe, expect, it, vi } from 'vitest';
 import * as dbSchema from '../db/schema.js';
 import { FORGE_GUIDES } from '../guides/registry.js';
 import { ALWAYS_INJECT_ENFORCEMENT_NOTE, ALWAYS_INJECT_GUARANTEE_NOTE } from './project-facts.js';

@@ -345,4 +345,3 @@ describe('release batch lifecycle — replaces forge_release_batch', () => {
     expect(job[0]).toMatchObject({ status: 'cancelled' });
   });
 });
-
