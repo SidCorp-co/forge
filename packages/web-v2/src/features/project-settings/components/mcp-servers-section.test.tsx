@@ -119,3 +119,32 @@ describe("a leftover sentinel already stored in the map", () => {
     expect(screen.getByText(/^custom$/)).toBeInTheDocument();
   });
 });
+
+// The name field carries a worked example, and an example the form itself rejects is worse than
+// none: it reads as the shape that works. It said `sentry` until ISS-1071 — a provider name this
+// very form refuses by name — so an operator following the placeholder verbatim got a refusal.
+// This asserts the example is a name the form would ACCEPT, rather than asserting today's string,
+// so replacing it with another provider or catalog name goes red instead of shipping.
+describe("the name field's worked example", () => {
+  it("is a name this form accepts, not one it refuses", () => {
+    renderSection();
+    fireEvent.click(screen.getByRole("button", { name: /add custom server/i }));
+
+    const placeholder = screen
+      .getByPlaceholderText(/server name/i)
+      .getAttribute("placeholder") as string;
+    const example = placeholder.match(/e\.g\.\s*([^)]+)\)/)?.[1]?.trim();
+    expect(example, `no "e.g. <name>" in ${placeholder}`).toBeTruthy();
+
+    // Feed the field's own example through the ALREADY-OPEN form and require it to be accepted.
+    fireEvent.change(screen.getByPlaceholderText(/server name/i), {
+      target: { value: example as string },
+    });
+    fireEvent.change(screen.getByPlaceholderText(/Raw MCP spec JSON/i), {
+      target: { value: '{"type":"http","url":"https://example.com/mcp"}' },
+    });
+    fireEvent.click(screen.getByRole("button", { name: /^add server$/i }));
+    expect(screen.queryByText(/not a custom server/i)).toBeNull();
+    expect(screen.getByText(example as string)).toBeInTheDocument();
+  });
+});
