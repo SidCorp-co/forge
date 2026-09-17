@@ -170,6 +170,16 @@ pub struct RunnerSettings {
     /// Send `runner:register` (gated behind core `runnerFramework` flag).
     #[serde(default)]
     pub register_enabled: bool,
+    /// How many pool jobs — `release_batch`, `smoke`, `reconcile`, `verify_skill` — may
+    /// have a live pane on this box at once. Clamped to >= 1 at use.
+    ///
+    /// Unlike `duplex_max_sessions` above, this one bounds something: each of these
+    /// jobs is a real `claude` process in a tmux pane on this machine, opened by
+    /// `daemon/pool_jobs.rs` and counted from the registry it rebuilds at startup.
+    // cm:guard the ceiling is the BOX's alone and core cannot see it. Core does not refuse a claim for capacity and must not start: `runner_full` was a hold nothing enforced and was removed on 2026-09-05, and a refusal reporting a hold that does not exist is worse than none. What core does instead is bound the WAIT — `release-batch/unstarted-recovery.ts` hands the roster back after a deadline set loose enough to outlast a box sitting at this number.
+    // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs — `take_one` reads this as its `bound` and checks it before it reads the pool, so a full box costs core no round trip and takes no hold it must give back.
+    #[serde(default = "default_max_job_panes")]
+    pub max_job_panes: u32,
 }
 
 impl Default for RunnerSettings {
@@ -177,12 +187,18 @@ impl Default for RunnerSettings {
         Self {
             duplex_max_sessions: default_duplex_max_sessions(),
             register_enabled: false,
+            max_job_panes: default_max_job_panes(),
         }
     }
 }
 
 fn default_duplex_max_sessions() -> u32 {
     3
+}
+
+// cm:guard TWO, not three, and the difference from `duplex_max_sessions` is deliberate: a release holds a production credential and runs the longest of the four kinds, so a default that lets a box take three at once makes one slow release into three. An operator who wants more raises it knowingly.
+fn default_max_job_panes() -> u32 {
+    2
 }
 
 /// `[runner] max_concurrent`, `device_max_concurrent` and `chat_max_concurrent`

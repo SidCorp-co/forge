@@ -4,14 +4,11 @@ use super::CoreClient;
 use crate::error::{Error, Result};
 
 /// Acknowledge a claimed job (ISS-449, Decision B). Best-effort on the caller
-/// side — the server falls back to treating the first job_event as the ack,
-/// which is the only thing keeping it correct: measured 2026-09-16, NOTHING in
-/// either crate calls this function, so every job core has acked was acked by
-/// that fallback. The line here used to say "sent right after preflight passes
-/// and before the runner starts", which described a call site that does not
-/// exist and a `daemon::preflight` ISS-1047 deleted for the same reason.
-/// Wiring a caller, or removing this, is that issue's own row — it is a
-/// question about what core wants to see, not a dead branch.
+/// side, and it has exactly one caller: `daemon/pool_jobs.rs:take_one`, right
+/// after core stamps the job to this box (ISS-1080). Between 2026-09-16 and that
+/// change NOTHING in either crate called it, and every job core acked was acked
+/// by the server's own fallback — treating the first `job_event` as the ack.
+// cm:guard best-effort is the DESIGN and a failed ack must not fail the claim: the fallback above still acks the job on its first progress event, so a lost ack costs one supervision tick, while a claim unwound over it costs the release. What the call buys is the three minutes before that first event — `jobs/loop-monitor.ts:reapAckMisses` fails a `dispatched` job with `acked_at IS NULL` and no job events after `PIPELINE_NEVER_CLAIMED_MS`.
 ///
 /// ISS-798: `skills_ran_with` carries the on-disk `.hash` marker values for
 /// each seeded skill (keyed by skill name), read right before the job starts.

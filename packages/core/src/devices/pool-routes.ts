@@ -73,6 +73,7 @@ devicePoolRoutes.get(
     const deviceId = c.get('device').id;
     const items = await readPool({ deviceId, projectId, limit });
     // cm:guard the pool is JOBS, and since ISS-933 it is jobs for the four kinds that have no issue to rank — `smoke`, `release_batch`, `reconcile`, `verify_skill`. `drive` reaches a box as a run session instead, so an issue never belongs in this array: a row with no `jobId` where a master claims from is a malformed claim waiting to happen.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs — `CorePool::claimable` is the ONE reader of this route on a box, and between ISS-933 and ISS-1080 there was none at all: this route answered every sweep with rows nothing claimed, and a `release_batch` sat `queued` for 16 hours on `pixelight` while its whole roster waited at `releasing`. A change to the row shape here has its second half there and nothing else will catch it.
     return c.json({ items, count: items.length });
   },
 );

@@ -12,6 +12,7 @@
 
 import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { RELEASE_LABEL_FOR_JOB } from '../devices/release-label.js';
 import { buildBarrierFragments } from '../jobs/queued-gates.js';
 import { dispatchLivenessMs } from '../lib/dispatch-liveness.js';
 import { readThresholds } from './thresholds.js';
@@ -272,6 +273,8 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
     // cm:guard compare the pool CASE-INSENSITIVELY and never cast an element to `uuid` — `z.uuid()` accepts uppercase hex and nothing normalizes it, while `::text` on a uuid column always renders lowercase, so a bare text compare matches zero runners here and every runner in runners/select.ts (which binds a parameter against the uuid column, and so parses case-insensitively): a moving queue would read `runner_starved`, and at three such projects A3 goes crit and pages every platform admin. Casting the ELEMENT instead throws on any malformed entry, which 500s the GET and the sweeper swallows into zeros — `lower()` on both sides is the one form with neither failure.
     // cm:guard the pool arm needs BOTH `IS NULL` and `jsonb_typeof(...) <> 'array'`, in that order — no pool configured is SQL NULL, on which `jsonb_typeof` returns NULL, so a typeof-only arm evaluates the whole OR to NULL and every healthy project reads as starved; and an `IS NULL`-only arm lets `jsonb_array_length` THROW on a scalar, which the sweeper's try/catch swallows into zeros while the GET 500s.
     // cm:guard keep BOTH of those clauses: they are the two `onlineCapableDeviceIds` applies that `fresh_capable_runners` does not, so a job can pass every picker gate and still be unclaimable — drop either and genuine starvation reports `ok`
+    // cm:guard the release-label term spells `rr.labels` here rather than importing `RUNNER_MAY_TAKE_JOB`, and that is NOT a second reading of the rule: the label resolution is the shared `RELEASE_LABEL_FOR_JOB`, and only the alias differs, because `r` is `pipeline_runs` in this query and the runner is `rr`. Importing the `r`-scoped constant would resolve `r.labels` against `pipeline_runs` and fail the whole query, which presents as every project reading `ok`.
+    // cm:edge lockstep -> packages/core/src/devices/release-label.ts — one rule, now three readers. Without this term A3 counted a labelled release pool matching nobody as fully served: the job is unclaimable by every box on the fleet and the alert whose whole purpose is to name a wedged queue was the surface hiding it (ISS-1080).
     // cm:guard there is deliberately NO capacity term here. A busy box still claims — core enforces no ceiling — so requiring a free slot would report every project whose runners are working as STARVED, which is the opposite of the wedge A3 exists to name and would page every platform admin at three such projects.
     const rows = await db.execute<{
       queued_count: number;
@@ -300,6 +303,7 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
           SELECT 1 FROM fresh_capable_runners fcr
           JOIN runners rr ON rr.id = fcr.id
           WHERE fcr.claim_capable
+            AND (j.type <> 'release_batch' OR rr.labels ? ${RELEASE_LABEL_FOR_JOB})
             AND rr.capabilities @> coalesce(nullif(j.payload -> 'requiredCapabilities', 'null'::jsonb), '{}'::jsonb)
             AND (
               pool.device_ids IS NULL

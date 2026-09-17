@@ -2879,6 +2879,18 @@
   issue's cost sent the server a question it could not answer, so the page never loaded. Only
   empty projects opened. Costs are back.
 
+- **A release now reaches a machine.** Batch releases, skill checks, reconciles and smoke runs sat
+  in a queue no machine read — one batch held its issues at *releasing* for sixteen hours.
+  Machines now take these jobs and run them.
+
+- **A release nobody picked up gives its issues back.** After thirty minutes with no machine, the
+  batch is cancelled, every issue returns to *awaiting release*, and the project is told. One that
+  promoted anything is left alone.
+
+- **A release waiting for a labelled machine says so.** With no machine carrying the project's
+  release label, the job claimed every check had passed. It now names the label, and the
+  *no machine can take this work* alert counts it.
+
 - **Per-job cost and tokens no longer read zero.** A job's history row and its prompt details
   priced the job by the wrong id, so every job showed nothing spent. They now read the session
   that ran it.

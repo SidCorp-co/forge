@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="flow-module" content="lifecycle-pipeline">
-<meta name="flow-answers" content="Where work waits and who owes the next move, why a batch and its pieces must end together, how a machine picks work up, and what must be recorded before an issue may close">
+<meta name="flow-answers" content="Where work waits and who owes the next move, why a batch and its pieces must end together, how a machine picks work up, what happens to a release nobody picks up, and what must be recorded before an issue may close">
 <title>Flow · lifecycle-pipeline</title>
 <style>
   :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
@@ -124,13 +124,34 @@ flowchart TD
   B["a box is told to look at a project"] --> L{"what may it see?"}
   L --> L1["<b>the claimable queue</b> — work it may start right now"]
   L --> L2["<b>the backlog</b> — work it may see but not start<br/>until somebody admits it to the queue"]
+  L --> L3["<b>work with no issue behind it</b> — a release,<br/>a health check, a repair, a skill check"]
   L1 --> S["it opens a batch and begins"]
+  L3 --> S3["the box takes it and runs it on its own,<br/>outside anybody's issue queue"]
   L2 -.->|"needs an explicit admission"| L1
   B -.->|"nothing wakes it"| N["a timer sweeps anyway,<br/>so a missed signal costs<br/>delay, never the work"]
 </pre></div>
-  <p class="cap">Seeing a piece of work is not permission to start it. The two lists exist so a box can
-  show what is coming without that acting as a decision to begin — and a project that declares a
-  backlog stop it never admits leaves work visible forever and started never.</p>
+  <p class="cap">Seeing a piece of work is not permission to start it. The two issue lists exist so a
+  box can show what is coming without that acting as a decision to begin — and a project that
+  declares a backlog stop it never admits leaves work visible forever and started never. The third
+  list is a different thing: work that was never anybody's issue, which a box takes whole rather than
+  grouping. <b>A queue with no reader is the failure this cost us</b> — that third list existed and
+  was offered to every box for weeks with nothing on any box looking at it.</p>
+
+  <p class="stage"><b>4</b>A release nobody picks up gives its issues back</p>
+  <div class="board"><pre class="mermaid">
+flowchart TD
+  RB["a release is called for<br/>a set of issues moves to <b>releasing</b>"] --> W{"has a machine taken it<br/>by the deadline?"}
+  W -->|"yes"| GO["it runs. Nothing below applies —<br/>and a release that has already<br/>promoted anything is never undone"]
+  W -->|"no"| U["the release is <b>cancelled</b>"]
+  U --> BK["every issue that got nothing out of it<br/>goes back to waiting for a release"]
+  BK --> AL["and a fault is raised naming the release,<br/>because a set of issues moving on its own<br/>with nobody told is the same silence again"]
+</pre></div>
+  <p class="cap">The caller is told the deadline when it asks for the release, so the promise is
+  bounded before anything moves rather than discovered afterwards. The deadline is generous on
+  purpose — it must outlast a busy machine finishing what it already has — and the thing it protects
+  against is not slowness but <b>nobody at all</b>. Three cases are deliberately left alone: a
+  release a machine has already taken, one a machine is holding, and one that got far enough to
+  promote something. Undoing any of those would take work away from somebody doing it.</p>
 
 </div>
 
@@ -202,6 +223,15 @@ rule enforced at one door is a rule at neither.</p>
     that looks healthy and never moves.</td>
   </tr>
   <tr>
+    <td>A release was asked for, the issues in it say <b>releasing</b>, and nothing is happening.</td>
+    <td>No machine took the release. Either none is set up to run releases for this project, or every
+    one that could is busy. The issues in it are not lost, but they are parked somewhere no queue
+    will move them.</td>
+    <td>Nothing, for the length of the deadline — the wait is bounded and the issues come back on
+    their own with a fault raised naming the release. If it keeps happening, the project has no
+    machine able to run its releases, which is a setup problem and not a queue problem.</td>
+  </tr>
+  <tr>
     <td>A box's work session is half-closed — the record ended, the workspace did not.</td>
     <td>Closing takes three separate marks and one was never set. If the box that owned it is gone, a
     ten-minute grace lets somebody else finish the close.</td>
@@ -221,7 +251,10 @@ rule enforced at one door is a rule at neither.</p>
 <code>packages/core/src/pipeline/status-assertions.ts</code> · batch closes its pieces:
 <code>packages/core/src/pipeline/runs-cascade.ts</code> · pieces close their batch:
 <code>packages/core/src/pipeline/runs-concluded.ts</code> · the wedge and owed-close passes:
-<code>packages/core/src/jobs/loop-monitor.ts</code>, <code>packages/core/src/pipeline/reconciler.ts</code>.
+<code>packages/core/src/jobs/loop-monitor.ts</code>, <code>packages/core/src/pipeline/reconciler.ts</code>
+· why a queued job is not running: <code>packages/core/src/jobs/queued-gates.ts</code> · a release
+nobody opened: <code>packages/core/src/release-batch/unstarted-recovery.ts</code> · the box that
+reads the issue-less queue: <code>packages/runner/crates/forge-runner-core/src/daemon/pool_jobs.rs</code>.
 Agent-facing copy: guide <code>pipeline-and-issue-lifecycle</code>. Turning the ladder into a rule:
 <code>docs/proposals/one-status-vocabulary-and-a-real-transition-table.md</code>.
 <a href="index.html">← all flows</a></p>
