@@ -11,7 +11,11 @@
  * is the piece between them that decides whether to take one at all.
  */
 
-import type { ConversationMode, ConversationWindowDecision } from '../db/schema-conversations.js';
+import type {
+  ConversationMode,
+  ConversationWindowCutReason,
+  ConversationWindowDecision,
+} from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
 import { readSelvesFor } from '../orgs/agent-selves.js';
 import { handleForProject, roomHandles } from './participants.js';
@@ -33,6 +37,7 @@ import {
   claimOf,
   closeWindow,
   reserveDelivery,
+  splitWindowTail,
   type WindowClaim,
   windowDeliveryKey,
 } from './windows.js';
@@ -53,7 +58,8 @@ export type WindowTurnInputs = Omit<
 >;
 
 export interface RouteWindowArgs {
-  window: ConversationWindowRow;
+  /** The claimed row; `dueAt` rides along from the claim where the caller has one, and is what `routingDelayMs` is measured from. */
+  window: ConversationWindowRow & { dueAt?: Date | undefined };
   /** Whose authority a turn runs under in a venue that has many speakers. */
   manySpeakersPrincipalUserId: string;
   /** The adapter's own contribution to the turn, built for the window's last message. */
@@ -79,6 +85,18 @@ export interface RouteWindowArgs {
 // cm:guard re-exported HERE rather than imported from the store by the adapter: `transport-free.test.ts` fails CI on an adapter that reaches into the conversation store, and a type import is the first step of reaching in (ISS-1002, ISS-1004).
 export type WindowMessage = StoredConversationMessage;
 
+/**
+ * Why this window stopped collecting, and what it covers (ISS-1086).
+ */
+// cm:guard handed to the adapter as a value and not re-derived there from the row: `overflow` is decided in this module after the row was claimed, so an adapter reading `window.cutReason` for itself would see `deadline` or `quiet` on a window whose head it is about to answer with the tail still collecting.
+export interface WindowCut {
+  reason: ConversationWindowCutReason;
+  /** The seq range this turn answers, inclusive. */
+  coveredSeq: readonly [number, number];
+  /** When the range was fixed — the claim. */
+  snapshotAt: Date;
+}
+
 /** What the adapter is given to build its inputs from. */
 export interface WindowContext {
   venue: ConversationVenue;
@@ -97,6 +115,8 @@ export interface WindowContext {
   principalUserId: string;
   /** The Forge user the newest person message is linked to; null in a room where nobody Forge knows spoke last. */
   speakerUserId: string | null;
+  /** Why the window stopped collecting and what it covers — what a turn taken mid-conversation is told (ISS-1086). */
+  cut: WindowCut;
   /**
    * Make this turn's right to answer durable, for an answer this turn will not deliver itself.
    */
@@ -107,6 +127,11 @@ export interface WindowContext {
 export interface RoutedWindow {
   decision: ConversationWindowDecision;
   detail?: unknown;
+  /**
+   * The claim moved on under this route, so the window is another holder's now.
+   */
+  // cm:guard the ONE case `routeWindow` does not close: the overflow split found no row under this claim, which means another holder owns the window and its close would be theirs to write. The fence on `closeWindow` would refuse ours anyway; saying so here is what lets a test read "closes no window" off the call rather than off a no-op (ISS-1086 criteria 23, 24).
+  superseded?: true;
 }
 
 /**
@@ -126,12 +151,21 @@ export async function routeWindow(args: RouteWindowArgs): Promise<RoutedWindow> 
   const claim = claimOf(window);
   if (!claim)
     throw new Error('conversations: a window is routed under its claim, and this one holds none');
+  // cm:guard a row claimed before `cut_reason` existed reads as `quiet`, and that is the one absorb this module makes: it is the reading every such window had before ISS-1086, and the detail below carries the reason so a reader can tell a stamped `quiet` from an inherited one only by the row's age — which is the honest amount of information there is.
+  const cut: { current: WindowCut } = {
+    current: {
+      reason: window.cutReason ?? 'quiet',
+      coveredSeq: [window.firstSeq, window.lastSeq],
+      snapshotAt: claim.claimedAt,
+    },
+  };
   try {
-    const result = await decide(args, key, claim);
+    const result = await decide(args, key, claim, cut);
+    if (result.superseded) return result;
     await closeWindow({
       windowId: window.id,
       decision: result.decision,
-      detail: result.detail,
+      detail: closeDetail(window, cut.current, result.detail),
       claim,
     });
     return result;
@@ -144,17 +178,42 @@ export async function routeWindow(args: RouteWindowArgs): Promise<RoutedWindow> 
     await closeWindow({
       windowId: window.id,
       decision: 'unreachable',
-      detail: { error: err instanceof Error ? err.message : String(err) },
+      detail: closeDetail(window, cut.current, {
+        error: err instanceof Error ? err.message : String(err),
+      }),
       claim,
     });
     return { decision: 'unreachable' };
   }
 }
 
+/**
+ * What every close records beside the decision: the cut, and the three durations
+ * the hold is judged by.
+ */
+// cm:guard three numbers and not one, because the issue that added the hold asks for them apart: `collectedMs` is how long the room was made to wait for a window to be cut at all, `routingDelayMs` is how long a due window sat before a drain took it, and `replyMs` is the turn. A single latency would hide which of the three a tuning change moved (ISS-1086 criteria 25-27). `routingDelayMs` is null where the caller's row carries no `dueAt` — a number nobody measured is not written as zero.
+function closeDetail(
+  window: RouteWindowArgs['window'],
+  cut: WindowCut,
+  detail: unknown,
+  now: Date = new Date(),
+): Record<string, unknown> {
+  const claimedAt = window.claimedAt ?? now;
+  return {
+    ...(detail && typeof detail === 'object' ? (detail as Record<string, unknown>) : {}),
+    cut: cut.reason,
+    coveredSeq: cut.coveredSeq,
+    collectedMs: claimedAt.getTime() - window.openedAt.getTime(),
+    routingDelayMs: window.dueAt ? claimedAt.getTime() - window.dueAt.getTime() : null,
+    replyMs: now.getTime() - claimedAt.getTime(),
+  };
+}
+
 async function decide(
   args: RouteWindowArgs,
   deliveryKey: string,
   claim: WindowClaim,
+  cut: { current: WindowCut },
 ): Promise<RoutedWindow> {
   const { window } = args;
 
@@ -194,13 +253,50 @@ async function decide(
     return { decision: 'unreachable', detail: { reason: 'the conversation no longer exists' } };
   }
 
-  const messages = await readMessagesInRange(window.conversationId, {
+  // cm:guard OLDEST first and one past the cap: the head of the conversation is what this turn answers, and the one extra row is how overflow is detected without a count query. Reading the newest `cap` here is what silently dropped the first fifty messages of a busy room before ISS-1086 (criterion 10).
+  const collected = await readMessagesInRange(window.conversationId, {
     firstSeq: window.firstSeq,
     lastSeq: window.lastSeq,
-    limit: WINDOW_MESSAGE_CAP,
+    limit: WINDOW_MESSAGE_CAP + 1,
+    order: 'oldest-first',
   });
-  if (messages.length === 0) {
+  if (collected.length === 0) {
     return { decision: 'unreachable', detail: { reason: 'the window holds no readable message' } };
+  }
+  let messages = collected;
+  if (collected.length > WINDOW_MESSAGE_CAP) {
+    const head = collected.slice(0, WINDOW_MESSAGE_CAP);
+    const prefixLast = head[head.length - 1] as StoredConversationMessage;
+    const tailFirst = collected[WINDOW_MESSAGE_CAP] as StoredConversationMessage;
+    // cm:guard the split is written BEFORE the turn and under the claim, and a false here ends the route with no turn and no close: the row is another holder's, and answering the head anyway would answer messages that holder is about to answer too (ISS-1086 criteria 23, 24).
+    const split = await splitWindowTail({
+      windowId: window.id,
+      conversationId: window.conversationId,
+      projectId: window.projectId,
+      adapter: window.adapter,
+      claim,
+      prefixLastSeq: prefixLast.seq,
+      // cm:guard the window's `extendedAt` IS the tail's last arrival: every inbound message bumps it, and the tail ends at the window's own `lastSeq`.
+      tail: {
+        firstSeq: tailFirst.seq,
+        lastSeq: window.lastSeq,
+        firstAt: tailFirst.createdAt,
+        lastAt: window.extendedAt,
+      },
+    });
+    if (!split) {
+      return {
+        decision: 'undetermined',
+        detail: { reason: 'the claim moved on before the overflow split', superseded: true },
+        superseded: true,
+      };
+    }
+    messages = head;
+    cut.current = {
+      reason: 'overflow',
+      coveredSeq: [window.firstSeq, prefixLast.seq],
+      snapshotAt: claim.claimedAt,
+    };
   }
 
   const venue: ConversationVenue = {
@@ -255,6 +351,7 @@ async function decide(
     messages,
     principalUserId,
     speakerUserId,
+    cut: cut.current,
     reserve: () => reserveDelivery(window.id, claim),
   });
   const outcome = await runConversationTurn({

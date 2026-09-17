@@ -1,0 +1,3 @@
+ALTER TABLE "conversation_windows" ADD COLUMN "cut_reason" text;--> statement-breakpoint
+CREATE INDEX "conversation_windows_hold_idx" ON "conversation_windows" USING btree ("adapter","opened_at") WHERE claimed_at IS NULL;--> statement-breakpoint
+ALTER TABLE "conversation_windows" ADD CONSTRAINT "conversation_windows_cut_reason_known" CHECK ("conversation_windows"."cut_reason" IS NULL OR "conversation_windows"."cut_reason" IN ('quiet','deadline','overflow'));

@@ -38,6 +38,8 @@ const EnvSchema = z.object({
   RATE_LIMIT_DEVICE_LOGIN_APPROVE_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_WRITE_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_WRITE_WINDOW_MS: z.coerce.number().int().positive().optional(),
+  /** How long a collector window may keep collecting before it is due regardless of quiet (ISS-1086). */
+  CONVERSATION_WINDOW_HOLD_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_SEARCH_MAX: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_MEMORY_SEARCH_WINDOW_MS: z.coerce.number().int().positive().optional(),
   RATE_LIMIT_KNOWLEDGE_SEARCH_MAX: z.coerce.number().int().positive().optional(),
