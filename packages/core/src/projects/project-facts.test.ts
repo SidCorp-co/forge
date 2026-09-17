@@ -97,6 +97,6 @@ describe('the always-inject tier', () => {
     expect(ALWAYS_INJECT_ENFORCEMENT_NOTE.length).toBeGreaterThan(
       ALWAYS_INJECT_GUARANTEE_NOTE.length,
     );
-    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('ux_findings');
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('leaves evidence a human can look at');
   });
 });

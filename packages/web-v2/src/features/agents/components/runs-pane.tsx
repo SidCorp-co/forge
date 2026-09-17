@@ -93,7 +93,7 @@ export function RunsPane({ scope }: RunsPaneProps) {
           <ErrorState message={formatApiError(error)} onRetry={() => refetch()} />
         </div>
       ) : all.length === 0 ? (
-        // cm:guard the first-run empty and the empty-SEARCH are different screens, and this is the branch that keeps them apart: a box that is simply idle needs telling that runs will appear here, and a reader whose filter matched nothing needs the filter cleared. One shared "nothing here" sends the second reader looking for a fault that is not there (project ux-contract §2).
+        // cm:guard the first-run empty and the empty-SEARCH are different screens, and this is the branch that keeps them apart: a box that is simply idle needs telling that runs will appear here, and a reader whose filter matched nothing needs the filter cleared. One shared "nothing here" sends the second reader looking for a fault that is not there. The rule: first-run empty and empty-search are two states, and a searchable surface owes both.
         <div className="grid min-h-[40vh] place-items-center">
           <EmptyState
             title="No runs on this project"

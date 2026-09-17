@@ -1,19 +1,3 @@
-import type { UxPreset, UxRuleGroup, UxRuleSource, UxStackProfile } from "@forge/contracts";
-
-export type {
-	ApplyUxPresetInput,
-	UxContractRule,
-	UxContractRulePatch,
-	UxFinding,
-	UxPreset,
-	UxRuleGroup,
-	UxRuleSeverity,
-	UxRuleSource,
-	UxRuleStatus,
-	UxStackProfile,
-	UxToggleSettings,
-} from "@forge/contracts";
-
 /** Patch body accepted by `PATCH /api/projects/:id` (basics + repo + testing).
  *  `orgId` moves the project to another org — requires org admin on BOTH the
  *  current and the destination org (403/404 otherwise). */
@@ -206,55 +190,8 @@ export interface ReleaseReadiness {
  */
 export interface ProjectAgentConfig {
 	plugins?: PluginDesignation[];
-	/** ISS-578 stack profile, persisted by `POST .../ux-contract/apply-preset`. */
-	uxContractProfile?: UxStackProfile;
 	[key: string]: unknown;
 }
-
-// cm:edge contract -> packages/core/src/projects/ux-contract-presets.ts — the UxStackProfile union and the rule/finding enums are hand-mirrored here; a value added on one side typechecks and then fails at the column or renders as an unknown badge
-
-export const UX_RULE_GROUPS = [
-	"designSystem",
-	"states",
-	"flows",
-	"a11y",
-	"microcopy",
-	"responsive",
-] as const satisfies readonly UxRuleGroup[];
-
-/** §1–6 display labels, in canonical contract order. */
-export const UX_RULE_GROUP_LABELS: Record<UxRuleGroup, string> = {
-	designSystem: "§1 Design system",
-	states: "§2 States",
-	flows: "§3 Flows & feedback",
-	a11y: "§4 Accessibility",
-	microcopy: "§5 Microcopy",
-	responsive: "§6 Responsive",
-};
-
-export const UX_RULE_SOURCE_LABELS: Record<UxRuleSource, string> = {
-	preset: "Preset",
-	detected: "Detected",
-	learned: "Learned",
-	manual: "Manual",
-};
-
-export const UX_PRESETS = [
-	"app-strict",
-	"marketing",
-	"internal-tool",
-	"custom",
-] as const satisfies readonly UxPreset[];
-
-export const UX_PRESET_LABELS: Record<UxPreset, string> = {
-	"app-strict": "App (strict)",
-	marketing: "Marketing site",
-	"internal-tool": "Internal tool",
-	custom: "Custom",
-};
-
-/** `POST /api/projects/:id/ux-contract/apply-preset` body and rule transport
- * shapes are imported from the shared `@forge/contracts` type-only boundary. */
 
 /**
  * Loosely-typed pipeline config. This screen edits a handful of keys and

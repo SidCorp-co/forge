@@ -8,7 +8,6 @@ flowchart LR
   EXEC([execution]) --> EV[(job_events<br/>streamed, 30-day prune)]
   EXEC --> AL[(activity_log<br/>durable audit)]
   EXEC --> UP[(uploads<br/>screenshots · artefacts)]
-  EXEC --> UX[(ux_findings)]
   EXEC --> UR[(usage_records<br/>cost)]
   EV --> Q1[What is running?]
   AL --> Q2[What changed, and who?]
@@ -25,7 +24,6 @@ flowchart LR
 | Durable audit trail | `schema.ts:activityLog` |
 | Evidence retention policy | `core/src/jobs/retention-sweeper.ts` |
 | Attachments and artefacts | `core/src/uploads/`, `core/src/storage/` |
-| UX contract findings | `schema.ts:uxFindings`, `schema.ts:uxContractRules` |
 | Metrics and analytics | `core/src/metrics/`, `core/src/pipeline/analytics-routes.ts` |
 | Cost and usage | `core/src/usage-records/` |
 | Telemetry helpers, secret scrubber | `packages/observability` |

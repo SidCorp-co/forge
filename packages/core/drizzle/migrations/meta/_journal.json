@@ -1786,6 +1786,13 @@
       "when": 1795564800000,
       "tag": "0259_integration_agent_access",
       "breakpoints": true
+    },
+    {
+      "idx": 260,
+      "version": "7",
+      "when": 1795651200000,
+      "tag": "0260_retire_ux_contract",
+      "breakpoints": true
     }
   ]
 }

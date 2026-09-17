@@ -18,7 +18,6 @@ import { buildProductMapRefreshPrompt } from './messages/product-map-refresh-pro
 import { getImprovementMessage } from './messages/registry.js';
 import { buildSkillImprovePrompt } from './messages/skill-improve-prompt.js';
 import { buildSkillStewardPrompt } from './messages/skill-steward-prompt.js';
-import { buildUxImproverPrompt } from './messages/ux-improver-prompt.js';
 import {
   dispatchScheduleReleaseBatchRun,
   loadCreatedBy,
@@ -31,7 +30,6 @@ import { runScheduleScript } from './script/executor.js';
 const DRIFT_CHECK_KEY = 'knowledge-drift-check';
 const PRODUCT_MAP_KEY = 'product-map-refresh';
 const FEEDBACK_DIGEST_KEY = 'feedback-triage-digest';
-const UX_IMPROVER_KEY = 'ux-contract-improve';
 
 // Standing templates with a DEDICATED non-steward builder: their sessions must
 // NOT be tagged metadata.steward (the steward-report parser would mis-handle
@@ -41,7 +39,6 @@ const NON_STEWARD_STANDING_KEYS = new Set<string>([
   DRIFT_CHECK_KEY,
   PRODUCT_MAP_KEY,
   FEEDBACK_DIGEST_KEY,
-  UX_IMPROVER_KEY,
 ]);
 
 type StandingBuilder = (input: { mode: ScheduleMode; projectId: string }) => string;
@@ -51,7 +48,6 @@ const STANDING_BUILDERS: Record<string, { build: StandingBuilder; defaultMode: S
   [DRIFT_CHECK_KEY]: { build: buildDriftCheckPrompt, defaultMode: 'propose' },
   [PRODUCT_MAP_KEY]: { build: buildProductMapRefreshPrompt, defaultMode: 'auto' },
   [FEEDBACK_DIGEST_KEY]: { build: buildFeedbackDigestPrompt, defaultMode: 'propose' },
-  [UX_IMPROVER_KEY]: { build: buildUxImproverPrompt, defaultMode: 'propose' },
 };
 
 /**

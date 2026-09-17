@@ -69,7 +69,7 @@ export const RETIRED_PROJECT_FACTS_CONFIG_MESSAGE =
 export const ALWAYS_INJECT_MAX_CHARS = 6000;
 
 // cm:guard the one LINE the owner-facing surfaces owe whoever sets this flag, and it is a promise-shaped flag: the tier renders under "Hard rules ... Follow them exactly" and nothing reads the rule back (ISS-936). Interpolate it — never paraphrase — or the surface goes back to implying the control plane enforces the rule.
-// cm:guard ONE sentence, and no markdown: it renders as body copy in the settings tab, where the project's own UX contract asks for one calm line, and into an MCP tool description and a terminal-read guide, where backticks would be swallowed. The detail that does not fit a line lives in `ALWAYS_INJECT_ENFORCEMENT_NOTE`.
+// cm:guard ONE sentence, and no markdown: it renders as body copy in the settings tab, where a settings surface wants one calm line, and into an MCP tool description and a terminal-read guide, where backticks would be swallowed. The detail that does not fit a line lives in `ALWAYS_INJECT_ENFORCEMENT_NOTE`.
 export const ALWAYS_INJECT_GUARANTEE_NOTE =
   'Flagging a fact always-inject guarantees it is READ, never that it was DONE: the body ' +
   'reaches every agent prompt, and nothing checks whether the agent followed it.';
@@ -80,8 +80,9 @@ export const ALWAYS_INJECT_GUARANTEE_NOTE =
 export const ALWAYS_INJECT_ENFORCEMENT_NOTE =
   'No gate refuses a step that ignored an always-inject rule, no step is asked whether it ' +
   'complied, and no surface counts how often one was obeyed; what was injected is visible ' +
-  'afterwards on the job, whether it was followed is recorded nowhere. One obligation on this ' +
-  'deployment does have a readback, and it shows the price: the UX contract is stored as ' +
-  'ux_contract_rules rows with ids, its prose is compiled from them, and agents cite those ids ' +
-  'when they record a ux_findings row. A free-text entry has no ids to cite, so write the rule ' +
-  'so that an agent following it leaves evidence a human can look at.';
+  'afterwards on the job, whether it was followed is recorded nowhere. No obligation on this ' +
+  'deployment has a readback today: the one that did was the UX contract, whose rules carried ' +
+  'ids for agents to cite back, and ISS-1068 retired it because in sixteen days of always ' +
+  'injecting it on twelve projects it was cited back zero times. So the price is known and ' +
+  'nobody is paying it: write the rule so that an agent following it leaves evidence a human ' +
+  'can look at, and expect no gate to ask for that evidence.';

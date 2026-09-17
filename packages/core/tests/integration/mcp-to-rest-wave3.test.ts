@@ -1,10 +1,9 @@
 /**
  * ISS-894 wave 3 — the REST routes written so four more MCP tools could go.
  *
- * Two of these had no route at all before (`forge_skills.pin`, and the WRITE
- * half of `forge_ux_findings`), which is why they are here rather than in the
- * wave-2 file: the tool was the only way to perform the write, so nothing on
- * this surface had ever been exercised.
+ * One of these had no route at all before (`forge_skills.pin`), which is why it
+ * is here rather than in the wave-2 file: the tool was the only way to perform
+ * the write, so nothing on this surface had ever been exercised.
  */
 
 import { randomUUID } from 'node:crypto';
@@ -40,15 +39,13 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [health, charter, targets, batch, ux, collab, pin, uxw, jwt, err] = await Promise.all([
+  const [health, charter, targets, batch, collab, pin, jwt, err] = await Promise.all([
     import('../../src/health/routes.js'),
     import('../../src/skills/divergence-charter-routes.js'),
     import('../../src/integrations/postman/target-routes.js'),
     import('../../src/release-batch/routes.js'),
-    import('../../src/projects/ux-contract-routes.js'),
     import('../../src/projects/collaborators-routes.js'),
     import('../../src/skills/pin-routes.js'),
-    import('../../src/ux-findings/write-routes.js'),
     import('../../src/auth/jwt.js'),
     import('../../src/middleware/error.js'),
   ]);
@@ -60,11 +57,9 @@ beforeAll(async () => {
   app.route('/api/me', health.opsHealthMeRoutes);
   app.route('/api/me', collab.collaboratorsMeRoutes);
   app.route('/api/projects', pin.skillPinRoutes);
-  app.route('/api/projects', uxw.uxFindingWriteRoutes);
   app.route('/api/projects', charter.divergenceCharterRoutes);
   app.route('/api/projects', targets.integrationTargetRoutes);
   app.route('/api/projects', batch.releaseBatchRoutes);
-  app.route('/api/projects', ux.uxContractProjectRoutes);
   app.onError(err.errorHandler);
 }, 60_000);
 
@@ -287,83 +282,5 @@ describe('PUT /api/projects/:projectId/skills/:skillId/pin', () => {
       body: JSON.stringify({ pinned: true, reason: 'x' }),
     });
     expect(res.status).toBe(404);
-  });
-});
-
-describe('POST /api/projects/:id/ux-findings', () => {
-  async function seedIssue(projectId: string, userId: string, seq: number) {
-    const issueId = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-      VALUES (${issueId}, ${projectId}, ${seq}, 'ux fixture', 'open', ${userId})`);
-    return issueId;
-  }
-
-  const finding = (issueId: string, over: Record<string, unknown> = {}) => ({
-    issueId,
-    stage: 'review',
-    kind: 'a11y',
-    detail: 'the empty-search state has no announced role',
-    ...over,
-  });
-
-  it('records a finding against an issue in the project', async () => {
-    const { project, token, user } = await seed();
-    const issueId = await seedIssue(project.id, user.id, 900);
-
-    const res = await call(`/api/projects/${project.id}/ux-findings`, token, {
-      method: 'POST',
-      body: JSON.stringify(finding(issueId)),
-    });
-    expect(res.status).toBe(201);
-
-    const rows = await harness.db.execute(
-      sql`SELECT issue_id, run_id, kind, severity FROM ux_findings WHERE project_id = ${project.id}`,
-    );
-    expect(rows[0]).toMatchObject({ issue_id: issueId, run_id: null, kind: 'a11y' });
-    expect((rows[0] as { severity: string }).severity).toBe('must');
-  });
-
-  // cm:guard 404 and NOT 403 — membership was already proven, so a different status for "exists elsewhere" versus "does not exist" is the only thing it could reveal. Seeded in a real second project rather than a random uuid, because a random uuid is absent from every project and cannot tell the two answers apart.
-  it('refuses an issue that belongs to a different project, without saying it exists', async () => {
-    const { project, token } = await seed();
-    const other = await seed();
-    const foreignIssue = await seedIssue(other.project.id, other.user.id, 901);
-
-    const res = await call(`/api/projects/${project.id}/ux-findings`, token, {
-      method: 'POST',
-      body: JSON.stringify(finding(foreignIssue)),
-    });
-    expect(res.status).toBe(404);
-
-    const rows = await harness.db.execute(sql`SELECT id FROM ux_findings`);
-    expect(rows.length).toBe(0);
-  });
-
-  // cm:guard the ruleId is DROPPED to null, not refused: a stale id from another project would FK-fail the insert and lose a real finding the agent had no way to validate first. The finding is what is worth keeping; the rule link is not.
-  it('keeps the finding and drops a ruleId that belongs elsewhere', async () => {
-    const { project, token, user } = await seed();
-    const issueId = await seedIssue(project.id, user.id, 902);
-
-    const res = await call(`/api/projects/${project.id}/ux-findings`, token, {
-      method: 'POST',
-      body: JSON.stringify(finding(issueId, { ruleId: randomUUID() })),
-    });
-    expect(res.status).toBe(201);
-
-    const rows = await harness.db.execute(sql`SELECT rule_id FROM ux_findings`);
-    expect(rows[0]).toMatchObject({ rule_id: null });
-  });
-
-  it('refuses a caller who is not a project member', async () => {
-    const { project, user } = await seed();
-    const issueId = await seedIssue(project.id, user.id, 903);
-    const stranger = await verifiedUser();
-
-    const res = await call(`/api/projects/${project.id}/ux-findings`, stranger.token, {
-      method: 'POST',
-      body: JSON.stringify(finding(issueId)),
-    });
-    expect(res.status).toBe(403);
   });
 });
