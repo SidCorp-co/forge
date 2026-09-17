@@ -150,8 +150,7 @@ const forbidden = () =>
  * uuid, so the subquery renders `agent_session_id` as text and the join is
  * plain equality on the indexed column (ISS-1015).
  */
-async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> {
-  if (issueIds.length === 0) return new Map();
+export function issueCostRollupQuery(issueIds: string[]) {
   const pairs = db
     .selectDistinct({
       issueId: jobs.issueId,
@@ -160,7 +159,7 @@ async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> 
     .from(jobs)
     .where(and(inArray(jobs.issueId, issueIds), isNotNull(jobs.agentSessionId)))
     .as('issue_sessions');
-  const rows = await db
+  return db
     .select({
       issueId: pairs.issueId,
       estimatedCost: sql<number>`coalesce(sum(${usageRecords.estimatedCost}), 0)`.mapWith(Number),
@@ -168,6 +167,11 @@ async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> 
     .from(pairs)
     .innerJoin(usageRecords, usageSessionMatch(sql`= ${pairs.sessionId}`))
     .groupBy(pairs.issueId);
+}
+
+async function sumCostByIssue(issueIds: string[]): Promise<Map<string, number>> {
+  if (issueIds.length === 0) return new Map();
+  const rows = await issueCostRollupQuery(issueIds);
   return new Map(rows.map((r) => [r.issueId as string, r.estimatedCost]));
 }
 
