@@ -164,6 +164,23 @@ describe('check-lazy-module-init — holes the review found', () => {
     expect(found).toHaveLength(1);
   });
 
+  // cm:guard the comma expression is what defeated the FIRST fix for this: it mentions
+  // `process.argv` and evaluates to `import.meta.url`, so a regex over the operand's text accepted
+  // it while the then branch ran on every import.
+  it('catches a read guarded by a comparison that only mentions process.argv', () => {
+    const found = reads(
+      'if (import.meta.url === (process.argv, import.meta.url)) {\n  const port = env.PORT;\n}\n',
+    );
+    expect(found).toHaveLength(1);
+  });
+
+  it('catches a read guarded by a template that is not the entrypoint shape', () => {
+    const found = reads(
+      `${INLINE_GUARD.replace('file://', 'other://')}  const port = env.PORT;\n}\n`,
+    );
+    expect(found).toHaveLength(1);
+  });
+
   it('catches a read guarded by a comparison that names no process.argv', () => {
     const found = reads("if (import.meta.url === 'file:///x') {\n  const port = env.PORT;\n}\n");
     expect(found).toHaveLength(1);

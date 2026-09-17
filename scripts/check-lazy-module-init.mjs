@@ -25,8 +25,9 @@
 //     file is imported — that guard is false precisely when another module is
 //     importing it — and is not caught. Its ELSE branch runs on every import and
 //     is, and so is an unguarded read elsewhere in the same file. The comparison
-//     must name `process.argv` on its other side, or `import.meta.url ===
-//     import.meta.url` would be a two-token way of silencing this gate.
+//     is matched STRUCTURALLY against that one shape, because anything looser is a
+//     way to silence this gate: `import.meta.url === import.meta.url` is always
+//     true, and so is `import.meta.url === (process.argv, import.meta.url)`.
 //
 // WHAT IT CANNOT HOLD, stated because a gate whose limit is unwritten gets read
 // as holding more than it does: a named function CALLED at module scope runs at
@@ -108,23 +109,34 @@ function trackedNames(sourceFile) {
 // guards does not run when the file is imported — which is the whole property this checker holds.
 // Recognised through a binding as well, because `const isMain = import.meta.url === …; if (isMain) {…}`
 // is how packages/core/src/index.ts spells it.
-// cm:guard BOTH halves are required: one side `import.meta.url`, the OTHER mentioning `process.argv`.
-// Accepting any strict comparison that merely involves `import.meta.url` makes
-// `import.meta.url === import.meta.url` — always true, and a block that always runs at import — read
-// as an entrypoint guard, which would turn this gate into a two-token way of silencing it.
+// cm:guard the ONE canonical shape and nothing else, matched STRUCTURALLY: one side
+// `import.meta.url`, the other a template whose head is `file://` and whose single substitution is
+// `process.argv[…]`. Anything looser is a way to silence this gate rather than a guard.
+// `import.meta.url === import.meta.url` is always true. So is
+// `import.meta.url === (process.argv, import.meta.url)`, which is why the first fix here — a regex
+// for `process.argv` over the operand's TEXT — was still wrong: a comma expression mentions
+// `process.argv` and evaluates to `import.meta.url`. A checker that can be satisfied by mentioning a
+// token is satisfied by a comment.
 function entrypointBindings(sourceFile) {
   const names = new Set();
   const isImportMetaUrl = (node) =>
     ts.isPropertyAccessExpression(node) && node.getText(sourceFile) === 'import.meta.url';
-  const namesProcessArgv = (node) => /process\s*\.\s*argv/.test(node.getText(sourceFile));
+  const isProcessArgvElement = (node) =>
+    ts.isElementAccessExpression(node) &&
+    ts.isPropertyAccessExpression(node.expression) &&
+    node.expression.getText(sourceFile) === 'process.argv';
+  const isEntrypointUrlTemplate = (node) =>
+    ts.isTemplateExpression(node) &&
+    node.head.text.startsWith('file://') &&
+    node.templateSpans.length === 1 &&
+    isProcessArgvElement(node.templateSpans[0].expression);
   const isEntrypointTest = (node) => {
     if (node === undefined || !ts.isBinaryExpression(node)) return false;
     if (node.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) return false;
     const sides = [node.left, node.right];
     const urlSide = sides.findIndex(isImportMetaUrl);
     if (urlSide === -1) return false;
-    const other = sides[1 - urlSide];
-    return !isImportMetaUrl(other) && namesProcessArgv(other);
+    return isEntrypointUrlTemplate(sides[1 - urlSide]);
   };
   for (const statement of sourceFile.statements) {
     if (!ts.isVariableStatement(statement)) continue;
