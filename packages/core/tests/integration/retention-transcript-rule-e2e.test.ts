@@ -155,6 +155,34 @@ describe('the transcript rule: the repair pass (ISS-1027)', () => {
     expect(await fx.metadataOf(sessionId)).toHaveProperty('transcriptFinalizeAttemptedAt');
   });
 
+  // cm:guard a derive is a full REBUILD that replaces `agent_sessions.messages` outright, so running one over a suffix of a job's events overwrites a complete stored transcript with a truncated one and then marks that truncation final. The pre-ISS-1027 sweep deleted `job_events` per ROW, so a job that ran across its window really does leave a suffix behind, and this is the case that would go green if the repair pass stopped checking.
+  it('refuses to rebuild a transcript from a partial history, and reports the session instead', async () => {
+    const complete = [
+      { id: 'm1', role: 'user', content: 'the first turn' },
+      { id: 'm2', role: 'assistant', content: 'the second turn' },
+    ];
+    const sessionId = await fx.insertSession({ messages: complete });
+    const jobId = await fx.insertJob({ status: 'done', sessionId, finishedDaysAgo: OLD });
+    // seq 1 is gone, as the old sweep would have left it; seq 2 is parseable, so
+    // a rebuild would succeed and store half the transcript.
+    await fx.insertJobEvent(jobId, OLD, 2, {
+      kind: 'progress',
+      data: { claudeSessionId: 'claude-suffix' },
+    });
+
+    const result = await fx.mods.runRetentionSweep();
+
+    expect(await jobEvents()).toBe(1);
+    const metadata = await fx.metadataOf(sessionId);
+    expect(metadata).not.toHaveProperty('transcriptFinalizedAt');
+    expect(metadata).not.toHaveProperty('transcriptFinalizeAttemptedAt');
+    expect(result.repair.withTruncatedHistory).toEqual([sessionId]);
+    const rows = (await fx.harness.db.execute(sql`
+      SELECT jsonb_array_length(messages)::int AS n FROM agent_sessions WHERE id = ${sessionId}
+    `)) as unknown as Array<{ n: number }>;
+    expect(rows[0]?.n).toBe(2);
+  });
+
   // cm:guard this is the anti-starvation property and the only thing that makes the per-run bound safe: order the candidates by the job's age instead and the two sessions attempted longest ago take the budget on every run for ever, and the one never tried is never tried. The bound is one here so a wrong ORDER BY cannot hide behind a budget wide enough to reach everybody anyway.
   it('spends the repair bound least-recently-attempted first', async () => {
     process.env.RETENTION_FINALIZE_REPAIR_MAX = '1';

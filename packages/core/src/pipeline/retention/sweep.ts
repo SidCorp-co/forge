@@ -30,7 +30,12 @@ import {
   type RetentionRule,
   resolveRetention,
 } from './policy.js';
-import { RETENTION_STATEMENTS, repairCandidates, stampFinalizeAttempt } from './statements.js';
+import {
+  RETENTION_STATEMENTS,
+  repairCandidates,
+  stampFinalizeAttempt,
+  truncatedHistories,
+} from './statements.js';
 
 // cm:why the queue name still says `job-event-retention` although this sweep now covers six tables: the string is pg-boss's SCHEDULE key, and renaming it leaves the old queue's cron row in the database with no worker attached to it — a job enqueued nightly for ever that nothing runs. The name is stale; a stranded schedule is a leak.
 export const RETENTION_QUEUE = 'job-event-retention';
@@ -59,6 +64,12 @@ export interface RepairSweepResult {
   finalized: number;
   /** Sessions that were attempted and still carry no finalisation. */
   stillUnfinalized: string[];
+  /**
+   * Sessions this pass refused to touch: over-age, unmarked, and holding only a
+   * suffix of their job's events, so a rebuild would replace a stored
+   * transcript with a shorter one. Their events stay and a person decides.
+   */
+  withTruncatedHistory: string[];
 }
 
 export interface RetentionSweepResult {
@@ -118,11 +129,14 @@ type Candidate = { job_id: string; session_id: string };
  * takes the process down mid-derive — rotates behind the ones not yet tried.
  */
 async function repairUnfinalized(days: number, max: number): Promise<RepairSweepResult> {
-  if (max <= 0) return { attempted: 0, finalized: 0, stillUnfinalized: [] };
+  const truncated = (await db.execute<{ session_id: string }>(
+    truncatedHistories(days, NAMED_HELD_SESSIONS),
+  )) as unknown as Array<{ session_id: string }>;
+  const withTruncatedHistory = Array.isArray(truncated) ? truncated.map((r) => r.session_id) : [];
+  const none = { attempted: 0, finalized: 0, stillUnfinalized: [], withTruncatedHistory };
+  if (max <= 0) return none;
   const rows = (await db.execute<Candidate>(repairCandidates(days, max))) as unknown as Candidate[];
-  if (!Array.isArray(rows) || rows.length === 0) {
-    return { attempted: 0, finalized: 0, stillUnfinalized: [] };
-  }
+  if (!Array.isArray(rows) || rows.length === 0) return none;
 
   const now = new Date();
   for (const row of rows) {
@@ -152,6 +166,7 @@ async function repairUnfinalized(days: number, max: number): Promise<RepairSweep
     attempted: ids.length,
     finalized: finalizedIds.size,
     stillUnfinalized: ids.filter((id) => !finalizedIds.has(id)),
+    withTruncatedHistory,
   };
 }
 
@@ -167,7 +182,7 @@ export async function runRetentionSweep(): Promise<RetentionSweepResult> {
   const jobEvents = tables.find((t) => t.table === 'job_events');
   const repair =
     jobEvents?.windowDays == null
-      ? { attempted: 0, finalized: 0, stillUnfinalized: [] }
+      ? { attempted: 0, finalized: 0, stillUnfinalized: [], withTruncatedHistory: [] }
       : await repairUnfinalized(jobEvents.windowDays, finalizeRepairMax());
   if (repair.attempted > 0) {
     logger.info(
@@ -178,6 +193,12 @@ export async function runRetentionSweep(): Promise<RetentionSweepResult> {
         stillUnfinalizedCount: repair.stillUnfinalized.length,
       },
       'retention: transcripts finalised so their events can go',
+    );
+  }
+  if (repair.withTruncatedHistory.length > 0) {
+    logger.warn(
+      { sessions: repair.withTruncatedHistory },
+      'retention: these sessions hold only part of their job\u2019s events, so their transcript cannot be finalised without truncating it \u2014 their events are kept and somebody has to decide',
     );
   }
 

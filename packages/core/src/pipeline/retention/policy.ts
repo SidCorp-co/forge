@@ -34,7 +34,7 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     days: 30,
     env: 'RETENTION_JOB_EVENTS_DAYS',
     floorDays: 7,
-    why: 'The events a session transcript is derived from. They go only once that transcript is recorded as finalised, because the transcript is the record that survives and these rows are what rebuild it. A week is the shortest window an incident can still be reconstructed from.',
+    why: 'The events a session transcript is derived from. They go only once that transcript is recorded as finalised, because the transcript is the record that survives and these rows are what rebuild it. A session whose finalisation never happened has its transcript derived by the sweep rather than its events expired — unless only part of its history is left, in which case both are kept and the session is reported, since a rebuild from a suffix would replace a stored transcript with a shorter one. A week is the shortest window an incident can still be reconstructed from.',
   },
   {
     table: 'queue_snapshots',
@@ -48,7 +48,7 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     days: 90,
     env: 'RETENTION_RUNNER_EVENTS_DAYS',
     floorDays: 90,
-    why: 'A runner status timeline, read by the activity panel and by the `runner_uptime` metric under the same 90-day cap. The newest row for a runner is never deleted whatever its age: `runner_uptime` reads it as the pre-window carry-in, and without it the leading edge of that chart is wrong rather than absent.',
+    why: 'A runner status timeline, read by the activity panel and by the `runner_uptime` metric under the same 90-day cap. Each runner keeps its newest row from BEFORE the window whatever its age: `runner_uptime` carries that one in to set the leading edge of the chart, and without it the uptime reads wrong rather than absent. Keeping the newest row overall is not the same rule and does not keep it.',
   },
   {
     table: 'kernel_transitions',

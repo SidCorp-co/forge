@@ -41,10 +41,10 @@ async function sweptBy(table: string) {
 describe('retention sweep: the window (ISS-1027)', () => {
   it('removes an over-age row from every swept table and keeps a fresh one', async () => {
     const runner = await fx.insertRunner();
-    // Two events per runner: the sweep never removes a runner's NEWEST, so the
-    // fresh one is what makes the old one removable at all.
+    // Two events BEFORE the window, because the newer of those is the carry-in
+    // the rule keeps — which is what makes the older one removable at all.
     await fx.insertRunnerEvent(runner, 200);
-    await fx.insertRunnerEvent(runner, 1);
+    await fx.insertRunnerEvent(runner, 100);
     await fx.insertQueueSnapshot(200);
     await fx.insertQueueSnapshot(1);
     await fx.insertRetrievalAnalytics(200);
@@ -109,6 +109,20 @@ describe('retention sweep: the exemptions (ISS-1027)', () => {
 
     expect(await idsIn('runner_events')).toEqual([carryIn]);
     expect(swept.deleted).toBe(0);
+    expect(swept.heldBack).toBe(1);
+  });
+
+  // cm:guard the carry-in is the newest event BEFORE the cutoff, not the newest overall, and this is the case that tells the two rules apart: the 10-day event is inside the window and is nobody's carry-in, so a sweep that keeps only the newest OVERALL row deletes the 100-day one `runner_uptime` needs and the chart's leading edge reads wrong rather than empty.
+  it('keeps the newest event BEFORE the window, not merely the newest overall', async () => {
+    const runner = await fx.insertRunner();
+    await fx.insertRunnerEvent(runner, 200);
+    const carryIn = await fx.insertRunnerEvent(runner, 100);
+    const inWindow = await fx.insertRunnerEvent(runner, 10);
+
+    const swept = await sweptBy('runner_events');
+
+    expect(await idsIn('runner_events')).toEqual([carryIn, inWindow].sort());
+    expect(swept.deleted).toBe(1);
     expect(swept.heldBack).toBe(1);
   });
 
