@@ -119,7 +119,27 @@ async function inhibitor(input: DeliverInput): Promise<string | null> {
   return row?.id ?? null;
 }
 
-/** The record already carrying this condition's identity, if it is still active. */
+/**
+ * The record already carrying this condition's identity, if it is still active.
+ */
+// cm:guard this is a check-then-insert, and what bounds it is WHERE the emitters run rather
+// than a lock. Three of the four condition types -- `issue_stranded`,
+// `retry_rescue_threshold` and `ops_alert` -- are emitted only from passes inside
+// `pipeline/sweeper.ts` and `admin/alert-sweeper.ts`, which are pg-boss scheduled queues
+// (`PIPELINE_SWEEPER_QUEUE`, `* * * * *`): one job per tick for the whole deployment,
+// fetched by one worker, so two evaluations of the same identity cannot overlap however
+// many replicas are up. `pipeline_wedge` is the exception -- it is emitted from the job
+// event path -- and there its producer's own guard in `pipeline/wedge.ts` is a second
+// check-then-insert, so two wedge events for one entity arriving together can write two
+// records.
+// cm:why a unique index on (type, resolution_key) WHERE resolved_at IS NULL would make this
+// structural, and it is REFUSED rather than forgotten: the replica holds 2161 active
+// `pipeline_wedge` rows under 1300-odd keys, up to 15 to a key, left by the daily renotify
+// copies this change deleted -- and VISION metric 2 counts one row per wedge straight off
+// this table (`issue_intervention_events`). The index cannot be created without deleting
+// the rows that metric is made of, which is a north-star series moved in silence to buy an
+// invariant that today's live data does not need.
+
 async function activeRecord(input: DeliverInput) {
   if (!input.resolutionKey) return null;
   const [row] = await db
