@@ -231,7 +231,7 @@ export async function fetchMessagesBeside(
   ts: string,
   side: 'before' | 'after',
   count: number,
-): Promise<RocketChatRestMessage[]> {
+): Promise<RocketChatRestMessage[] | null> {
   const params: Record<string, string> = {
     roomId: rid,
     count: String(count),
@@ -253,7 +253,8 @@ export async function fetchMessagesBeside(
         .sort((a, b) => a.ts.localeCompare(b.ts));
     }
   }
-  return [];
+  // cm:guard null and not []: an empty page says nothing was said there, a refused read says nothing is known, and the tool that reads this owes the model the difference (ISS-1087 criterion 30; whole-set review F4).
+  return null;
 }
 
 export interface RocketChatRoomInfo {

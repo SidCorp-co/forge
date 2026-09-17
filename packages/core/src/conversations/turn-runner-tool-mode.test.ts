@@ -72,6 +72,14 @@ const answered = {
   progress: null,
 };
 
+const REFUSAL = {
+  rule: 'no-unverified-claims',
+  why: 'names an issue no tool returned',
+  quote: 'ISS-999',
+  shape: 'only ids a tool returned',
+  example: 'The fix is in review.',
+};
+
 /** The whole request: a venue, who it runs as, the message, the door. No hooks. */
 const request = (over: Record<string, unknown> = {}) => ({
   venue: VENUE,
@@ -151,6 +159,54 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
     offered = [];
     await runConversationTurn(request({ mayDecline: true }));
     expect(offered).toEqual([]);
+  });
+
+  // cm:guard the retry is judged by what it CAPTURED and never by what it wrote: the first capture is spent, so a retry that answers with prose alone hands the screen nothing, and the turn ends in a named silence instead of the prose (criterion 20; whole-set review F1).
+  it('never delivers a corrective retry’s prose when it did not call room_send (criterion 20)', async () => {
+    screenReplyAtDoor.mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] });
+    let attempt = 0;
+    runExternalChatTurn.mockImplementation(async (args: { tools?: Tools }) => {
+      attempt += 1;
+      if (attempt === 1) await send('ISS-999 is fixed')(args.tools);
+      return { ...answered, reply: 'admissible prose the retry wrote without the tool' };
+    });
+    const out = await runConversationTurn(request({ sendMode: 'tool', mayDecline: true }));
+    expect(out).toEqual({ kind: 'declined', reason: 'screen-refused' });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(recordSilence).toHaveBeenCalledWith(
+      expect.objectContaining({ reason: 'screen-refused' }),
+    );
+  });
+
+  it('delivers what a corrective retry captured through its own room_send', async () => {
+    screenReplyAtDoor.mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] });
+    let attempt = 0;
+    runExternalChatTurn.mockImplementation(async (args: { tools?: Tools }) => {
+      attempt += 1;
+      await send(attempt === 1 ? 'ISS-999 is fixed' : 'the fix is in review')(args.tools);
+      return { ...answered, reply: 'prose' };
+    });
+    const out = await runConversationTurn(request({ sendMode: 'tool', mayDecline: true }));
+    expect(out).toEqual({ kind: 'delivered', messageId: 'server-id-9' });
+    expect(deliver).toHaveBeenCalledWith(
+      VENUE,
+      expect.objectContaining({ text: 'the fix is in review' }),
+    );
+  });
+
+  it('posts no fallback when the turn fails before anything was captured (criterion 19)', async () => {
+    const out = await runConversationTurn(
+      request({
+        sendMode: 'tool',
+        mayDecline: true,
+        prepare: async () => {
+          throw new Error('history unreachable');
+        },
+      }),
+    );
+    expect(out).toEqual({ kind: 'declined', reason: 'turn-failed' });
+    expect(deliver).not.toHaveBeenCalled();
+    expect(recordSilence).toHaveBeenCalledWith(expect.objectContaining({ reason: 'turn-failed' }));
   });
 
   it('keeps the first message when room_send is called twice', async () => {

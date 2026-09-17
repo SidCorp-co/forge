@@ -81,7 +81,7 @@ describe('fetchMessagesBeside (ISS-1087)', () => {
     });
     vi.stubGlobal('fetch', fetch);
     const out = await fetchMessagesBeside(auth, 'R1', '2026-09-17T10:00:03Z', 'after', 2);
-    expect(out.map((m) => m.id)).toEqual(['m4', 'm5']);
+    expect(out?.map((m) => m.id)).toEqual(['m4', 'm5']);
     const url = new URL(String((fetch.mock.calls as unknown[][])[0]?.[0]));
     expect(url.pathname).toBe('/api/v1/channels.messages');
     expect(JSON.parse(url.searchParams.get('query') ?? '{}')).toEqual({
@@ -97,7 +97,7 @@ describe('fetchMessagesBeside (ISS-1087)', () => {
     });
     vi.stubGlobal('fetch', fetch);
     const out = await fetchMessagesBeside(auth, 'R1', '2026-09-17T10:00:03Z', 'before', 2);
-    expect(out.map((m) => m.id)).toEqual(['m1', 'm2']);
+    expect(out?.map((m) => m.id)).toEqual(['m1', 'm2']);
     const url = new URL(String((fetch.mock.calls as unknown[][])[0]?.[0]));
     expect(JSON.parse(url.searchParams.get('query') ?? '{}')).toEqual({
       ts: { $lt: { $date: '2026-09-17T10:00:03Z' } },
@@ -116,12 +116,12 @@ describe('fetchMessagesBeside (ISS-1087)', () => {
     );
     vi.stubGlobal('fetch', fetch);
     const out = await fetchMessagesBeside(auth, 'R2', '2026-09-17T10:00:03Z', 'after', 2);
-    expect(out.map((m) => m.id)).toEqual(['g1']);
-    expect(out[0]).toMatchObject({ rid: 'R1' });
+    expect(out?.map((m) => m.id)).toEqual(['g1']);
+    expect(out?.[0]).toMatchObject({ rid: 'R1' });
   });
 
-  it('is empty, never a guess, when every endpoint refuses', async () => {
+  it('is null, never an empty page, when every endpoint refuses', async () => {
     vi.stubGlobal('fetch', answer({}, false));
-    expect(await fetchMessagesBeside(auth, 'R3', '2026-09-17T10:00:03Z', 'after', 2)).toEqual([]);
+    expect(await fetchMessagesBeside(auth, 'R3', '2026-09-17T10:00:03Z', 'after', 2)).toBeNull();
   });
 });

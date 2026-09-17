@@ -67,6 +67,8 @@ export interface ScreenedTurnArgs {
   /** Ask the model again with a corrective instruction, and hand back what it wrote. */
   retry: (instruction: string) => Promise<ExternalChatTurnResult>;
   setPhase: (phase: string) => void;
+  /** What stands when the screen is exhausted or the model wrote nothing: a code-authored line, or nothing at all. */
+  fallback?: 'code-authored' | 'none';
   log?: Record<string, unknown>;
 }
 
@@ -86,7 +88,8 @@ export function assertAnswerableDoor(door: DoorId): void {
  */
 // cm:guard this always returns something SENDABLE, and that is the DOOR's decision rather than this function's: only a door whose ending is `fallback` reaches here, and substituting a fallback at one that refuses would post words its writer never wrote (ISS-997).
 // cm:guard the budget is DECLARED on the door and spent by `withRepairs`, never counted here — changing it means changing the door's row, where the number sits next to its reason.
-export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<ScreenedMessage> {
+// cm:guard `fallback: 'none'` hands back null where a code-authored line would have gone, and the caller owns what that silence is called: a `tool`-mode room hears only what `room_send` carried, and a fallback the code wrote is text the tool never carried (ISS-1087 criteria 19, 20; whole-set review F1).
+export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<ScreenedMessage | null> {
   assertAnswerableDoor(args.door);
   let result = args.first;
   let attempt = 0;
@@ -121,11 +124,13 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
       { ...args.log, problems: problemsOf(outcome.verdict) },
       'conversations: reply still failing its door screen; sending honest fallback',
     );
+    if (args.fallback === 'none') return null;
     return codeAuthored(unverifiedFallbackReply(args.handleName));
   }
 
   const trimmed = result.reply.trim();
   if (!trimmed) {
+    if (args.fallback === 'none') return null;
     return codeAuthored(
       result.terminal === 'error'
         ? errorFallbackReply(args.handleName)

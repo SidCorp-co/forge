@@ -306,10 +306,30 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     first: result,
     setPhase: ctx.setPhase,
     ...(req.log ? { log: req.log } : {}),
+    fallback: capture ? 'none' : 'code-authored',
     // cm:guard the retry WRITES nothing: its message is a code-authored instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the conversation, which is why it names one (ISS-1001).
-    retry: (instruction) =>
-      runExternalChatTurn({ ...turn, record: 'nothing', message: instruction }),
+    // cm:guard in `tool` mode a corrective retry is CAPTURED like the first attempt, through a capture of its own because the first is already spent: what the retry wrote as prose is not the reply, and a retry that never called `room_send` hands the screen an empty rewrite, which it refuses until the budget is spent and the turn falls silent (ISS-1087 criterion 20; whole-set review F1).
+    retry: async (instruction) => {
+      if (!capture)
+        return runExternalChatTurn({ ...turn, record: 'nothing', message: instruction });
+      const again = roomSendCapture();
+      const retried = await runExternalChatTurn({
+        ...turn,
+        tools: mergeToolsets(again.toolset, ...(inputs.tools ? [inputs.tools] : [])),
+        record: 'nothing',
+        message: instruction,
+      });
+      return { ...retried, reply: again.captured() ?? '' };
+    },
   });
+  if (!screenedMessage) {
+    await recordSilence({
+      conversationId: ctx.conversationId,
+      projectId: req.venue.projectId,
+      reason: 'screen-refused',
+    });
+    return { send: false, reason: 'screen-refused', declined: true };
+  }
   // cm:guard compared against THE FIRST ATTEMPT'S reply, which is the one whose events streamed, and
   // never against the accumulated prose: they are the same thing only on a turn with no tool call.
   // Trimmed, because that is what `screenedTurnReply` returns.
@@ -361,11 +381,21 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     // cm:guard `screenReplaced: true` because this fallback really does replace whatever streamed
     // before the throw — the screen never ran, and a reader watching prose arrive is owed the fact
     // that what they saw is not what went out (ISS-1078).
-    reply = {
-      send: true,
-      message: codeAuthored(errorFallbackReply(req.handleName)),
-      screenReplaced: true,
-    };
+    // cm:guard in `tool` mode the fallback is NOT posted: the room hears only what `room_send` carried, and a turn that died before or during the model's work carried nothing, so it is recorded as a named silence instead (ISS-1087 criterion 19; whole-set review F1).
+    if (req.sendMode === 'tool') {
+      await recordSilence({
+        conversationId: conversation.id,
+        projectId: req.venue.projectId,
+        reason: 'turn-failed',
+      });
+      reply = { send: false, reason: 'turn-failed', declined: true };
+    } else {
+      reply = {
+        send: true,
+        message: codeAuthored(errorFallbackReply(req.handleName)),
+        screenReplaced: true,
+      };
+    }
   } finally {
     clearTimeout(timer);
     await req.dispose?.();

@@ -176,23 +176,23 @@ describe('the reply column and the handle’s own ids', () => {
     expect(row?.externalId).toBe('rc-bot-old');
   });
 
-  it('answers which reply targets are the handle’s, and not a person’s (criterion 13)', async () => {
+  it('answers which reply targets are this room’s handle’s — not a person’s, not another handle’s (criterion 13)', async () => {
     const c = await room();
-    await transcript.recordDeliveredReply({
-      conversationId: c.id,
-      projectId,
-      text: 'answer',
-      receipt: { messageId: 'rc-bot-9' },
-    });
+    const ours = (await createTestUser(harness.db)).id;
+    const other = (await createTestUser(harness.db)).id;
     await store.appendMessages({
       conversationId: c.id,
-      messages: [{ role: 'user', content: 'hi', authorLabel: 'alice', externalId: 'rc-alice-1' }],
+      messages: [
+        { role: 'assistant', content: 'ours', authorUserId: ours, externalId: 'rc-bot-9' },
+        { role: 'assistant', content: 'theirs', authorUserId: other, externalId: 'rc-other-7' },
+        { role: 'user', content: 'hi', authorLabel: 'alice', externalId: 'rc-alice-1' },
+      ],
     });
-    const sent = await store.assistantSentExternalIds('rocketchat', [
-      'rc-bot-9',
-      'rc-alice-1',
-      'rc-nobody',
-    ]);
+    const sent = await store.assistantSentExternalIds(
+      'rocketchat',
+      [ours],
+      ['rc-bot-9', 'rc-other-7', 'rc-alice-1', 'rc-nobody'],
+    );
     expect([...sent]).toEqual(['rc-bot-9']);
   });
 });

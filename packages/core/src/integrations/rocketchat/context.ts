@@ -265,7 +265,17 @@ async function roomNeighbourhood(
     fetchMessagesBeside(auth, rid, anchor.ts, 'before', QUOTE_NEIGHBOURS_EACH_SIDE),
     fetchMessagesBeside(auth, rid, anchor.ts, 'after', QUOTE_NEIGHBOURS_EACH_SIDE),
   ]);
-  return { before, after, limitation: null };
+  // cm:guard a side the room refused to read is NAMED and not shown as empty: "nothing was said after it" and "what was said after it could not be read" lead the model to different answers (ISS-1087 criterion 30; whole-set review F4).
+  const refused = [before === null ? 'before' : null, after === null ? 'after' : null].filter(
+    (s): s is 'before' | 'after' => s !== null,
+  );
+  return {
+    before: before ?? [],
+    after: after ?? [],
+    limitation: refused.length
+      ? `the room refused the read of the messages ${refused.join(' and ')} it, so that side is missing here rather than empty`
+      : null,
+  };
 }
 
 /**

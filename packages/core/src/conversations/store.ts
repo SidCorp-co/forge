@@ -326,15 +326,16 @@ export async function readMessages(
 }
 
 /**
- * Which of these transport ids name a message one of this adapter's handles delivered.
+ * Which of these transport ids name a message one of THESE handles delivered on this adapter.
  */
-// cm:guard ADAPTER-wide and not this conversation's rows alone: a Rocket.Chat thread is a conversation of its own, and the message a person quotes from inside it is the root the handle posted in the ROOM's conversation. The ids are a transport's and unique within its server; the join through `conversations` keeps one transport's ids from being read against another's (ISS-1087 criteria 13, 14).
+// cm:guard scoped by the HANDLES' user ids and never by this conversation's rows alone: a Rocket.Chat thread is a conversation of its own, and the message a person quotes from inside it is the root the handle posted in the ROOM's conversation, so the row is found wherever the handle wrote it. Scoped by handle and not adapter-wide, because a quote of a message some OTHER handle posted in another room addresses nobody in this one (ISS-1087 criteria 13, 14; whole-set review F3). The join through `conversations` keeps one transport's ids from being read against another's.
 export async function assistantSentExternalIds(
   adapter: ConversationAdapter,
+  handleUserIds: readonly string[],
   ids: readonly string[],
   tx: Executor = defaultDb,
 ): Promise<Set<string>> {
-  if (ids.length === 0) return new Set();
+  if (ids.length === 0 || handleUserIds.length === 0) return new Set();
   const rows = await tx
     .select({ externalId: conversationMessages.externalId })
     .from(conversationMessages)
@@ -343,6 +344,7 @@ export async function assistantSentExternalIds(
       and(
         eq(conversations.adapter, adapter),
         eq(conversationMessages.role, 'assistant'),
+        inArray(conversationMessages.authorUserId, [...handleUserIds]),
         inArray(conversationMessages.externalId, [...ids]),
       ),
     );

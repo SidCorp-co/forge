@@ -341,7 +341,11 @@ async function decide(
   // cm:guard a REPLY or a QUOTE of something the handle sent addresses it as plainly as its name: the targets the window carries are resolved against the handle's own delivered ids, so a reply to a person names nobody however it reads (ISS-1087 criteria 13, 14).
   if (venue.shape === 'group' && presence.answerInGroup === 'mention') {
     const names = handles.map((h) => h.handle);
-    const sent = await assistantSentExternalIds(venue.adapter, replyTargetsOf(messages));
+    const sent = await assistantSentExternalIds(
+      venue.adapter,
+      handles.map((h) => h.userId),
+      replyTargetsOf(messages),
+    );
     if (!windowAddressesAHandle(messages, names, sent)) {
       return { decision: 'nothing-to-say', detail: { reason: 'not-mentioned', handles: names } };
     }

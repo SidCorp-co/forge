@@ -38,7 +38,7 @@ vi.mock('./store.js', () => ({
   readMessages: async () => messageRows,
   readMessagesInRange: async () => messageRows,
   deliveredDecisionUnderKey: async () => null,
-  assistantSentExternalIds: async (_adapter: string, ids: string[]) =>
+  assistantSentExternalIds: async (_adapter: string, _handles: string[], ids: string[]) =>
     new Set(ids.filter((id) => sentByHandle.has(id))),
   effectiveConversationMode: (row: { mode?: 'assistant' | 'agent' | null }) =>
     row.mode ?? 'assistant',

@@ -238,6 +238,23 @@ describe('buildRocketChatQuoteContextToolset (ISS-1087)', () => {
 
   afterEach(() => vi.unstubAllGlobals());
 
+  it('names a side the room refused to read, rather than showing it empty (criterion 30)', async () => {
+    serve({ m5: raw('m5', 5) });
+    const inner = globalThis.fetch;
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async (input: string) =>
+        new URL(input).pathname.endsWith('.messages')
+          ? ({ ok: false, json: async () => ({}) } as unknown as Response)
+          : inner(input),
+      ),
+    );
+    const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 'm5');
+    expect(out.isError).toBeUndefined();
+    expect((out.messages as Array<{ id: string }>).map((m) => m.id)).toEqual(['m5']);
+    expect(out.limitation).toMatch(/before and after it, so that side is missing/);
+  });
+
   it('advertises rocketchat_quote_context (criterion 24)', () => {
     const set = buildRocketChatQuoteContextToolset(auth, 'R1');
     expect(set.tools.map((t) => t.function.name)).toEqual(['rocketchat_quote_context']);
