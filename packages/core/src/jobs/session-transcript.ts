@@ -577,6 +577,24 @@ export async function deriveSessionFinal(jobId: string, agentSessionId: string):
  * If the prefix rule is ever relaxed, this has to become a rebuild again.
  */
 export async function deriveChatTurnFinal(agentSessionId: string): Promise<void> {
+  // cm:guard a session whose carrier holds no delivered LINE is not this
+  // path's, and the check is what keeps the amnesty working. A daemon on the
+  // previous release still PATCHes its whole `messages` array; its session has
+  // seed rows and nothing else, so a derive here would replace that transcript
+  // with the prompts alone. `seed` rows are core's own and prove nothing about
+  // who is writing the answers.
+  const [delivered] = await db
+    .select({ seq: agentSessionEvents.seq })
+    .from(agentSessionEvents)
+    .where(
+      and(
+        eq(agentSessionEvents.agentSessionId, agentSessionId),
+        eq(agentSessionEvents.kind, 'stdout'),
+      ),
+    )
+    .limit(1);
+  if (!delivered) return;
+
   const st = getState(agentSessionId);
   if (st.inFlight) {
     try {

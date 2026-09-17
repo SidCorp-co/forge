@@ -34,7 +34,10 @@ import {
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
+import { deriveChatTurnFinal } from '../jobs/session-transcript.js';
+import { toCanonicalMessages } from './canonical-legacy.js';
 import { createChatSessionRow } from './chat-turn.js';
+import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
@@ -121,6 +124,7 @@ agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 // cm:guard mounted BEFORE the `:id` handlers and the order is load-bearing: Hono matches in registration order, so a static path registered after `:id` is swallowed by it.
 agentSessionRoutes.route('/', agentSessionLifecycleRoutes);
 agentSessionRoutes.route('/', agentSessionInboxRoutes);
+agentSessionRoutes.route('/', agentSessionEventsRoutes);
 
 // Pipeline-session types for the retry endpoint. Mirrors the predicate
 // used by sweeper.ts and the migration backfill.
@@ -578,7 +582,30 @@ agentSessionRoutes.patch(
       updates.runtimeState = patch.runtimeState;
     }
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
-    if (patch.messages !== undefined) updates.messages = patch.messages;
+    // cm:hack ISS-1030 until: no device below the runner release carrying the
+    // raw-line route has reported in 30 days, read off `devices.version` and
+    // `devices.lastSeenAt` — then this branch and `messages` on `patchSchema` go,
+    // and a PATCH carrying `messages` is refused outright.
+    // cm:guard the price of the amnesty is that it CONVERTS rather than records.
+    // Recording what an un-upgraded daemon sends is what would break the whole
+    // change: the backfill runs, both readers lose their `role` branch, and the
+    // next PATCH from an old box writes legacy entries that nothing left in the
+    // product can read — one criterion green while three go red. The converter is
+    // the same one the migration calls, on purpose; a second set of rules here is
+    // the divergence this issue exists to end.
+    // cm:edge lockstep -> packages/core/src/agent-sessions/canonical-legacy.ts
+    let patchedMessages: Record<string, unknown>[] | undefined;
+    if (patch.messages !== undefined) {
+      const canonical = toCanonicalMessages(patch.messages);
+      if (!canonical.ok) {
+        throw new HTTPException(400, {
+          message: `messages[${canonical.index}] ${canonical.why}`,
+          cause: { code: 'UNREPRESENTABLE_ENTRY', details: canonical },
+        });
+      }
+      patchedMessages = canonical.messages;
+      updates.messages = patchedMessages;
+    }
     if (patch.usage !== undefined) updates.usage = patch.usage;
     if (patch.metadata !== undefined) updates.metadata = patch.metadata;
     if (patch.diff !== undefined) updates.diff = patch.diff;
@@ -649,7 +676,7 @@ agentSessionRoutes.patch(
               ? existing.messages.length
               : 0;
         const unexpanded = detectUnexpandedSkillFailure(
-          patch.messages ?? existing.messages,
+          patchedMessages ?? existing.messages,
           pendingSkillName,
           priorCount,
         );
@@ -700,7 +727,7 @@ agentSessionRoutes.patch(
       patch.status === 'failed' && !isUserCancelled && existing.failureReason !== 'user_cancelled'
         ? await finalizeScheduleSessionFailure({
             sessionId: id,
-            messages: patch.messages ?? existing.messages,
+            messages: patchedMessages ?? existing.messages,
             note: null,
             baseMetadata:
               (updates.metadata as Record<string, unknown> | undefined) ??
@@ -739,7 +766,7 @@ agentSessionRoutes.patch(
       if (!row) throw notFound('agent session not found');
       if (!messagesPatched) return { updated: row, sync: null };
       const prevMessages = Array.isArray(existing.messages) ? existing.messages : [];
-      const nextMessages = Array.isArray(patch.messages) ? patch.messages : [];
+      const nextMessages = patchedMessages ?? [];
       const result = await syncTurnsWithMessages(row.id, prevMessages, nextMessages, tx);
       return { updated: row, sync: result };
     });
@@ -781,11 +808,21 @@ agentSessionRoutes.patch(
       reportedStatus: patch.status,
       persistedStatus: updated.status,
       isUserCancelled,
-      messages: patch.messages ?? existing.messages,
+      messages: patchedMessages ?? existing.messages,
     });
 
     // cm:guard the bridges read the REPORTED `patch.status` while everything above reads the PERSISTED `updated.status`. The split is deliberate and is NOT a bug fix — every rewrite core performs today maps one terminal status onto another (ISS-733 skill-not-synced, `audit_ran_blind`), so the two agree and no test can tell them apart. It is priced as hardening in one direction: a `...Once` bridge that fires on a status core did not accept sends a duplicate room reply, while a revoke that does kills the credential of a session still running. `writeBackScheduleLastStatus` above already reads the persisted value for its own version of this reason. The condition that would end the split is a rewrite mapping a terminal report onto a NON-terminal status — none exists, and if one is added it belongs here first.
+    // cm:guard the turn's authoritative derive runs BEFORE the bridges, and the
+    // order is the point: a bridge reads `agent_sessions.messages` to build what
+    // it delivers, so firing it first would hand it the transcript as of the last
+    // throttled flush rather than the whole turn. It is awaited for the same
+    // reason. A session with no delivered lines returns immediately — see the
+    // guard on `deriveChatTurnFinal`.
+    // cm:edge lockstep -> packages/core/src/jobs/session-transcript.ts — this is
+    // the chat path's counterpart of `deriveSessionFinal`, which the pipeline
+    // path fires from `jobs/lifecycle-routes.ts` on job terminal.
     if (patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status)) {
+      await deriveChatTurnFinal(id);
       await onTerminalPatch(updated);
     }
 

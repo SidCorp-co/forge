@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
@@ -31,6 +32,7 @@ import {
   samePageContext,
 } from './page-context.js';
 import { readSessionModel } from './session-model.js';
+import { seedTurn } from './session-events.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
 // cm:guard the SINGLE publisher of `agent:start` / `agent:send`, and every entry point funnels here — POST /start, POST /send, schedule.run, escalation, RocketChat agent-chat, schedule failover. That is what lets device selection, turn persistence and the ISS-927 token mint each exist in exactly one place; a caller that publishes its own frame gets none of them and drifts silently, which is the bug this module replaced.
@@ -356,8 +358,13 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
 
   const prevMessages = Array.isArray(session.messages) ? session.messages : [];
   const now = new Date();
-  const userMessage = {
-    role: 'user',
+  // cm:guard CANONICAL (`type`), never `role`. This is the one entry core writes
+  // into a transcript itself, and while it wore the legacy shape every reader of
+  // `agent_sessions.messages` needed a branch for both — which is what ISS-1030
+  // removed. A `role` here puts both branches back.
+  const userMessage: Record<string, unknown> = {
+    id: randomUUID(),
+    type: 'user',
     content: decoratedMessage,
     timestamp: now.getTime(),
     ...(attachments.length ? { attachments } : {}),
@@ -429,7 +436,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     if (fallbackTitle) updates.title = fallbackTitle;
   }
 
-  const { updated, sync } = await withKernelMarker(db, async (tx) => {
+  const { updated, sync, eventSeqBase } = await withKernelMarker(db, async (tx) => {
     const [row] = await tx
       .update(agentSessions)
       .set(updates)
@@ -439,7 +446,16 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     // Materialize the appended user turn in the same transaction so the legacy
     // blob and per-turn rows can never diverge if the turn insert throws.
     const s = await syncTurnsWithMessages(row.id, prevMessages, messages, tx);
-    return { updated: row, sync: s };
+    // cm:guard the seed goes in the SAME transaction as the turn it is the
+    // record of. Written after it, a crash in between leaves a session whose
+    // stored transcript holds a prompt its carrier does not, and the next rebuild
+    // silently drops that prompt.
+    const seeded = await seedTurn(tx, row.id, {
+      priorMessages: prevMessages,
+      entry: userMessage,
+      at: now,
+    });
+    return { updated: row, sync: s, eventSeqBase: seeded.lastSeq };
   });
   for (const t of sync.appended) broadcastTurnAppended(updated, t);
 
@@ -511,6 +527,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         sessionId: updated.id,
         repoPath,
         prompt,
+        eventSeqBase,
         projectSlug: project.slug,
         preBuilt: args.preBuilt ?? false,
         systemPrompt: TOOL_REFERENCE,
@@ -527,6 +544,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         sessionId: updated.id,
         message: decoratedMessage,
         claudeSessionId,
+        eventSeqBase,
         repoPath,
         projectSlug: project.slug,
         mcpServersOverride,

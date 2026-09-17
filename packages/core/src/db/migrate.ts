@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { initSentry, Sentry } from '../observability/sentry.js';
+import { backfillCanonicalTranscripts } from './backfill-canonical-transcripts.js';
 import {
   describeUnrecorded,
   type JournalEntry,
@@ -20,10 +21,43 @@ const migrationsFolder = new URL('../../drizzle/migrations', import.meta.url).pa
 const sql = postgres(url, { max: 1 });
 const db = drizzle(sql);
 
+/** ISS-1030 — the migration whose landing the canonical-transcript backfill rides. */
+const CANONICAL_BACKFILL_WHEN = 1795996800000;
+
+/** Whether this boot is the one that applies a given journal entry. */
+// cm:why read BEFORE `migrate()` rather than after: the migrator records an entry
+// as it applies it, so afterwards every entry is recorded and there is no way
+// left to tell which of them this boot brought in. The backfill is idempotent
+// regardless — it selects only rows still holding a legacy entry — but a
+// full-table predicate on the largest jsonb column in the schema is not
+// something to pay on every container start.
+async function alreadyRecorded(when: number): Promise<boolean> {
+  try {
+    const rows = await sql<{ n: number }[]>`
+      SELECT count(*)::int AS n FROM drizzle.__drizzle_migrations WHERE created_at = ${when}
+    `;
+    return (rows[0]?.n ?? 0) > 0;
+  } catch {
+    // No ledger yet — a first-ever boot, where there is nothing to backfill.
+    return true;
+  }
+}
+
 try {
   console.log('[migrate] applying migrations from', migrationsFolder);
+  const backfillDone = await alreadyRecorded(CANONICAL_BACKFILL_WHEN);
   // cm:guard a migration's `when` in meta/_journal.json must exceed every already-recorded created_at or it's silently skipped forever, not an error (ISS-807)
   await migrate(db, { migrationsFolder });
+
+  // cm:guard this THROWS on a row it cannot represent and the outer catch exits
+  // non-zero, which is the whole point: the deploy stops naming the row rather
+  // than the row being cleaned away so the deploy succeeds (ISS-1030).
+  if (!backfillDone) {
+    const report = await backfillCanonicalTranscripts(sql);
+    console.log(
+      `[migrate] canonical-transcript backfill: ${report.entries} entr(ies) rewritten across ${report.sessions} session(s) and ${report.turns} turn row(s)`,
+    );
+  }
 
   // cm:guard ISS-809 — this is a WARNING, never an exit. Measured on forge-beta 2026-08-11: 3 journal entries (0041_pm_agent, 0062_personal_access_tokens, 0063_mcp_audit_log) have no bookkeeping row, yet every table they create EXISTS. The DDL ran; only the ledger is incomplete. A hard gate here would refuse to start a container whose schema is entirely correct — turning a reporting gap into an outage. The authored-wrong case ISS-807 actually hit is caught before merge by migrations-journal.test.ts instead.
   const journal = JSON.parse(readFileSync(`${migrationsFolder}/meta/_journal.json`, 'utf8')) as {
