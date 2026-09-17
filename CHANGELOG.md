@@ -2898,6 +2898,9 @@
   everything. Nothing folds while you are scrolled up or inside it, and new output you cannot see is
   announced rather than scrolled to.
 
+- **A stuck issue now stands out on the Issues list.** A row that sat too long was meant to read
+  amber beside its clock, and the colour never reached the screen. It does now.
+
 - **A release job opens in the checkout, not the daemon's home directory.** A repo path that
   belongs to another box is skipped instead of silently becoming `$HOME`; a job with no checkout
   here gives its hold back naming both paths.
