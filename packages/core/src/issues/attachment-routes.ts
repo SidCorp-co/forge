@@ -7,12 +7,12 @@ import { db } from '../db/client.js';
 import { issueAttachments, issues } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
+import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { restActor } from '../middleware/auth.js';
 import { type AnyAuthVars, requireAnyAuth } from '../middleware/require-any-auth.js';
 import { safeRecordActivity } from '../pipeline/activity.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import { AttachmentError, persistIssueAttachment } from './attachment-service.js';
-import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 
 const badRequest = (message: string, code = 'BAD_REQUEST', details?: unknown) =>
   new HTTPException(400, { message, cause: { code, details } });

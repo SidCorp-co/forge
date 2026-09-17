@@ -15,11 +15,18 @@
 // THE RULE is "does this read run when the file is imported", which is NOT the
 // same as "is this read outside a function":
 //   - a module-scope IIFE is a function body that runs at import, and is caught;
+//   - a computed member name (`class C { [env.PORT]() {} }`) is evaluated where
+//     the class is, not where the body is called, and is caught;
+//   - `import * as config` then `config.env.PORT` is caught, the same as a named
+//     import would be;
 //   - a `typeof db` in a type position erases at compile time, and is not;
-//   - a block guarded by the entrypoint comparison (`import.meta.url === ...`)
-//     does not run when the file is imported — that guard is false precisely when
-//     another module is importing it — and is not caught. An unguarded read in
-//     the same file still is.
+//   - the THEN branch of a block guarded by the entrypoint comparison
+//     (`import.meta.url === \`file://${process.argv[1]}\``) does not run when the
+//     file is imported — that guard is false precisely when another module is
+//     importing it — and is not caught. Its ELSE branch runs on every import and
+//     is, and so is an unguarded read elsewhere in the same file. The comparison
+//     must name `process.argv` on its other side, or `import.meta.url ===
+//     import.meta.url` would be a two-token way of silencing this gate.
 //
 // WHAT IT CANNOT HOLD, stated because a gate whose limit is unwritten gets read
 // as holding more than it does: a named function CALLED at module scope runs at
@@ -63,9 +70,19 @@ function sourceFiles(dir, out = []) {
   return out;
 }
 
-/** Local names bound to one of the lazy exports, mapped to the export they name. */
+// cm:guard a NAMESPACE import is tracked too. `import * as config from '../config/env.js'` followed
+// by `config.env.PORT` reads the environment at import exactly as `env.PORT` does, and a checker that
+// only understood named imports would report that file clean — the gate answering "no" to a question
+// it never asked.
+/**
+ * What this file binds to the lazy exports.
+ *
+ * `direct`: local name -> export name, from `import { env }` / `import { db as x }`.
+ * `namespaces`: local name -> export name, from `import * as ns`, read through `ns.env` / `ns.db`.
+ */
 function trackedNames(sourceFile) {
-  const tracked = new Map();
+  const direct = new Map();
+  const namespaces = new Map();
   for (const statement of sourceFile.statements) {
     if (!ts.isImportDeclaration(statement)) continue;
     if (!ts.isStringLiteral(statement.moduleSpecifier)) continue;
@@ -73,29 +90,42 @@ function trackedNames(sourceFile) {
     const lazy = LAZY_EXPORTS.find((e) => e.specifier.test(spec));
     if (lazy === undefined) continue;
     const bindings = statement.importClause?.namedBindings;
-    if (bindings === undefined || !ts.isNamedImports(bindings)) continue;
+    if (bindings === undefined) continue;
+    if (ts.isNamespaceImport(bindings)) {
+      namespaces.set(bindings.name.text, lazy.name);
+      continue;
+    }
+    if (!ts.isNamedImports(bindings)) continue;
     for (const element of bindings.elements) {
       const imported = (element.propertyName ?? element.name).text;
-      if (imported === lazy.name) tracked.set(element.name.text, lazy.name);
+      if (imported === lazy.name) direct.set(element.name.text, lazy.name);
     }
   }
-  return tracked;
+  return { direct, namespaces };
 }
 
-// cm:guard `import.meta.url === ...` is the entrypoint test, and a block it guards does not run
-// when the file is imported — which is the whole property this checker holds. Recognised through a
-// binding as well, because `const isMain = import.meta.url === ...; if (isMain) { … }` is how
-// packages/core/src/index.ts spells it.
+// cm:guard `import.meta.url === \`file://${process.argv[1]}\`` is the entrypoint test, and a block it
+// guards does not run when the file is imported — which is the whole property this checker holds.
+// Recognised through a binding as well, because `const isMain = import.meta.url === …; if (isMain) {…}`
+// is how packages/core/src/index.ts spells it.
+// cm:guard BOTH halves are required: one side `import.meta.url`, the OTHER mentioning `process.argv`.
+// Accepting any strict comparison that merely involves `import.meta.url` makes
+// `import.meta.url === import.meta.url` — always true, and a block that always runs at import — read
+// as an entrypoint guard, which would turn this gate into a two-token way of silencing it.
 function entrypointBindings(sourceFile) {
   const names = new Set();
-  const isEntrypointTest = (node) =>
-    node !== undefined &&
-    ts.isBinaryExpression(node) &&
-    node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken &&
-    [node.left, node.right].some(
-      (side) =>
-        ts.isPropertyAccessExpression(side) && side.getText(sourceFile) === 'import.meta.url',
-    );
+  const isImportMetaUrl = (node) =>
+    ts.isPropertyAccessExpression(node) && node.getText(sourceFile) === 'import.meta.url';
+  const namesProcessArgv = (node) => /process\s*\.\s*argv/.test(node.getText(sourceFile));
+  const isEntrypointTest = (node) => {
+    if (node === undefined || !ts.isBinaryExpression(node)) return false;
+    if (node.operatorToken.kind !== ts.SyntaxKind.EqualsEqualsEqualsToken) return false;
+    const sides = [node.left, node.right];
+    const urlSide = sides.findIndex(isImportMetaUrl);
+    if (urlSide === -1) return false;
+    const other = sides[1 - urlSide];
+    return !isImportMetaUrl(other) && namesProcessArgv(other);
+  };
   for (const statement of sourceFile.statements) {
     if (!ts.isVariableStatement(statement)) continue;
     for (const declaration of statement.declarationList.declarations) {
@@ -114,8 +144,8 @@ function entrypointBindings(sourceFile) {
 /** Every read of a tracked name that runs when this file is imported. */
 export function importTimeReads(path, text) {
   const sourceFile = ts.createSourceFile(path, text, ts.ScriptTarget.ES2022, true);
-  const tracked = trackedNames(sourceFile);
-  if (tracked.size === 0) return [];
+  const { direct, namespaces } = trackedNames(sourceFile);
+  if (direct.size === 0 && namespaces.size === 0) return [];
   const { names: entrypointNames, isEntrypointTest } = entrypointBindings(sourceFile);
   const lines = text.split('\n');
   const found = [];
@@ -142,10 +172,12 @@ export function importTimeReads(path, text) {
 
   const walk = (node, runsAtImport) => {
     if (ts.isIfStatement(node) && guardsEntrypoint(node.expression)) {
-      // The test itself still runs at import; neither branch does.
+      // cm:guard only the THEN branch is outside the property. The test runs at import, and so does
+      // the ELSE branch — `if (isMain) {…} else { const port = env.PORT; }` reads the environment on
+      // every import, which is the exact case the guard is supposed to be about not doing.
       walk(node.expression, runsAtImport);
       if (node.thenStatement) walk(node.thenStatement, false);
-      if (node.elseStatement) walk(node.elseStatement, false);
+      if (node.elseStatement) walk(node.elseStatement, runsAtImport);
       return;
     }
 
@@ -160,6 +192,14 @@ export function importTimeReads(path, text) {
       ts.isConstructorDeclaration(node);
     if (isFunctionLike) next = isImmediatelyInvoked(node) ? runsAtImport : false;
 
+    // cm:guard a COMPUTED member name is evaluated where the class or object literal is, not where
+    // the body is called: `class C { [env.PORT]() {} }` at module scope reads the environment at
+    // import while its body never runs. The name is walked with the ENCLOSING state and the body
+    // with the deferred one, because the two are different moments in the same node.
+    if ('name' in node && node.name !== undefined && ts.isComputedPropertyName(node.name)) {
+      walk(node.name, runsAtImport);
+    }
+
     // cm:guard a type query erases at compile time, so `Pick<typeof db, 'select'>` reads nothing at
     // runtime. 24 of core's 26 module-scope mentions of `db` are exactly this shape, and a checker
     // that counted them would be 92% noise on its first run.
@@ -169,19 +209,28 @@ export function importTimeReads(path, text) {
     // tree than the rule needs, which is where a false negative would come from.
     if (ts.isTypeQueryNode(node)) return;
 
-    if (next && ts.isIdentifier(node) && tracked.has(node.text)) {
+    if (next && ts.isIdentifier(node)) {
       const parent = node.parent;
-      const isBinding = ts.isImportSpecifier(parent);
-      const isPropertyName =
-        (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
-        (ts.isPropertyAssignment(parent) && parent.name === node);
-      if (!isBinding && !isPropertyName) {
-        const { line } = sourceFile.getLineAndCharacterOfPosition(node.getStart(sourceFile));
-        found.push({
-          line: line + 1,
-          name: tracked.get(node.text),
-          text: (lines[line] ?? '').trim(),
-        });
+      const record = (name, at) => {
+        const { line } = sourceFile.getLineAndCharacterOfPosition(at.getStart(sourceFile));
+        found.push({ line: line + 1, name, text: (lines[line] ?? '').trim() });
+      };
+
+      // `ns.env` / `ns.db` through a namespace import. Read off the property access so the namespace
+      // identifier alone — `typeof ns`, passing `ns` around — is not counted.
+      if (
+        namespaces.has(node.text) &&
+        ts.isPropertyAccessExpression(parent) &&
+        parent.expression === node &&
+        parent.name.text === namespaces.get(node.text)
+      ) {
+        record(namespaces.get(node.text), node);
+      } else if (direct.has(node.text)) {
+        const isBinding = ts.isImportSpecifier(parent);
+        const isPropertyName =
+          (ts.isPropertyAccessExpression(parent) && parent.name === node) ||
+          (ts.isPropertyAssignment(parent) && parent.name === node);
+        if (!isBinding && !isPropertyName) record(direct.get(node.text), node);
       }
     }
     ts.forEachChild(node, (child) => walk(child, next));

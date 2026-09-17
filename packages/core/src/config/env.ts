@@ -126,9 +126,13 @@ function loadEnv(): Env {
     Object.entries(process.env).map(([k, v]) => [k, v === '' ? undefined : v]),
   );
 
-  const retired = Object.entries(RETIRED_ENV_VARS).filter(([name]) => cleanedEnv[name] !== undefined);
+  const retired = Object.entries(RETIRED_ENV_VARS).filter(
+    ([name]) => cleanedEnv[name] !== undefined,
+  );
   if (retired.length > 0) {
-    const lines = retired.map(([name, replacement]) => `  - ${name} is retired; set ${replacement}`);
+    const lines = retired.map(
+      ([name, replacement]) => `  - ${name} is retired; set ${replacement}`,
+    );
     throw new Error(
       `[@forge/core] Retired environment variable(s) set:\n${lines.join('\n')}\n` +
         'The per-token PAT rate limit is two buckets now, one for reads and one for writes ' +

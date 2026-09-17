@@ -560,10 +560,17 @@ function".** Three consequences, each with its own fixture in
 |---|---|---|
 | `const n = env.PORT` at module scope | yes | runs at import |
 | `(() => env.PORT)()` at module scope | yes | an IIFE body runs at import — the first version of the checker climbed one parent and missed this, because `(…)` puts a `ParenthesizedExpression` between the arrow and the call |
+| `import * as config` then `config.env.PORT` | yes | a namespace import reads the same value; a checker that understood only named imports would report the file clean |
+| `class C { [env.PORT]() {} }` | yes | a computed member name is evaluated where the class is, not where the body is called |
 | `cors({ origin: (o) => env.CORS_ORIGINS.includes(o) })` | no | a callback the caller invokes later, which is the shape the fix introduced on purpose |
 | `Pick<typeof db, 'select'>` | no | a type query erases at compile time; 24 of core's 26 module-scope mentions of `db` are this, and counting them would make the gate 92% noise on its first run |
-| a read inside `if (isMain) { … }` | no | the entrypoint guard is false precisely when another module is importing the file |
+| a read in the THEN branch of `if (isMain) { … }` | no | the entrypoint guard is false precisely when another module is importing the file |
+| a read in that guard's ELSE branch | yes | the else branch runs on every import, which is the case the guard is meant to be about not doing |
+| `if (import.meta.url === import.meta.url) { … }` | yes | the comparison must name `process.argv` on its other side, or an always-true test would be a two-token way of silencing the gate |
 | a read in `index.ts` OUTSIDE that guard | yes | the guard is a block, never a whole-file exemption |
+
+The last four rows were holes this checker had on its first version, found by the whole-set review
+of the change that added it and each now carrying a fixture that goes red when its fix is removed.
 
 **What it cannot hold**, stated here because a gate whose limit is unwritten gets read as holding
 more than it does: a NAMED function called at module scope runs at import, and a syntactic walk does

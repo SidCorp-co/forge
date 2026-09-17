@@ -10,6 +10,7 @@ import { resolveActors } from '../issues/actor-resolution.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
 import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib/authz.js';
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
+import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { logger } from '../logger.js';
 import {
   type AuthVars,
@@ -40,7 +41,6 @@ import {
   updateCommentBody,
 } from './service.js';
 import { attachAuthors, buildCommentTree, type CommentAttachmentLite } from './tree.js';
-import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 
 /** The comment projection every REST response here shares. */
 const idParamSchema = z.object({ id: z.uuid() });

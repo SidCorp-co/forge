@@ -6,8 +6,8 @@ import { z } from 'zod';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { setInertAttachmentHeaders } from '../lib/attachment-headers.js';
-import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { assertProjectRole, loadProjectAccess } from '../lib/authz.js';
+import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { type AuthVars, assertEmailVerified, requireUserOrDevice } from '../middleware/auth.js';
 import { getStorage, isEnoent } from '../storage/index.js';
 import {

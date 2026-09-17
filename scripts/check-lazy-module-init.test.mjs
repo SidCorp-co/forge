@@ -15,6 +15,13 @@
 import { describe, expect, it } from 'vitest';
 import { importTimeReads } from './check-lazy-module-init.mjs';
 
+// cm:guard the three strings below are FIXTURE TEXT — source this checker parses, not source this
+// file runs — and `${process.argv[1]}` inside them is the entrypoint comparison the gate has to
+// recognise. Written any other way the fixture stops being the shape it is testing.
+// biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, parsed rather than evaluated
+const IS_MAIN = 'const isMain = import.meta.url === `file://${process.argv[1]}`;\n';
+// biome-ignore lint/suspicious/noTemplateCurlyInString: fixture source, parsed rather than evaluated
+const INLINE_GUARD = 'if (import.meta.url === `file://${process.argv[1]}`) {\n';
 const IMPORT_ENV = "import { env } from '../config/env.js';\n";
 const IMPORT_DB = "import { db } from '../db/client.js';\n";
 const reads = (body, header = IMPORT_ENV) =>
@@ -102,18 +109,87 @@ describe('check-lazy-module-init — reads that do not run at import', () => {
   });
 });
 
-describe('check-lazy-module-init — the entrypoint guard', () => {
-  const IS_MAIN = 'const isMain = import.meta.url === `file://${process.argv[1]}`;\n';
+// cm:guard every case below was a hole the checker had and reported clean on. They came out of the
+// whole-set review of this change (ISS-1067, F2-F4) rather than from imagination, which is why each
+// one is written as the shortest file that reads the environment at import.
+describe('check-lazy-module-init — holes the review found', () => {
+  it('catches a read through a namespace import', () => {
+    const found = importTimeReads(
+      'packages/core/src/f.ts',
+      "import * as config from '../config/env.js';\nconst port = config.env.PORT;\n",
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].name).toBe('env');
+  });
 
+  it('catches a db read through a namespace import', () => {
+    const found = importTimeReads(
+      'packages/core/src/f.ts',
+      "import * as client from '../db/client.js';\nconst rows = client.db.select();\n",
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].name).toBe('db');
+  });
+
+  it('passes a namespace read that is deferred into a function', () => {
+    const found = importTimeReads(
+      'packages/core/src/f.ts',
+      "import * as config from '../config/env.js';\nexport const port = () => config.env.PORT;\n",
+    );
+    expect(found).toEqual([]);
+  });
+
+  it('passes a namespace identifier that names no lazy export', () => {
+    const found = importTimeReads(
+      'packages/core/src/f.ts',
+      "import * as config from '../config/env.js';\nexport type E = typeof config;\nconst x = config.EnvSchema;\n",
+    );
+    expect(found).toEqual([]);
+  });
+
+  it('catches a read in the ELSE branch of an entrypoint guard', () => {
+    const found = reads(
+      `${IS_MAIN}if (isMain) {\n  void 0;\n} else {\n  const port = env.PORT;\n}\n`,
+    );
+    expect(found).toHaveLength(1);
+    expect(found[0].line).toBe(6);
+  });
+
+  // cm:guard without this, `import.meta.url === import.meta.url` is a two-token way to silence the
+  // gate on any block: always true, always runs at import, and read as an entrypoint guard.
+  it('catches a read guarded by an always-true url comparison', () => {
+    const found = reads(
+      'if (import.meta.url === import.meta.url) {\n  const port = env.PORT;\n}\n',
+    );
+    expect(found).toHaveLength(1);
+  });
+
+  it('catches a read guarded by a comparison that names no process.argv', () => {
+    const found = reads("if (import.meta.url === 'file:///x') {\n  const port = env.PORT;\n}\n");
+    expect(found).toHaveLength(1);
+  });
+
+  it('catches a read in a computed method name', () => {
+    const found = reads('export class C {\n  [env.PORT]() {\n    return 1;\n  }\n}\n');
+    expect(found).toHaveLength(1);
+    expect(found[0].line).toBe(3);
+  });
+
+  it('catches a read in a computed name while passing the body it wraps', () => {
+    const found = reads('export class C {\n  [env.PORT]() {\n    return env.NODE_ENV;\n  }\n}\n');
+    expect(found).toHaveLength(1);
+    expect(found[0].line).toBe(3);
+  });
+});
+
+describe('check-lazy-module-init — the entrypoint guard', () => {
   it('passes a read inside a block guarded by an isMain binding', () => {
     const found = reads(`${IS_MAIN}if (isMain) {\n  const port = env.PORT;\n}\n`);
     expect(found).toEqual([]);
   });
 
   it('passes a read inside a block guarded by the comparison written inline', () => {
-    const found = reads(
-      'if (import.meta.url === `file://${process.argv[1]}`) {\n  const port = env.PORT;\n}\n',
-    );
+    const found = reads(`${INLINE_GUARD}  const port = env.PORT;\n}\n`);
     expect(found).toEqual([]);
   });
 

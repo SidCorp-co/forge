@@ -84,16 +84,22 @@ function currentDb(): Db {
 }
 
 // cm:guard a Proxy rather than a `getDb()` function so that all 391 importers keep reading `db.select`:
-// the point of ISS-1067 is that an IMPORT does no work, not that every caller is rewritten. A method
-// is bound to the REAL instance and the bound copy is memoised — drizzle's builders read private state
-// off `this`, and re-binding per access would also make `db.select !== db.select`, which nothing
-// should have to reason about. A non-function value (`db.query`, `db.$client`) is handed back as it
-// is: it already closes over the real instance.
+// the point of ISS-1067 is that an IMPORT does no work, not that every caller is rewritten.
+// cm:guard bind ONLY what the prototype chain owns, and hand back an own property untouched. That is
+// not a nicety: drizzle's `select`/`transaction`/`execute` live on `PgDatabase.prototype` and read
+// private state off `this`, so they need the real receiver — while `$client` is an OWN property whose
+// value is postgres.js's tagged-template FUNCTION carrying `.unsafe`, `.begin`, `.end`, `.listen`,
+// `.file`, `.json` and `.array` as own properties of its own. `Function.prototype.bind` copies none
+// of them, so binding `$client` would hand back something that still passes `typeof … === 'function'`
+// and answers `undefined` to every one of those — the silent substitution, on a handle whose whole
+// purpose is the escape hatch. `query` is an own property too and already closes over the instance.
+// The bound copy is memoised so `db.select === db.select`, which nothing should have to reason about.
 export const db: Db = new Proxy({} as Db, {
   get(_target, prop) {
     const real = currentDb();
     const value = Reflect.get(real as object, prop, real);
     if (typeof value !== 'function') return value;
+    if (Object.hasOwn(real as object, prop)) return value;
     let fn = bound.get(prop);
     if (fn === undefined) {
       fn = value.bind(real);
