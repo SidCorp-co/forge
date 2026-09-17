@@ -1259,7 +1259,12 @@ mod tests {
         fn a_choice_recorded_after_the_close_releases_the_gate() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
-            run_close(&ctl, &run_id, Some("the pane died before dispatch"), "sess-a");
+            run_close(
+                &ctl,
+                &run_id,
+                Some("the pane died before dispatch"),
+                "sess-a",
+            );
 
             let choice = run_choice(
                 &ctl,
@@ -1281,7 +1286,12 @@ mod tests {
         fn a_closed_runs_choice_is_still_owed_to_the_issue() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
             let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
-            run_close(&ctl, &run_id, Some("restart: nothing to reconcile"), "sess-a");
+            run_close(
+                &ctl,
+                &run_id,
+                Some("restart: nothing to reconcile"),
+                "sess-a",
+            );
             run_choice(&ctl, &run_id, "restart", "nothing to reconcile", "sess-a");
 
             let held = ctl.ledger.lock().unwrap();
