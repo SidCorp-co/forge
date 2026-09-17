@@ -2306,8 +2306,10 @@
   { "githubIntake": { "enabled": true } }
   ```
 
-  Read it back to confirm. Opening it admits new reports only; the edit and close copying is gone
-  for every project and no setting restores it. Issues already copied are untouched.
+  An organisation admin makes that request; `GET` the same path back and
+  `pipelineConfig.githubIntake.enabled` reads `true`. Opening it admits new reports only; the edit
+  and close copying is gone for every project and no setting restores it. Issues already copied are
+  untouched.
 
 - **Nine days of maintenance on prompts nothing could ever read, ended.** When the staged pipeline
   was removed, the instructions written for its nine stages were left behind: eight blocks of

@@ -4,11 +4,13 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 const selectQueue: unknown[][] = [];
 const labelInsertMock = vi.fn();
 const issueLabelInsertMock = vi.fn();
+const selectCalls = { n: 0 };
 vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
       from: () => ({
         where: () => {
+          selectCalls.n += 1;
           const rows = selectQueue.shift() ?? [];
           const p = Promise.resolve(rows) as Promise<unknown[]> & {
             limit: (n: number) => Promise<unknown[]>;
@@ -55,6 +57,7 @@ const gatedConfig = { agentConfig: { pipelineConfig: { intakeGate: { enabled: tr
 
 beforeEach(() => {
   selectQueue.length = 0;
+  selectCalls.n = 0;
   labelInsertMock.mockReset();
   labelInsertMock.mockReturnValue([{ id: 'label-1' }]);
   issueLabelInsertMock.mockReset();
@@ -144,11 +147,11 @@ describe('admitGithubIssue (ISS-1076)', () => {
     });
   });
 
-  // cm:guard ONE select for both settings — the queue mock above is order-sensitive, so a second read here would consume the next test's row and this assertion is what catches that.
+  // cm:guard ONE select for both settings, counted rather than inferred from the queue: an exhausted queue returns `[]` rather than throwing, so a second read would drain the queue and still leave it empty. The count is what can go red.
   it('reads the project document once', async () => {
     selectQueue.push([{ agentConfig: { pipelineConfig: { githubIntake: { enabled: true } } } }]);
     await admitGithubIssue(PROJECT);
-    expect(selectQueue).toHaveLength(0);
+    expect(selectCalls.n).toBe(1);
   });
 });
 
