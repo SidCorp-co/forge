@@ -199,12 +199,12 @@ describe('scrubLogText env-assignment redaction (ISS-412)', () => {
 });
 
 describe('testCredentials scrubbing (ISS-225)', () => {
-  it('redacts nested previewDeploy.testCredentials without touching siblings', () => {
+  it('redacts nested environments.testCredentials without touching siblings', () => {
     const event = {
       request: {
         data: {
-          previewDeploy: {
-            stagingUrl: 'https://stg.example.com',
+          environments: {
+            preview: { url: 'https://stg.example.com' },
             testCredentials: [{ label: 'qa', username: 'qa@x', password: 'p4ss' }],
           },
         },
@@ -212,10 +212,10 @@ describe('testCredentials scrubbing (ISS-225)', () => {
     };
     scrubSentryEvent(event);
     const data = event.request.data as {
-      previewDeploy: { stagingUrl: string; testCredentials: unknown };
+      environments: { preview: { url: string }; testCredentials: unknown };
     };
-    expect(data.previewDeploy.testCredentials).toBe(FILTERED);
-    expect(data.previewDeploy.stagingUrl).toBe('https://stg.example.com');
+    expect(data.environments.testCredentials).toBe(FILTERED);
+    expect(data.environments.preview.url).toBe('https://stg.example.com');
   });
 
   it('redacts top-level testCredentials inside a JSON-stringified body', () => {
@@ -346,5 +346,59 @@ describe('a minted Google access token (ISS-1036)', () => {
 
   it('does not eat an ordinary word that merely starts with ya', () => {
     expect(scrubLogText('yarn install finished')).toBe('yarn install finished');
+  });
+});
+
+/**
+ * ISS-1069 — the credentials keep being redacted after `previewDeploy` became `environments`.
+ *
+ * `SCRUB_BODY_KEYS` matches on the KEY NAME and not on a path, so the redaction survives the column
+ * rename if and only if the credentials keep that spelling. That is a property to PROVE with a
+ * planted value rather than to reason about: a scrubber that stops matching does not throw — it
+ * succeeds, and the secret goes to a log.
+ *
+ * `SCRUB_BODY_KEYS` also contains `password`, which is why a test that only watches a planted
+ * password disappear proves nothing about `testCredentials` at all: it would stay green with
+ * `testCredentials` removed from the set entirely. The assertion is that the WHOLE subtree is
+ * `[Filtered]`.
+ */
+describe('the deployment credentials, at their `environments` path', () => {
+  const PLANTED = {
+    environments: {
+      preview: { url: 'https://stg.example.com' },
+      live: { url: 'https://app.example.com', commitUrl: 'https://api.example.com/health' },
+      limits: 'the QA account reaches no other project',
+      testCredentials: [
+        { label: 'Admin', username: 'planted-qa@example.com', password: 'planted-pw-9f2' },
+      ],
+    },
+  };
+
+  function scrubbed(): Record<string, Record<string, unknown>> {
+    const body = structuredClone(PLANTED) as Record<string, Record<string, unknown>>;
+    scrubBodyKeys(body);
+    return body;
+  }
+
+  it('replaces the whole testCredentials value with [Filtered]', () => {
+    expect(scrubbed().environments.testCredentials).toBe(FILTERED);
+  });
+
+  it('leaves neither the planted username nor the planted password anywhere in the payload', () => {
+    const text = JSON.stringify(scrubbed());
+    expect(text).not.toContain('planted-qa@example.com');
+    expect(text).not.toContain('planted-pw-9f2');
+  });
+
+  // cm:guard the NEGATIVE half. A scrubber that redacted the addresses too would be safe and
+  // useless: the URLs and the limits are what an operator needs to read a card at all, and they are
+  // not secrets. This is what stops a future widening of the key set from being invisible.
+  it('leaves the live url, the preview url and the limits unredacted in the same payload', () => {
+    const out = scrubbed();
+    const env = out.environments as Record<string, Record<string, unknown>>;
+    expect(env.live.url).toBe('https://app.example.com');
+    expect(env.live.commitUrl).toBe('https://api.example.com/health');
+    expect(env.preview.url).toBe('https://stg.example.com');
+    expect(env.limits).toBe('the QA account reaches no other project');
   });
 });

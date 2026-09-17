@@ -146,6 +146,19 @@
 - **You can see the assistant think.** A turn now shows how long the model paused before answering,
   and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
 
+- **A project can now record where it is deployed, and not only where it is previewed.** The
+  Testing settings used to hold one deployment — the preview one — so the address a release
+  actually ships to was written nowhere: to verify a release, somebody had to go and read the
+  domain off the hosting console by hand, and a project with no preview at all was reported as
+  half-configured rather than as a project that simply has one box. Testing now has a Live section
+  for the address people open, the endpoint that reports the running version, and where to find the
+  version inside that endpoint's answer. Fill it once and every release of that project can be
+  verified, without touching a single deploy setting. A project with no preview side now says so
+  instead of showing a gap. And the free-text notes field has become **Limits**, which asks one
+  question — what does this environment not have? — because that is the answer a test plan needs
+  and the answer almost nobody was writing. Everything already stored is carried across, under the
+  new names, including notes, testing links and test logins.
+
 - **The assistant's replies now stream.** Your question is confirmed as soon as it is filed, the
   answer appears as it is written, and each tool call shows as its own card — kept when the room is
   reopened.

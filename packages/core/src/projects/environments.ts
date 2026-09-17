@@ -87,7 +87,12 @@ export const liveEnvironmentSchema = z
 export const environmentsPatchSchema = z
   .object({
     preview: previewEnvironmentSchema.nullable().optional(),
-    live: liveEnvironmentSchema.optional(),
+    // cm:why `live` takes JSON null as well as absence even though the READING is always an
+    // object: the two say the same thing — nothing declared about that side — and a client that
+    // clears a side by sending null would otherwise be refused for a value the normaliser already
+    // resolves. `preview` above has taken null since it was written, and the two sides answering
+    // differently to the same input is the sort of asymmetry no caller can guess.
+    live: liveEnvironmentSchema.nullable().optional(),
     testCredentials: z.array(testCredentialSchema).max(50).optional(),
     limits: z.string().trim().max(8000).nullable().optional(),
   })

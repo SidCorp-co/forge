@@ -154,6 +154,36 @@ const idParamSchema = z.object({
   id: z.uuid(),
 });
 
+/**
+ * `z.flattenError`, with the path a nested field is actually at.
+ *
+ * ISS-1069 — `flattenError` buckets every issue under its TOP-LEVEL key and throws the rest of the
+ * path away, which was survivable while this route's nested values were one level deep and stopped
+ * being so with `environments`: a bad `live.commitPath`, a missing `testCredentials[0].username`
+ * and a whitespace-only `preview.urls[2].label` all answered the operator with the same sentence,
+ * `environments: Invalid input`. A refusal that cannot say WHERE is a refusal the caller has to
+ * bisect by hand.
+ *
+ * The SHAPE is unchanged — `{ formErrors, fieldErrors }`, keyed on the top-level field — because
+ * web-v2 renders it and every other route on this file answers with it. Only the message grows the
+ * path it was always about.
+ */
+function flatten(error: z.ZodError): { formErrors: string[]; fieldErrors: Record<string, string[]> } {
+  const formErrors: string[] = [];
+  const fieldErrors: Record<string, string[]> = {};
+  for (const issue of error.issues) {
+    const [head, ...rest] = issue.path;
+    if (head === undefined) {
+      formErrors.push(issue.message);
+      continue;
+    }
+    const key = String(head);
+    const where = rest.length > 0 ? `${key}.${rest.join('.')}: ` : '';
+    (fieldErrors[key] ??= []).push(`${where}${issue.message}`);
+  }
+  return { formErrors, fieldErrors };
+}
+
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
     message: 'Invalid input',
@@ -177,7 +207,7 @@ projectRoutes.post(
   '/',
   zValidator('json', createProjectSchema, (result) => {
     if (!result.success) {
-      throw badRequest(z.flattenError(result.error));
+      throw badRequest(flatten(result.error));
     }
   }),
   async (c) => {
@@ -287,7 +317,7 @@ projectRoutes.get('/', async (c) => {
 projectRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -350,7 +380,7 @@ projectRoutes.get(
 projectRoutes.post(
   '/:id/api-key/rotate',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -399,10 +429,10 @@ projectRoutes.post(
 projectRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   zValidator('json', updateProjectPatchSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -499,7 +529,7 @@ projectRoutes.route('/', projectRunnerRoutes);
 projectRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -537,7 +567,7 @@ const ARCHIVE_PROJECTION = {
 projectRoutes.post(
   '/:id/archive',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -560,7 +590,7 @@ projectRoutes.post(
 projectRoutes.post(
   '/:id/unarchive',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -598,7 +628,7 @@ const pipelineFlagOff = () =>
 projectRoutes.get(
   '/:id/pipeline-config',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
@@ -632,10 +662,10 @@ projectRoutes.get(
 projectRoutes.patch(
   '/:id/pipeline-config',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   zValidator('json', pipelineConfigPatchSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
@@ -663,10 +693,10 @@ projectRoutes.patch(
 projectRoutes.patch(
   '/:id/plugins',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   zValidator('json', z.object({ plugins: pluginDesignationsPatchSchema }), (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -711,7 +741,7 @@ const branchConfigParamSchema = z.object({
 projectRoutes.get(
   '/:id/issues/:issueId/branch-config',
   zValidator('param', branchConfigParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id, issueId } = c.req.valid('param');
