@@ -21,9 +21,7 @@ vi.mock('../../db/client.js', () => {
   const chain = {
     where: () => chain,
     then: (resolve: (v: unknown) => unknown) =>
-      // `connectionBinding` reads connections then bindings, and a sensitive round runs it twice —
-      // once for the origin room and once for the direct room — so the answers alternate rather
-      // than switching after the first.
+      // cm:why `connectionBinding` reads connections then bindings and a sensitive round runs it twice — once for the origin room and once for the direct room — so the answers alternate rather than switching after the first
       Promise.resolve(selectCall++ % 2 === 0 ? connections() : bindings()).then(resolve),
   };
   return { db: { select: () => ({ from: () => chain }) } };
