@@ -53,10 +53,10 @@ describe('the reference a branch opens with', () => {
 // proof-by-absence ISS-1071's own F2 was filed for. What these cases prove is the ORDER of the two
 // reads and the short-circuit, which is a property of this function and not of the database.
 /** A reader that records what it was asked and answers from a fixed set. */
-function reader(opts: {
-  heldPrefixes?: string[];
-  issue?: { id: string } | undefined;
-}): { dbi: IssueRefReader; issueLookups: number } {
+function reader(opts: { heldPrefixes?: string[]; issue?: { id: string } | undefined }): {
+  dbi: IssueRefReader;
+  issueLookups: number;
+} {
   const state = { issueLookups: 0 };
   const dbi = {
     select(cols: Record<string, unknown>) {
@@ -92,9 +92,9 @@ describe('resolving a branch to an issue', () => {
   // cm:why the aliases table's own CHECK refuses `ISS`, so a project that never renamed holds NO alias row — reading only the aliases would stop every ordinary branch on every ordinary project from resolving.
   it('resolves a prefix this project has held', async () => {
     const r = reader({ heldPrefixes: ['FD'], issue: { id: 'issue-2' } });
-    await expect(resolveIssueForHeadRef({ projectId: 'p', headRef: 'FD-7-x' }, r.dbi)).resolves.toBe(
-      'issue-2',
-    );
+    await expect(
+      resolveIssueForHeadRef({ projectId: 'p', headRef: 'FD-7-x' }, r.dbi),
+    ).resolves.toBe('issue-2');
   });
 
   it('is case-insensitive about a held prefix', async () => {

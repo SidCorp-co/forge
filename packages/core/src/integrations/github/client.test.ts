@@ -106,7 +106,9 @@ describe('a read as the installation', () => {
   it('reads an enterprise host where the binding names one', async () => {
     mintOk();
     fetchMock.mockResolvedValueOnce({ ok: true, status: 200, json: async () => ({}) });
-    const client = buildRepoClient(args({ config: { apiBaseUrl: 'https://ghe.example.com/api/v3' } }));
+    const client = buildRepoClient(
+      args({ config: { apiBaseUrl: 'https://ghe.example.com/api/v3' } }),
+    );
     await client.get('/repos/x/y');
     expect(fetchMock.mock.calls[1]?.[0]).toBe('https://ghe.example.com/api/v3/repos/x/y');
   });

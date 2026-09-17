@@ -103,6 +103,7 @@ for (const decl of listIntegrations()) {
     capabilities: !caps ? undefined : {
       types: Object.fromEntries(BOOLEANS.map((k) => [k, typeOf(caps[k])])),
       canDeploy: caps.canDeploy,
+      canDispatch: caps.canDispatch,
       agentPath: {
         present: path !== undefined && path !== null,
         kind: path && path.kind,

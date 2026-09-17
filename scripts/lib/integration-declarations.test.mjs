@@ -272,18 +272,18 @@ describe('declarationFaults — canDeploy across the package boundary', () => {
 // throwing stub and all 22 verify checks would have stayed green.
 describe('declarationFaults — canDispatch against what the adapter implements', () => {
   it('passes a provider that declares dispatch and implements it', () => {
-    expect(declarationFaults({ providers: [sound()], contractCanDeploy: { coolify: true } })).toEqual(
-      [],
-    );
+    expect(
+      declarationFaults({ providers: [sound()], contractCanDeploy: { coolify: true } }),
+    ).toEqual([]);
   });
 
   it('passes a provider that declares no dispatch and implements none', () => {
     const decl = sound();
     decl.capabilities.canDispatch = false;
     decl.adapter = { present: true, dispatchOutboundType: 'undefined' };
-    expect(
-      declarationFaults({ providers: [decl], contractCanDeploy: { coolify: true } }),
-    ).toEqual([]);
+    expect(declarationFaults({ providers: [decl], contractCanDeploy: { coolify: true } })).toEqual(
+      [],
+    );
   });
 
   it('fails a provider that declares dispatch it does not implement', () => {

@@ -26,7 +26,9 @@ describe('the two reads an event invalidated', () => {
         : { mergeable: false, mergeable_state: 'dirty' },
     ) as unknown as GitHubRepoClient['get'];
 
-    await expect(readRefreshFacts(client(get), { number: 5, baseRef: 'main', headSha: HEAD })).resolves.toEqual({
+    await expect(
+      readRefreshFacts(client(get), { number: 5, baseRef: 'main', headSha: HEAD }),
+    ).resolves.toEqual({
       ok: true,
       behindBy: 7,
       aheadBy: 3,
@@ -86,13 +88,16 @@ describe('the two reads an event invalidated', () => {
     expect(out.ok === false && out.reason).toMatch(/not installed/);
   });
 
-  it('reports a network failure as a reason, so a timeout does not fail the delivery', async () => {
+  // cm:guard `toMatchObject` with a bare RegExp value does NOT assert on a string property — it was
+  // written that way here first, and a planted `reason: 'something went wrong'` left it green. Read
+  // the field and match it, which is the only shape of this assertion that can fail.
+  it('reports a network failure by its own text, so a timeout does not fail the delivery', async () => {
     const get = (async () => {
       throw new Error('The operation was aborted due to timeout');
     }) as unknown as GitHubRepoClient['get'];
-    await expect(
-      readRefreshFacts(client(get), { number: 5, baseRef: 'main', headSha: HEAD }),
-    ).resolves.toMatchObject({ ok: false, reason: /timeout/ as unknown as string });
+    const out = await readRefreshFacts(client(get), { number: 5, baseRef: 'main', headSha: HEAD });
+    expect(out.ok).toBe(false);
+    expect(out.ok === false && out.reason).toMatch(/aborted due to timeout/);
   });
 
   it('does not reach the compare when the pull read already failed', async () => {

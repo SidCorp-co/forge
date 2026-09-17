@@ -113,6 +113,13 @@
 
 
 ### Added
+- **Forge now holds what GitHub says about an issue's pull request** — branch, head, how far behind
+  it is, whether it conflicts, which checks passed, which reviews are open. Work on a green build
+  reads differently from work that conflicts.
+
+- **Reads Forge makes to GitHub are the app acting for the project, never a person's account.**
+  A project with no repository bound, or whose app was never installed, is told which.
+
 - **The assistant benchmark's judge now reads the live project.** Each judged turn carries a brief
   of the real counts, pipeline and filing rules, so a confident wrong answer fails. A question the
   project cannot be asked is recorded, not failed.

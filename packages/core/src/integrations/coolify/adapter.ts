@@ -9,9 +9,9 @@ import {
 import { recordDelivery, updateDelivery } from '../deliveries.js';
 import { findConnectionById, updateConnection } from '../store.js';
 import {
+  type DispatchingAdapterMethods,
   declareIntegration,
   type HealthCheckResult,
-  type DispatchingAdapterMethods,
   type OutboundDispatchInput,
   type OutboundDispatchResult,
 } from '../types.js';

@@ -21,7 +21,7 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { logger } from '../../logger.js';
-import { GitHubClientError, type GitHubRepoClient, GitHubReadError } from './client.js';
+import { GitHubClientError, GitHubReadError, type GitHubRepoClient } from './client.js';
 
 /**
  * How many open pull requests one base push refreshes.
@@ -50,7 +50,14 @@ interface CompareRead {
 
 /** What the two reads answered, or why they could not. */
 export type RefreshOutcome =
-  | { ok: true; behindBy: number | null; aheadBy: number | null; mergeable: boolean | null; mergeableState: string | null; baseSha: string | null }
+  | {
+      ok: true;
+      behindBy: number | null;
+      aheadBy: number | null;
+      mergeable: boolean | null;
+      mergeableState: string | null;
+      baseSha: string | null;
+    }
   | { ok: false; reason: string };
 
 /**

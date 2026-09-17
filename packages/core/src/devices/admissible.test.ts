@@ -7,7 +7,21 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const execute = vi.fn();
 
-vi.mock('../db/client.js', () => ({ db: { execute } }));
+// cm:guard the projection read is a real `db.select()` chain, so this stub answers it with no rows
+// and nothing here is a claim about the field it fills. What `pullRequests` carries, and that it is
+// carried raw, is proved against Postgres in `tests/integration/admissible-evidence-e2e.test.ts`
+// beside the `merged_at` and `branch` cases it is the third of.
+const projectionRows: unknown[] = [];
+const select = vi.fn(() => {
+  const chain = {
+    from: () => chain,
+    where: () => chain,
+    orderBy: async () => projectionRows,
+  };
+  return chain;
+});
+
+vi.mock('../db/client.js', () => ({ db: { execute, select } }));
 
 const { readAdmissibleIssues, readAdmissions } = await import('./admissible.js');
 
