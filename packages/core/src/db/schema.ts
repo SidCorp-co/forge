@@ -151,7 +151,8 @@ export const userPreferences = pgTable('user_preferences', {
   theme: text('theme').notNull().default('system'),
   language: text('language').notNull().default('en'),
   /**
-   * False suppresses in-app `mention` notifications (gated in `createNotification`).
+   * False suppresses in-app `mention` deliveries (gated in `notifications/deliver.ts#wantsDelivery`,
+   * ISS-1063: the record is the system's account of what happened and stands either way).
    * `mention` is the only user-initiated type produced, so it is the only opt-out
    * offered — no controls for channels that do not exist.
    */
