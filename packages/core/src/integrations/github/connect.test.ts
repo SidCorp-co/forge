@@ -64,9 +64,7 @@ describe('buildAppManifest', () => {
     }
   });
 
-  // cm:guard ISS-1072 — the App cannot publish `forge/issue-contract` on `checks: read`, and a
-  // manifest decides the permissions of Apps created AFTER it alone. This holds the request; the
-  // case below holds the sentence that tells an operator what to do about the App that exists.
+  // cm:guard ISS-1072 — the App cannot publish `forge/issue-contract` on `checks: read`, and a manifest decides the permissions of Apps created AFTER it alone. This holds the request; the case below holds the sentence that tells an operator what to do about the App that exists.
   it('requests `checks: write`, which is what publishing a check run needs', () => {
     expect((split().default_permissions as Record<string, string>).checks).toBe('write');
   });

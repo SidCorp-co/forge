@@ -257,10 +257,7 @@ describe('missingWorkEvidenceStrict', () => {
     expect(await missingWorkEvidenceStrict('iss-1')).toBeNull();
   });
 
-  // cm:guard this is the one difference, and it is the whole reason the function exists. The
-  // pair below runs the SAME planted failure through both entry points: the gate answers "met"
-  // so a broken check cannot freeze an advance, and the publisher raises so the check run says
-  // it could not read rather than that the criterion is satisfied.
+  // cm:guard this is the one difference, and it is the whole reason the function exists. The pair below runs the SAME planted failure through both entry points: the gate answers "met" so a broken check cannot freeze an advance, and the publisher raises so the check run says it could not read rather than that the criterion is satisfied.
   it('RAISES where the fail-open one answers `met`', async () => {
     const { db } = await import('../db/client.js');
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock override

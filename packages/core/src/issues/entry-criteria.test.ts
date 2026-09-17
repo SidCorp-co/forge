@@ -23,9 +23,7 @@ vi.mock('../db/client.js', () => ({ db: { select } }));
 const findMissingWorkEvidenceMock = vi.fn<(...args: unknown[]) => Promise<string | null>>(
   async () => null,
 );
-// cm:guard BOTH work-evidence entry points are stubbed, because `entry-criteria.ts` binds
-// each into a criteria map at module load: a mock carrying only the fail-open one makes the
-// module throw on import, which reads as the file being broken rather than the mock being short.
+// cm:guard BOTH work-evidence entry points are stubbed, because `entry-criteria.ts` binds each into a criteria map at module load: a mock carrying only the fail-open one makes the module throw on import, which reads as the file being broken rather than the mock being short.
 const missingWorkEvidenceStrictMock = vi.fn<(...args: unknown[]) => Promise<string | null>>(
   async () => null,
 );
@@ -230,10 +228,7 @@ describe('readEntryCriteriaStrict', () => {
     expect(select).not.toHaveBeenCalled();
   });
 
-  // cm:guard the config read is NOT swallowed here, and this is the assertion that says so.
-  // `resolveDeclaredEntryCriteria` turns the same throw into `[]`, which the caller would
-  // publish as "this project declares nothing" — a sentence about a project, made out of a
-  // failure to read one.
+  // cm:guard the config read is NOT swallowed here, and this is the assertion that says so. `resolveDeclaredEntryCriteria` turns the same throw into `[]`, which the caller would publish as "this project declares nothing" — a sentence about a project, made out of a failure to read one.
   it('lets a failed config read OUT, where the gate turns it into `[]`', async () => {
     readPipelineConfigMock.mockRejectedValue(new Error('connection terminated'));
     await expect(

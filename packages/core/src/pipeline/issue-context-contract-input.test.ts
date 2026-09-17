@@ -105,9 +105,7 @@ describe('deleting a handoff', () => {
     ]);
   });
 
-  // cm:guard an idempotent delete that removed nothing announces nothing. Every announcement
-  // costs one GitHub request per open pull request on the issue, and a delete that matched no
-  // row moved no evidence.
+  // cm:guard an idempotent delete that removed nothing announces nothing. Every announcement costs one GitHub request per open pull request on the issue, and a delete that matched no row moved no evidence.
   it('announces nothing when the delete matched no row', async () => {
     deletedRows = [];
     expect(

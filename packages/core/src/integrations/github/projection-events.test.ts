@@ -88,9 +88,7 @@ describe('the pull_request arm publishes', () => {
 });
 
 describe('the arms that must not publish', () => {
-  // cm:guard this is criterion 41, and it is the one assertion that stops a delivery loop.
-  // Forge's OWN check run arrives back as a `check_run` delivery; publishing on it republishes
-  // on its own echo, forever, and a check run moves nothing the tracker's contract answers.
+  // cm:guard this is criterion 41, and it is the one assertion that stops a delivery loop. Forge's OWN check run arrives back as a `check_run` delivery; publishing on it republishes on its own echo, forever, and a check run moves nothing the tracker's contract answers.
   it('publishes nothing on a `check_run` delivery, which is Forge`s own run coming back', async () => {
     await applyProjectedEvent(ctx, 'check_run', {
       action: 'completed',

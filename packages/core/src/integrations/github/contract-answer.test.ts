@@ -82,9 +82,7 @@ describe('the two answers that judge nothing are not the same answer', () => {
     expect(answer.kind).toBe('none-declared');
   });
 
-  // cm:guard this is the assertion the whole discriminated result exists for. Were the read
-  // swallowed the way the gate swallows it, this same input would answer `none-declared` —
-  // a published sentence about a project's settings, built out of a database that did not answer.
+  // cm:guard this is the assertion the whole discriminated result exists for. Were the read swallowed the way the gate swallows it, this same input would answer `none-declared` — a published sentence about a project's settings, built out of a database that did not answer.
   it('is `unreadable` where the declaration could not be read, never `none-declared`', async () => {
     readStrict.mockRejectedValue(new Error('connection terminated'));
     const answer = await contractAnswerForIssue(ISSUE_ID);
@@ -118,9 +116,7 @@ describe('the two answers that judge nothing are not the same answer', () => {
 });
 
 describe('the answer never costs the check run', () => {
-  // cm:guard `contractAnswerForIssue` is called mid-publish, inside the advisory lock. A throw
-  // there aborts the publish, so the failure to read the contract would cost the whole check
-  // run — and a missing check run is the silence this change exists to remove.
+  // cm:guard `contractAnswerForIssue` is called mid-publish, inside the advisory lock. A throw there aborts the publish, so the failure to read the contract would cost the whole check run — and a missing check run is the silence this change exists to remove.
   it('does not throw for anything the reads can do', async () => {
     readStrict.mockRejectedValue('a string, not an Error');
     const answer = await contractAnswerForIssue(ISSUE_ID);

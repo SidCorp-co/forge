@@ -37,9 +37,7 @@ describe('nothing on the publish path runs on a clock', () => {
     }
   });
 
-  // cm:guard the sweeper is the one place in this repo where work happens on a tick, so a
-  // publish reached from it would be polling however it was spelled. This asserts the import
-  // does not exist rather than that the tick behaves — an import is what a reader can check.
+  // cm:guard the sweeper is the one place in this repo where work happens on a tick, so a publish reached from it would be polling however it was spelled. This asserts the import does not exist rather than that the tick behaves — an import is what a reader can check.
   it('no sweeper, scheduler or worker imports the publish entry point', () => {
     const scheduled = readdirSync(join(CORE_SRC, 'pipeline'))
       .filter((name) => /sweeper|schedule|worker|monitor|tick/i.test(name))
@@ -52,8 +50,7 @@ describe('nothing on the publish path runs on a clock', () => {
     }
   });
 
-  // cm:guard the subscribers are registered from `eager-subscribers.ts` and nowhere else, which
-  // is what makes "every publish hangs off an event somebody else emitted" checkable.
+  // cm:guard the subscribers are registered from `eager-subscribers.ts` and nowhere else, which is what makes "every publish hangs off an event somebody else emitted" checkable.
   it('registers the subscribers from the hooks-bus registrar alone', () => {
     const registrar = read('eager-subscribers.ts');
     expect(registrar).toContain('registerContractCheckSubscribers');

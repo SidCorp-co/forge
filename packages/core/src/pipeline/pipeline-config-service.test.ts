@@ -191,9 +191,7 @@ describe('updatePipelineConfig — CONFIG_CONFLICT (merged-document rules)', () 
 describe('updatePipelineConfig — contractInputChanged', () => {
   const PROJECT = '00000000-0000-0000-0000-000000000001';
 
-  // cm:guard the emit carries NO issue, and that absence is what makes the subscriber fan out
-  // over the project rather than over one issue. Naming an issue here would make a project's
-  // own settings save the one contract change that never reached a check run.
+  // cm:guard the emit carries NO issue, and that absence is what makes the subscriber fan out over the project rather than over one issue. Naming an issue here would make a project's own settings save the one contract change that never reached a check run.
   it('announces a change to `statusEntryCriteria`, naming the project and no issue', async () => {
     pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
     pushSelect([
@@ -210,9 +208,7 @@ describe('updatePipelineConfig — contractInputChanged', () => {
     expect(heard[0]?.issueId).toBeUndefined();
   });
 
-  // cm:guard a patch about something else must NOT republish. Every announcement costs one
-  // GitHub request per open pull request on the project, and a stage's model moving changes
-  // nothing the contract's answer reads.
+  // cm:guard a patch about something else must NOT republish. Every announcement costs one GitHub request per open pull request on the project, and a stage's model moving changes nothing the contract's answer reads.
   it('stays silent for a patch that names something else entirely', async () => {
     pushSelect([{ agentConfig: { pipelineConfig: {} } }]);
     pushSelect([{ agentConfig: { pipelineConfig: { lockedSkills: ['forge-drive'] } } }]);

@@ -74,9 +74,7 @@ describe('the declaration and the implementation agree', () => {
     expect(githubIntegration.capabilities.canDispatch).toBe(true);
   });
 
-  // cm:guard `registry.ts:dispatchThrough` refuses a provider whose adapter implements no
-  // outbound dispatch, by name. This asserts github is no longer in that set — which is the
-  // whole of criterion 2, and it goes red the moment the method is dropped.
+  // cm:guard `registry.ts:dispatchThrough` refuses a provider whose adapter implements no outbound dispatch, by name. This asserts github is no longer in that set — which is the whole of criterion 2, and it goes red the moment the method is dropped.
   it('is reachable through `dispatchThrough` instead of its "implements no outbound" refusal', async () => {
     const result = await dispatchThrough('github', ctx, {
       eventName: CHECK_PUBLISH_EVENT,
@@ -104,8 +102,7 @@ describe('what it refuses, and by what name', () => {
     ).rejects.toThrow(/Merging/);
   });
 
-  // cm:guard the refusal is RECORDED as well as thrown, and against a NULL binding rather than
-  // the dead one: a row scoped to a binding that is gone is a row nothing will list.
+  // cm:guard the refusal is RECORDED as well as thrown, and against a NULL binding rather than the dead one: a row scoped to a binding that is gone is a row nothing will list.
   it('refuses a project with no active binding, and writes that refusal to the log', async () => {
     bindingRows = [];
     await expect(

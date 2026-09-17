@@ -82,9 +82,7 @@ describe('a merged mark announces its own contract input', () => {
     ]);
   });
 
-  // cm:guard the CLEAR announces too, and it is the direction that matters most: a check left
-  // saying `success` because of a mark that has since been retracted is a green that is now a
-  // claim about nothing.
+  // cm:guard the CLEAR announces too, and it is the direction that matters most: a check left saying `success` because of a mark that has since been retracted is a green that is now a claim about nothing.
   it('announces an unmark in its own words, never the mark`s', async () => {
     await applyMergeMarker({
       issue: { ...issue, mergedAt: new Date() },

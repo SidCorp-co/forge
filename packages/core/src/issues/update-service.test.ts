@@ -200,16 +200,13 @@ describe('contractInputChanged', () => {
     expect(heard).toHaveLength(1);
   });
 
-  // cm:guard a write of a field no criterion reads announces NOTHING. Every announcement fans
-  // out to a network call per open pull request, so announcing a title edit would spend a
-  // GitHub rate limit on a change the contract's answer cannot see.
+  // cm:guard a write of a field no criterion reads announces NOTHING. Every announcement fans out to a network call per open pull request, so announcing a title edit would spend a GitHub rate limit on a change the contract's answer cannot see.
   it('stays silent for a field no declared criterion reads', async () => {
     await updateIssueFields({ issueId: ISSUE_ID, updates: { title: 't' }, actor: ACTOR });
     expect(heard).toEqual([]);
   });
 
-  // cm:guard the emit is AFTER the transaction. A failed write must not announce a move that
-  // did not happen, or the check republishes an answer nothing changed.
+  // cm:guard the emit is AFTER the transaction. A failed write must not announce a move that did not happen, or the check republishes an answer nothing changed.
   it('announces nothing when the write itself failed', async () => {
     txUpdateReturning.mockResolvedValue([]);
     await expect(
