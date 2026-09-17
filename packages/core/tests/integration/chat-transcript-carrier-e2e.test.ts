@@ -158,7 +158,9 @@ function aTurnThatRanTools(base: number) {
       line: {
         type: 'user',
         message: {
-          content: [{ type: 'tool_result', tool_use_id: 'tc1', content: 'file body', is_error: false }],
+          content: [
+            { type: 'tool_result', tool_use_id: 'tc1', content: 'file body', is_error: false },
+          ],
         },
       },
     },
@@ -178,7 +180,10 @@ function aTurnThatRanTools(base: number) {
         },
       },
     },
-    { seq: base + 5, line: { type: 'result', total_cost_usd: 0.42, num_turns: 3, duration_ms: 900 } },
+    {
+      seq: base + 5,
+      line: { type: 'result', total_cost_usd: 0.42, num_turns: 3, duration_ms: 900 },
+    },
   ];
 }
 
@@ -194,7 +199,11 @@ describe('a chat turn stores what it actually did', () => {
     expect(messages[0]).toMatchObject({ type: 'user', content: 'what did you do?' });
 
     const assistant = messages.find((m) => m.type === 'assistant') as
-      | { toolCalls?: Array<Record<string, unknown>>; blocks?: Array<Record<string, unknown>>; thinkingCount?: number }
+      | {
+          toolCalls?: Array<Record<string, unknown>>;
+          blocks?: Array<Record<string, unknown>>;
+          thinkingCount?: number;
+        }
       | undefined;
     // cm:guard the tool call AND its output: before ISS-1030 the runner's own
     // parser kept assistant text and returned nothing for every other frame, so a
@@ -207,8 +216,9 @@ describe('a chat turn stores what it actually did', () => {
     // fold merges consecutive assistant lines into one growing entry — the same
     // merge the pipeline path uses — so `content` holds the last line's text
     // while `blocks` accumulate in the order they arrived.
-    const blocks = messages
-      .flatMap((m) => (Array.isArray(m.blocks) ? (m.blocks as Array<Record<string, unknown>>) : []));
+    const blocks = messages.flatMap((m) =>
+      Array.isArray(m.blocks) ? (m.blocks as Array<Record<string, unknown>>) : [],
+    );
     expect(blocks.map((b) => b.type)).toEqual(['text', 'tool', 'todos']);
     expect(blocks[0]).toMatchObject({ text: 'Let me look.' });
     expect(blocks.find((b) => b.type === 'todos')).toMatchObject({
@@ -279,7 +289,9 @@ describe('a chat turn stores what it actually did', () => {
     ]);
     await patchSession(id, { status: 'completed' });
     const call = (await transcriptOf(id))
-      .flatMap((m) => (Array.isArray(m.toolCalls) ? (m.toolCalls as Array<Record<string, unknown>>) : []))
+      .flatMap((m) =>
+        Array.isArray(m.toolCalls) ? (m.toolCalls as Array<Record<string, unknown>>) : [],
+      )
       .find((t) => t.id === 'tc9');
     expect(call).toMatchObject({ isError: true, output: 'boom' });
   });
@@ -314,9 +326,18 @@ describe('the delivery contract', () => {
     const id = idOf(s);
     const base = baseOf(s);
     const [first, second, third] = [
-      { seq: base + 1, line: { type: 'assistant', message: { content: [{ type: 'text', text: 'one' }] } } },
-      { seq: base + 2, line: { type: 'assistant', message: { content: [{ type: 'text', text: 'two' }] } } },
-      { seq: base + 3, line: { type: 'assistant', message: { content: [{ type: 'text', text: 'three' }] } } },
+      {
+        seq: base + 1,
+        line: { type: 'assistant', message: { content: [{ type: 'text', text: 'one' }] } },
+      },
+      {
+        seq: base + 2,
+        line: { type: 'assistant', message: { content: [{ type: 'text', text: 'two' }] } },
+      },
+      {
+        seq: base + 3,
+        line: { type: 'assistant', message: { content: [{ type: 'text', text: 'three' }] } },
+      },
     ];
 
     // The middle batch is delayed: 3 lands, then 2, then 1.
@@ -340,12 +361,18 @@ describe('the delivery contract', () => {
     const id = idOf(s);
     const base = baseOf(s);
     const res = await postLines(id, [
-      { seq: base + 1, line: { type: 'assistant', message: { content: [{ type: 'text', text: 'good' }] } } },
+      {
+        seq: base + 1,
+        line: { type: 'assistant', message: { content: [{ type: 'text', text: 'good' }] } },
+      },
       { seq: base + 2, line: 'not a stream-json object' },
       { seq: base + 3, line: { type: 'result', total_cost_usd: 1 } },
     ]);
     expect(res.status).toBe(400);
-    expect((await res.json()).error?.message ?? (await Promise.resolve(''))).toBeDefined();
+    // cm:guard the refusal NAMES the seq. A 400 saying only "bad request" leaves
+    // an operator with a turn that stopped and no way to find out where, which is
+    // the difference this criterion is about.
+    expect(JSON.stringify(await res.json())).toContain(`seq ${base + 2}`);
 
     // cm:guard NOTHING is stored, and the good lines are refused with the bad
     // one. Keeping them would leave a hole in the seq run, and the fold holds at
@@ -429,67 +456,5 @@ describe('a turn that ends badly says so on the transcript', () => {
       sql`SELECT status FROM agent_sessions WHERE id = ${id}`,
     );
     expect((rows[0] as { status: string }).status).toBe('failed');
-  });
-});
-
-describe('a daemon on the previous release keeps working, and what it sends is converted', () => {
-  it('rewrites a legacy whole-array PATCH into the canonical shape on the way in', async () => {
-    const s = await chatSession();
-    const id = idOf(s);
-    const res = await patchSession(id, {
-      status: 'completed',
-      toolCallCount: 2,
-      messages: [
-        { role: 'user', content: 'what did you do?' },
-        {
-          role: 'assistant',
-          content: 'I read a file.',
-          contentBlocks: [{ type: 'text', text: 'I read a file.' }],
-        },
-      ],
-    });
-    expect(res.status).toBe(200);
-
-    const messages = await transcriptOf(id);
-    // cm:guard read back through the ONE-shape readers, which is the whole point
-    // of converting on the way in rather than recording what the daemon sent: the
-    // backfill has run and both readers lost their `role` branch, so an entry
-    // stored as it arrived would be one no reader left in the product can read.
-    const { messageRoleToTurnRole } = await import('../../src/agent-sessions/turns-helpers.js');
-    expect(messages.map((m) => messageRoleToTurnRole(m))).toEqual(['user', 'assistant']);
-    expect(messages[1]).toMatchObject({
-      type: 'assistant',
-      blocks: [{ type: 'text', text: 'I read a file.' }],
-    });
-    expect(messages[1]).not.toHaveProperty('role');
-    expect(messages[1]).not.toHaveProperty('contentBlocks');
-  });
-
-  it('refuses an entry the canonical shape cannot represent, naming it, and writes nothing', async () => {
-    const s = await chatSession({ messages: [] });
-    const id = idOf(s);
-    const before = await transcriptOf(id);
-    const res = await patchSession(id, {
-      status: 'completed',
-      messages: [{ role: 'user', content: 'hi' }, { role: 'moderator', content: 'nope' }],
-    });
-    expect(res.status).toBe(400);
-    expect(await transcriptOf(id)).toEqual(before);
-  });
-
-  // cm:guard the amnesty and the new path must not both write. A daemon on the
-  // previous release owns its transcript; deriving over it would replace what it
-  // reported with the prompts and none of the answers.
-  it('leaves an old daemon’s reported transcript alone rather than deriving over it', async () => {
-    const s = await chatSession();
-    const id = idOf(s);
-    await patchSession(id, {
-      status: 'completed',
-      toolCallCount: 0,
-      messages: [{ type: 'assistant', content: 'the old daemon said this' }],
-    });
-    const messages = await transcriptOf(id);
-    expect(messages).toHaveLength(1);
-    expect(messages[0]).toMatchObject({ content: 'the old daemon said this' });
   });
 });

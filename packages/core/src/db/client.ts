@@ -6,6 +6,7 @@ import * as baseSchema from './schema.js';
 import * as activitySchema from './schema-activity.js';
 import * as adminThresholdsSchema from './schema-admin-thresholds.js';
 import * as agentSelvesSchema from './schema-agent-selves.js';
+import * as agentSessionEventsSchema from './schema-agent-session-events.js';
 import * as conversationsSchema from './schema-conversations.js';
 import * as journalSchema from './schema-journal.js';
 import * as memoryChunksSchema from './schema-memory-chunks.js';
@@ -27,6 +28,7 @@ const schema = {
   ...journalSchema,
   ...questionsSchema,
   ...rocketchatSchema,
+  ...agentSessionEventsSchema,
   ...sessionInboxSchema,
   ...memoryChunksSchema,
   ...memoryRevisionsSchema,

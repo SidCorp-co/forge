@@ -9,6 +9,7 @@ export default defineConfig({
     './src/db/schema-journal.ts',
     './src/db/schema-questions.ts',
     './src/db/schema-rocketchat.ts',
+    './src/db/schema-agent-session-events.ts',
     './src/db/schema-session-inbox.ts',
     './src/db/schema-speaker-links.ts',
     './src/db/schema-memory-chunks.ts',

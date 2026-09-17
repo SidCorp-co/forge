@@ -33,10 +33,9 @@ beforeAll(async () => {
   process.env.NODE_ENV ??= 'test';
   process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
   process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-  ({
-    backfillCanonicalTranscripts: backfill,
-    revertCanonicalTranscripts: revert,
-  } = await import('../../src/db/backfill-canonical-transcripts.js'));
+  ({ backfillCanonicalTranscripts: backfill, revertCanonicalTranscripts: revert } = await import(
+    '../../src/db/backfill-canonical-transcripts.js'
+  ));
 }, 60_000);
 
 afterAll(async () => {

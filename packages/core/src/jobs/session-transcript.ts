@@ -35,7 +35,8 @@ import {
 } from '../agent-sessions/broadcast.js';
 import { syncTurnsWithMessages } from '../agent-sessions/turns-helpers.js';
 import { db } from '../db/client.js';
-import { agentSessionEvents, agentSessions, jobEvents } from '../db/schema.js';
+import { agentSessions, jobEvents } from '../db/schema.js';
+import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { finalizedMerge } from '../db/transcript-marker.js';
 import {
   type AgentMessage,

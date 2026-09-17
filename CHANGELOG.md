@@ -112,6 +112,19 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A chat with your agent now shows the work, not just the answer.** Until now a chat transcript
+  kept the assistant's words and threw everything else away — you could read what it said and never
+  find out which files it opened, which commands it ran, what came back, what failed, what it was
+  planning, or what the turn cost. A run started from the pipeline recorded all of that; the same
+  agent, asked the same thing in a chat, recorded none of it. Chats now keep the same record: every
+  tool with its result, the ones that failed marked as failed, how long each took, the turn's
+  to-do list, its pauses, and the run's totals. Old conversations are carried over as they were and
+  keep reading exactly as they did.
+
+- **A chat turn that stops recording now says so.** If a turn's output cannot be stored, the
+  conversation says that it stopped and where, instead of ending in mid-sentence and looking
+  finished. A turn cannot be reported as complete while any of what it said is still undelivered.
+
 - **Six tables that only ever grew now have a retention rule and a nightly sweep.** The operator
   sets each window, and the sweep reports what it removed and kept. The runner Activity
   panel says how long that history lasts.
@@ -2312,6 +2325,12 @@
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
 ### Removed
+- **The second, unused chat endpoint is gone.** The product had two ways to hold a conversation
+  with the assistant: the one the Forge UI uses, and an older one nothing in the product ever
+  called. Keeping both meant two places where a change to how the assistant speaks had to be made,
+  and one of them was never exercised. The unused one has been removed, along with the switch that
+  turned it on; nothing you can do in the product went with it.
+
 
 - **GitHub issues are no longer copied into your project, and no GitHub event changes or closes a
   Forge issue.** A project that wants outside reports admits them once, through a setting that

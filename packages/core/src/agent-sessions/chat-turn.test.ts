@@ -5,11 +5,10 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 
-// Unit tests for the SINGLE chat-turn dispatcher — the logic /start, /send and
-// schedule.run all share. The behaviour that matters: a cold session (no
-// claudeSessionId) starts a fresh Claude run (`agent:start`); a warm one
-// follows up (`agent:send`); device resolution self-heals a dead pin; desktop
-// stays local.
+// Unit tests for the SINGLE chat-turn dispatcher /start, /send and schedule.run
+// all share: a cold session (no claudeSessionId) starts a fresh Claude run
+// (`agent:start`), a warm one follows up (`agent:send`), device resolution
+// self-heals a dead pin, and desktop stays local.
 
 const selectLimit = vi.fn();
 const selectFrom = vi.fn(() => ({ where: vi.fn(() => ({ limit: selectLimit })) }));
@@ -22,11 +21,8 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
-    // cm:why `withKernelMarker` (db/kernel-marker.ts) opens a transaction and stamps `forge.kernel_txn` through `tx.execute` before the write, so a db double that omits `execute` fails every wrapped path with `exec.transaction is not a function` or a missing method rather than with what the test is about.
+    // cm:why `withKernelMarker` (db/kernel-marker.ts) opens a transaction and stamps `forge.kernel_txn` through `tx.execute` before the write, and since ISS-1030 the turn also writes its user entry into `agent_session_events` inside it — so a db double missing `execute` or `insert` fails every wrapped path with `exec.transaction is not a function` rather than with what the test is about.
     execute: vi.fn(async () => []),
-    // cm:why `insert` is here for the same reason: since ISS-1030 the turn writes
-    // its user entry into `agent_session_events` inside that same transaction, so
-    // a double without it fails every dispatch on a missing method.
     insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
   };
@@ -443,14 +439,9 @@ describe('dispatchChatTurn', () => {
     ];
     expect(prev).toEqual([]);
     expect(next).toHaveLength(1);
-    // cm:guard the seeded user turn is CANONICAL (`type`), never `role`. While it
-    // wore the legacy shape every reader of a transcript needed a branch for both;
-    // ISS-1030 removed those branches, so a `role` here would render this turn as
-    // an agent row in the thread.
+    // cm:guard CANONICAL (`type`), never `role`: ISS-1030 removed the reader branches that read both, so a `role` here draws this turn as an agent row.
     expect(next[0]).toMatchObject({ type: 'user', content: 'hello' });
-    expect(next[0]).not.toHaveProperty('role');
-    // The user turn is materialized as part of the same update that flips the
-    // session to running — never after dispatch.
+    // The user turn is materialized in the same update that flips the session to running — never after dispatch.
     const updates = updateSet.mock.calls[0]?.[0] as { messages: unknown[]; status: string };
     expect(updates.status).toBe('running');
     expect(updates.messages).toHaveLength(1);

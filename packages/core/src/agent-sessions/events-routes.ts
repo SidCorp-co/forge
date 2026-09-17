@@ -17,7 +17,8 @@ import { Hono } from 'hono';
 import { HTTPException } from 'hono/http-exception';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessionEvents, terminalAgentSessionStatuses } from '../db/schema.js';
+import { terminalAgentSessionStatuses } from '../db/schema.js';
+import { agentSessionEvents } from '../db/schema-agent-session-events.js';
 import { maybeDeriveIncrementalFor } from '../jobs/session-transcript.js';
 import type { AuthVars } from '../middleware/auth.js';
 import {

@@ -15,7 +15,6 @@ import {
   terminalAgentSessionStatuses,
   usageRecords,
 } from '../db/schema.js';
-import { deriveChatTurnFinal } from '../jobs/session-transcript.js';
 import { assertProjectRole, loadProjectAccess, loadVisibleProjectIds } from '../lib/authz.js';
 import { fromPage, listResponse } from '../lib/pagination.js';
 import { logger } from '../logger.js';
@@ -33,13 +32,13 @@ import {
   usageTotalsSelection,
 } from '../usage-records/rollup.js';
 import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from './broadcast.js';
-import { toCanonicalMessages } from './canonical-legacy.js';
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
 import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
+import { applyTranscriptPatch } from './patch-transcript.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
 import {
   BLIND_SCHEDULE_RUN_REASON,
@@ -61,7 +60,6 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
-import { recordTurnError } from './session-events.js';
 import { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } from './session-failure.js';
 import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
@@ -585,42 +583,15 @@ agentSessionRoutes.patch(
       assertSessionOwnerOrAdmin(existing, access, userId);
     }
 
-    // cm:guard the error a failed turn reports becomes a transcript entry HERE,
-    // written into the carrier so the fold puts it in its place in the
-    // conversation. It is written before the derive below, which is what makes it
-    // appear on the transcript this PATCH persists rather than on the next one.
-    if (patch.turnError !== undefined && c.get('principal') === 'device') {
-      await recordTurnError(id, patch.turnError);
-    }
-
-    // cm:guard the turn's authoritative derive runs BEFORE the write and before
-    // the bridges, and both orderings matter. Before the write, because the
-    // blind-schedule rule below reads how many tools this run called off the
-    // transcript, and a transcript as of the last throttled flush is missing the
-    // tail of the turn. Before the bridges, because a bridge builds what it
-    // delivers from `agent_sessions.messages`.
-    // cm:edge lockstep -> packages/core/src/jobs/session-transcript.ts — the chat
-    // path's counterpart of `deriveSessionFinal`, which the pipeline path fires
-    // from `jobs/lifecycle-routes.ts` on job terminal.
-    // cm:guard the gate is "this terminal patch carries NOTHING only a daemon on
-    // the previous release sends", and it is the whole compatibility story in one
-    // condition. That daemon reports its own transcript in `messages` and its own
-    // tool count in `toolCallCount`; a daemon on this release sends neither,
-    // because its lines went to the carrier and the transcript can count for
-    // itself. Widening this to every terminal patch would derive over a session
-    // whose carrier holds prompts alone and replace that daemon's transcript with
-    // the questions and none of the answers.
-    let derivedTranscript = false;
-    if (
-      patch.status !== undefined &&
-      TERMINAL_SESSION_STATUSES.has(patch.status) &&
-      patch.messages === undefined &&
-      patch.toolCallCount === undefined &&
-      c.get('principal') === 'device'
-    ) {
-      derivedTranscript = await deriveChatTurnFinal(id);
-      if (derivedTranscript) existing = await loadSessionOr404(id);
-    }
+    const transcript = await applyTranscriptPatch({
+      sessionId: id,
+      isDevice: c.get('principal') === 'device',
+      isTerminal: patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status),
+      patch,
+    });
+    const patchedMessages = transcript.messages;
+    const derivedTranscript = transcript.derived;
+    if (derivedTranscript) existing = await loadSessionOr404(id);
 
     const patchNow = new Date();
     const updates: Record<string, unknown> = { updatedAt: patchNow };
@@ -632,33 +603,15 @@ agentSessionRoutes.patch(
       updates.runtimeState = patch.runtimeState;
     }
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
-    // cm:hack ISS-1030 until: no device below the runner release carrying the
-    // raw-line route has reported in 30 days, read off `devices.version` and
-    // `devices.lastSeenAt` — then this branch and `messages` on `patchSchema` go,
-    // and a PATCH carrying `messages` is refused outright.
-    // cm:guard the price of the amnesty is that it CONVERTS rather than records.
-    // Recording what an un-upgraded daemon sends is what would break the whole
-    // change: the backfill runs, both readers lose their `role` branch, and the
-    // next PATCH from an old box writes legacy entries that nothing left in the
-    // product can read — one criterion green while three go red. The converter is
-    // the same one the migration calls, on purpose; a second set of rules here is
-    // the divergence this issue exists to end.
-    // cm:edge lockstep -> packages/core/src/agent-sessions/canonical-legacy.ts
-    let patchedMessages: Record<string, unknown>[] | undefined;
-    if (patch.messages !== undefined) {
-      const canonical = toCanonicalMessages(patch.messages);
-      if (!canonical.ok) {
-        throw new HTTPException(400, {
-          message: `messages[${canonical.index}] ${canonical.why}`,
-          cause: { code: 'UNREPRESENTABLE_ENTRY', details: canonical },
-        });
-      }
-      patchedMessages = canonical.messages;
-      updates.messages = patchedMessages;
-    }
     if (patch.usage !== undefined) updates.usage = patch.usage;
     if (patch.metadata !== undefined) updates.metadata = patch.metadata;
     if (patch.diff !== undefined) updates.diff = patch.diff;
+    // cm:guard the transcript this PATCH persists is the CONVERTED one, never
+    // the array as it arrived: `applyTranscriptPatch` has already rewritten a
+    // daemon-on-the-previous-release's legacy entries into the canonical shape,
+    // and writing `patch.messages` here would put back exactly the entries no
+    // reader left in the product can read.
+    if (patchedMessages !== undefined) updates.messages = patchedMessages;
 
     // cm:guard any worker-side write is a heartbeat signal and CASes queued→running, but a park is NOT activity. `awaiting_input` deliberately does not bump `lastHeartbeatAt` — a session waiting on a human is not progressing, and stamping it healthy is the exact shape `VISION: state-never-lies` forbids. The heartbeat hop exempts the park by READING the state (`jobs/loop-monitor.ts`), never by being told the session is alive.
     const isWorkerActivity =

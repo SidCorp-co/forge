@@ -88,7 +88,7 @@ vi.mock('../runners/apply-runner-limit.js', () => ({
 }));
 
 const { isBlindScheduleRun, BLIND_SCHEDULE_RUN_REASON, countTranscriptToolCalls } = await import(
-  './schedule-evidence.js',
+  './schedule-evidence.js'
 );
 const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
@@ -339,17 +339,25 @@ describe('countTranscriptToolCalls — the transcript answers what a run called'
   it('does not double-count a call that appears in both fields', () => {
     expect(
       countTranscriptToolCalls([
-        { type: 'assistant', blocks: [{ type: 'tool', toolCall: { id: 'a' } }], toolCalls: [{ id: 'a' }] },
+        {
+          type: 'assistant',
+          blocks: [{ type: 'tool', toolCall: { id: 'a' } }],
+          toolCalls: [{ id: 'a' }],
+        },
       ]),
     ).toBe(1);
   });
 
   it('falls back to bare toolCalls on a turn carrying no ordered blocks', () => {
-    expect(countTranscriptToolCalls([{ type: 'assistant', toolCalls: [{ id: 'a' }, { id: 'b' }] }])).toBe(2);
+    expect(
+      countTranscriptToolCalls([{ type: 'assistant', toolCalls: [{ id: 'a' }, { id: 'b' }] }]),
+    ).toBe(2);
   });
 
   it('answers 0 for a turn that called nothing, and undefined where there is no transcript', () => {
-    expect(countTranscriptToolCalls([{ type: 'assistant', content: 'Backlog reviewed: 47 issues.' }])).toBe(0);
+    expect(
+      countTranscriptToolCalls([{ type: 'assistant', content: 'Backlog reviewed: 47 issues.' }]),
+    ).toBe(0);
     expect(countTranscriptToolCalls(null)).toBeUndefined();
     expect(countTranscriptToolCalls(undefined)).toBeUndefined();
   });
