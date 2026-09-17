@@ -26,10 +26,7 @@ import type { RocketChatBindingConfig, RocketChatConfig } from './types.js';
 /**
  * Where a round goes, or why it goes nowhere.
  */
-// cm:guard `unresolvable` is a DESTINATION and not an error, which is what keeps the caller honest:
-// a resolver that threw would leave "post it to the project room" as the natural catch, and that
-// fallback is the defect. `anchorId` is null on the project lane because there is no message there
-// to hang a thread off — the post's own receipt becomes the root instead (ISS-1091 criteria 9, 11).
+// cm:guard `unresolvable` is a DESTINATION and not an error, which is what keeps the caller honest: a resolver that threw would leave "post it to the project room" as the natural catch, and that fallback is the defect. `anchorId` is null on the project lane because there is no message there to hang a thread off — the post's own receipt becomes the root instead (ISS-1091 criteria 9, 11).
 export type QuestionDestination =
   | {
       kind: 'room';
@@ -43,10 +40,7 @@ export type QuestionDestination =
   | { kind: 'unresolvable'; reason: string };
 
 /** The shapes `postRoomMessage` raises when the room is not one this bot can post in. */
-// cm:edge contract -> packages/core/src/integrations/rocketchat/rest-client.ts — `postRoomMessage`
-// throws `chat.postMessage failed with status <n>` on a non-2xx and `chat.postMessage rejected:
-// <error>` on Rocket.Chat's own refusal, and these are the two strings matched. A change to either
-// sentence turns a room this bot has been removed from back into eight retries and a silence.
+// cm:edge contract -> packages/core/src/integrations/rocketchat/rest-client.ts — `postRoomMessage` throws `chat.postMessage failed with status <n>` on a non-2xx and `chat.postMessage rejected: <error>` on Rocket.Chat's own refusal, and these are the two strings matched. A change to either sentence turns a room this bot has been removed from back into eight retries and a silence.
 const UNREACHABLE_ROOM_ERRORS = [
   'error-not-allowed',
   'error-room-not-found',
@@ -61,10 +55,7 @@ const UNREACHABLE_ROOM_ERRORS = [
 /**
  * Is this post failure a room this bot cannot reach, rather than one to retry?
  */
-// cm:guard a room the bot has been REMOVED from still has a live binding naming it, so the
-// destination resolves and the post is what refuses. Counted as a retryable failure it burns
-// `MAX_ATTEMPTS` and then stops being owed with nobody told — the round quietly ceases to exist,
-// which is the one failure this lane may not have (ISS-1091 criterion 13).
+// cm:guard a room the bot has been REMOVED from still has a live binding naming it, so the destination resolves and the post is what refuses. Counted as a retryable failure it burns `MAX_ATTEMPTS` and then stops being owed with nobody told — the round quietly ceases to exist, which is the one failure this lane may not have (ISS-1091 criterion 13).
 export function isUnreachableRoom(err: unknown): boolean {
   const text = (err instanceof Error ? err.message : String(err)).toLowerCase();
   if (!text.includes('chat.postmessage')) return false;
@@ -72,11 +63,7 @@ export function isUnreachableRoom(err: unknown): boolean {
 }
 
 /** Which connection binds this room, under this project, on this server. */
-// cm:guard the BINDING decides, not the server: one installation can be served by two Forge
-// connections under two bot accounts, and the binding must also name THIS venue's project, because a
-// conversation outlives the binding that opened it — the same rule `conversation-port.ts:authForVenue`
-// states for its own credential choice. Ordered by id so two legitimate candidates answer the same
-// way twice running.
+// cm:guard the BINDING decides, not the server: one installation can be served by two Forge connections under two bot accounts, and the binding must also name THIS venue's project, because a conversation outlives the binding that opened it — the same rule `conversation-port.ts:authForVenue` states for its own credential choice. Ordered by id so two legitimate candidates answer the same way twice running.
 async function connectionBinding(
   namespace: string,
   rid: string,
@@ -132,12 +119,7 @@ export interface DestinationInput {
 /**
  * Where this round goes.
  */
-// cm:guard the order is the contract. The question's OWN registered thread wins over everything,
-// because one decision is one thread and `rcq_threads_question_idx` makes a second one
-// unrepresentable — so a round whose destination would now differ is refused by name rather than
-// opening one (criteria 8, 9). Only a question with NO origin at all reaches `roomForProject`; an
-// `unresolved` origin is a conversation whose venue could not be read, and routing that to the
-// project room is the exact failure this issue is about (criteria 11, 16).
+// cm:guard the order is the contract. The question's OWN registered thread wins over everything, because one decision is one thread and `rcq_threads_question_idx` makes a second one unrepresentable — so a round whose destination would now differ is refused by name rather than opening one (criteria 8, 9). Only a question with NO origin at all reaches `roomForProject`; an `unresolved` origin is a conversation whose venue could not be read, and routing that to the project room is the exact failure this issue is about (criteria 11, 16).
 export async function resolveQuestionDestination(
   input: DestinationInput,
 ): Promise<QuestionDestination> {
@@ -145,9 +127,7 @@ export async function resolveQuestionDestination(
   const wantsDirect = input.step.sensitive === true;
 
   if (existing) {
-    // cm:guard a follow-up NEVER opens a second thread and never moves rooms, so a later round that
-    // would have to go somewhere else is refused rather than delivered to the wrong half of a split
-    // conversation. The destination of a decision is settled at its first round (criterion 9).
+    // cm:guard a follow-up NEVER opens a second thread and never moves rooms, so a later round that would have to go somewhere else is refused rather than delivered to the wrong half of a split conversation. The destination of a decision is settled at its first round (criterion 9).
     if (wantsDirect && !(await isDirectRoomOf(input, existing.connectionId, existing.rid))) {
       return {
         kind: 'unresolvable',
@@ -199,12 +179,7 @@ export async function resolveQuestionDestination(
     };
   }
 
-  // cm:guard a venue that is ITSELF a thread is refused rather than posted into, and this is the one
-  // refusal here that is a limit of Rocket.Chat rather than of our record: threads do not nest, so a
-  // round posted into that thread would carry the conversation's own `tmid`, and every reply in it —
-  // the answer and every ordinary sentence of the conversation alike — would resolve to one subject.
-  // Registering the question there swallows the conversation; not registering it loses the answer.
-  // Neither is a delivery, so the round is refused by name and the operator is told (criterion 9).
+  // cm:guard a venue that is ITSELF a thread is refused rather than posted into, and this is the one refusal here that is a limit of Rocket.Chat rather than of our record: threads do not nest, so a round posted into that thread would carry the conversation's own `tmid`, and every reply in it — the answer and every ordinary sentence of the conversation alike — would resolve to one subject. Registering the question there swallows the conversation; not registering it loses the answer. Neither is a delivery, so the round is refused by name and the operator is told (criterion 9).
   if (venue.tmid) {
     return {
       kind: 'unresolvable',
@@ -234,16 +209,11 @@ export async function resolveQuestionDestination(
     }
     const direct = await directRoomFor(auth, input.origin.askedByKey);
     if (!direct.ok) return { kind: 'unresolvable', reason: direct.reason };
-    // cm:guard a direct room opens a thread of its OWN and is never anchored on the public message
-    // that raised the question: the anchor lives in the room the question is being kept out of, and
-    // a thread rooted there is the disclosure itself (ISS-1091 outcome 2).
+    // cm:guard a direct room opens a thread of its OWN and is never anchored on the public message that raised the question: the anchor lives in the room the question is being kept out of, and a thread rooted there is the disclosure itself (ISS-1091 outcome 2).
     return { kind: 'room', connectionId, rid: direct.rid, tmid: null, takeAnchor: false };
   }
 
-  // cm:guard the anchor is the message that RAISED the question, so the round hangs under what it is
-  // about rather than at the bottom of a busy room. A window whose last inbound message carried no
-  // transport id leaves `anchorId` null, and the round opens its own thread off its own post — still
-  // in the right room, which is the outcome, just not under the right line.
+  // cm:guard the anchor is the message that RAISED the question, so the round hangs under what it is about rather than at the bottom of a busy room. A window whose last inbound message carried no transport id leaves `anchorId` null, and the round opens its own thread off its own post — still in the right room, which is the outcome, just not under the right line.
   return {
     kind: 'room',
     connectionId,
@@ -254,9 +224,7 @@ export async function resolveQuestionDestination(
 }
 
 /** Is this room the direct room of the person who asked? */
-// cm:guard asked of the room a thread is ALREADY in, so a follow-up marked private is not re-routed
-// away from a thread that is already private. Answered by opening the direct room and comparing ids,
-// because `im.create` is idempotent and returns the room that exists.
+// cm:guard asked of the room a thread is ALREADY in, so a follow-up marked private is not re-routed away from a thread that is already private. Answered by opening the direct room and comparing ids, because `im.create` is idempotent and returns the room that exists.
 async function isDirectRoomOf(
   input: DestinationInput,
   connectionId: string,

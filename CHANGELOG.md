@@ -112,6 +112,16 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A clarifying question reaches you in the room you asked in.** It is posted as a reply on the
+  message it is about, and names whose question it came from. A question raised outside a
+  conversation is unchanged.
+
+- **A question with nowhere to go says so instead of going somewhere else.** Nothing is posted, and
+  whoever runs the project is told once what could not be reached.
+
+- **A question can be marked private, and is then asked in a direct message.** If that message
+  cannot be opened, the question is not asked at all rather than asked in the open.
+
 - **Sentry errors can become Forge issues on a schedule.** Forge files the ones clearing an
   admission bar you set on the Ops Console, as drafts. Everything it turns away is named in the
   run's record, and a repeat sighting comments.

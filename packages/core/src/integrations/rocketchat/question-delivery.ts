@@ -240,11 +240,7 @@ export async function deliverOwedRound(
     rid: destination.rid,
     tmid: destination.tmid ?? '',
   };
-  // cm:guard an anchored round TAKES its thread before it posts, and this is the whole of the race:
-  // the anchor is a message that already exists, so two questions raised against it would both pass a
-  // read-then-post and this insert would drop one of them in silence — after which every reply in
-  // that thread answers one question and the other waits for ever. `registerThread` answers whether
-  // the triple is ours, and a round that did not take it is refused by name (ISS-1091 criteria 20, 21).
+  // cm:guard an anchored round TAKES its thread before it posts, and this is the whole of the race: the anchor is a message that already exists, so two questions raised against it would both pass a read-then-post and this insert would drop one of them in silence — after which every reply in that thread answers one question and the other waits for ever. `registerThread` answers whether the triple is ours, and a round that did not take it is refused by name (ISS-1091 criteria 20, 21).
   if (destination.takeAnchor && destination.tmid) {
     const took = await registerThread({ questionId: owed.questionId }, ref);
     if (!took) {
@@ -299,18 +295,13 @@ export async function deliverOwedRound(
     await resolveNotifications(undeliverableKey(owed.questionId));
     return 'delivered';
   } catch (err) {
-    // cm:guard the anchor this attempt took is given back before anything else, because a reservation
-    // standing behind a post that never happened is worse than none: `subjectForThread` would resolve
-    // every reply on that message to a round nobody was shown, consuming them as answers instead of
-    // letting them open a window, and no other question could ever take it (ISS-1091 criterion 20).
+    // cm:guard the anchor this attempt took is given back before anything else, because a reservation standing behind a post that never happened is worse than none: `subjectForThread` would resolve every reply on that message to a round nobody was shown, consuming them as answers instead of letting them open a window, and no other question could ever take it (ISS-1091 criterion 20).
     await releaseTakenAnchor(destination, owed.questionId);
     logger.error(
       { err, questionId: owed.questionId, round: owed.round, rid: destination.rid },
       'rocketchat.question-delivery: posting the round failed',
     );
-    // cm:guard a room the bot has been REMOVED from is a destination, not a flake: its binding is
-    // live so the round resolves, and counted as a retryable failure it burns MAX_ATTEMPTS and then
-    // stops being owed with nobody told — a question that quietly ceases to exist (ISS-1091 criterion 13).
+    // cm:guard a room the bot has been REMOVED from is a destination, not a flake: its binding is live so the round resolves, and counted as a retryable failure it burns MAX_ATTEMPTS and then stops being owed with nobody told — a question that quietly ceases to exist (ISS-1091 criterion 13).
     if (isUnreachableRoom(err)) {
       return refuse(
         owed,
@@ -324,10 +315,7 @@ export async function deliverOwedRound(
 }
 
 /** Settle this round undeliverable, tell the operator once, and post nothing anywhere. */
-// cm:guard the ONE place a round becomes undeliverable, so the reason on the row and the reason in
-// the notification cannot drift, and so no branch can settle one without telling anybody. It posts
-// nothing: widening back to `roomForProject` is the defect ISS-1091 exists to remove, and for a round
-// marked private it would be a disclosure rather than a misdelivery.
+// cm:guard the ONE place a round becomes undeliverable, so the reason on the row and the reason in the notification cannot drift, and so no branch can settle one without telling anybody. It posts nothing: widening back to `roomForProject` is the defect ISS-1091 exists to remove, and for a round marked private it would be a disclosure rather than a misdelivery.
 async function refuse(owed: OwedRound, reason: string, now: Date): Promise<'undeliverable'> {
   await settle(owed, { status: 'undeliverable', lastError: reason }, now);
   await reportUndeliverable(owed, owed.wasUndeliverable, reason);

@@ -43,9 +43,7 @@ export type AskInput = {
   maxRounds?: number;
   parkDeadlineAt?: Date;
   /** This round's material is private to whoever asked, so it is put to them in a direct room. */
-  // cm:guard declared by the ASKER on the round and never derived from the prompt's words: a
-  // classifier reading the text would decide in public whether a thing was private, and the round it
-  // got wrong is posted in a room before anybody can disagree (ISS-1091 outcome 2).
+  // cm:guard declared by the ASKER on the round and never derived from the prompt's words: a classifier reading the text would decide in public whether a thing was private, and the round it got wrong is posted in a room before anybody can disagree (ISS-1091 outcome 2).
   sensitive?: boolean;
 };
 
@@ -140,9 +138,7 @@ function step(round: number, prompt: string, answer: AskAnswer, sensitive?: bool
   return built;
 }
 
-// cm:guard the flag is written only when it is TRUE, so a round that is not sensitive carries no key
-// at all: the absent-means-public reading on `QuestionStep` is what every row written before ISS-1091
-// relies on, and storing `sensitive: false` beside it would make absence look like a third state.
+// cm:guard the flag is written only when it is TRUE, so a round that is not sensitive carries no key at all: the absent-means-public reading on `QuestionStep` is what every row written before ISS-1091 relies on, and storing `sensitive: false` beside it would make absence look like a third state.
 function buildStep(
   round: number,
   prompt: string,
