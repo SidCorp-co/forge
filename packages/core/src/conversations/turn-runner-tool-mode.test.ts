@@ -251,7 +251,10 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
     await runConversationTurn(
       request({ sendMode: 'tool', mayDecline: true, questionAlreadyRecorded: true }),
     );
-    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({ record: 'nothing' });
+    expect(runExternalChatTurn.mock.calls[0]?.[0]).toMatchObject({
+      record: 'nothing',
+      questionInHistory: true,
+    });
     await runConversationTurn(request({ mayDecline: true, questionAlreadyRecorded: true }));
     expect(runExternalChatTurn.mock.calls[1]?.[0]).toMatchObject({ record: 'silence-only' });
     runExternalChatTurn.mockResolvedValue({

@@ -395,11 +395,16 @@ export function buildRocketChatQuoteContextToolset(
     }
     messagesUsed += kept.length;
     const messages = kept.sort((a, b) => a.ts.localeCompare(b.ts)).map(shape);
+    // cm:guard every limitation is NAMED, never the first one found: a thread whose root could not be read and whose neighbourhood was then cut to the budget is missing material for two reasons, and a reader told one would take the other side as complete (criterion 28; whole-set review, round 5 F1).
     const limitation =
-      hood.limitation ??
-      (cut
-        ? `the neighbourhood was cut to fit this turn's budget of ${QUOTE_MESSAGES_PER_TURN} messages / ${QUOTE_TOKENS_PER_TURN} tokens`
-        : null);
+      [
+        hood.limitation,
+        cut
+          ? `the neighbourhood was cut to fit this turn's budget of ${QUOTE_MESSAGES_PER_TURN} messages / ${QUOTE_TOKENS_PER_TURN} tokens`
+          : null,
+      ]
+        .filter((l): l is string => l !== null)
+        .join('; ') || null;
     return {
       content: [
         {

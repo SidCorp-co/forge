@@ -259,6 +259,8 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
   let result = await runExternalChatTurn({
     ...turn,
     message: req.message,
+    // cm:guard on the FIRST attempt only: the retry's message is a corrective instruction that is in no history, and it must be shown; the window's question is already a row wherever `questionAlreadyRecorded` says so (whole-set review, round 5 F1).
+    questionInHistory: Boolean(req.questionAlreadyRecorded),
     images: inputs.images,
     // cm:guard spread onto THIS call and not onto `turn`, because `turn` is also spread into the
     // retry below — putting it there is what would stream the replacement on top of the draft.

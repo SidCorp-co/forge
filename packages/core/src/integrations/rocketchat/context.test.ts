@@ -383,6 +383,17 @@ describe('what rocketchat_quote_context says it could not read (ISS-1087)', () =
     expect(out.limitation).toMatch(/later replies may be missing/);
   });
 
+  it('names both an unread root and a budget cut when a result has both (criterion 28)', async () => {
+    serve({ m5: raw('m5', 5), t2: raw('t2', 12, { tmid: 'T1' }) });
+    const set = buildRocketChatQuoteContextToolset(auth, 'R1');
+    expect((await body(set, 'm5')).messages).toHaveLength(5);
+    expect((await body(set, 't2')).messages).toHaveLength(3);
+    const out = await body(set, 't2');
+    expect(out.messages).toHaveLength(2);
+    expect(out.limitation).toMatch(/root could not be read/);
+    expect(out.limitation).toMatch(/cut to fit this turn/);
+  });
+
   it('names a root it could not read when the quoted reply is the thread’s first (criterion 30)', async () => {
     serve({ t2: raw('t2', 12, { tmid: 'T1' }) });
     const out = await body(buildRocketChatQuoteContextToolset(auth, 'R1'), 't2');
