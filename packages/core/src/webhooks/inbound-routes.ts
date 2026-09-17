@@ -76,17 +76,11 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
       throw badRequest({ provider: map.provider }, 'INTEGRATION_NOT_CONFIGURED');
     }
 
-    // cm:guard a matched provider that declares NO signature header is refused by name, never
-    // dropped through to the generic path below. Falling through would verify a provider's delivery
-    // against `projects.webhookSecret` and answer it `actions: 0` — a 200 for a payload nobody
-    // handled, which is the silent substitution the declaration was moved here to end.
+    // cm:guard a matched provider that declares NO signature header is refused by name, never dropped through to the generic path below. Falling through would verify a provider's delivery against `projects.webhookSecret` and answer it `actions: 0` — a 200 for a payload nobody handled, which is the silent substitution the declaration was moved here to end.
     if (!map.signatureHeader) {
       throw badRequest({ provider: map.provider }, 'PROVIDER_DECLARES_NO_SIGNATURE_HEADER');
     }
-    // cm:guard ONE header, the one this provider declares — not whichever of a set happens to be
-    // present. A delivery that carried the right bytes under the wrong header name is a delivery
-    // from something that is not this provider, and accepting it on the strength of a verifying
-    // HMAC would mean the header name stopped identifying anything.
+    // cm:guard ONE header, the one this provider declares — not whichever of a set happens to be present. A delivery that carried the right bytes under the wrong header name is a delivery from something that is not this provider, and accepting it on the strength of a verifying HMAC would mean the header name stopped identifying anything.
     const signatureHeader = c.req.header(map.signatureHeader);
     if (!signatureHeader) {
       throw unauthorized('MISSING_SIGNATURE');
@@ -121,6 +115,7 @@ webhookInboundRoutes.post('/in/:slug', async (c) => {
         stages: pair.binding.stages,
         deliveryId: result.deliveryId,
         actions: result.actions,
+        ...(result.refusal ? { refusal: result.refusal } : {}),
       });
     } catch (err) {
       const message = err instanceof Error ? err.message : 'unknown error';

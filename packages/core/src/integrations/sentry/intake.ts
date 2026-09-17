@@ -19,10 +19,6 @@
  */
 // cm:guard `mcp/tools/forge-issues.ts:serializeListRow` char-strips a title and does NOT frame it, by the priced decision in its own `cm:why` (the token cap the lean projection exists for). That is the one agent-facing projection a Sentry title reaches unframed, it predates this path, and it is recorded with its measurement at `docs/proposals/an-mcp-list-title-is-char-stripped-and-not-framed.md`. Do not read the two framed projections as "framed everywhere".
 
-import { eq } from 'drizzle-orm';
-import { readThresholds } from '../../admin/thresholds.js';
-import { db } from '../../db/client.js';
-import { projects } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import {
   type BindingWithConnection,
@@ -30,12 +26,12 @@ import {
   listActiveBindingsForProjectProvider,
 } from '../store.js';
 // cm:edge contract -> packages/core/src/integrations/sentry/intake-issue.ts — the per-issue decision is THERE and is shared with the webhook (slice 4); re-implementing any of it here is the drift the split exists to prevent.
-import { intakeSentryIssue } from './intake-issue.js';
+import { intakeSentryIssue, projectCreatedById, readSentryThresholds } from './intake-issue.js';
 import { listSentryIssues, type SentryAdapterContext } from './issues.js';
 // cm:edge contract -> packages/core/src/integrations/sentry/listing.ts — the reach constant and the partial-failure carrier are the LISTING's, taken from it directly rather than through `issues.ts`.
 import { SENTRY_LIST_DEFAULT_LIMIT, SentryListingFailed } from './listing.js';
 import { resolveSentryTargets } from './targets.js';
-import type { SentryIssueDetail, SentryTarget } from './types.js';
+import type { SentryTarget } from './types.js';
 
 // cm:why re-exported rather than left to `intake-issue.js` alone: this module is the one the tests, the schedule and the adapter already import from, and splitting a file for a SECOND CALLER must not move every caller's import. The definitions live in one place; this is the door.
 export {
@@ -49,23 +45,14 @@ export {
   type SentryIntakeContext,
   type SentryIntakeOutcome,
   type SentryIssueRow,
-  sentryMetadataMerge,
   type SentrySightingRecord,
+  sentryMetadataMerge,
 } from './intake-issue.js';
 
 export interface SentryPullOutcome {
   status: 'success' | 'skipped' | 'failed';
   output: string;
   error?: string;
-}
-
-async function projectCreatedById(projectId: string): Promise<string | null> {
-  const [row] = await db
-    .select({ createdBy: projects.createdBy })
-    .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  return row?.createdBy ?? null;
 }
 
 async function pullOneTarget(
@@ -168,11 +155,7 @@ export async function runSentryPull(args: { projectId: string }): Promise<Sentry
     };
   }
 
-  const policy = await readThresholds();
-  const thresholds = {
-    minEventCount: policy.sentryMinEventCount,
-    minUserCount: policy.sentryMinUserCount,
-  };
+  const thresholds = await readSentryThresholds();
   const report: string[] = [
     `thresholds: ${thresholds.minEventCount} event(s), ${thresholds.minUserCount} user(s)`,
   ];

@@ -15,8 +15,9 @@
  */
 
 import { and, eq, type SQL, sql } from 'drizzle-orm';
+import { readThresholds } from '../../admin/thresholds.js';
 import { db } from '../../db/client.js';
-import { comments, issues } from '../../db/schema.js';
+import { comments, issues, projects } from '../../db/schema.js';
 import { transitionIssueStatus } from '../../issues/apply-transition.js';
 import { logger } from '../../logger.js';
 import { judgeSentryIssue, type SentryAdmissionThresholds } from './admission.js';
@@ -86,6 +87,26 @@ export type SentryIntakeOutcome =
   | { kind: 'refreshed' }
   | { kind: 'reopened' }
   | { kind: 'refused'; reason: string };
+
+/** The Forge user a filed issue and a reopen are attributed to, or `null` where the project has none. */
+export async function projectCreatedById(projectId: string): Promise<string | null> {
+  const [row] = await db
+    .select({ createdBy: projects.createdBy })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  return row?.createdBy ?? null;
+}
+
+/** The admission policy, read from `admin_thresholds` — the SAME read on both doors. */
+// cm:guard read here rather than at each door, so the webhook and the scheduled pull cannot end up judging against different numbers. The thresholds are operator policy (ISS-654), which means they change without a deploy: a door holding its own constant would keep filing at the old bound with nothing anywhere saying the two disagreed.
+export async function readSentryThresholds(): Promise<SentryAdmissionThresholds> {
+  const policy = await readThresholds();
+  return {
+    minEventCount: policy.sentryMinEventCount,
+    minUserCount: policy.sentryMinUserCount,
+  };
+}
 
 /** Bound a TITLE, which is a column a person scans. Never used for the run's own record. */
 function capTitle(text: string, max: number): string {

@@ -104,6 +104,16 @@ export interface InboundDispatchInput {
 export interface InboundDispatchResult {
   deliveryId: string;
   actions: number;
+  /**
+   * Why this delivery was accepted, recorded and then acted on by nothing.
+   *
+   * A permanent refusal — an unserved event, a payload naming a project no target declares — is not
+   * a failure to answer, so it is a 200 rather than a throw: throwing makes the provider retry a
+   * delivery whose outcome cannot change. But `actions: 0` on its own is indistinguishable from the
+   * generic path's "signed, and dropped on the floor", which is the one thing an operator must not
+   * have to guess at. The sentence goes on the delivery row for later and comes back here for now.
+   */
+  refusal?: string;
 }
 
 /**
