@@ -42,6 +42,7 @@ type Mods = {
   createConnection: typeof import('../../src/integrations/store.js').createConnection;
   // biome-ignore format: keep typeof-import member access on one line (esbuild transform fails otherwise)
   createBinding: typeof import('../../src/integrations/store.js').createBinding;
+  hooks: typeof import('../../src/pipeline/hooks.js').hooks;
 };
 
 const OWNER = 'SidCorp-co';
@@ -154,14 +155,16 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [mergeMod, store] = await Promise.all([
+  const [mergeMod, store, hooksMod] = await Promise.all([
     import('../../src/integrations/github/merge.js'),
     import('../../src/integrations/store.js'),
+    import('../../src/pipeline/hooks.js'),
   ]);
   mods = {
     mergeStoredPullRequest: mergeMod.mergeStoredPullRequest,
     createConnection: store.createConnection,
     createBinding: store.createBinding,
+    hooks: hooksMod.hooks,
   };
 }, 60_000);
 
@@ -381,5 +384,55 @@ describe('a merge that cannot be made is refused by name', () => {
     expect(outcome?.kind === 'refused' && outcome.reason).toBe('protection-unreadable');
     expect(merges()).toHaveLength(0);
     expect(await stamp()).toEqual({ mergedAt: null, commitSha: null });
+  });
+});
+
+describe('the stamp announces the contract input it moved', () => {
+  /** Every `contractInputChanged` the merge emits, on the one bus `merge.ts:announce` uses. */
+  function listen(name: string) {
+    const heard: Array<{ projectId: string; issueId?: string; reason?: string }> = [];
+    mods.hooks.on('contractInputChanged', async (p) => void heard.push(p), { name });
+    return heard;
+  }
+
+  // cm:guard this is the seam between the merge and the contract check, and until ISS-1073 wrote
+  // it NOTHING asserted the kernel merge announces at all. `announce` swallows its own failures by
+  // design, so a merge that stopped emitting would leave every other open pull request of the same
+  // issue showing a contract answer computed before the blocker landed — and no test would move.
+  it('emits contractInputChanged naming the issue and the kernel as the reason', async () => {
+    const heard = listen('merge-announce-test');
+    const outcome = await mods.mergeStoredPullRequest({
+      pullRequestId,
+      requestedBy: `user:${ownerId}`,
+    });
+
+    expect(outcome?.kind).toBe('merged');
+    expect(heard).toEqual([{ projectId, issueId, reason: 'merged by the kernel' }]);
+  });
+
+  // cm:guard announced only when THIS call wrote the stamp. A second reading of one merge must not
+  // announce again: the projection subscriber republishes every open pull request of the issue on
+  // each announcement, so a retry would spend a GitHub call per pull request for a change that
+  // already happened.
+  it('says nothing on a second reading of the same merge, which wrote no stamp', async () => {
+    await mods.mergeStoredPullRequest({ pullRequestId, requestedBy: `user:${ownerId}` });
+    const heard = listen('merge-announce-again-test');
+    const second = await mods.mergeStoredPullRequest({
+      pullRequestId,
+      requestedBy: `user:${ownerId}`,
+    });
+
+    expect(second?.kind).toBe('already-merged');
+    expect(second?.kind === 'already-merged' && second.stamped).toBe(false);
+    expect(heard).toHaveLength(0);
+  });
+
+  it('says nothing when the merge was refused', async () => {
+    dbl.checks = [{ name: 'ci-passed', status: 'completed', conclusion: 'failure' }];
+    const heard = listen('merge-announce-refused-test');
+    expect(
+      (await mods.mergeStoredPullRequest({ pullRequestId, requestedBy: `user:${ownerId}` }))?.kind,
+    ).toBe('refused');
+    expect(heard).toHaveLength(0);
   });
 });
