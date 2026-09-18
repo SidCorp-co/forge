@@ -112,6 +112,10 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Cutting a runner release is one thing Forge does, not eight by hand.** Name a version; Forge
+  checks the commit agrees, tags it as itself, hears how the build went, and names what is on the
+  repository if it stops.
+
 - **The database can now say which queries cost it the most, and its sizing settings live with
   the deployment.** Per-statement timing starts at the next database restart. Sizing keeps
   today's values until someone reads the machine.

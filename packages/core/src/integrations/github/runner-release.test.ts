@@ -1,0 +1,319 @@
+/**
+ * The sequence, steps 1 to 6, and what each refusal leaves behind.
+ *
+ * Read the file as one claim: at every point this sequence can stop, the row it
+ * leaves says which step stopped it and what is true on the repository — and
+ * the three tag states after a failed `cut_tag` are the whole of ISS-1075's
+ * third outcome, so they are asserted one by one rather than as a group.
+ */
+
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+
+vi.mock('../../config/env.js', () => ({
+  env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
+}));
+vi.mock('../../logger.js', () => ({
+  logger: { info: () => {}, warn: () => {}, error: () => {}, debug: () => {} },
+}));
+
+class FakeClientError extends Error {}
+const githubRepoClient = vi.fn(async () => ({
+  bindingId: 'binding-1',
+  appId: '7',
+  owner: 'SidCorp-co',
+  repo: 'forge',
+  fullName: 'SidCorp-co/forge',
+}));
+vi.mock('./client.js', () => ({
+  githubRepoClient: () => githubRepoClient(),
+  GitHubClientError: FakeClientError,
+}));
+
+/** A Cargo.toml and a Cargo.lock that both say 0.13.3, which is the happy path. */
+const agreeingFiles = async (_c: unknown, path: string): Promise<string> =>
+  path.endsWith('Cargo.toml')
+    ? '[workspace.package]\nversion = "0.13.3"\n'
+    : '[[package]]\nname = "forge-runner"\nversion = "0.13.3"\n\n[[package]]\nname = "forge-runner-core"\nversion = "0.13.3"\n';
+
+class FakeRepoError extends Error {
+  constructor(
+    readonly refusal: { cause: string; op: string; status: number | null; message: string },
+    readonly beforeWrite: boolean,
+  ) {
+    super(refusal.message);
+  }
+}
+const repo = {
+  readDefaultBranch: vi.fn(async () => 'main'),
+  readCommitSha: vi.fn(async () => 'abc1234'),
+  readTagRef: vi.fn<(...a: unknown[]) => Promise<{ sha: string } | null>>(async () => null),
+  readFileAtRef: vi.fn<(c: unknown, path: string) => Promise<string>>(agreeingFiles),
+  createTagRef: vi.fn(async () => ({ sha: 'abc1234' })),
+};
+vi.mock('./runner-release-repo.js', () => ({
+  readDefaultBranch: (...a: unknown[]) => repo.readDefaultBranch(...(a as [])),
+  readCommitSha: (...a: unknown[]) => repo.readCommitSha(...(a as [])),
+  readTagRef: (...a: unknown[]) => repo.readTagRef(...a),
+  readFileAtRef: (...a: unknown[]) => repo.readFileAtRef(...(a as [unknown, string])),
+  createTagRef: (...a: unknown[]) => repo.createTagRef(...(a as [])),
+  RunnerReleaseRepoError: FakeRepoError,
+  saysRefExists: (r: { status: number | null; message: string }) =>
+    r.status === 422 && /already exists/i.test(r.message),
+  tagRefName: (tag: string) => `refs/tags/${tag}`,
+}));
+
+type Row = Record<string, unknown> & { id: string; tag: string; tagState: string };
+const rows = new Map<string, Row>();
+vi.mock('./runner-release-store.js', () => ({
+  openRunnerRelease: async (args: Record<string, unknown>) => {
+    const key = `${args.projectId}:${args.tag}`;
+    const held = rows.get(key);
+    if (held && held.tagState !== 'absent') return { opened: null, held };
+    const row: Row = {
+      id: key,
+      projectId: args.projectId,
+      bindingId: args.bindingId,
+      repository: args.repository,
+      version: args.version,
+      tag: args.tag as string,
+      commitSha: null,
+      status: 'preflight',
+      step: 'resolve_repository',
+      tagState: 'absent',
+      publication: 'unread',
+      publicationDetail: null,
+      failure: null,
+      readings: [],
+      settledAt: null,
+      startedAt: new Date('2026-09-18T00:00:00.000Z'),
+    };
+    rows.set(key, row);
+    return { opened: row, held: null };
+  },
+  appendReading: async (id: string, line: string) => {
+    const row = rows.get(id);
+    if (row) (row.readings as string[]).push(line);
+  },
+  advance: async (id: string, patch: Record<string, unknown>) => {
+    const row = rows.get(id);
+    if (!row || row.settledAt) return false;
+    Object.assign(row, patch);
+    return true;
+  },
+  settleFailed: async (id: string, patch: Record<string, unknown>) => {
+    const row = rows.get(id);
+    if (!row || row.settledAt) return false;
+    Object.assign(row, patch, { status: 'failed', settledAt: new Date() });
+    return true;
+  },
+}));
+
+const { startRunnerRelease } = await import('./runner-release.js');
+
+const start = (over: Record<string, unknown> = {}) =>
+  startRunnerRelease({ projectId: 'p1', version: '0.13.3', requestedById: null, ...over } as never);
+
+const row = () => rows.get('p1:runner-v0.13.3');
+
+const publishError = (
+  over: Partial<{ cause: string; op: string; status: number | null; message: string }>,
+) =>
+  new FakeRepoError(
+    { cause: 'unknown', op: 'create', status: null, message: 'refused', ...over },
+    over.op === 'lookup',
+  );
+
+// cm:guard the implementations are restored by hand, because `vi.clearAllMocks` clears CALLS and not `mockImplementation` — a Cargo.lock a preflight case rewrote would otherwise leak into every later case and stop the sequence two steps before the one under test, with the failure reading as a bug in `cut_tag`.
+beforeEach(() => {
+  rows.clear();
+  vi.clearAllMocks();
+  repo.readFileAtRef.mockImplementation(agreeingFiles);
+  repo.readDefaultBranch.mockResolvedValue('main');
+  repo.readCommitSha.mockResolvedValue('abc1234');
+  repo.readTagRef.mockResolvedValue(null);
+  repo.createTagRef.mockResolvedValue({ sha: 'abc1234' });
+});
+
+describe('the whole sequence when nothing is wrong', () => {
+  it('cuts the tag and hands the release to the build', async () => {
+    const outcome = await start();
+    expect(outcome.started).toBe(true);
+    expect(repo.createTagRef).toHaveBeenCalledWith(expect.anything(), 'runner-v0.13.3', 'abc1234');
+    expect(row()?.status).toBe('building');
+    expect(row()?.step).toBe('await_build');
+    expect(row()?.tagState).toBe('present');
+    expect(row()?.commitSha).toBe('abc1234');
+    expect(row()?.settledAt).toBeNull();
+  });
+
+  it('records one reading per step it took', async () => {
+    await start();
+    expect(row()?.readings).toEqual([
+      'resolve_repository: SidCorp-co/forge via binding binding-1',
+      'resolve_commit: abc1234 (main)',
+      'check_tag_absent: SidCorp-co/forge holds no runner-v0.13.3',
+      'check_crate_version: Cargo.toml declares 0.13.3',
+      'check_lockfile_version: Cargo.lock records 0.13.3',
+      'cut_tag: refs/tags/runner-v0.13.3 created at abc1234 by the App on SidCorp-co/forge',
+    ]);
+  });
+
+  it('cuts at the commit a caller named instead of the default branch head', async () => {
+    repo.readCommitSha.mockResolvedValue('feedbee');
+    await start({ commit: 'feedbee' });
+    expect(repo.readDefaultBranch).not.toHaveBeenCalled();
+    expect(repo.createTagRef).toHaveBeenCalledWith(expect.anything(), 'runner-v0.13.3', 'feedbee');
+  });
+});
+
+describe('the refusals that write no row at all', () => {
+  it('refuses a project with no repository, naming what is missing', async () => {
+    githubRepoClient.mockRejectedValueOnce(
+      new FakeClientError('this project has no active GitHub binding'),
+    );
+    const outcome = await start();
+    expect(outcome).toMatchObject({ started: false, kind: 'no_repository', release: null });
+    expect(rows.size).toBe(0);
+  });
+
+  it('refuses a version that names no tag', async () => {
+    const outcome = await start({ version: 'runner-v0.13.3' });
+    expect(outcome).toMatchObject({ started: false, kind: 'bad_version' });
+    expect(rows.size).toBe(0);
+    expect(repo.createTagRef).not.toHaveBeenCalled();
+  });
+});
+
+describe('the preflights, each naming the step and that nothing was written', () => {
+  it('stops when the tag is already there, naming the commit it points at', async () => {
+    repo.readTagRef.mockResolvedValue({ sha: 'olderco' });
+    const outcome = await start();
+    expect(outcome.started).toBe(false);
+    expect(row()?.step).toBe('check_tag_absent');
+    expect(row()?.tagState).toBe('present');
+    expect(String(row()?.failure)).toContain(
+      'already exists on SidCorp-co/forge, pointing at olderco',
+    );
+    expect(repo.createTagRef).not.toHaveBeenCalled();
+  });
+
+  it('stops when the manifest disagrees with the tag', async () => {
+    repo.readFileAtRef.mockImplementation(async (_c: unknown, path: string) =>
+      path.endsWith('Cargo.toml')
+        ? '[workspace.package]\nversion = "0.13.2"\n'
+        : '[[package]]\nname = "forge-runner"\nversion = "0.13.3"\n',
+    );
+    const outcome = await start();
+    expect(outcome.started).toBe(false);
+    expect(row()?.step).toBe('check_crate_version');
+    expect(String(row()?.failure)).toContain('perpetual update loop');
+    expect(String(row()?.failure)).toContain('Nothing was written to the repository');
+    expect(repo.createTagRef).not.toHaveBeenCalled();
+  });
+
+  it('stops when the lockfile disagrees with the manifest', async () => {
+    repo.readFileAtRef.mockImplementation(async (_c: unknown, path: string) =>
+      path.endsWith('Cargo.toml')
+        ? '[workspace.package]\nversion = "0.13.3"\n'
+        : '[[package]]\nname = "forge-runner"\nversion = "0.13.2"\n\n[[package]]\nname = "forge-runner-core"\nversion = "0.13.2"\n',
+    );
+    const outcome = await start();
+    expect(row()?.step).toBe('check_lockfile_version');
+    expect(String(row()?.failure)).toContain('--locked');
+    expect(outcome.started).toBe(false);
+    expect(repo.createTagRef).not.toHaveBeenCalled();
+  });
+
+  // cm:guard every act before `cut_tag` is a read, so a refusal there is EVIDENCE that nothing was written — which is what makes the same version runnable again afterwards.
+  it('leaves the tag absent when a read itself is refused', async () => {
+    repo.readTagRef.mockRejectedValue(
+      publishError({ op: 'lookup', status: 403, message: 'forbidden' }),
+    );
+    await start();
+    expect(row()?.tagState).toBe('absent');
+    expect(row()?.step).toBe('check_tag_absent');
+    expect(String(row()?.failure)).toContain('Nothing was written to the repository');
+  });
+});
+
+describe('the three things that can be true after a cut that did not answer', () => {
+  it('leaves the tag absent when GitHub answered the create with a refusal', async () => {
+    repo.createTagRef.mockRejectedValue(
+      publishError({ op: 'create', status: 403, message: 'GitHub refused Forge' }),
+    );
+    const outcome = await start();
+    expect(outcome.started).toBe(false);
+    expect(row()?.tagState).toBe('absent');
+    expect(row()?.step).toBe('cut_tag');
+    expect(String(row()?.failure)).toContain('the tag `runner-v0.13.3` does not exist');
+  });
+
+  // cm:guard this is the row ISS-1075 point 3 exists for. A create that timed out may or may not have been taken, and calling it `absent` is what lets the next attempt cut over a tag that is already there.
+  it('leaves the tag UNKNOWN when the create never answered', async () => {
+    repo.createTagRef.mockRejectedValue(
+      publishError({
+        op: 'create',
+        status: null,
+        cause: 'timed-out-mid-write',
+        message: 'Forge timed out',
+      }),
+    );
+    await start();
+    expect(row()?.tagState).toBe('unknown');
+    expect(String(row()?.failure)).toContain('may or may not exist');
+    expect(String(row()?.failure)).toContain('deletes none and re-cuts none');
+  });
+
+  it('leaves the tag present when GitHub says the ref is already there', async () => {
+    repo.createTagRef.mockRejectedValue(
+      publishError({ op: 'create', status: 422, message: 'Reference already exists' }),
+    );
+    await start();
+    expect(row()?.tagState).toBe('present');
+    expect(String(row()?.failure)).toContain('`runner-v0.13.3` exists at abc1234');
+  });
+
+  it('records the intent before the request, so a death mid-write is visible', async () => {
+    let seen: string | undefined;
+    repo.createTagRef.mockImplementation(async () => {
+      seen = row()?.tagState as string;
+      return { sha: 'abc1234' };
+    });
+    await start();
+    expect(seen).toBe('unknown');
+  });
+});
+
+describe('what a second attempt at one version may do', () => {
+  it('runs again after a refusal that wrote nothing', async () => {
+    repo.readFileAtRef.mockImplementationOnce(
+      async () => '[workspace.package]\nversion = "0.13.2"\n',
+    );
+    expect((await start()).started).toBe(false);
+    const again = await start();
+    expect(again.started).toBe(true);
+    expect(row()?.tagState).toBe('present');
+  });
+
+  it('is refused once the tag exists, naming when the first attempt stopped', async () => {
+    await start();
+    const again = await start();
+    expect(again).toMatchObject({ started: false, kind: 'already_attempted' });
+    expect('message' in again && again.message).toContain('Cut the next version instead');
+  });
+
+  it('is refused while the tag is of unknown existence', async () => {
+    repo.createTagRef.mockRejectedValue(
+      publishError({
+        op: 'create',
+        status: null,
+        cause: 'timed-out-mid-write',
+        message: 'Forge timed out',
+      }),
+    );
+    await start();
+    const again = await start();
+    expect(again).toMatchObject({ started: false, kind: 'already_attempted' });
+    expect('message' in again && again.message).toContain('may or may not exist');
+  });
+});

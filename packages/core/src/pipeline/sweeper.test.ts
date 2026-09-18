@@ -36,6 +36,12 @@ vi.mock('./inv7-alarms.js', () => ({
 const resumeOrphanedPausesMock = vi.fn(async () => ({ detected: 0, resumed: 0 }));
 vi.mock('./run-pause.js', () => ({ resumeOrphanedPauses: () => resumeOrphanedPausesMock() }));
 
+// cm:why mocked for the same reason `reapConcludedRuns` is: this pass runs its own real drizzle query builder against the suite's stub `db`, which answers `select()` with nothing chainable, so unmocked it throws and `runPipelineSweep` re-throws at the end of the tick. Its own behaviour is proved in `runner-release-deadline.test.ts` (ISS-1075).
+const nameOverdueRunnerReleasesMock = vi.fn(async (_now?: Date) => ({ overdue: 0, named: 0 }));
+vi.mock('./runner-release-deadline.js', () => ({
+  nameOverdueRunnerReleases: (now?: Date) => nameOverdueRunnerReleasesMock(now),
+}));
+
 // cm:why mocked for the same reason `alertSweep` is — `reapConcludedRuns` issues its own real `db.execute`, and this suite's `dbExecute` is one shared `mockResolvedValueOnce` queue, so an unmocked pass silently eats another pass's queued result. Its own behaviour is proved in `runs-concluded.test.ts` and `tests/integration/concluded-run-reap-e2e.test.ts`.
 const reapConcludedRunsMock = vi.fn(async (_now?: Date) => ({ reaped: 0 }));
 const reapJoblessRunsMock = vi.fn(async (_now?: Date) => ({ reaped: 0 }));
@@ -673,6 +679,13 @@ describe('runPipelineSweep — queue snapshots (ISS-381 2.2)', () => {
     );
     const result = await runPipelineSweep();
     expect(result.queueSnapshots).toBe(2);
+  });
+
+  it('runs the overdue runner-release pass and reports it', async () => {
+    nameOverdueRunnerReleasesMock.mockResolvedValueOnce({ overdue: 3, named: 2 });
+    const result = await runPipelineSweep();
+    expect(nameOverdueRunnerReleasesMock).toHaveBeenCalledTimes(1);
+    expect(result.overdueRunnerReleases).toEqual({ overdue: 3, named: 2 });
   });
 
   it('is best-effort — a snapshot failure never aborts the tick', async () => {

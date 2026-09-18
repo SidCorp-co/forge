@@ -1,0 +1,228 @@
+/**
+ * The five acts a runner release makes on the repository, each as the App and
+ * none as anybody. ISS-1075.
+ *
+ * Every call here goes through `GitHubRepoClient.publish`, which mints an
+ * installation token from the App's own credential per call and raises
+ * `GitHubPublishError` carrying the op, the status, the response headers and
+ * whether it timed out. That is what point 4 of ISS-1075 asks for and it is
+ * also the only way the sequence can tell a write that did not happen from one
+ * whose outcome it never heard — which is the difference between "cut it again"
+ * and "read the repository first".
+ *
+ * Nothing in this module reads an environment token, a `gh` configuration or a
+ * personal credential, and nothing shells out. `runner-release-credential.test.ts`
+ * is the assertion that says so, over the source of every module on this path.
+ */
+
+import { Buffer } from 'node:buffer';
+import { GitHubPublishError, type GitHubRepoClient } from './client.js';
+import {
+  describePublishThrown,
+  type PublishRefusal,
+  type PublishSubject,
+} from './publish-refusal.js';
+import { type ReleaseReading, RUNNER_RELEASE_TAG_PREFIX } from './runner-release-preflight.js';
+
+const repoPath = (client: GitHubRepoClient) =>
+  `/repos/${encodeURIComponent(client.owner)}/${encodeURIComponent(client.repo)}`;
+
+// cm:guard the permission named here is `contents: write` and never `checks: write`. Both live on the same App and a 403 on either looks identical; `check-refusal.ts` names the other one, and the two sentences send an operator to two different rows of the same settings page.
+export function runnerReleaseSubject(what: { lookup: string; write?: string }): PublishSubject {
+  const write = what.write ?? 'creating the tag';
+  return {
+    where: {
+      mint: 'minting the installation token',
+      lookup: what.lookup,
+      create: write,
+      update: write,
+    },
+    permission:
+      'the App has no `contents: write` permission. Set Contents to "Read and write" on the App, ' +
+      'then approve the resulting request on the installation — reconnecting will not change ' +
+      'this, because the credential is not what is wrong.',
+    ambiguous:
+      'the App may lack `contents: write`, or this may be a secondary rate limit. Forge is not ' +
+      "guessing between them. Check the App's Contents permission first; if it is already " +
+      '"Read and write", retry after a pause.',
+    nothingWritten: 'so nothing was written to the repository. Retrying is safe.',
+    unprocessable:
+      'On this path that is usually a ref that already exists, or a commit this repository does ' +
+      'not hold.',
+  };
+}
+
+/** A repository act that did not answer, with the sentence an operator reads. */
+export class RunnerReleaseRepoError extends Error {
+  readonly refusal: PublishRefusal;
+  /** True only where the failure provably happened before any write left this process. */
+  readonly beforeWrite: boolean;
+  constructor(refusal: PublishRefusal, beforeWrite: boolean) {
+    super(refusal.message);
+    this.name = 'RunnerReleaseRepoError';
+    this.refusal = refusal;
+    this.beforeWrite = beforeWrite;
+  }
+}
+
+function refuse(err: unknown, op: 'lookup' | 'create', subject: PublishSubject): never {
+  const refusal = describePublishThrown(err, op, subject);
+  // cm:guard `beforeWrite` is about the CALL, not about the cause: a lookup never wrote, and a create that timed out may have. A mint failure is before every write on either call, which is why it is folded in here rather than left to the caller to remember.
+  const beforeWrite = op === 'lookup' || refusal.op === 'mint' || refusal.op === 'lookup';
+  throw new RunnerReleaseRepoError(refusal, beforeWrite);
+}
+
+/** A 404 that a caller reads as absence rather than as a failure. */
+function isAbsent(err: unknown): boolean {
+  return err instanceof GitHubPublishError && err.status === 404;
+}
+
+/** The repository's own default branch name, read as the App. */
+export async function readDefaultBranch(client: GitHubRepoClient): Promise<string> {
+  const subject = runnerReleaseSubject({ lookup: 'reading the repository' });
+  try {
+    const repo = await client.publish<{ default_branch?: string }>({
+      op: 'lookup',
+      method: 'GET',
+      path: repoPath(client),
+    });
+    if (!repo.default_branch) {
+      throw new Error(`GitHub named no default branch for ${client.fullName}`);
+    }
+    return repo.default_branch;
+  } catch (err) {
+    refuse(err, 'lookup', subject);
+  }
+}
+
+// cm:guard a branch name and a commit sha both resolve here, and a caller's own sha goes through it rather than being taken on trust: a tag cut at a sha this repository does not hold is a 422 from the create, which reads as a rejected payload rather than as the commit nobody checked.
+export async function readCommitSha(client: GitHubRepoClient, ref: string): Promise<string> {
+  const subject = runnerReleaseSubject({ lookup: `reading the commit ${ref}` });
+  try {
+    const commit = await client.publish<{ sha?: string }>({
+      op: 'lookup',
+      method: 'GET',
+      path: `${repoPath(client)}/commits/${encodeURIComponent(ref)}`,
+    });
+    if (!commit.sha) throw new Error(`GitHub named no commit for ${ref} on ${client.fullName}`);
+    return commit.sha;
+  } catch (err) {
+    refuse(err, 'lookup', subject);
+  }
+}
+
+// cm:guard the contents API answers `encoding: "none"` with an EMPTY body for a file over 1MB rather than failing, so a reader that decodes whatever it is handed gets an empty string and every version check over it passes. The refusal below is what keeps that from reading as agreement.
+export async function readFileAtRef(
+  client: GitHubRepoClient,
+  path: string,
+  ref: string,
+): Promise<string> {
+  const subject = runnerReleaseSubject({ lookup: `reading ${path} at ${ref}` });
+  try {
+    const file = await client.publish<{ content?: string; encoding?: string }>({
+      op: 'lookup',
+      method: 'GET',
+      path: `${repoPath(client)}/contents/${path}?ref=${encodeURIComponent(ref)}`,
+    });
+    if (file.encoding !== 'base64' || typeof file.content !== 'string') {
+      throw new Error(
+        `GitHub served ${path} at ${ref} with encoding \`${file.encoding ?? 'none'}\`, which carries no content — the file is over the contents API's 1MB ceiling`,
+      );
+    }
+    return Buffer.from(file.content, 'base64').toString('utf8');
+  } catch (err) {
+    refuse(err, 'lookup', subject);
+  }
+}
+
+/** The commit a tag points at, or `null` where the repository holds no such tag. */
+export async function readTagRef(
+  client: GitHubRepoClient,
+  tag: string,
+): Promise<{ sha: string } | null> {
+  const subject = runnerReleaseSubject({ lookup: `looking the tag ${tag} up` });
+  try {
+    const ref = await client.publish<{ object?: { sha?: string } }>({
+      op: 'lookup',
+      method: 'GET',
+      path: `${repoPath(client)}/git/ref/tags/${encodeURIComponent(tag)}`,
+    });
+    return { sha: ref.object?.sha ?? '(unknown commit)' };
+  } catch (err) {
+    if (isAbsent(err)) return null;
+    refuse(err, 'lookup', subject);
+  }
+}
+
+/**
+ * Create the tag. The one irreversible act on this path.
+ *
+ * A caller records the intent — `tag_state = 'unknown'` — before calling, and
+ * moves it to `present` only on the answer. A 422 saying the reference already
+ * exists is the one refusal that also moves it to `present`: the tag is there,
+ * Forge just did not make it.
+ */
+export async function createTagRef(
+  client: GitHubRepoClient,
+  tag: string,
+  sha: string,
+): Promise<{ sha: string }> {
+  const subject = runnerReleaseSubject({
+    lookup: `looking the tag ${tag} up`,
+    write: `creating the tag ${tag}`,
+  });
+  try {
+    const created = await client.publish<{ object?: { sha?: string } }>({
+      op: 'create',
+      method: 'POST',
+      path: `${repoPath(client)}/git/refs`,
+      body: { ref: `refs/tags/${tag}`, sha },
+    });
+    return { sha: created.object?.sha ?? sha };
+  } catch (err) {
+    refuse(err, 'create', subject);
+  }
+}
+
+/** Whether a 422 from `createTagRef` says the tag was already there. */
+export function saysRefExists(refusal: PublishRefusal): boolean {
+  return refusal.status === 422 && /already exists/i.test(refusal.message);
+}
+
+/** What GitHub holds for a tag, or `null` where it holds nothing. */
+export async function readReleaseForTag(
+  client: GitHubRepoClient,
+  tag: string,
+): Promise<ReleaseReading | null> {
+  const subject = runnerReleaseSubject({ lookup: `reading the release for ${tag}` });
+  try {
+    const release = await client.publish<{
+      html_url?: string;
+      draft?: boolean;
+      prerelease?: boolean;
+      assets?: Array<{ name?: string }>;
+    }>({
+      op: 'lookup',
+      method: 'GET',
+      path: `${repoPath(client)}/releases/tags/${encodeURIComponent(tag)}`,
+    });
+    return {
+      htmlUrl: release.html_url ?? null,
+      draft: release.draft === true,
+      prerelease: release.prerelease === true,
+      assetNames: (release.assets ?? [])
+        .map((a) => a.name)
+        .filter((name): name is string => typeof name === 'string'),
+    };
+  } catch (err) {
+    if (isAbsent(err)) return null;
+    refuse(err, 'lookup', subject);
+  }
+}
+
+/** `refs/tags/<tag>`, as GitHub spells the ref this path creates. */
+export function tagRefName(tag: string): string {
+  return `refs/tags/${tag}`;
+}
+
+export { RUNNER_RELEASE_TAG_PREFIX };

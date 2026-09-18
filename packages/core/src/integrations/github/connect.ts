@@ -87,7 +87,15 @@ export function buildAppManifest(args: {
       pull_requests: 'write',
       checks: 'write',
     },
-    default_events: ['issues', 'pull_request', 'pull_request_review', 'check_run', 'push'],
+    // cm:guard `workflow_run` is ISS-1075's half of the same sentence the `checks: write` guard above states: a manifest decides only the Apps created AFTER it, so an App that already exists stays unsubscribed and hears no build at all. There is no 403 to name that with — an unsubscribed event simply never arrives — so the sentence an operator reads is on the deadline instead (`runner-release-deadline.ts`), and the way out is the App's own Permissions & events page, under Subscribe to events -> Workflow run.
+    default_events: [
+      'issues',
+      'pull_request',
+      'pull_request_review',
+      'check_run',
+      'push',
+      'workflow_run',
+    ],
   };
 }
 
