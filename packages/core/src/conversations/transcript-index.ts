@@ -72,7 +72,7 @@ const MESSAGE_COLUMNS = {
 /**
  * The whitespace this index trims, spelled once for both halves.
  */
-// cm:guard exactly Postgres's `[:space:]` and NOT JavaScript's `trim()`, which also eats U+00A0 and the Unicode space separators: the pass reads its rows through {@link hasText} in SQL and decides eligibility here in TypeScript, and a row the two disagreed about is an open tail that counts eleven messages against a ceiling of ten and throws on every tick for ever, plus a retrieval whose source cap fills with rows no passage was built from (plan consult round 4 F1). A message of nothing but a non-breaking space is therefore indexed, which is a passage of one odd character rather than a room that stops being searchable.
+// cm:guard six ASCII code points, SPELLED OUT on both halves and named by no character class on either: the pass reads its rows through {@link hasText} in SQL and decides eligibility here in TypeScript, and a row the two disagreed about is an open tail that counts eleven messages against a ceiling of ten and throws on every tick for ever, plus a retrieval whose source cap fills with rows no passage was built from (plan consult round 4 F1). Neither engine's default is this set, which is why neither engine's default is used: Postgres's `btrim` trims spaces alone, `[[:space:]]` under a UTF-8 ctype also eats U+2003 EM SPACE, and JavaScript's own `String.prototype.trim` eats the Unicode space separators as well — so a row of nothing but an em space is a silence to two of those three and text to this one. These six are what both engines can be made to spell identically (plan consult round 5 F1). A message of nothing but an em space or a non-breaking space is therefore indexed everywhere, which is a passage of one odd character rather than a room that stops being searchable.
 const TRIM = /^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g;
 
 /** The text a row contributes, which is its content with the surrounding whitespace off and nothing else done to it. */
@@ -82,7 +82,7 @@ export function sourceOf(message: Pick<IndexableMessage, 'content'>): string {
 
 /** The SQL half of {@link eligibleForIndex}: this row has something other than whitespace in it. */
 export function hasText(column: AnyColumn): SQL {
-  return sql`${column} ~ '[^[:space:]]'`;
+  return sql`${column} ~ '[^ \\t\\n\\r\\f\\v]'`;
 }
 
 /**
