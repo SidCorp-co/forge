@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 
 // cm:guard this stub must stay, and must stay above the subject's import — `config/env.js` validates EAGERLY and throws at import time without DATABASE_URL / JWT_SECRET / DEVICE_TOKEN_PEPPER, which `escalation-bridge.js` pulls in transitively through escalation.js's chat-turn/lifecycle graph, so removing it turns the whole file into a collection error rather than a failing test (same pattern as agent-sessions/chat-turn.test.ts)
 vi.mock('../../config/env.js', () => ({
@@ -207,7 +208,7 @@ describe('deliverEscalationReplyOnce', () => {
       reply: 'Bao says: here is the synthesized answer.',
       toolCalls: [],
     });
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -232,7 +233,10 @@ describe('deliverEscalationReplyOnce', () => {
         tmid: undefined,
       },
       'Bao says: here is the synthesized answer.',
-      { ok: true, problems: [] },
+      // cm:guard the proof NAMES the string being posted, which is the assertion ISS-978 F5 found
+      // missing everywhere: `{ ok: true, problems: [] }` was satisfied by any literal and said nothing
+      // about which text had been screened.
+      { text: 'Bao says: here is the synthesized answer.', door: 'escalation-synthesis' },
     );
     expect(sendFixedReply.mock.calls[0]?.[1]).not.toContain('raw PM answer');
   });
@@ -247,7 +251,7 @@ describe('deliverEscalationReplyOnce', () => {
       reply: 'Logged it as a draft issue.',
       toolCalls: [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
     });
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -280,7 +284,7 @@ describe('deliverEscalationReplyOnce', () => {
       reply: 'Just an answer.',
       toolCalls: [],
     });
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -307,7 +311,7 @@ describe('the repair budget the escalation-synthesis door declares', () => {
       .mockResolvedValueOnce({ sessionId: 'bao', reply: 'the repaired answer', toolCalls: [] });
     screenRoomReply
       .mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] })
-      .mockResolvedValueOnce({ ok: true });
+      .mockImplementationOnce(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({ messages: [{ type: 'assistant', content: '{"answer": "raw"}' }] }),

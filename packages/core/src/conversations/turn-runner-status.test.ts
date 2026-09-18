@@ -9,6 +9,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../messaging/screen-passes.fixture.js';
 
 vi.mock('../observability/sentry.js', () => ({ Sentry: { captureException: vi.fn() } }));
 
@@ -104,7 +105,7 @@ beforeEach(() => {
   clearConversationTransports();
   registerConversationTransport({ adapter: 'widget', deliver, fetchHistory });
   deliver.mockResolvedValue({ messageId: 'server-id-9' });
-  screenReplyAtDoor.mockResolvedValue({ ok: true });
+  screenReplyAtDoor.mockImplementation(screenPasses);
   runExternalChatTurn.mockResolvedValue(answered);
 });
 

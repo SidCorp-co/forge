@@ -43,13 +43,14 @@ listener died between the ring and the read.
 
 ## Honest costs
 
-The cost of settling this, not of the red that raised it. Both readings are priced, because which
-one is taken is the decision.
+The cost of settling this, not of the red that raised it. Every disposition the decision is between
+is priced, because which one is taken is the decision.
 
-| Reading | What taking it costs |
+| Disposition | What taking it costs |
 |---|---|
-| **The ear is gone** (a fact about the listener) | `ring` must become able to report a listener that has closed but whose close has not propagated — an extra syscall, a retry, or a handshake, on the hot path every bounded wait rings through. Every ringer pays that on every ring to make one assertion in one test deterministic. |
-| **The ear is gone and that is now observable** (a fact about this ring) | `Heard` becomes a legitimate answer for a door whose listener has already died, so a bounded wait can be parked against a run nobody is waiting on. Whoever reads `Heard` inherits the job of noticing that later, and the doorbell stops being the single place that question is answered. |
-| **Make the test tolerate the delay** (the cheap option, and the one to reach for first) | It is a few lines and it removes the signal: an assertion that waits or retries until `NoListener` appears can no longer tell a close that propagated late from one that never happened, so a `ring` that wrongly reports `Heard` forever stops being visible here. This is the disposition that costs least today and most later, which is why it is priced rather than left unnamed. |
-| Either | The existing assertion in `dropping_the_ear_stops_the_door_being_heard` is rewritten or deleted, so the one test that names this behaviour today stops being evidence for it until the replacement lands. |
-| Doing neither | A red that reproduces roughly once in four full runs under load stays on a required check, and the next person to meet it has to re-derive this measurement before they can tell it from a real defect. |
+| **`NoListener` means the ear is gone** (a fact about the listener) | `ring` must become able to report a listener that has closed but whose close has not propagated — an extra syscall, a retry, or a handshake, on the hot path every bounded wait rings through. Every ringer pays that on every ring to make one assertion in one test deterministic. |
+| **`NoListener` means the ear is gone and that is now observable** (a fact about this ring) | `Heard` becomes a legitimate answer for a door whose listener has already died, so a bounded wait can be parked against a run nobody is waiting on. Whoever reads `Heard` inherits the job of noticing that later, and the doorbell stops being the single place that question is answered. |
+| **Bounded retry in the test** (the cheap option, and the one to reach for first) | A timing budget somebody has to choose and justify, and the loss of evidence about *immediate* closure — the assertion stops being able to say the ear was gone the moment it was dropped. It does **not** cost detection of a `ring` that reports `Heard` forever: a bounded retry followed by a required `NoListener` still fails at the deadline. |
+| **Unbounded waiting, or dropping the assertion** | The one that actually removes the signal, and why the row above is worth separating from it: a wait with no deadline, or a test that no longer requires `NoListener` at all, cannot tell a close that propagated late from one that never happened. |
+| Any of the above | The existing assertion in `dropping_the_ear_stops_the_door_being_heard` is rewritten or deleted, so the one test naming this behaviour today stops being evidence for it until the replacement lands. |
+| Doing nothing | A red that reproduces roughly once in four full runs under load stays on a required check, and the next person to meet it has to re-derive this measurement before they can tell it from a real defect. |

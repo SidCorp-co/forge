@@ -3000,6 +3000,14 @@
   set is now 59.
 
 ### Fixed
+- **A decision put to your chat room can no longer be asked twice, or stop being retried in
+  silence.** Attempts are counted by the record itself, so retries end where they should and
+  somebody is told when delivery fails.
+
+- **Nothing can claim a message was checked when it was not.** The check now issues its own
+  receipt, naming the exact wording it passed, and the door to your chat room refuses a message
+  carrying any other.
+
 - **A runner installed under a path with a space now actually reports.** The hook command
   interpolated the executable unquoted, so a shell split it; the install still succeeded, and the
   job was failed for silence two minutes later.

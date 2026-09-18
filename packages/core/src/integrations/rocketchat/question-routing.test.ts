@@ -7,6 +7,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: {
@@ -259,7 +260,7 @@ describe('a reply inside a question thread', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
     resolveRoomShape.mockResolvedValue('group');
     subjectForThread.mockResolvedValue(null);
     consumeQuestionThreadReply.mockReturnValue(undefined);

@@ -73,6 +73,19 @@ vi.mock('./rest-client.js', () => ({
 }));
 
 const { FIXED_REPLY_CONSTANT, sendFixedReply } = await import('./outbound.js');
+const { proven, wholeAgentText } = await import('../../messaging/proven.js');
+const { screenAtDoor } = await import('../../messaging/screen.js');
+
+/** A real proof: the screen runs, and its verdict is the only thing that can mint one. */
+function mint(text: string) {
+  const admitted = proven(
+    'question-delivery',
+    wholeAgentText(text),
+    screenAtDoor('question-delivery', [text]),
+  );
+  if (!admitted) throw new Error(`the fixture text did not pass the screen: ${text}`);
+  return admitted;
+}
 
 function ddpTransport(overrides: Record<string, unknown> = {}) {
   return {
@@ -115,12 +128,10 @@ describe('sendFixedReply', () => {
     );
   });
 
-  it('delivers verbatim when proof is a verdict narrowed to ok:true (B3)', async () => {
+  it('delivers verbatim when proof is a ProvenMessage the screen minted for that string', async () => {
     const transport = ddpTransport();
-    await sendFixedReply(transport as never, 'Already-screened model reply.', {
-      ok: true,
-      problems: [],
-    });
+    const admitted = mint('Already-screened model reply.');
+    await sendFixedReply(transport as never, admitted.text, admitted);
     expect(transport.client.sendMessage).toHaveBeenCalledWith(
       'room-1',
       'Already-screened model reply.',
@@ -128,15 +139,44 @@ describe('sendFixedReply', () => {
     );
   });
 
-  it('rejects delivery when proof is a verdict that is NOT ok (B3 runtime backstop)', async () => {
+  // cm:guard TWO assertions on one call, and both are load-bearing (ISS-978 F5). The
+  // `@ts-expect-error` is the compile-time half: `ReplySendProof`'s model arm is nominal, so a
+  // hand-built literal must not typecheck — and if the brand is ever removed the literal compiles, the
+  // directive becomes unused, and `tsc` fails with TS2578. That is the only thing that can turn this
+  // line red, which is what makes it evidence rather than decoration: the runtime half below cannot
+  // tell a forged proof from a real one on its own, because before the brand every literal of this
+  // shape WAS a valid proof and the union could not distinguish them.
+  it('refuses a hand-built proof — and one does not even typecheck', async () => {
     const transport = ddpTransport();
     await expect(
-      sendFixedReply(transport as never, 'Should never ship.', {
-        ok: false,
-        problems: ['leaks a code fence'],
-      } as never),
-    ).rejects.toThrow(/requires proof/);
+      // @ts-expect-error ISS-978 F5: `{ ok: true; problems: string[] }` is not a ProvenMessage, and the
+      // point of branding the type is that this line stops compiling. Removing the brand makes this
+      // directive unused and fails the build.
+      sendFixedReply(transport as never, 'Should never ship.', { ok: true, problems: [] }),
+    ).rejects.toThrow(/did not come from a screen/);
     expect(transport.client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the discriminating half: a proof is a claim about ONE string, so a real proof paired with
+  // a different message has to be refused as loudly as a forged one. Before ISS-978 nothing compared
+  // the two at all — the delivery lane screened a round's option labels and posted the rendered round,
+  // and this door accepted it because the verdict merely accompanied the text.
+  it('refuses a real proof minted for a different string, naming both', async () => {
+    const transport = ddpTransport();
+    const admitted = mint('the answer the screen read');
+    await expect(
+      sendFixedReply(transport as never, 'a different message entirely', admitted),
+    ).rejects.toThrow(/the answer the screen read[\s\S]*a different message entirely/);
+    expect(transport.client.sendMessage).not.toHaveBeenCalled();
+  });
+
+  it('posts a proof whose text matches, so the comparison is not refusing everything', async () => {
+    const transport = ddpTransport();
+    const admitted = mint('a message that matches its proof');
+    await expect(
+      sendFixedReply(transport as never, admitted.text, admitted),
+    ).resolves.toMatchObject({ messageId: undefined });
+    expect(transport.client.sendMessage).toHaveBeenCalled();
   });
 
   it('redacts the transport auth token if it appears in the text', async () => {

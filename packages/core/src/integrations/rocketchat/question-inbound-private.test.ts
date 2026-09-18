@@ -35,8 +35,20 @@ vi.mock('./outbound.js', () => ({
   },
 }));
 
-vi.mock('../../messaging/screen.js', () => ({ screenAtDoor: () => ({ ok: true, problems: [] }) }));
-vi.mock('../../messaging/contract.js', () => ({ problemsOf: () => [] }));
+// cm:guard the mock ADMITS what it was shown rather than returning a bare `ok`: since ISS-978 a
+// verdict carries the segments it was passed over, and a proof is minted only where those match
+// what is being sent — so a screen that records nothing turns every post here into a refusal.
+vi.mock('../../messaging/screen.js', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('../../messaging/screen.js')>();
+  return {
+    ...actual,
+    screenAtDoor: (_door: unknown, segments: readonly string[]) => actual.admitted(segments),
+  };
+});
+vi.mock('../../messaging/contract.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../messaging/contract.js')>()),
+  problemsOf: () => [],
+}));
 
 const answerAs = vi.fn<() => Promise<void>>(async () => {});
 vi.mock('../../questions/read.js', () => ({ answerAs: () => answerAs() }));

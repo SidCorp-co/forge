@@ -35,9 +35,11 @@ vi.mock('../../src/integrations/rocketchat/outbound.js', async (importOriginal) 
     ...actual,
     sendFixedReply: vi.fn(
       async (transport: { rid: string; tmid?: string }, text: string, proof: unknown) => {
-        // cm:guard the mock re-asserts the proof contract the real door enforces, so a caller that stopped screening its text fails here instead of passing because the door was replaced.
-        if (proof !== actual.FIXED_REPLY_CONSTANT && !(proof as { ok?: boolean })?.ok) {
-          throw new Error('unscreened text reached the outbound door');
+        // cm:guard the mock re-asserts what the real door enforces: a proof is a claim about ONE
+        // string, so it is compared against the text it is handed. This read `proof.ok` until ISS-978
+        // F5, which any literal satisfied and which named no text at all.
+        if (proof !== actual.FIXED_REPLY_CONSTANT && (proof as { text?: string })?.text !== text) {
+          throw new Error('text reached the outbound door under a proof that does not name it');
         }
         if (atPostTime) await atPostTime();
         if (postThrows) throw postThrows;
