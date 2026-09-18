@@ -118,6 +118,39 @@ describe('a multi-project agent and a project’s conversational voice', () => {
     expect(again.minted).toBe(false);
   });
 
+  // cm:guard the refusal may not depend on this agent being the voice the resolver picks TODAY.
+  // `existingProjectHandle` answers oldest-first, so a project holding an older differently-named
+  // agent and a younger one carrying the canonical name selects the OLDER — and the first shape of
+  // this refusal therefore let the younger one through. Two legal widenings then left the canonical
+  // name occupied by an agent that no longer qualifies, which is the collision itself. The test
+  // orders the two agents deliberately: without the ordering it passes against the broken code.
+  it('refuses the canonical-name holder even when another agent is the voice today', async () => {
+    const older = await accounts.createAgentAccount({
+      orgId,
+      projectIds: [projectA],
+      handle: handle(),
+    });
+    const [row] = await harness.db.execute<{ slug: string }>(
+      sql`SELECT slug FROM projects WHERE id = ${projectA}`,
+    );
+    const canonicalName = handles.handleNameForProject(row?.slug as string, projectA);
+    const canonical = await accounts.createAgentAccount({
+      orgId,
+      projectIds: [projectA],
+      handle: canonicalName,
+    });
+
+    // The voice the resolver picks is the OLDER agent, not the one holding the canonical name.
+    const voice = await harness.db.transaction((tx) =>
+      handles.resolveProjectHandle(tx as never, projectA),
+    );
+    expect(voice.userId).toBe(older.agent.userId);
+
+    await expect(
+      accounts.setAgentProjects(orgId, canonical.agent.userId, [projectA, projectB]),
+    ).rejects.toMatchObject({ status: 409 });
+  });
+
   // cm:guard and it is the NAME that decides, not being a project's only agent. An agent an admin
   // named for itself is also its project's voice today, and widening it is exactly what this issue
   // is for: the project simply mints its own slug-derived name next time, with nothing in the way.
