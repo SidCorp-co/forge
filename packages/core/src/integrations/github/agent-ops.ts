@@ -48,7 +48,7 @@ export function kernelVerbRefusal(action: string): string {
   return (
     `\`${action}\` is not one of this tool's actions and will not become one. Merging a pull request ` +
     'is a kernel transition on the DISPATCH face, where the same operation that merges also stamps ' +
-    "`merged_at` and the commit it landed at — one writer for one truth — so it happens without an " +
+    '`merged_at` and the commit it landed at — one writer for one truth — so it happens without an ' +
     'agent present and is recorded whether or not one was. It is served there as the outbound verb ' +
     '`pull_request.merge`, not here. What this face carries is the judgement: read the diff, read a ' +
     "failing check run's log, comment, open a pull request, request a review, submit a verdict."

@@ -147,14 +147,23 @@ async function resolveStoredPullRequest(
       .from(repoPullRequests)
       .where(and(eq(repoPullRequests.issueId, issueId), eq(repoPullRequests.number, number)))
       .limit(1);
-    return row ? { id: row.id } : { refusal: `this issue has no pull request #${number} on Forge's projection of the repository` };
+    return row
+      ? { id: row.id }
+      : {
+          refusal: `this issue has no pull request #${number} on Forge's projection of the repository`,
+        };
   }
   const open = await openPullRequestsForIssue(issueId);
   if (open.length === 0) {
-    return { refusal: "this issue has no open pull request on Forge's projection of the repository — name one with `pullRequest`, or check that the branch names this issue" };
+    return {
+      refusal:
+        "this issue has no open pull request on Forge's projection of the repository — name one with `pullRequest`, or check that the branch names this issue",
+    };
   }
   if (open.length > 1) {
-    return { refusal: `this issue has ${open.length} open pull requests and Forge will not choose between them — name the one to merge with \`pullRequest\`` };
+    return {
+      refusal: `this issue has ${open.length} open pull requests and Forge will not choose between them — name the one to merge with \`pullRequest\``,
+    };
   }
   return { id: open[0] as string };
 }

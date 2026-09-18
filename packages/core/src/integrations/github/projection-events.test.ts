@@ -32,11 +32,7 @@ vi.mock('./projection.js', () => ({
   // `merged` means and the merged arm this suite exercises is decided by it. A stub here would let
   // the two disagree, which is the thing the projection exists to stop.
   stateOf: (pr: { merged?: boolean; merged_at?: string | null; state?: string }) =>
-    pr.merged === true || pr.merged_at
-      ? 'merged'
-      : pr.state === 'closed'
-        ? 'closed'
-        : 'open',
+    pr.merged === true || pr.merged_at ? 'merged' : pr.state === 'closed' ? 'closed' : 'open',
 }));
 
 const recordIssueMerge = vi.fn(async () => ({ wrote: false, mergedAt: null, commitSha: null }));

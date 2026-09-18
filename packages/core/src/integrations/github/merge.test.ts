@@ -55,7 +55,13 @@ vi.mock('../../db/client.js', () => {
   };
 });
 
-const recordIssueMerge = vi.fn(async () => ({ wrote: true, mergedAt: null, commitSha: null }));
+const recordIssueMerge = vi.fn(
+  async (): Promise<{ wrote: boolean; mergedAt: Date | null; commitSha: string | null }> => ({
+    wrote: true,
+    mergedAt: null,
+    commitSha: null,
+  }),
+);
 vi.mock('../../issues/merge-record.js', () => ({
   recordIssueMerge: (...a: unknown[]) => recordIssueMerge(...(a as [])),
 }));
@@ -258,32 +264,76 @@ describe('a pre-flight refusal reaches GitHub with no merge request', () => {
   const refusals: Array<{ what: string; answers: Record<string, unknown>; reason: string }> = [
     {
       what: 'a conflict',
-      answers: { pull: { number: 481, state: 'open', merged: false, mergeable: false, mergeable_state: 'dirty', head: { sha: HEAD }, base: { ref: 'main' } } },
+      answers: {
+        pull: {
+          number: 481,
+          state: 'open',
+          merged: false,
+          mergeable: false,
+          mergeable_state: 'dirty',
+          head: { sha: HEAD },
+          base: { ref: 'main' },
+        },
+      },
       reason: 'conflicting',
     },
     {
       what: 'a head behind its base',
-      answers: { pull: { number: 481, state: 'open', merged: false, mergeable: true, mergeable_state: 'behind', head: { sha: HEAD }, base: { ref: 'main' } } },
+      answers: {
+        pull: {
+          number: 481,
+          state: 'open',
+          merged: false,
+          mergeable: true,
+          mergeable_state: 'behind',
+          head: { sha: HEAD },
+          base: { ref: 'main' },
+        },
+      },
       reason: 'behind',
     },
     {
       what: 'a required check still running',
-      answers: { checks: { check_runs: [{ name: 'ci-passed', status: 'in_progress', conclusion: null }] } },
+      answers: {
+        checks: { check_runs: [{ name: 'ci-passed', status: 'in_progress', conclusion: null }] },
+      },
       reason: 'required-check',
     },
     {
       what: 'a required check that failed',
-      answers: { checks: { check_runs: [{ name: 'ci-passed', status: 'completed', conclusion: 'failure' }] } },
+      answers: {
+        checks: { check_runs: [{ name: 'ci-passed', status: 'completed', conclusion: 'failure' }] },
+      },
       reason: 'required-check',
     },
     {
       what: 'a protection that is not satisfied',
-      answers: { pull: { number: 481, state: 'open', merged: false, mergeable: true, mergeable_state: 'blocked', head: { sha: HEAD }, base: { ref: 'main' } } },
+      answers: {
+        pull: {
+          number: 481,
+          state: 'open',
+          merged: false,
+          mergeable: true,
+          mergeable_state: 'blocked',
+          head: { sha: HEAD },
+          base: { ref: 'main' },
+        },
+      },
       reason: 'protected-branch',
     },
     {
       what: 'a mergeability GitHub has not computed',
-      answers: { pull: { number: 481, state: 'open', merged: false, mergeable: null, mergeable_state: 'unknown', head: { sha: HEAD }, base: { ref: 'main' } } },
+      answers: {
+        pull: {
+          number: 481,
+          state: 'open',
+          merged: false,
+          mergeable: null,
+          mergeable_state: 'unknown',
+          head: { sha: HEAD },
+          base: { ref: 'main' },
+        },
+      },
       reason: 'mergeability-uncomputed',
     },
   ];
@@ -410,9 +460,7 @@ describe('when the stamp fails after GitHub merged', () => {
   // the base branch. The commit has to be IN the sentence.
   it('raises naming the commit that landed, and records nothing', async () => {
     transactionThrows = true;
-    await expect(ask()).rejects.toThrow(
-      new RegExp(`MERGED at ${LANDED}, and recording it failed`),
-    );
+    await expect(ask()).rejects.toThrow(new RegExp(`MERGED at ${LANDED}, and recording it failed`));
     expect(puts()).toHaveLength(1);
   });
 
@@ -431,7 +479,10 @@ describe('a pull request this project does not hold', () => {
 
   it('refuses a row belonging to a binding the caller was not authorised for', async () => {
     await expect(
-      mergeStoredPullRequest({ pullRequestId: PR_ID, requestedBy: 'user:alice' }, 'another-binding'),
+      mergeStoredPullRequest(
+        { pullRequestId: PR_ID, requestedBy: 'user:alice' },
+        'another-binding',
+      ),
     ).rejects.toThrow(/will not merge on a repository the caller did not name/);
     expect(sent).toHaveLength(0);
   });

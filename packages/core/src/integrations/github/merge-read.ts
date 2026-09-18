@@ -99,7 +99,12 @@ export async function readProtection(
 }
 
 interface CheckRunsBody {
-  check_runs?: Array<{ name?: string; status?: string; conclusion?: string | null; started_at?: string | null }>;
+  check_runs?: Array<{
+    name?: string;
+    status?: string;
+    conclusion?: string | null;
+    started_at?: string | null;
+  }>;
 }
 
 /** Every check run on this head, latest per name first, so a re-run answers for its name. */

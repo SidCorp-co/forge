@@ -46,159 +46,167 @@ type Mods = {
 
 const SHA = 'a1b2c3d4e5f60718293a4b5c6d7e8f9012345678';
 
+let harness: TestDatabase;
+let mods: Mods;
+// biome-ignore lint/suspicious/noExplicitAny: test-only mount
+let app: any;
+
+// cm:guard the helpers below live at module scope rather than inside the describe, and the reason is
+// `check-size-budget.mjs`: a describe callback is a function, so every helper written inside it
+// counts against the 150-line budget for one. Hoisting them keeps the budget measuring the cases.
+async function seed(handoffCommit?: string | null) {
+  const user = await createTestUser(harness.db);
+  await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
+  const project = await createTestProject(harness.db, user.id);
+  await createTestProjectMember(harness.db, {
+    userId: user.id,
+    projectId: project.id,
+    role: 'admin',
+  });
+  const id = randomUUID();
+  await harness.db.execute(sql`
+    INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
+    VALUES (${id}, ${project.id}, ${Math.floor(Math.random() * 1_000_000)}, 'mark', 'in_progress',
+            ${user.id})
+  `);
+  if (handoffCommit !== undefined) {
+    const runs = await harness.db.execute<{ id: string }>(sql`
+      INSERT INTO pipeline_runs (project_id, issue_id, status)
+      VALUES (${project.id}, ${id}, 'running') RETURNING id
+    `);
+    const runId = (runs[0] as { id: string }).id;
+    const payload = handoffCommit
+      ? { commitSha: handoffCommit, outcome: 'ok' }
+      : { outcome: 'ok', summary: 'no code' };
+    await harness.db.execute(sql`
+      INSERT INTO issue_step_contexts (project_id, issue_id, pipeline_run_id, kind, step, payload)
+      VALUES (${project.id}, ${id}, ${runId}, 'handoff', 'drive', ${JSON.stringify(payload)}::jsonb)
+    `);
+  }
+  const token = await mods.signUserToken(user.id);
+  return { id, token };
+}
+
+function mark(id: string, token: string, body: unknown) {
+  return app.request(`/api/issues/${id}/merge`, {
+    method: 'POST',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify(body),
+  });
+}
+
+function unmark(id: string, token: string) {
+  return app.request(`/api/issues/${id}/merge`, {
+    method: 'DELETE',
+    headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
+    body: JSON.stringify({}),
+  });
+}
+
+async function storedMark(id: string) {
+  const rows = await harness.db.execute<{
+    merged_at: Date | null;
+    merged_commit_sha: string | null;
+  }>(sql`SELECT merged_at, merged_commit_sha FROM issues WHERE id = ${id}`);
+  const row = rows[0] as { merged_at: Date | string | null; merged_commit_sha: string | null };
+  // cm:guard `execute` hands back the driver's own value, which is a STRING for timestamptz, so a
+  // caller that assumed a Date here read `.toISOString is not a function` rather than a wrong
+  // timestamp. Normalising once is what lets every case below assert on an exact instant.
+  return {
+    merged_at: row.merged_at === null ? null : new Date(row.merged_at),
+    merged_commit_sha: row.merged_commit_sha,
+  };
+}
+
+async function commentsOn(id: string) {
+  const rows = await harness.db.execute<{ body: string }>(
+    sql`SELECT body FROM comments WHERE issue_id = ${id} ORDER BY created_at`,
+  );
+  return rows.map((r) => (r as { body: string }).body);
+}
+
+/** A pull request Forge watched merge, on this issue, as the projection holds it. */
+async function seedObservedMerge(
+  issueId: string,
+  args: { commit: string; at: string; number?: number },
+) {
+  const rows = await harness.db.execute<{ project_id: string }>(
+    sql`SELECT project_id FROM issues WHERE id = ${issueId}`,
+  );
+  const projectId = (rows[0] as { project_id: string }).project_id;
+  const owner = await harness.db.execute<{ created_by_id: string }>(
+    sql`SELECT created_by_id FROM issues WHERE id = ${issueId}`,
+  );
+  const conn = await harness.db.execute<{ id: string }>(sql`
+    INSERT INTO integration_connections (owner_type, owner_id, provider, display_name)
+    VALUES ('user', ${(owner[0] as { created_by_id: string }).created_by_id}, 'github', 'gh')
+    RETURNING id
+  `);
+  const binding = await harness.db.execute<{ id: string }>(sql`
+    INSERT INTO integration_bindings (project_id, connection_id, provider, role, config)
+    VALUES (${projectId}, ${(conn[0] as { id: string }).id}, 'github', 'service', '{}'::jsonb)
+    RETURNING id
+  `);
+  await harness.db.execute(sql`
+    INSERT INTO repo_pull_requests
+      (project_id, binding_id, issue_id, number, repo_full_name, title, state,
+       head_ref, head_sha, base_ref, base_sha, merged_at, merge_commit_sha)
+    VALUES (${projectId}, ${(binding[0] as { id: string }).id}, ${issueId},
+            ${args.number ?? 481}, 'SidCorp-co/forge', 'pr', 'merged',
+            'ISS-1-x', 'headsha', 'main', 'basesha', ${args.at}::timestamptz, ${args.commit})
+  `);
+}
+
+beforeAll(async () => {
+  harness = await setupTestDatabase();
+  process.env.DATABASE_URL = harness.url;
+  process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
+  process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
+  process.env.SMTP_HOST ??= 'localhost';
+  process.env.SMTP_PORT ??= '1025';
+  process.env.SMTP_USER ??= 'test';
+  process.env.SMTP_PASS ??= 'test';
+  process.env.SMTP_FROM ??= 'test@example.com';
+  process.env.APP_BASE_URL ??= 'http://localhost:3000';
+  process.env.CORS_ORIGINS ??= 'http://localhost:3000';
+  process.env.NODE_ENV ??= 'test';
+
+  const [mergeMod, routesMod, jwtMod, errMod] = await Promise.all([
+    import('../../src/issues/merge-routes.js'),
+    import('../../src/issues/routes.js'),
+    import('../../src/auth/jwt.js'),
+    import('../../src/middleware/error.js'),
+  ]);
+  mods = {
+    issueMergeRoutes: mergeMod.issueMergeRoutes,
+    issueRoutes: routesMod.issueRoutes,
+    signUserToken: jwtMod.signUserToken,
+    errorHandler: errMod.errorHandler,
+  };
+  app = new Hono();
+  app.route('/api/issues', mods.issueMergeRoutes);
+  app.route('/api/issues', mods.issueRoutes);
+  app.onError(mods.errorHandler);
+}, 60_000);
+
+afterAll(async () => {
+  if (harness) await harness.cleanup();
+});
+
+beforeEach(async () => {
+  await truncateAll(harness.db);
+});
+
+// cm:guard this is the planted violation for criterion 9, and it asserts on BOTH halves. Restore
+// the caller's sha to the column and the first expectation goes red; keep it out of the column and
+// drop the sentence saying so and the second does — which is the shape CLAUDE.md prices, a write
+// that quietly declines half of what it was given.
+
+// cm:guard the harness hooks are at MODULE scope and not inside the first describe. They were, and
+// splitting this file into two describes for the size budget then ran the first one's `afterAll`
+// before the second one's cases, which closed the connection under them — seven tests failing with
+// `CONNECTION_ENDED` and nothing wrong with the subject.
 describe('ISS-959 B — the merged mark records its commit', () => {
-  let harness: TestDatabase;
-  let mods: Mods;
-  // biome-ignore lint/suspicious/noExplicitAny: test-only mount
-  let app: any;
-
-  beforeAll(async () => {
-    harness = await setupTestDatabase();
-    process.env.DATABASE_URL = harness.url;
-    process.env.JWT_SECRET ??= 'test-secret-at-least-32-chars-long-abcdef-123456';
-    process.env.DEVICE_TOKEN_PEPPER ??= 'test-device-pepper-at-least-32-chars-long-aa';
-    process.env.SMTP_HOST ??= 'localhost';
-    process.env.SMTP_PORT ??= '1025';
-    process.env.SMTP_USER ??= 'test';
-    process.env.SMTP_PASS ??= 'test';
-    process.env.SMTP_FROM ??= 'test@example.com';
-    process.env.APP_BASE_URL ??= 'http://localhost:3000';
-    process.env.CORS_ORIGINS ??= 'http://localhost:3000';
-    process.env.NODE_ENV ??= 'test';
-
-    const [mergeMod, routesMod, jwtMod, errMod] = await Promise.all([
-      import('../../src/issues/merge-routes.js'),
-      import('../../src/issues/routes.js'),
-      import('../../src/auth/jwt.js'),
-      import('../../src/middleware/error.js'),
-    ]);
-    mods = {
-      issueMergeRoutes: mergeMod.issueMergeRoutes,
-      issueRoutes: routesMod.issueRoutes,
-      signUserToken: jwtMod.signUserToken,
-      errorHandler: errMod.errorHandler,
-    };
-    app = new Hono();
-    app.route('/api/issues', mods.issueMergeRoutes);
-    app.route('/api/issues', mods.issueRoutes);
-    app.onError(mods.errorHandler);
-  }, 60_000);
-
-  afterAll(async () => {
-    if (harness) await harness.cleanup();
-  });
-
-  beforeEach(async () => {
-    await truncateAll(harness.db);
-  });
-
-  async function seed(handoffCommit?: string | null) {
-    const user = await createTestUser(harness.db);
-    await harness.db.execute(sql`UPDATE users SET email_verified_at = now() WHERE id = ${user.id}`);
-    const project = await createTestProject(harness.db, user.id);
-    await createTestProjectMember(harness.db, {
-      userId: user.id,
-      projectId: project.id,
-      role: 'admin',
-    });
-    const id = randomUUID();
-    await harness.db.execute(sql`
-      INSERT INTO issues (id, project_id, iss_seq, title, status, created_by_id)
-      VALUES (${id}, ${project.id}, ${Math.floor(Math.random() * 1_000_000)}, 'mark', 'in_progress',
-              ${user.id})
-    `);
-    if (handoffCommit !== undefined) {
-      const runs = await harness.db.execute<{ id: string }>(sql`
-        INSERT INTO pipeline_runs (project_id, issue_id, status)
-        VALUES (${project.id}, ${id}, 'running') RETURNING id
-      `);
-      const runId = (runs[0] as { id: string }).id;
-      const payload = handoffCommit
-        ? { commitSha: handoffCommit, outcome: 'ok' }
-        : { outcome: 'ok', summary: 'no code' };
-      await harness.db.execute(sql`
-        INSERT INTO issue_step_contexts (project_id, issue_id, pipeline_run_id, kind, step, payload)
-        VALUES (${project.id}, ${id}, ${runId}, 'handoff', 'drive', ${JSON.stringify(payload)}::jsonb)
-      `);
-    }
-    const token = await mods.signUserToken(user.id);
-    return { id, token };
-  }
-
-  function mark(id: string, token: string, body: unknown) {
-    return app.request(`/api/issues/${id}/merge`, {
-      method: 'POST',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify(body),
-    });
-  }
-
-  function unmark(id: string, token: string) {
-    return app.request(`/api/issues/${id}/merge`, {
-      method: 'DELETE',
-      headers: { 'content-type': 'application/json', authorization: `Bearer ${token}` },
-      body: JSON.stringify({}),
-    });
-  }
-
-  async function storedMark(id: string) {
-    const rows = await harness.db.execute<{
-      merged_at: Date | null;
-      merged_commit_sha: string | null;
-    }>(sql`SELECT merged_at, merged_commit_sha FROM issues WHERE id = ${id}`);
-    const row = rows[0] as { merged_at: Date | string | null; merged_commit_sha: string | null };
-    // cm:guard `execute` hands back the driver's own value, which is a STRING for timestamptz, so a
-    // caller that assumed a Date here read `.toISOString is not a function` rather than a wrong
-    // timestamp. Normalising once is what lets every case below assert on an exact instant.
-    return {
-      merged_at: row.merged_at === null ? null : new Date(row.merged_at),
-      merged_commit_sha: row.merged_commit_sha,
-    };
-  }
-
-  async function commentsOn(id: string) {
-    const rows = await harness.db.execute<{ body: string }>(
-      sql`SELECT body FROM comments WHERE issue_id = ${id} ORDER BY created_at`,
-    );
-    return rows.map((r) => (r as { body: string }).body);
-  }
-
-  /** A pull request Forge watched merge, on this issue, as the projection holds it. */
-  async function seedObservedMerge(
-    issueId: string,
-    args: { commit: string; at: string; number?: number },
-  ) {
-    const rows = await harness.db.execute<{ project_id: string }>(
-      sql`SELECT project_id FROM issues WHERE id = ${issueId}`,
-    );
-    const projectId = (rows[0] as { project_id: string }).project_id;
-    const owner = await harness.db.execute<{ created_by_id: string }>(
-      sql`SELECT created_by_id FROM issues WHERE id = ${issueId}`,
-    );
-    const conn = await harness.db.execute<{ id: string }>(sql`
-      INSERT INTO integration_connections (owner_type, owner_id, provider, display_name)
-      VALUES ('user', ${(owner[0] as { created_by_id: string }).created_by_id}, 'github', 'gh')
-      RETURNING id
-    `);
-    const binding = await harness.db.execute<{ id: string }>(sql`
-      INSERT INTO integration_bindings (project_id, connection_id, provider, role, config)
-      VALUES (${projectId}, ${(conn[0] as { id: string }).id}, 'github', 'service', '{}'::jsonb)
-      RETURNING id
-    `);
-    await harness.db.execute(sql`
-      INSERT INTO repo_pull_requests
-        (project_id, binding_id, issue_id, number, repo_full_name, title, state,
-         head_ref, head_sha, base_ref, base_sha, merged_at, merge_commit_sha)
-      VALUES (${projectId}, ${(binding[0] as { id: string }).id}, ${issueId},
-              ${args.number ?? 481}, 'SidCorp-co/forge', 'pr', 'merged',
-              'ISS-1-x', 'headsha', 'main', 'basesha', ${args.at}::timestamptz, ${args.commit})
-    `);
-  }
-
-  // cm:guard this is the planted violation for criterion 9, and it asserts on BOTH halves. Restore
-  // the caller's sha to the column and the first expectation goes red; keep it out of the column and
-  // drop the sentence saying so and the second does — which is the shape CLAUDE.md prices, a write
-  // that quietly declines half of what it was given.
   it('records a caller-named commit in the audit trail and not in the column', async () => {
     const { id, token } = await seed();
     const res = await mark(id, token, { target: 'base', commit: SHA });
@@ -299,6 +307,19 @@ describe('ISS-959 B — the merged mark records its commit', () => {
     const row = await storedMark(id);
     expect(row.merged_commit_sha).toBe(SHA);
     expect(row.merged_at?.toISOString()).toBe('2026-09-17T12:17:12.321Z');
+  });
+});
+
+/**
+ * The shape rules and the correction route, which ISS-1073 left standing.
+ *
+ * A second describe rather than a longer one: `check-size-budget.mjs` measures the callback, and a
+ * suite that grows past it by adding cases is one that stops being split by subject and starts being
+ * split by nothing.
+ */
+describe('ISS-959 B — what the mark still refuses, and how a mark is corrected', () => {
+  beforeEach(async () => {
+    await truncateAll(harness.db);
   });
 
   it('AC12 — GET /api/issues/:id returns the stored sha', async () => {

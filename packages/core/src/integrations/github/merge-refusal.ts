@@ -30,7 +30,7 @@ import { GitHubPublishError } from './client.js';
 export type MergeCallRefusal = CheckRefusal;
 
 // cm:guard the timeout arm is NOT delegated, and the difference is the whole of what an operator does next. `check-refusal.ts` says of a timed-out write that GitHub may or may not have taken it — true, and for a check run the way out is to publish again. For a merge the way out is the opposite: do NOT send it again, read the pull request, and let the `pull_request.closed` event or a second call to this verb record whatever actually happened. A sentence that invited a retry here would invite a second merge.
-function timedOut(err: GitHubPublishError): MergeCallRefusal {
+function timedOut(): MergeCallRefusal {
   return {
     cause: 'timed-out-mid-write',
     op: 'merge',
@@ -45,7 +45,7 @@ function timedOut(err: GitHubPublishError): MergeCallRefusal {
 
 export function describeMergeRefusal(err: unknown, number: number): MergeCallRefusal {
   if (!(err instanceof GitHubPublishError)) return describeThrown(err, 'merge');
-  if (err.timedOut) return timedOut(err);
+  if (err.timedOut) return timedOut();
 
   if (err.status === 405) {
     return {

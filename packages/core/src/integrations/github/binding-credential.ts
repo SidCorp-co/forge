@@ -31,7 +31,9 @@ export async function githubBindingCredential(bindingId: string): Promise<Bindin
   }
   const connection = await findConnectionById(binding.connectionId);
   if (!connection?.active) {
-    return { refusal: "the GitHub connection behind this project's binding is gone or deactivated" };
+    return {
+      refusal: "the GitHub connection behind this project's binding is gone or deactivated",
+    };
   }
   return {
     config: (binding.config ?? {}) as GitHubConfig,

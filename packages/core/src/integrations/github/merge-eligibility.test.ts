@@ -158,7 +158,12 @@ describe('each refusal names what is wrong', () => {
   ];
 
   it.each(cases)('refuses $what by name', (c) => {
-    const decision = decide(c.pull, c.protection ?? PROTECTED, c.checks ?? GREEN, c.expectedHeadSha);
+    const decision = decide(
+      c.pull,
+      c.protection ?? PROTECTED,
+      c.checks ?? GREEN,
+      c.expectedHeadSha,
+    );
     expect(decision.kind).toBe('refuse');
     if (decision.kind !== 'refuse') return;
     expect(decision.reason).toBe(c.reason);

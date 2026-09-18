@@ -195,11 +195,7 @@ async function announce(row: StoredRow): Promise<void> {
   }
 }
 
-async function refuse(
-  deliveryId: string,
-  reason: string,
-  detail: string,
-): Promise<MergeOutcome> {
+async function refuse(deliveryId: string, reason: string, detail: string): Promise<MergeOutcome> {
   // cm:guard a refusal is `failed` with its sentence, unlike the contract check's deliberate skips: nothing here is a non-merge Forge chose on the operator's behalf. Every one of them is a merge somebody asked for that did not happen, which is a red row they want to see.
   await updateDelivery(deliveryId, {
     status: 'failed',

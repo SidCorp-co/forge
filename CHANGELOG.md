@@ -112,6 +112,13 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Forge merges pull requests itself, as its own GitHub App, and that merge is what records the
+  work as landed.** No personal account, no machine to set up. A merge it cannot make is refused in
+  plain words, never retried.
+
+- **A merge you make on GitHub records the same landing.** One merge leaves one record, with the
+  commit and the time GitHub reported, however it happened.
+
 - **The database can now say which queries cost it the most, and its sizing settings live with
   the deployment.** Per-statement timing starts at the next database restart. Sizing keeps
   today's values until someone reads the machine.
