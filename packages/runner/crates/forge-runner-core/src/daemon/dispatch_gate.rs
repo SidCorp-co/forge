@@ -117,6 +117,33 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
     }
 }
 
+/// What a stat of one marketplace's `plugin/agents` established about it.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum Agents {
+    /// That marketplace ships no roles, and that IS knowledge. `codemap` is one
+    /// of them on this box.
+    Absent,
+    /// A directory whose role files can be listed.
+    Readable,
+    /// This box could not find out, so the inventory cannot be completed.
+    Unreadable,
+}
+
+// cm:guard the classification lives here, apart from the filesystem, so it is asserted on EVERY
+// platform this crate builds for. The scan's own test can only produce an unreadable directory with
+// `chmod 0`, which windows `Permissions` cannot express, so on that leg the plant silently did not
+// fire and the test read `Some({"runner"})` against `None` — a test asserting the absence of a
+// silent substitution, itself passing silently for the wrong reason. Absence is knowledge; a failed
+// stat is not; and which is which may not differ by platform (ISS-1094).
+pub(crate) fn agents_reach(stat: Result<bool, std::io::ErrorKind>) -> Agents {
+    match stat {
+        Err(std::io::ErrorKind::NotFound) => Agents::Absent,
+        Err(_) => Agents::Unreadable,
+        Ok(false) => Agents::Absent,
+        Ok(true) => Agents::Readable,
+    }
+}
+
 /// Every role name the plugin copies on this box ship.
 ///
 /// `None` where nothing could be read, which the gate treats as not knowing
@@ -137,13 +164,14 @@ pub fn shipped_roles(config_dir: &Path) -> Option<BTreeSet<String>> {
         // whose ancestor is unreadable — so the second was skipped as though it shipped no roles,
         // and a partial inventory went back looking complete. Absence is knowledge; a failed stat
         // is not (ISS-1094, review F3).
-        match std::fs::metadata(&agents) {
-            // No agents directory: that marketplace ships no roles. `codemap` is
-            // one of them on this box.
-            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
-            Err(_) => return None,
-            Ok(m) if !m.is_dir() => continue,
-            Ok(_) => {}
+        match agents_reach(
+            std::fs::metadata(&agents)
+                .map(|m| m.is_dir())
+                .map_err(|e| e.kind()),
+        ) {
+            Agents::Absent => continue,
+            Agents::Unreadable => return None,
+            Agents::Readable => {}
         }
         for agent in std::fs::read_dir(agents).ok()? {
             let path = agent.ok()?.path();
@@ -362,8 +390,44 @@ mod tests {
         assert_ne!(v, Verdict::NotOurs);
     }
 
-    /// Review F3. A scan that could not finish is not a smaller answer.
+    /// Review F3, the classification itself — on every platform this crate builds for.
+    ///
+    /// This is the assertion that matters and it needs no filesystem: a stat that
+    /// FAILED for any reason but absence leaves the inventory incomplete, and an
+    /// incomplete inventory is indistinguishable from a complete one at every
+    /// reader, so every role in the half that was not read would be classified
+    /// `NotOurs` with no refusal, no mark and nothing said.
+    #[test]
+    fn a_stat_that_failed_is_never_read_as_an_absent_directory() {
+        use std::io::ErrorKind;
+        assert_eq!(
+            agents_reach(Err(ErrorKind::PermissionDenied)),
+            Agents::Unreadable,
+            "a directory this box may not stat is not a directory that is not there"
+        );
+        assert_eq!(
+            agents_reach(Err(ErrorKind::NotFound)),
+            Agents::Absent,
+            "absence IS knowledge: that marketplace ships no roles"
+        );
+        assert_eq!(
+            agents_reach(Ok(false)),
+            Agents::Absent,
+            "a file where a directory belongs ships no roles"
+        );
+        assert_eq!(agents_reach(Ok(true)), Agents::Readable);
+    }
+
+    /// Review F3. A scan that could not finish is not a smaller answer — the
+    /// same rule as above, driven through a real filesystem.
     // cm:guard the failing half is a directory this process cannot read, not an absent one: an absent `plugin/agents` means that marketplace ships no roles, which IS knowledge. Conflating the two either blinds the gate or refuses every box holding a marketplace that is not a plugin.
+    // cm:guard gated `unix` for the PLANT and not for the rule. The only way to make a directory
+    // unstattable here is `chmod 0`, and windows `Permissions` carries no such bit: on that leg the
+    // `set_mode` call is compiled out, the tree stays readable, the scan answers `Some({"runner"})`
+    // and the plant never fires. A plant that cannot fire is not a green, it is an unrun plant —
+    // so the rule it was protecting is asserted without a filesystem in
+    // `a_stat_that_failed_is_never_read_as_an_absent_directory`, which runs everywhere (ISS-1094).
+    #[cfg(unix)]
     #[test]
     fn a_role_scan_that_could_not_finish_is_not_a_partial_answer() {
         let dir = Scratch::new("partialroles");
