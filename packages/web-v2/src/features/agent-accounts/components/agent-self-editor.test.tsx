@@ -50,6 +50,13 @@ const renderEditor = () =>
   );
 
 describe("the agent self editor (criterion 51)", () => {
+  // ISS-1087 criterion 33 — the third group mode renders from the stored self, so the select must offer it.
+  it("offers tool as a third group mode", () => {
+    self = { ...self, presence: { answerInGroup: "tool" } };
+    renderEditor();
+    expect(screen.getByLabelText("In a group room")).toHaveTextContent(/only when it chooses/i);
+  });
+
   it("shows the stored self and presence in human units", () => {
     renderEditor();
     expect(screen.getByLabelText("Soul")).toHaveValue("I am Babo, the Alpha project's assistant.");

@@ -327,6 +327,12 @@ export const LEDGER: readonly Claim[] = [
     origin: 'kept',
   },
   {
+    id: 'rocketchat-quote-context',
+    owner: 'rocketchatOnly',
+    clauses: ['can be expanded with rocketchat_quote_context', 'at most two per turn'],
+    origin: 'new',
+  },
+  {
     id: 'one-reply-only',
     owner: 'rocketchatOnly',
     clauses: [
