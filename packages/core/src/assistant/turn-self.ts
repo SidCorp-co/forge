@@ -25,7 +25,7 @@ export interface TurnSelf {
 }
 
 // cm:guard the self is read off the HANDLE the turn speaks as and the preferences off the SPEAKER, and neither off "the project's agent" or the principal: a project may hold more than one agent account and the room names which one is in it, while in a group room the principal is the org agent and the person being answered is somebody else (ISS-1034 criteria 3, 17, 19).
-// cm:edge contract -> packages/core/src/assistant/routes.ts, packages/core/src/assistant/external-chat.ts — both doors take their self and speaker section from HERE, so that `routes.ts` reaches the org and auth modules through this file and not on its own; the archmap fan-out limit on that route is what put the two reads together.
+// cm:edge contract -> packages/core/src/assistant/external-chat.ts — every door takes its self and speaker section from HERE rather than reaching the org and auth modules on its own; the archmap fan-out limit on the SSE door is what put the two reads together, and the rule outlived that door (ISS-1030).
 export async function loadTurnSelf(input: TurnSelfInput): Promise<TurnSelf> {
   const dbi = input.db ?? defaultDb;
   const selves = input.handleUserId ? await readSelvesFor([input.handleUserId], dbi) : new Map();

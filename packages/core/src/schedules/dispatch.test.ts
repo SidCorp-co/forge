@@ -42,7 +42,11 @@ vi.mock('../db/client.js', () => ({
       const tx: Record<string, unknown> = {
         update: txUpdate,
         insert: () => ({ values: async () => undefined }),
-        execute: async () => undefined,
+        // cm:why `[]` and not `undefined`: postgres answers a `SELECT` with rows,
+        // and `agent-sessions/session-events.ts` reads `MAX(seq)` off exactly such
+        // an answer. A double returning `undefined` fails there on a shape no real
+        // executor produces.
+        execute: async () => [],
       };
       tx.transaction = async (inner: (t: unknown) => Promise<unknown>) => inner(tx);
       return cb(tx);

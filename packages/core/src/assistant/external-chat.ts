@@ -1,6 +1,6 @@
 /**
  * ISS-604 (P2a) — non-streaming chat entrypoint for external channels (Rocket.Chat, Telegram, …):
- * the same resolution as the SSE `/api/chat` route, but the shared turn loop is drained to one
+ * the same resolution the SSE `/api/chat` route used before ISS-1030 removed it, but the shared turn loop is drained to one
  * reply string. The caller supplies the toolset (it owns the principal); none means a tool-less
  * completion.
  *
@@ -253,8 +253,7 @@ export async function runExternalChatTurn(
     // so the provider stream is not left open. The observer is `conversation-progress.ts`, whose
     // accumulator is also the producer of the blocks the transcript row is written with, so its
     // refusal of a tool result naming no call this turn made is an upstream pairing break rather than
-    // a watcher's inconvenience — `run-turn.ts` ends its turn on the same refusal from the same
-    // accumulator. A failure to PUBLISH is caught inside the observer, so a socket that went away
+    // a watcher's inconvenience. A failure to PUBLISH is caught inside the observer, so a socket that went away
     // cannot reach here (ISS-1078, and ISS-1029 criterion 14 for the refusal itself).
     if (args.onTurnEvent) {
       try {

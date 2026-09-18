@@ -28,8 +28,16 @@ vi.mock('../db/client.js', () => ({
     select: vi.fn(() => ({ from: selectFrom })),
     insert: vi.fn(() => ({ values: insertValues })),
     update: vi.fn(() => ({ set: updateSet })),
+    // cm:why the tx double owes `insert` as well as `execute`: since ISS-1030 the
+    // turn writes its user entry into `agent_session_events` inside the same
+    // transaction, and a double without it fails every dispatch on a missing
+    // method rather than on what the test is about.
     transaction: vi.fn(async (cb: (tx: unknown) => Promise<unknown>) =>
-      cb({ update: txUpdate, execute: vi.fn(async () => []) }),
+      cb({
+        update: txUpdate,
+        insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
+        execute: vi.fn(async () => []),
+      }),
     ),
   },
 }));

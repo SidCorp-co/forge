@@ -34,6 +34,8 @@ type AskBody = {
   needed?: string;
   assumed?: Record<string, unknown>;
   cost?: { claimsHeld?: number; workspacesPinned?: number; dependents?: number };
+  // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/questions.rs — the box sends this and a round it marks private is delivered to the asker's direct room; a field dropped on either side sends a private round into a channel (ISS-1091 criterion 19).
+  sensitive?: boolean;
 };
 
 import { readAdmissibleIssues } from './admissible.js';
