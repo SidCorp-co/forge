@@ -1,4 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 
 /**
  * ISS-727 — the `agent`-mode completion bridge: its CAS idempotency stamp, the
@@ -144,7 +145,7 @@ describe('deliverLegacyAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('Here is the final answer.');
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverLegacyAgentChatReplyOnce(makeSession());
 
@@ -157,7 +158,10 @@ describe('deliverLegacyAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'Here is the final answer.',
-      { ok: true, problems: [] },
+      // cm:guard the proof NAMES the string being posted, which is the assertion ISS-978 F5 found
+      // missing everywhere: `{ ok: true, problems: [] }` was satisfied by any literal and said nothing
+      // about which text had been screened.
+      { text: 'Here is the final answer.', door: 'agent-chat-completion' },
     );
   });
 
@@ -165,7 +169,7 @@ describe('deliverLegacyAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('Created ISS-42 for you.');
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverLegacyAgentChatReplyOnce(
       makeSession({
@@ -235,7 +239,7 @@ describe('deliverLegacyAgentChatReplyOnce: the room is read again before the pos
     resolveRoomPostAuth.mockReset();
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     screenRoomReply.mockReset();
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
     sendFixedReply.mockReset();
     extractFinalAssistantText.mockReset();
     extractFinalAssistantText.mockReturnValue('answer');
@@ -427,7 +431,7 @@ describe('deliverLegacyAgentChatReplyOnce: which failures earn a redispatch', ()
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('answer');
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverLegacyAgentChatReplyOnce(
       makeSession({
@@ -446,7 +450,10 @@ describe('deliverLegacyAgentChatReplyOnce: which failures earn a redispatch', ()
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: 'thread-1' },
       'answer',
-      { ok: true, problems: [] },
+      // cm:guard the proof NAMES the string being posted, which is the assertion ISS-978 F5 found
+      // missing everywhere: `{ ok: true, problems: [] }` was satisfied by any literal and said nothing
+      // about which text had been screened.
+      { text: 'answer', door: 'agent-chat-completion' },
     );
   });
 
@@ -454,7 +461,7 @@ describe('deliverLegacyAgentChatReplyOnce: which failures earn a redispatch', ()
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('answer');
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
     sendFixedReply.mockRejectedValue(new Error('network error'));
 
     await expect(deliverLegacyAgentChatReplyOnce(makeSession())).resolves.toBeUndefined();

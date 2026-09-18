@@ -9,6 +9,7 @@
 // cm:ignore CM013 — the one frozen comment left in this file is an `i18n-allow` pragma the language gate reads; deleting it to pay the drain reds that gate instead.
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 import { claimedWindowFor } from './claimed-window.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
@@ -283,7 +284,7 @@ describe('connection-manager escalation wiring', () => {
     startEscalation.mockReset();
     startAgentChat.mockReset();
     screenRoomReply.mockReset();
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
   });
 
   it('posts the ACK and invokes startEscalation when the model calls escalate(); skips the normal reply', async () => {
@@ -392,7 +393,7 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     runExternalChatTurn.mockReset();
     startAgentChat.mockReset();
     screenRoomReply.mockReset();
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
   });
 
   it("mode='agent' routes to startAgentChat, skips the fast turn, and sends NO synchronous ack", async () => {

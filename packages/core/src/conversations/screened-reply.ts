@@ -99,10 +99,25 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
     // cm:why an empty FIRST reply is not a screen failure — it is handled below as its own outcome, with a fallback that names why it was empty. An empty REPAIR is: the model was told what to fix and answered with nothing.
     screen: async (segments): Promise<MessageVerdict> => {
       const text = (segments[0] ?? '').trim();
-      if (!text) return attempt === 0 ? { ok: true } : { ok: false, refusals: [EMPTY_RETRY] };
+      // cm:hack ISS-978 until:`withRepairs` can be told "not a failure, and do not repair" without a
+      // verdict — this is the one cast to an `ok` verdict outside a screen, and it is a CONTROL-FLOW
+      // signal rather than a claim about text. What bounds it: the empty string it stands for never
+      // reaches `screened()` below, because the `!trimmed` branch returns a `codeAuthored` fallback
+      // first, so it can mint no proof and nothing can be posted under it. Priced at one cast that
+      // `verdict-mint.test.ts` names; it ends when `RepairRound.screen` can return a third outcome.
+      if (!text) {
+        return attempt === 0
+          ? ({ ok: true } as MessageVerdict)
+          : { ok: false, refusals: [EMPTY_RETRY] };
+      }
+      // cm:guard the TRIMMED text is what is screened, because it is what is sent: `screened()` below
+      // is called with `result.reply.trim()`, and since ISS-978 a proof is minted only where the
+      // verdict was passed over that exact string. Screening the untrimmed segment and posting the
+      // trimmed one is the same "the screen read something else" gap F5 names, two whitespace
+      // characters wide (whole-set review F2).
       return screenReplyAtDoor(args.door, {
         projectId: args.projectId,
-        segments: [segments[0] ?? ''],
+        segments: [text],
         toolCalls: result.toolCalls,
         progress: result.progress,
       });
@@ -138,7 +153,10 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
     );
   }
   // cm:guard the verdict travels WITH the text as its proof — `screened` returns null on anything but an `ok` verdict over that exact string, so no later branch can send unscreened text under a stale one (ISS-978).
-  const passed = screened(trimmed, { ok: true, problems: [] });
+  // cm:guard the verdict handed over is the one `withRepairs` PASSED ON, not a fresh `{ ok: true }`: the
+  // repair loop may have screened a rewritten attempt, and the pass that matters is the pass over the
+  // text about to be sent. Since ISS-978 there is no other verdict available to write here anyway.
+  const passed = screened(trimmed, args.door, outcome.verdict);
   if (!passed) throw new Error('conversations: a passing verdict yielded no screened message');
   return passed;
 }

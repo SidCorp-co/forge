@@ -17,6 +17,7 @@
  */
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../messaging/screen-passes.fixture.js';
 
 vi.mock('../observability/sentry.js', () => ({ Sentry: { captureException: vi.fn() } }));
 
@@ -114,7 +115,7 @@ beforeEach(() => {
   clearConversationTransports();
   registerConversationTransport({ adapter: 'widget', deliver, fetchHistory });
   deliver.mockResolvedValue({ messageId: 'server-id-9' });
-  screenReplyAtDoor.mockResolvedValue({ ok: true });
+  screenReplyAtDoor.mockImplementation(screenPasses);
   runExternalChatTurn.mockResolvedValue(answered);
 });
 
@@ -217,7 +218,7 @@ describe('which text reaches the venue', () => {
   it('hands the retry’s text to deliver, and the rejected attempt to nothing', async () => {
     screenReplyAtDoor
       .mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] })
-      .mockResolvedValueOnce({ ok: true });
+      .mockImplementationOnce(screenPasses);
     runExternalChatTurn
       .mockResolvedValueOnce({ ...answered, reply: 'rejected text' })
       .mockResolvedValueOnce({ ...answered, reply: 'the retry answer' });
@@ -365,7 +366,7 @@ describe('what a watcher of the turn is told (ISS-1078)', () => {
     const onSettled = vi.fn();
     screenReplyAtDoor
       .mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] })
-      .mockResolvedValueOnce({ ok: true });
+      .mockImplementationOnce(screenPasses);
     runExternalChatTurn
       .mockResolvedValueOnce({ ...answered, reply: 'rejected text' })
       .mockResolvedValueOnce({ ...answered, reply: 'the retry answer' });

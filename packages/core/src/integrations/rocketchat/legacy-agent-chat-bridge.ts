@@ -17,6 +17,7 @@ import type { agentSessions as agentSessionsTable } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { problemsOf } from '../../messaging/contract.js';
 import type { ProgressFacts } from '../../messaging/facts.js';
+import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
 import { AGENT_CHAT_FALLBACK_REPLY } from './agent-chat.js';
@@ -125,9 +126,16 @@ export async function deliverLegacyAgentChatReplyOnce(session: SessionRow): Prom
         );
       },
     });
-    if (outcome.kind === 'passed') {
-      reply = finalText;
-      proof = { ok: true, problems: [] };
+    const admitted =
+      outcome.kind === 'passed'
+        ? // cm:guard minted from the verdict that passed, over the exact string being posted. The
+          // hand-built `{ ok: true, problems: [] }` this replaces claimed a screen had run and named
+          // nothing it had run over — ISS-978 F5.
+          proven('agent-chat-completion', wholeAgentText(finalText), outcome.verdict)
+        : null;
+    if (admitted) {
+      reply = admitted.text;
+      proof = admitted;
     } else {
       logger.warn(
         { sessionId: session.id, rid: meta.rid, problems: problemsOf(outcome.verdict) },
