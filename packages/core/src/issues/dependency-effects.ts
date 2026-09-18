@@ -63,9 +63,11 @@ const GATES_DISPATCH_NOTE =
   'B is held out of the admissible set a master reads while a live `blocks` edge points at it ' +
   `from an A that has not reached \`${BLOCKER_SETTLED_STATUSES[0]}\` — the statuses that release ` +
   `it are ${BLOCKER_SETTLED_STATUSES.map((s) => `\`${s}\``).join(', ')}. A reopened A blocks ` +
-  'again. Retracting the edge (`validUntil` in the past) stops it holding B, and dropping A ' +
-  'expires its edges for that same reason. `merged_at` is not what this reads: it is the stamp ' +
-  'that says A landed, and no dispatch decision in Forge is gated on it.';
+  'again. Retracting the edge (`validUntil` in the past) stops it holding B here, and dropping A ' +
+  'expires its edges for the same reason — but NOT yet at the master, whose own reading ignores ' +
+  'expiry (forge-plugin ISS-347), so a B released that way is offered and then declined. Moving A ' +
+  'forward is the route that works on both. `merged_at` is not what any of this reads: it is the ' +
+  'stamp that says A landed, and no dispatch decision in Forge is gated on it.';
 
 export type DependencyKindEffect = {
   gatesDispatch: boolean;

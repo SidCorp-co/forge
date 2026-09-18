@@ -275,8 +275,9 @@ fn since_nudge(seen: Option<&agent_activity::Activity>, sent_at: Option<u64>) ->
     match now.doing() {
         agent_activity::Doing::Working => SinceNudge::Working,
         agent_activity::Doing::AwaitingPermission => SinceNudge::AwaitingPermission,
+        // cm:guard `turn_ended_failed` and NOT `last_event`: every frame overwrites `last_event`, so a lead turn that dies on a limit while a child is outstanding is followed by that child's own `SubagentStop` and reads as a clean finish — which withholds the retry in exactly the case the ceiling exists for. Found by review on ISS-1100 and pinned by `a_turn_that_died_while_a_child_was_outstanding_still_reads_as_failed`.
         agent_activity::Doing::Idle => {
-            if now.last_event == agent_activity::Event::StoppedFailed {
+            if now.turn_ended_failed {
                 SinceNudge::Failed
             } else {
                 SinceNudge::Ran
@@ -3790,6 +3791,45 @@ mod give_back_tests {
         ]);
         assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::Ran);
         assert!(!retry_owed(SinceNudge::Ran));
+    }
+
+    // cm:guard THE sequence review found on ISS-1100: the lead turn dies on the account limit while
+    // a child is still outstanding, and the child's own `SubagentStop` arrives after it. Read off
+    // `last_event` this is a clean finish and the nudge is never repeated, so the limit clearing out
+    // of band is never picked up — the one recovery `NUDGE_REFRESH` was built for, lost.
+    #[test]
+    fn a_turn_that_died_while_a_child_was_outstanding_still_reads_as_failed() {
+        let a = reported(&[
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::SubagentStarted, Some("child-1")),
+            (agent_activity::Event::StoppedFailed, None),
+            (agent_activity::Event::SubagentStopped, Some("child-1")),
+        ]);
+        assert_eq!(a.last_event, agent_activity::Event::SubagentStopped);
+        assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::Failed);
+        assert!(nudge_due(
+            sent(7, a_while_ago(), Some(0)),
+            7,
+            Instant::now(),
+            since_nudge(Some(&a), Some(0))
+        ));
+    }
+
+    // cm:guard the other half of the same field: a turn that failed and then a LATER turn that ran
+    // cleanly is not still failed, or one bad turn would re-nudge this project for the rest of the
+    // pane's life. The clearing is the `Stopped` arm's, and there is deliberately no second clear on
+    // `PromptSubmitted`: one was written, and removing it turned no test red because every path out
+    // of a turn assigns this field on the way. A write no assertion can reach is a second live path,
+    // not a belt and braces.
+    #[test]
+    fn a_clean_turn_after_a_failed_one_reads_as_ran() {
+        let a = reported(&[
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::StoppedFailed, None),
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::Stopped, None),
+        ]);
+        assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::Ran);
     }
 
     #[test]

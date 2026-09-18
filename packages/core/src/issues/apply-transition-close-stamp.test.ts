@@ -90,7 +90,8 @@ describe('transitionIssueStatus — close-time stamp audit comment names evidenc
     const body = (insertValues.mock.calls[0]?.[0] as { body: string } | undefined)?.body;
     expect(body).toBe(
       'merged_at auto-stamped on close — `closed` counts as done, so `blocks`-dependents can now dispatch. ' +
-        'If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to re-block dependents.',
+        "If this issue was abandoned (its code never landed on the base branch), " +
+        "run `forge_issues` `unmark` to withdraw the shipped-work claim. That alone does NOT re-block the dependents: they are held by this issue's STATUS, and `closed` releases them whatever `merged_at` says (ISS-1100). Move this issue back off `closed` to hold them again.",
     );
   });
 
