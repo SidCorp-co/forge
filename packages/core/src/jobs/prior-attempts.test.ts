@@ -99,4 +99,27 @@ describe('renderPriorAttemptsBlock', () => {
     expect(out).not.toContain('forge_agent_sessions.get');
     expect(out).toContain('Attempt 2 failed');
   });
+  // ISS-1021 criterion 38. Nothing asserted the null path before: every fixture above sets a real
+  // count, and the string `length not recorded` appears nowhere else in the repo, so the branch
+  // that exists to avoid printing "0 messages" for a session the turn ledger does not cover could
+  // have been deleted and the suite stayed green. The 2,339 beta sessions with a real transcript
+  // and no turn row are exactly the rows that reach it.
+  it('renders an earlier attempt with no ledger rows as unknown, never as zero', () => {
+    const out = renderPriorAttemptsBlock(
+      [
+        attempt({ attempt: 3, sessionId: 'sess-c', messageCount: 4 }),
+        attempt({ attempt: 2, sessionId: 'sess-b', messageCount: null }),
+        attempt({ attempt: 1, sessionId: 'sess-a', messageCount: 869 }),
+      ],
+      4,
+    );
+    expect(out).toContain('attempt 2 `sess-b` (length not recorded)');
+    expect(out).not.toContain('0 messages');
+  });
+
+  it('omits the count clause entirely for a latest attempt with no ledger rows', () => {
+    const out = renderPriorAttemptsBlock([attempt({ messageCount: null })], 2);
+    expect(out).toContain('Attempt 2 failed');
+    expect(out).not.toContain('messages');
+  });
 });

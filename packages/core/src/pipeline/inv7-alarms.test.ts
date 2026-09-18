@@ -45,6 +45,7 @@ const {
   alarmPausedRunsWithQueuedWork,
   alarmRejectionStreaks,
   alarmStalledQueuedJobs,
+  HELD_SCAN_LIMIT,
   HOLD_AGE_ALARM_MS,
   PAUSED_RUN_ALARM_MS,
 } = await import('./inv7-alarms.js');
@@ -389,5 +390,62 @@ describe('alarmPausedRunsWithQueuedWork — clearing its own claim (ISS-879)', (
     expect(res.alerted).toBe(1);
     expect(emitWedgeMock).toHaveBeenCalledTimes(1);
     expect(resolveWedgeMock).toHaveBeenCalledTimes(2);
+  });
+});
+
+// ISS-1021 criteria 15 and 17. Both are claims about the STATEMENT — a bound on the held-job scan,
+// and a running-run restriction inside the verdicts CTE rather than only in the outer WHERE — and
+// until this block neither could go red. Measured while re-judging on 2026-09-18: the aged-holds
+// suite returns 0-1 rows and asserts on wedge copy, so the `LIMIT` could be deleted outright and
+// stay green; the rejection-streak suite never inspects the SQL at all, so deleting the CTE's
+// `EXISTS` — which is the whole of what criterion 17 asks for — moved nothing.
+describe('ISS-1021 — the bound and the restriction that live only in the SQL', () => {
+  /**
+   * The statement the alarm handed the driver, as text, with formatting collapsed.
+   *
+   * It walks the chunks rather than `JSON.stringify`-ing them, because a `sql.raw` nested inside a
+   * template is its own object: the bound renders as `LIMIT ` then a separate node holding `200`,
+   * so a stringified form has the two split by 60 characters of decoder noise and no pattern for
+   * `LIMIT 200` can match a statement that carries it.
+   */
+  function rendered(call = 0): string {
+    const out: string[] = [];
+    const walk = (n: unknown): void => {
+      if (typeof n === 'string') return void out.push(n);
+      if (Array.isArray(n)) return void n.forEach(walk);
+      if (n && typeof n === 'object') {
+        const v = (n as { value?: unknown }).value;
+        if (typeof v === 'string') out.push(v);
+        else if (Array.isArray(v)) walk(v);
+        const c = (n as { queryChunks?: unknown }).queryChunks;
+        if (c) walk(c);
+      }
+    };
+    walk(dbExecute.mock.calls[call]?.[0]);
+    return out.join(' ').replace(/\s+/g, ' ');
+  }
+
+  it('alarmAgedHolds bounds its page, oldest hold first', async () => {
+    await alarmAgedHolds(NOW);
+
+    const text = rendered();
+    expect(text).toMatch(new RegExp(`LIMIT\\s+${HELD_SCAN_LIMIT}`));
+    // The ordering is half the criterion: a bound with no ORDER BY reads an arbitrary 200 and the
+    // keyset cursor beside it has nothing to resume from.
+    expect(text).toMatch(/ORDER BY[^"]*heldAt[^"]*ASC/);
+  });
+
+  it('alarmRejectionStreaks narrows to running runs INSIDE the verdicts CTE', async () => {
+    await alarmRejectionStreaks();
+
+    const text = rendered();
+    // The CTE's own EXISTS, matched between `WITH verdicts AS (` and the CTE's closing `),`, so an
+    // assertion cannot be satisfied by the outer WHERE's `pr.status = 'running'` — which is the
+    // clause that was already there and which the criterion is NOT about.
+    const cte = text.slice(text.indexOf('WITH verdicts AS ('), text.indexOf('last_approve AS ('));
+    expect(cte).toMatch(/EXISTS[^"]*pipeline_runs prr[^"]*prr\.status\s*=\s*'running'/);
+    // And the outer one is kept as well — the code comment says a reader deleting it because "the
+    // CTE does it now" would be deleting the documented one.
+    expect(text).toMatch(/pr\.status\s*=\s*'running'/);
   });
 });

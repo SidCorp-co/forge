@@ -281,6 +281,19 @@ describe('runConsolidationForProject', () => {
     });
   });
 
+  // The receipt is a `memories` row an unfiltered `forge_memory_search` returns, so the model's own
+  // `summary` is stored prose and passes the check `create` and `update` pass.
+  it('refuses a summary in a script the prompt never showed it', async () => {
+    queueSignal();
+    llmResponds({ create: [], update: [], archive: [], summary: `merged and cleaned ${OBHOD}` });
+    const result = await runConsolidationForProject(PROJECT_ID);
+    expect(result.refused).toBe(1);
+    expect(result.summary).not.toContain(OBHOD);
+    for (const [arg] of indexMemoryBestEffortMock.mock.calls) {
+      expect(arg.text).not.toContain(OBHOD);
+    }
+  });
+
   it('ignores archive/update ids that do not belong to the project memory set', async () => {
     queueSignal();
     llmResponds({
