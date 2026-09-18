@@ -90,10 +90,17 @@ describe('the reads', () => {
   });
 
   it('reads a missing tag as absence and a lightweight one as its commit', async () => {
-    const absent = stubClient(
-      () => new GitHubPublishError({ op: 'lookup', status: 404, message: 'no ref' }),
+    const absent = stubClient((call) =>
+      call.path.includes('/git/ref/tags/')
+        ? new GitHubPublishError({ op: 'lookup', status: 404, message: 'no ref' })
+        : { id: 7, default_branch: 'main' },
     );
     expect(await readTagRef(absent.client, 'runner-v9.9.9')).toBeNull();
+    // cm:guard the repository was ASKED before that 404 was read as absence, and its answer is what makes the reading a reading.
+    expect(absent.calls.map((c) => c.path)).toEqual([
+      '/repos/SidCorp-co/forge/git/ref/tags/runner-v9.9.9',
+      '/repos/SidCorp-co/forge',
+    ]);
     const present = stubClient(() => ({ object: { sha: 'abc1234', type: 'commit' } }));
     expect(await readTagRef(present.client, 'runner-v0.13.2')).toEqual({ sha: 'abc1234' });
   });
@@ -125,8 +132,10 @@ describe('the reads', () => {
   });
 
   it('reads a missing release as absence and a present one as its assets', async () => {
-    const absent = stubClient(
-      () => new GitHubPublishError({ op: 'lookup', status: 404, message: 'no release' }),
+    const absent = stubClient((call) =>
+      call.path.includes('/releases/tags/')
+        ? new GitHubPublishError({ op: 'lookup', status: 404, message: 'no release' })
+        : { id: 7 },
     );
     expect(await readReleaseForTag(absent.client, 'runner-v9.9.9')).toBeNull();
     const present = stubClient(() => ({
@@ -296,6 +305,44 @@ describe('the one write', () => {
 });
 
 describe('a 404 that is not the thing being absent', () => {
+  // cm:guard GitHub answers 404 for "there is no such thing" and for "you may not see that" alike — a private repository the App was removed from masks itself rather than admitting it exists, with the same status, the same body and the same headers. Reading that as absence puts `publication = 'absent'` and the sentence "nothing is published" on a release GitHub is holding perfectly well, and it puts "the tag does not exist" on a repository Forge cannot see.
+  it('refuses a tag 404 the repository itself will not confirm', async () => {
+    const { client } = stubClient(
+      () => new GitHubPublishError({ op: 'lookup', status: 404, message: 'not found' }),
+    );
+    const err = await readTagRef(client, 'runner-v0.13.3').catch((e) => e);
+    expect(err).toBeInstanceOf(RunnerReleaseRepoError);
+    expect(err.refusal.cause).toBe('repository-unreachable');
+  });
+
+  it('refuses a release 404 the repository itself will not confirm', async () => {
+    const { client } = stubClient(
+      () => new GitHubPublishError({ op: 'lookup', status: 404, message: 'not found' }),
+    );
+    await expect(readReleaseForTag(client, 'runner-v0.13.3')).rejects.toBeInstanceOf(
+      RunnerReleaseRepoError,
+    );
+  });
+
+  // cm:guard a tag object may point at another tag object; the chain ends at a commit whenever it ends. One peel returns the inner TAG's sha, which is a real object and not a commit, and that is what gets stored as the commit the tag points at.
+  it('peels a chain of annotated tags all the way to the commit', async () => {
+    const { client } = stubClient((call) => {
+      if (call.path.includes('/git/ref/tags/')) return { object: { sha: 'tagA', type: 'tag' } };
+      if (call.path.endsWith('/git/tags/tagA')) return { object: { sha: 'tagB', type: 'tag' } };
+      return { object: { sha: 'abc1234', type: 'commit' } };
+    });
+    expect(await readTagRef(client, 'runner-v0.14.0')).toEqual({ sha: 'abc1234' });
+  });
+
+  it('refuses a tag chain that never reaches a commit rather than naming an object', async () => {
+    const { client } = stubClient((call) =>
+      call.path.includes('/git/ref/tags/')
+        ? { object: { sha: 'tag0', type: 'tag' } }
+        : { object: { sha: 'tagN', type: 'tag' } },
+    );
+    await expect(readTagRef(client, 'runner-v0.14.0')).rejects.toThrow(/reaches no commit/);
+  });
+
   // cm:guard `client.publish` mints an installation token before every call and raises the mint's own failure as a `GitHubPublishError` too, so a 404 from the mint — an installation that no longer exists — is byte-identical in status to a tag that is not there. Reading it as absence tells the sequence the tag is missing on a repository Forge could not reach at all, and tells a completed build's publication reading that GitHub holds no release.
   it('refuses a mint 404 rather than reading it as a missing tag', async () => {
     const { client } = stubClient(

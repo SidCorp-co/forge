@@ -418,6 +418,34 @@ describe('a row that went terminal under the sequence', () => {
     expect(row()?.tagState).toBe('absent');
   });
 
+  // cm:guard GitHub can take the ref and lose the response: the build's own delivery then settles this release — published, with a reading — while the create's error handler is still holding a timeout. Returning that handler's prose over the stored outcome tells an operator the tag "may or may not exist" about a release Forge has already recorded as published.
+  it('answers with the stored outcome when a delivery settled the row mid-cut', async () => {
+    repo.createTagRef.mockImplementation(async () => {
+      const settling = rows.get('p1:runner-v0.13.3');
+      if (settling) {
+        Object.assign(settling, {
+          status: 'published',
+          step: 'confirm_release',
+          tagState: 'present',
+          publication: 'published',
+          failure: null,
+          settledAt: new Date(),
+        });
+      }
+      throw publishError({
+        op: 'create',
+        status: null,
+        cause: 'timed-out-mid-write',
+        message: 'Forge timed out',
+      });
+    });
+    const outcome = await start();
+    expect(outcome.started).toBe(false);
+    expect('message' in outcome && outcome.message).not.toContain('may or may not exist');
+    expect(!outcome.started && outcome.release?.status).toBe('published');
+    expect(row()?.status).toBe('published');
+  });
+
   // cm:guard the caller is handed the STORED row and never a synthesis over the opening snapshot: the POST's answer and an immediate GET of the same release are two reads of one fact, and a synthesized one reports a step and a readings list the row does not carry.
   it('answers with the persisted row rather than the opening snapshot', async () => {
     const outcome = await start();

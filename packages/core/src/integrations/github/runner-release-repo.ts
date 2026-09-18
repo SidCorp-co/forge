@@ -77,6 +77,37 @@ function isAbsent(err: unknown): boolean {
   return err instanceof GitHubPublishError && err.status === 404 && err.op === 'lookup';
 }
 
+/**
+ * A 404 read as absence — but only once the repository itself still answers.
+ *
+ * GitHub answers 404 for "there is no such thing" and for "you may not see
+ * that" alike, on purpose: a private repository the App was removed from
+ * masks itself rather than admitting it exists. The two are the same status,
+ * the same body and the same headers, and only one of them is a reading.
+ *
+ * So the repository is asked. It answering is the evidence that makes the 404
+ * about the resource; it not answering makes the refusal about access, and the
+ * caller is told that instead of being handed an absence nobody observed —
+ * which is what would otherwise put `publication = 'absent'` and the sentence
+ * "nothing is published" on a release GitHub is holding perfectly well.
+ */
+async function absentUnlessUnreachable(
+  client: GitHubRepoClient,
+  subject: PublishSubject,
+): Promise<null> {
+  try {
+    await client.publish<{ id?: number }>({
+      op: 'lookup',
+      method: 'GET',
+      path: repoPath(client),
+    });
+  } catch (probe) {
+    // cm:guard the PROBE's refusal and not the original 404, because the probe is the one that says what is wrong: an App removed from the installation, a repository renamed or deleted. The resource 404 under those conditions carries no information at all.
+    refuse(probe, 'lookup', subject);
+  }
+  return null;
+}
+
 /** The repository's own default branch name, read as the App. */
 export async function readDefaultBranch(client: GitHubRepoClient): Promise<string> {
   const subject = runnerReleaseSubject({ lookup: 'reading the repository' });
@@ -160,22 +191,38 @@ export async function readTagRef(
     });
     object = ref.object;
   } catch (err) {
-    if (isAbsent(err)) return null;
+    if (isAbsent(err)) return absentUnlessUnreachable(client, subject);
     refuse(err, 'lookup', subject);
   }
   if (!object?.sha) return { sha: '(unknown commit)' };
-  if (object.type !== 'tag') return { sha: object.sha };
-  const objectSha = object.sha;
-  try {
-    const peeled = await client.publish<{ object?: { sha?: string } }>({
-      op: 'lookup',
-      method: 'GET',
-      path: `${repoPath(client)}/git/tags/${encodeURIComponent(objectSha)}`,
-    });
-    return { sha: peeled.object?.sha ?? objectSha };
-  } catch (err) {
-    refuse(err, 'lookup', subject);
+  // cm:guard peeling LOOPS, because git lets a tag object point at another tag object and the chain ends at a commit whenever it ends. One peel returns the inner tag's sha — a real object, not a commit — and that is what gets stored as `tag_commit_sha` and printed as the commit the tag points at. The bound is here because a malformed chain must refuse rather than spin.
+  let target = object;
+  for (let peels = 0; target.type === 'tag' && peels < 5; peels += 1) {
+    const sha = target.sha;
+    if (!sha) break;
+    try {
+      const peeled = await client.publish<{ object?: { sha?: string; type?: string } }>({
+        op: 'lookup',
+        method: 'GET',
+        path: `${repoPath(client)}/git/tags/${encodeURIComponent(sha)}`,
+      });
+      if (!peeled.object?.sha) throw new Error(`GitHub named no target for the tag object ${sha}`);
+      target = peeled.object;
+    } catch (err) {
+      refuse(err, 'lookup', subject);
+    }
   }
+  if (target.type === 'tag') {
+    throw new RunnerReleaseRepoError(
+      describePublishThrown(
+        new Error(`\`${tag}\` is a chain of more than 5 tag objects and reaches no commit`),
+        'lookup',
+        subject,
+      ),
+      true,
+    );
+  }
+  return { sha: target.sha ?? object.sha };
 }
 
 /**
@@ -266,7 +313,7 @@ export async function readReleaseForTag(
         .filter((name): name is string => typeof name === 'string'),
     };
   } catch (err) {
-    if (isAbsent(err)) return null;
+    if (isAbsent(err)) return absentUnlessUnreachable(client, subject);
     refuse(err, 'lookup', subject);
   }
 }

@@ -147,7 +147,10 @@ async function cutTheTag(
         : ('unknown' as const);
     // cm:guard `present` here came from GitHub saying the ref is already there, which says nothing about WHAT it points at — Forge never read it, so `tag_commit_sha` stays NULL and the sentence says the tag exists without saying where. The commit this attempt resolved is a different fact and stays on `commit_sha`.
     const failure = `${refusal.message} ${truthOf({ ...row, commitSha, tagState }, tagState)}`;
-    await settleFailed(row.id, row.attempt, { step: 'cut_tag', failure, tagState });
+    // cm:guard the settle's ANSWER decides what the caller is told. GitHub can take the ref and lose the response, and the build's own delivery then settles this release — published, with a reading — while this handler is still holding a timeout. Returning its own prose over that is a caller told the tag "may or may not exist" about a release Forge has already recorded as published.
+    if (!(await settleFailed(row.id, row.attempt, { step: 'cut_tag', failure, tagState }))) {
+      return lostTheRow(row);
+    }
     await appendReading(row.id, row.attempt, `cut_tag: refused — ${refusal.cause}`);
     logger.warn(
       { releaseId: row.id, tag: row.tag, cause: refusal.cause, tagState },
