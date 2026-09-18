@@ -86,8 +86,18 @@ export function buildAppManifest(args: {
       metadata: 'read',
       pull_requests: 'write',
       checks: 'write',
+      // cm:guard `actions: read` is what makes the `workflow_run` subscription below deliver anything. GitHub gates that event on the Actions permission and neither `contents` nor `checks` grants it, so an App subscribed without it hears no build — and the release that waits for one is named by the deadline pass an hour and a half later with nothing to say beyond "nobody reported". Subscribing to an event whose permission the manifest does not ask for is a channel that exists on the settings page and nowhere else (ISS-1075).
+      actions: 'read',
     },
-    default_events: ['issues', 'pull_request', 'pull_request_review', 'check_run', 'push'],
+    // cm:guard `workflow_run` is ISS-1075's half of the same sentence the `checks: write` guard above states: a manifest decides only the Apps created AFTER it, so an App that already exists stays unsubscribed and hears no build at all. There is no 403 to name that with — an unsubscribed event simply never arrives — so the sentence an operator reads is on the deadline instead (`runner-release-deadline.ts`), and the way out is the App's own Permissions & events page, under Subscribe to events -> Workflow run.
+    default_events: [
+      'issues',
+      'pull_request',
+      'pull_request_review',
+      'check_run',
+      'push',
+      'workflow_run',
+    ],
   };
 }
 

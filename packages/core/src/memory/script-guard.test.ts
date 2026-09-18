@@ -52,20 +52,37 @@ describe('foreignScriptChars — what must still pass', () => {
   });
 });
 
-describe("foreignScriptChars — the source's own non-Latin characters", () => {
-  it('lets through exactly the characters the source itself used', () => {
+describe("foreignScriptChars — the source's own scripts", () => {
+  it('lets through the characters the source itself used', () => {
     expect(foreignScriptChars(`van phong ${HAN_BEIJING}`, `the ${HAN_BEIJING} office`)).toEqual([]);
   });
 
-  it('still refuses a character of that script the source never used', () => {
+  // REVERSED 2026-09-18. This asserted the opposite until then: a source naming `北京` licensed
+  // those two characters and no other Han. Extraction produces paraphrases, not quotations, so that
+  // rule refused the ordinary rewording of its own input — measured on Chinese, Korean and Thai,
+  // where the alphabet is too large to be exhausted by a few comments the way Cyrillic's 33 letters
+  // are. The licence is now the SCRIPT the source used.
+  it('lets through a character of a script the source used, which it did not use itself', () => {
     expect(
       foreignScriptChars(`van phong ${HAN_BEIJING}${HAN_CITY}`, `the ${HAN_BEIJING} office`),
-    ).toEqual([HAN_CITY]);
+    ).toEqual([]);
   });
 
-  it('does not let one source character license another', () => {
-    const partial = foreignScriptChars(CYRILLIC_LEAK, `the ${OBHOD[0]} office`);
-    expect(partial.sort()).toEqual(['б', 'х', 'д'].sort());
+  it("lets a paraphrase reword its source in that source's own script", () => {
+    expect(foreignScriptChars('部署分支是 master', '上线用的分支不是 main，是 master')).toEqual([]);
+  });
+
+  it('licenses one script without licensing another', () => {
+    expect(foreignScriptChars(`${HAN_CITY}${OBHOD}`, `the ${HAN_BEIJING} office`).sort()).toEqual(
+      [...new Set(OBHOD)].sort(),
+    );
+  });
+
+  // The leak ISS-962 exists to stop is untouched by the reversal: the source here is Latin-only, so
+  // no Cyrillic is licensed and the homoglyph `а` in an otherwise Latin word is still named.
+  it('still refuses a script the source never used at all', () => {
+    expect(foreignScriptChars('deploy to m\u0430ster', ASCII_SOURCE)).toEqual(['\u0430']);
+    expect(storableAgainstSource(CYRILLIC_LEAK, ASCII_SOURCE)).toBe(false);
   });
 });
 

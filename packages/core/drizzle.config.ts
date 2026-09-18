@@ -23,6 +23,7 @@ export default defineConfig({
     './src/db/schema-agent-selves.ts',
     './src/db/schema-project-facts-backup.ts',
     './src/db/schema-repo-projection.ts',
+    './src/db/schema-runner-release.ts',
   ],
   out: './drizzle/migrations',
   dbCredentials: {

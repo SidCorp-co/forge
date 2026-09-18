@@ -1905,6 +1905,13 @@
       "when": 1806451200000,
       "tag": "0286_merged_commit_sha_is_evidence",
       "breakpoints": true
+    },
+    {
+      "idx": 287,
+      "version": "7",
+      "when": 1806883200000,
+      "tag": "0287_runner_releases",
+      "breakpoints": true
     }
   ]
 }

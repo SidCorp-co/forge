@@ -52,6 +52,10 @@ import {
 import { type ReevaluateResult, reevaluateConditions } from './reevaluate-conditions.js';
 import { detectRetryRescueThresholds, type RetryRescueAlertResult } from './retry-rescue-alert.js';
 import { type OrphanedPauseResult, resumeOrphanedPauses } from './run-pause.js';
+import {
+  nameOverdueRunnerReleases,
+  type RunnerReleaseDeadlineResult,
+} from './runner-release-deadline.js';
 import { closeOpenRunForIssue, closeRunIfOneShot } from './runs.js';
 import {
   type ConcludedRunReapResult,
@@ -146,6 +150,8 @@ export interface SweepResult {
   owedCloses: StrandedIssuesResult;
   orphanedPauses: OrphanedPauseResult;
   retryRescueThresholds: RetryRescueAlertResult;
+  /** ISS-1075 — runner releases past their own deadline, named with what is true on the repository. */
+  overdueRunnerReleases: RunnerReleaseDeadlineResult;
   /** ISS-1063 — conditions re-derived: resolved, inhibited children released, stale pending dropped. */
   reevaluated: ReevaluateResult;
   /** ISS-652 — Tier 1 ops alert engine push pass. */
@@ -223,6 +229,10 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
   const orphanedRunAssertions = await runPass('detectOrphanedRunAssertions', () =>
     detectOrphanedRunAssertions(now),
   );
+  // cm:why ISS-1075 — this is a clock and not a poll: it reads `runner_releases` and `now`, asks GitHub nothing, and exists because a release whose process died at `cut_tag`, or whose build GitHub never reported, is reached by no delivery and no other pass. It is here rather than on a timer of its own for `registerRunnerReleaseRefetch`'s opposite reason: that one has to beat a 30-minute channel, this one has to run wherever the sweeper runs so a release is never named twice by two boxes.
+  const overdueRunnerReleases = await runPass('nameOverdueRunnerReleases', () =>
+    nameOverdueRunnerReleases(now),
+  );
   const strandedIssues = await runPass('detectStrandedIssues', () => detectStrandedIssues(now));
   const owedCloses = await runPass('detectOwedCloses', () => detectOwedCloses(now));
   const retryRescueThresholds = await runPass('detectRetryRescueThresholds', () =>
@@ -267,6 +277,7 @@ export async function runPipelineSweep(now: Date = new Date()): Promise<SweepRes
     owedCloses: owedCloses as StrandedIssuesResult,
     orphanedPauses: orphanedPauses as OrphanedPauseResult,
     retryRescueThresholds: retryRescueThresholds as RetryRescueAlertResult,
+    overdueRunnerReleases: overdueRunnerReleases as RunnerReleaseDeadlineResult,
     reevaluated: reevaluated as ReevaluateResult,
     alerts: alerts as AlertSweepResult,
     queueSnapshots: queueSnapshots as number,
