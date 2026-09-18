@@ -28,6 +28,10 @@ Give the box an agent account and let it hold an Agent Access Token. Then:
    `listAgentAccounts` folds its rows per agent, `fenceFor`/`agentCredentialFence` became the one
    place a fence shape is chosen, and `conversations/handles.ts:existingProjectHandle` now requires
    a candidate to be a member of this project and no other — see point 3, which was right.
+   The half that reading leaves open is closed at the writer rather than at the reader:
+   `setAgentProjects` refuses `AGENT_IS_A_PROJECT_HANDLE` when the agent being widened is the one
+   carrying a project's own slug-derived name, because that project could not then mint a
+   replacement and its rooms would stop opening.
 2. **A box is not org-scoped either.** An agent holds one organization membership and its address is
    unique within that organization. A runner box paired to projects in two organizations cannot be
    represented as one agent at all, in any number of projects.
