@@ -44,6 +44,11 @@ const KERNEL_AUTHORED = [
   'issues/apply-transition.ts',
   'issues/drop-unblock.ts',
   'issues/merge-marker.ts',
+  // cm:why ISS-1073 — it writes `issues.merged_at` and `issues.merged_commit_sha` and no text at
+  // all, so there is no caller body for a door to gate. It is listed rather than exempted by the
+  // pattern, because `WRITES_A_BODY` asks which TABLE is written and the honest answer for this
+  // one is "that table, and none of its text columns".
+  'issues/merge-record.ts',
   'issues/transition-reason.ts',
   'issues/extras-routes.ts',
   'issues/merged-at.ts',

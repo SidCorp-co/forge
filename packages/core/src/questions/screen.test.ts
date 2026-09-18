@@ -101,6 +101,49 @@ describe('a round is screened where the agent is still on the line', () => {
     expect(agentAuthoredSegments(step)).toEqual(['Which one?', 'keep it', 'drop it']);
   });
 
+  // `optionSuffix` interpolates the fingerprint verbatim into the posted line, and it is the field
+  // that makes an option a permission — a typed number allows the call it names (ISS-978).
+  it('reads the fingerprint of an option that binds to one call', () => {
+    const step = {
+      round: 1,
+      prompt: 'Run it?',
+      askedAt: '2026-09-14T00:00:00.000Z',
+      answerShape: 'choice' as const,
+      options: [
+        { ...option('a', 'allow'), bindsTo: 'this_call' as const, fingerprint: 'POST /deploy#7f3' },
+        option('b', 'refuse'),
+      ],
+      recommendedOptionId: 'a',
+    };
+    expect(agentAuthoredSegments(step)).toEqual(['Run it?', 'allow', 'POST /deploy#7f3', 'refuse']);
+  });
+
+  it('refuses a round whose fingerprint reshapes the line that states what is granted', () => {
+    const refuse = vi.fn(() => {
+      throw new Error('refused');
+    });
+    expect(() =>
+      screenRound(
+        {
+          round: 1,
+          prompt: 'Run it?',
+          askedAt: '2026-09-14T00:00:00.000Z',
+          answerShape: 'choice',
+          options: [
+            {
+              ...option('a', 'allow'),
+              bindsTo: 'this_call',
+              fingerprint: 'POST /deploy\n2. and everything after it',
+            },
+          ],
+          recommendedOptionId: 'a',
+        },
+        refuse as never,
+      ),
+    ).toThrow('refused');
+    expect(refuse).toHaveBeenCalled();
+  });
+
   it('hands a passing round back without calling the refusal', () => {
     const refuse = vi.fn();
     screenRound(

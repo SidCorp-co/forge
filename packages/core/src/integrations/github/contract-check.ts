@@ -29,15 +29,13 @@
 
 import { and, eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
-import { integrationBindings } from '../../db/schema.js';
 import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { logger } from '../../logger.js';
 import { recordDelivery, updateDelivery } from '../deliveries.js';
-import { decryptConnectionSecrets, findConnectionById } from '../store.js';
+import { githubBindingCredential } from './binding-credential.js';
 import { type CheckRefusal, describeThrown } from './check-refusal.js';
 import { publishContractCheck } from './check-run.js';
 import { buildRepoClient, GitHubClientError } from './client.js';
-import type { GitHubConfig, GitHubSecrets } from './types.js';
 
 /** The delivery event every publish, skip and refusal is logged under. */
 export const CHECK_PUBLISH_EVENT = 'check_run.publish';
@@ -98,32 +96,6 @@ async function skip(deliveryId: string, reason: string): Promise<ContractCheckOu
   return { kind: 'skipped', deliveryId, reason };
 }
 
-/** The binding's config and its connection's secrets, or the refusal in between. */
-async function credentialFor(
-  bindingId: string,
-): Promise<{ config: GitHubConfig; secrets: GitHubSecrets } | { refusal: string }> {
-  const [binding] = await db
-    .select({ connectionId: integrationBindings.connectionId, config: integrationBindings.config })
-    .from(integrationBindings)
-    .where(and(eq(integrationBindings.id, bindingId), eq(integrationBindings.active, true)))
-    .limit(1);
-  if (!binding) {
-    return {
-      refusal: `the GitHub binding ${bindingId} this pull request was stored under is gone or deactivated`,
-    };
-  }
-  const connection = await findConnectionById(binding.connectionId);
-  if (!connection?.active) {
-    return {
-      refusal: "the GitHub connection behind this project's binding is gone or deactivated",
-    };
-  }
-  return {
-    config: (binding.config ?? {}) as GitHubConfig,
-    secrets: decryptConnectionSecrets<GitHubSecrets>(connection),
-  };
-}
-
 /**
  * Publish `forge/issue-contract` for one stored pull request.
  *
@@ -166,7 +138,7 @@ export async function publishForStoredPullRequest(
     );
   }
 
-  const credential = await credentialFor(row.bindingId);
+  const credential = await githubBindingCredential(row.bindingId);
   if ('refusal' in credential) return skip(deliveryId, credential.refusal);
 
   // cm:guard the switch is read off the BINDING and defaults to on. An absent key is a project that has never been asked, and reading absence as off would mean this shipped doing nothing anywhere and nobody finding out for a release.

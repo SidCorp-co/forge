@@ -23,8 +23,11 @@ const updateWhere = vi.fn(() => ({
   then: (r: (v: unknown) => unknown) => Promise.resolve(undefined).then(r),
 }));
 const update = vi.fn(() => ({ set: () => ({ where: updateWhere }) }));
+// cm:guard the read chain offers BOTH `.limit()` and `.orderBy().limit()` — `merge-record.ts` reads the row back through the first and looks for an observed merge on the projection through the second, so a mock short of either throws for a caller that never staged a value
 const select = vi.fn(() => ({
-  from: () => ({ where: () => ({ limit: async () => [] }) }),
+  from: () => ({
+    where: () => ({ limit: async () => [], orderBy: () => ({ limit: async () => [] }) }),
+  }),
 }));
 const insert = vi.fn(() => ({
   values: () => ({ returning: async () => [{ id: 'comment-1', body: 'b', parentId: null }] }),

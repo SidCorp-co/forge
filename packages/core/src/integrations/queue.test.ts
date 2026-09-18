@@ -217,3 +217,48 @@ describe('the guards the worker already had', () => {
     ).rejects.toThrow('Sentry answered HTTP 500');
   });
 });
+
+/**
+ * ISS-1073 — a refusal that must not come back an hour later.
+ *
+ * `enqueueOutboundDispatch` retries five times with exponential backoff, which is
+ * right for a deploy that met a transient API blip and wrong for an operation
+ * whose refusal is a statement about the world. A merge refused because a
+ * required check went red, re-sent after the backoff, lands the moment somebody
+ * pushes a fix — a merge nobody asked for at a moment nobody chose.
+ */
+describe('a terminal refusal is not retried', () => {
+  const dispatchOne = () =>
+    handler({
+      data: {
+        jobKind: 'coolify.dispatch',
+        bindingId: 'bind-1',
+        runId: null,
+        issueId: null,
+        eventName: 'pull_request.merge',
+        payload: { pullRequestId: 'pr-1', requestedBy: 'user:alice' },
+      },
+    });
+
+  // cm:guard the worker RESOLVES for this error, and that is what stops pg-boss retrying. The
+  // delivery row still carries the failure and its sentence — what is dropped is the second
+  // attempt, not the record of the first.
+  it('resolves rather than rethrowing, so pg-boss marks the job done', async () => {
+    const { NonRetryableDispatchError } = await import('./types.js');
+    bound('github');
+    dispatchThrough.mockRejectedValueOnce(
+      new NonRetryableDispatchError('the base branch requires `ci-passed`', 'required-check'),
+    );
+    await expect(dispatchOne()).resolves.toBeUndefined();
+    expect(dispatchThrough).toHaveBeenCalledTimes(1);
+  });
+
+  // cm:guard and an ORDINARY failure still throws, because the retries are worth having for
+  // everything they were built for. Swallowing both would turn a transient Coolify blip into a
+  // deploy that silently never happened.
+  it('still rethrows an ordinary failure, which is what the retries are for', async () => {
+    bound('coolify');
+    dispatchThrough.mockRejectedValueOnce(new Error('ECONNRESET'));
+    await expect(dispatchOne()).rejects.toThrow(/ECONNRESET/);
+  });
+});

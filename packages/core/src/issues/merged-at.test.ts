@@ -1,26 +1,25 @@
 /**
- * ISS-232 — state-machine writer tests for `markMergedIfLeavingBase`.
+ * ISS-232, ISS-1073 — the close's stamp, and the writer that is no longer here.
  *
- * Pure-unit tests using mocked drizzle transactions: the helper decides
- * whether the transition leaves {@link BASE_MERGE_STATE} and stamps
- * `merged_at = now()` idempotently via `WHERE merged_at IS NULL`.
- *
- * The shape of the mocked `tx` mirrors the chainable drizzle API
- * (`tx.update().set().where().returning()`). It no longer needs a `select`
- * chain: the per-project `mergeStates` read this helper used to make was
- * removed with the config key (ISS-863).
+ * `markMergedIfLeavingBase` was deleted by ISS-1073. These tests stand in its
+ * place: the point is no longer that leaving {@link BASE_MERGE_STATE} stamps,
+ * it is that leaving it stamps NOTHING, which is criterion 33. The one hop it
+ * used to stamp on that mattered — `awaiting_release -> closed` — is
+ * {@link markMergedOnClose}'s, and it is exercised here on its own.
  */
 
 import { describe, expect, it, vi } from 'vitest';
-import { BASE_MERGE_STATE, markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
+import { BASE_MERGE_STATE, markMergedOnClose } from './merged-at.js';
 
 interface ChainSpec {
-  /** Rows the final `.returning()` call should resolve with. */
-  returningRows?: Array<{ id: string }>;
+  /** Rows the final `.returning()` call resolves with. Empty means the WHERE matched nothing. */
+  returningRows?: Array<Record<string, unknown>>;
+  /** What the read-back finds when the write matched nothing. */
+  heldRow?: Record<string, unknown> | undefined;
 }
 
 function buildMockTx(spec: ChainSpec = {}): {
-  tx: Parameters<typeof markMergedIfLeavingBase>[0];
+  tx: Parameters<typeof markMergedOnClose>[0];
   updateCall: ReturnType<typeof vi.fn>;
 } {
   const updateCall = vi.fn();
@@ -29,83 +28,44 @@ function buildMockTx(spec: ChainSpec = {}): {
       updateCall(...setArgs);
       return {
         where: () => ({
-          returning: async () => spec.returningRows ?? [{ id: 'iss-1' }],
+          returning: async () =>
+            spec.returningRows ?? [
+              { mergedAt: new Date('2026-09-18T00:00:00Z'), mergedCommitSha: null },
+            ],
         }),
       };
     },
   });
+  const select = vi.fn().mockReturnValue({
+    from: () => ({ where: () => ({ limit: async () => (spec.heldRow ? [spec.heldRow] : []) }) }),
+  });
   // biome-ignore lint/suspicious/noExplicitAny: ad-hoc tx shape
-  const tx = { update } as any;
+  const tx = { update, select } as any;
   return { tx, updateCall };
 }
 
-describe('markMergedIfLeavingBase', () => {
-  it('no-ops when transition is into the merge state', async () => {
+describe('leaving the base merge state', () => {
+  // cm:guard this is the planted violation for criterion 33 and it is the whole reason the file still exists. Restore `markMergedIfLeavingBase` and its call in `apply-transition.ts` and every one of these goes red, because the stamp would fire on a hop that sends an issue BACKWARDS out of the release gate.
+  it.each([
+    'waiting',
+    'reopen',
+    'on_hold',
+    'needs_info',
+    'in_progress',
+    'releasing',
+    'dropped',
+  ] as const)('awaiting_release -> %s reaches no stamp at all', async (toStatus) => {
     const { tx, updateCall } = buildMockTx();
-    const result = await markMergedIfLeavingBase(tx, {
-      issueId: 'iss-1',
-      fromStatus: 'tested',
-      toStatus: BASE_MERGE_STATE,
-    });
+    const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus });
     expect(result.stamped).toBe(false);
     expect(updateCall).not.toHaveBeenCalled();
   });
 
-  it('no-ops when transition stays inside the merge state (NO_OP)', async () => {
+  it('entering the base merge state reaches no stamp', async () => {
     const { tx, updateCall } = buildMockTx();
-    const result = await markMergedIfLeavingBase(tx, {
-      issueId: 'iss-1',
-      fromStatus: BASE_MERGE_STATE,
-      toStatus: BASE_MERGE_STATE,
-    });
+    const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: BASE_MERGE_STATE });
     expect(result.stamped).toBe(false);
     expect(updateCall).not.toHaveBeenCalled();
-  });
-
-  it('no-ops when transition does not leave the merge state', async () => {
-    const { tx, updateCall } = buildMockTx();
-    const result = await markMergedIfLeavingBase(tx, {
-      issueId: 'iss-1',
-      fromStatus: 'open',
-      toStatus: 'confirmed',
-    });
-    expect(result.stamped).toBe(false);
-    expect(updateCall).not.toHaveBeenCalled();
-  });
-
-  it('stamps merged_at when transitioning OUT of the default merge state', async () => {
-    const { tx, updateCall } = buildMockTx({ returningRows: [{ id: 'iss-1' }] });
-    const result = await markMergedIfLeavingBase(tx, {
-      issueId: 'iss-1',
-      fromStatus: 'awaiting_release',
-      toStatus: 'closed',
-    });
-    expect(result.stamped).toBe(true);
-    expect(updateCall).toHaveBeenCalledOnce();
-  });
-
-  it.each(['releasing', 'dropped'] as const)(
-    'refuses to stamp on awaiting_release -> %s: neither is a ship',
-    async (toStatus) => {
-      const { tx, updateCall } = buildMockTx({ returningRows: [{ id: 'iss-1' }] });
-      const result = await markMergedIfLeavingBase(tx, {
-        issueId: 'iss-1',
-        fromStatus: 'awaiting_release',
-        toStatus,
-      });
-      expect(result.stamped).toBe(false);
-      expect(updateCall).not.toHaveBeenCalled();
-    },
-  );
-
-  it('reports stamped=false when WHERE merged_at IS NULL matches no row (idempotent re-run)', async () => {
-    const { tx } = buildMockTx({ returningRows: [] });
-    const result = await markMergedIfLeavingBase(tx, {
-      issueId: 'iss-1',
-      fromStatus: 'awaiting_release',
-      toStatus: 'reopen',
-    });
-    expect(result.stamped).toBe(false);
   });
 });
 
@@ -120,14 +80,25 @@ describe('markMergedOnClose', () => {
   });
 
   it('stamps merged_at on close when the column is still NULL', async () => {
-    const { tx, updateCall } = buildMockTx({ returningRows: [{ id: 'iss-1' }] });
+    const { tx, updateCall } = buildMockTx();
     const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: 'closed' });
     expect(result.stamped).toBe(true);
     expect(updateCall).toHaveBeenCalledOnce();
   });
 
-  it('reports stamped=false when merged_at is already set (pipeline stamped earlier)', async () => {
-    const { tx, updateCall } = buildMockTx({ returningRows: [] });
+  // cm:guard the close's stamp must never carry a commit, and this asserts the ABSENCE on the statement rather than on the row: it is what makes a NULL `merged_commit_sha` mean "nobody observed a merge" instead of "nobody passed one".
+  it('writes no commit sha, because a close observes no merge', async () => {
+    const { tx, updateCall } = buildMockTx();
+    await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: 'closed' });
+    const written = updateCall.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(written).not.toHaveProperty('mergedCommitSha');
+  });
+
+  it('reports stamped=false when merged_at is already set (an earlier writer got there)', async () => {
+    const { tx, updateCall } = buildMockTx({
+      returningRows: [],
+      heldRow: { mergedAt: new Date('2026-09-01T00:00:00Z'), mergedCommitSha: 'abc1234' },
+    });
     const result = await markMergedOnClose(tx, { issueId: 'iss-1', toStatus: 'closed' });
     expect(result.stamped).toBe(false);
     expect(updateCall).toHaveBeenCalledOnce();

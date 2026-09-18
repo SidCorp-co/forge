@@ -89,6 +89,32 @@ export interface OutboundDispatchInput<TPayload = unknown> {
   runId?: string | null;
 }
 
+/**
+ * A dispatch that failed and must NOT be attempted again. ISS-1073.
+ *
+ * `enqueueOutboundDispatch` retries five times with exponential backoff, which is
+ * right for a deploy that met a transient API blip and wrong for an operation
+ * whose refusal is a statement about the world: GitHub answering 405 to a merge
+ * means that pull request cannot be merged as it stands, and a retry an hour
+ * later merges it AFTER the condition that refused it changed — which is a merge
+ * nobody asked for at a moment nobody chose.
+ *
+ * Generic on purpose. It names no provider and no verb: an adapter says "this
+ * one is terminal" and the worker obeys, so a second provider with the same
+ * shape does not need the worker edited.
+ */
+// cm:edge lockstep -> packages/core/src/integrations/queue.ts — that worker is what makes this mean anything: it logs and RETURNS for this error instead of rethrowing, so pg-boss marks the job done and no backoff fires. Throwing a plain Error from an adapter keeps the retries.
+export class NonRetryableDispatchError extends Error {
+  constructor(
+    message: string,
+    /** What refused it, for the log line. Never a retry hint. */
+    readonly reason: string,
+  ) {
+    super(message);
+    this.name = 'NonRetryableDispatchError';
+  }
+}
+
 export interface OutboundDispatchResult {
   deliveryId: string;
   externalId?: string;

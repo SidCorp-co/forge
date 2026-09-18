@@ -28,7 +28,20 @@ vi.mock('./projection.js', () => ({
   findRowByNumber: (...a: unknown[]) => findRowByNumber(...a),
   openPullRequestsOnBase: (...a: unknown[]) => openPullRequestsOnBase(...a),
   branchOfPush: (p: { ref?: string }) => p.ref?.replace('refs/heads/', '') ?? null,
+  // cm:guard `stateOf` is the REAL one and not a stub, because it is the single definition of what
+  // `merged` means and the merged arm this suite exercises is decided by it. A stub here would let
+  // the two disagree, which is the thing the projection exists to stop.
+  stateOf: (pr: { merged?: boolean; merged_at?: string | null; state?: string }) =>
+    pr.merged === true || pr.merged_at ? 'merged' : pr.state === 'closed' ? 'closed' : 'open',
 }));
+
+const recordIssueMerge = vi.fn(async () => ({ wrote: false, mergedAt: null, commitSha: null }));
+vi.mock('../../issues/merge-record.js', () => ({
+  recordIssueMerge: (...a: unknown[]) => recordIssueMerge(...(a as [])),
+}));
+
+let linkedIssueId: string | null = null;
+vi.mock('./issue-link.js', () => ({ resolveIssueForHeadRef: async () => linkedIssueId }));
 
 vi.mock('./projection-refresh.js', () => ({
   BASE_PUSH_REFRESH_CAP: 25,
@@ -109,5 +122,88 @@ describe('the arms that must not publish', () => {
     openPullRequestsOnBase.mockResolvedValue([{ id: 'pr-row-1' }, { id: 'pr-row-2' }]);
     await applyProjectedEvent(ctx, 'push', { ref: 'refs/heads/main' });
     expect(publishForStoredPullRequest).not.toHaveBeenCalled();
+  });
+});
+
+/**
+ * ISS-1073 outcome 3 — a merge Forge did not make reaches the same row.
+ *
+ * The writer is `issues/merge-record.ts` for both routes, which is what makes
+ * them one record rather than two: the kernel's merge and the delivery that
+ * follows it both write under `merged_commit_sha IS NULL`, so whichever arrives
+ * first holds the row. Here the writer is a spy; that the SECOND write finds
+ * nothing is the predicate's own property and is proved in
+ * `issues/merge-record.test.ts` and against Postgres in
+ * `tests/integration/kernel-merge-e2e.test.ts`.
+ */
+describe('a merge somebody else made', () => {
+  const merged = (over: Record<string, unknown> = {}) => ({
+    action: 'closed',
+    pull_request: {
+      number: 481,
+      merged: true,
+      merged_at: '2026-09-18T06:30:01.449Z',
+      merge_commit_sha: 'e45b4ecf596c58e10135c25af4f7279a0a804802',
+      head: { ref: 'ISS-1073-kernel-merge', sha: 'c0ffee1' },
+      base: { ref: 'main', sha: 'b' },
+      ...over,
+    },
+  });
+
+  beforeEach(() => {
+    linkedIssueId = 'iss-1073';
+  });
+
+  it('stamps the issue the head branch names, with the commit and time GitHub reported', async () => {
+    await applyProjectedEvent(ctx, 'pull_request', merged());
+    expect(recordIssueMerge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        issueId: 'iss-1073',
+        evidence: {
+          kind: 'observed',
+          commitSha: 'e45b4ecf596c58e10135c25af4f7279a0a804802',
+          mergedAt: new Date('2026-09-18T06:30:01.449Z'),
+          via: 'event',
+        },
+      }),
+    );
+  });
+
+  // cm:guard the stamp is taken from the PAYLOAD, so a delivery the ordering guard skipped still
+  // records the merge. `applyPullRequestEvent` answers 0 for a row whose scalars were not written,
+  // and treating that as "nothing to do" would lose a landing to a retry arriving out of order.
+  it('stamps even when the projection wrote no row', async () => {
+    applyPullRequestEvent.mockResolvedValueOnce(0);
+    await applyProjectedEvent(ctx, 'pull_request', merged());
+    expect(recordIssueMerge).toHaveBeenCalled();
+  });
+
+  it('stamps nothing for a pull request that closed without merging', async () => {
+    await applyProjectedEvent(ctx, 'pull_request', merged({ merged: false, merged_at: null }));
+    expect(recordIssueMerge).not.toHaveBeenCalled();
+  });
+
+  it('stamps nothing when GitHub sent no merge commit', async () => {
+    await applyProjectedEvent(ctx, 'pull_request', merged({ merge_commit_sha: null }));
+    expect(recordIssueMerge).not.toHaveBeenCalled();
+  });
+
+  it('stamps nothing for a branch that names no issue on this project', async () => {
+    linkedIssueId = null;
+    await applyProjectedEvent(ctx, 'pull_request', merged());
+    expect(recordIssueMerge).not.toHaveBeenCalled();
+  });
+
+  // cm:guard announced only when THIS delivery wrote. The kernel's own merge announces its own, so
+  // announcing on a delivery that stamped nothing would republish the same change twice — once per
+  // route — on every merge Forge made itself.
+  it('does not announce a stamp it did not write', async () => {
+    recordIssueMerge.mockResolvedValueOnce({ wrote: false, mergedAt: null, commitSha: null });
+    const heard: unknown[] = [];
+    const { hooks } = await import('../../pipeline/hooks.js');
+    hooks.on('contractInputChanged', async (p) => void heard.push(p), { name: 'merged-arm-test' });
+    await applyProjectedEvent(ctx, 'pull_request', merged());
+    expect(heard).toHaveLength(0);
   });
 });

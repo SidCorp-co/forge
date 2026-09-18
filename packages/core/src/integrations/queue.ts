@@ -13,6 +13,7 @@ import {
 } from './coolify/health-gate.js';
 import { dispatchThrough } from './registry.js';
 import { buildContextFromBinding, findBindingById, findConnectionById } from './store.js';
+import { NonRetryableDispatchError } from './types.js';
 
 /**
  * One outbound dispatch, on whichever provider the binding names.
@@ -143,12 +144,29 @@ async function runOutboundDispatch(data: OutboundDispatchJob): Promise<void> {
     return;
   }
   const ctx = buildContextFromBinding({ binding, connection });
-  await dispatchThrough(binding.provider, ctx, {
-    eventName: data.eventName,
-    payload: data.payload ?? { runId: data.runId, issueId: data.issueId, stages: ctx.stages },
-    ...(data.requestId ? { requestId: data.requestId } : {}),
-    runId: data.runId,
-  });
+  try {
+    await dispatchThrough(binding.provider, ctx, {
+      eventName: data.eventName,
+      payload: data.payload ?? { runId: data.runId, issueId: data.issueId, stages: ctx.stages },
+      ...(data.requestId ? { requestId: data.requestId } : {}),
+      runId: data.runId,
+    });
+  } catch (err) {
+    // cm:guard a TERMINAL refusal is logged and swallowed, and that is not the same as ignoring it.
+    // The delivery row carries the failure and its sentence; what this stops is the five-times
+    // exponential backoff above, which for an operation like a merge would send the same request
+    // again an hour later, after the very condition that refused it may have changed. ISS-1073's
+    // third rule is that a merge that cannot be made is refused by name, never retried — and a
+    // rethrow here is a retry however the adapter worded its refusal.
+    if (err instanceof NonRetryableDispatchError) {
+      logger.warn(
+        { bindingId: data.bindingId, eventName: data.eventName, reason: err.reason },
+        'integrations dispatch worker: refused terminally, not retrying',
+      );
+      return;
+    }
+    throw err;
+  }
 }
 
 export interface EnqueueOptions {
