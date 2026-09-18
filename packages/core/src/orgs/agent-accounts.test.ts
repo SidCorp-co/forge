@@ -39,6 +39,21 @@ const tx = {
       where: async () => updated.push({ values }),
     }),
   }),
+  // cm:guard the membership read inside the fence lock answers from the rows this same fake just
+  // recorded, so the fence a token is minted with is derived here exactly as it is in Postgres —
+  // read back from `project_members` rather than handed the caller's own list. A stub returning a
+  // fixed set would assert the stub (ISS-1093, review finding F2).
+  select: () => ({
+    from: () => ({
+      where: async () =>
+        inserted
+          .filter((i) => i.table === 'project_members')
+          .flatMap((i) => (Array.isArray(i.values) ? i.values : [i.values]))
+          .map((v) => ({ projectId: (v as { projectId: string }).projectId })),
+    }),
+  }),
+  // The advisory lock. It serializes against other backends and returns nothing.
+  execute: async () => [],
 };
 
 function tableName(t: unknown): string {
