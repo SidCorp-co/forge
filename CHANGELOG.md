@@ -3000,21 +3000,13 @@
   set is now 59.
 
 ### Fixed
-- **A decision put to your chat room can no longer be asked twice, or go quiet for ever.** When
-  several decisions were waiting at once, the room could be sent the same one a second time while
-  the first was still being posted — two messages, one question, and whichever you answered was
-  anybody's guess. Separately, a decision that kept failing to reach the room could stop being
-  retried without anybody being told: the work stayed stopped and the notice that it could not be
-  delivered was never sent. Each attempt is now counted by the record itself rather than by
-  whichever server got there first, so the retries end where they are supposed to and somebody
-  hears about it.
+- **A decision put to your chat room can no longer be asked twice, or stop being retried in
+  silence.** Attempts are counted by the record itself, so retries end where they should and
+  somebody is told when delivery fails.
 
-- **Nothing can now claim a message was checked when it was not.** Every message this product sends
-  into a chat room is read against the rules for its audience first. That check produced a receipt
-  anything could copy, and six places along the way wrote their own — so a message could be sent
-  carrying a receipt for a different message, or for none at all. A receipt can now only be issued
-  by the check itself, it names the exact wording it was issued for, and the door that posts to the
-  room refuses anything else.
+- **Nothing can claim a message was checked when it was not.** The check now issues its own
+  receipt, naming the exact wording it passed, and the door to your chat room refuses a message
+  carrying any other.
 
 - **Three checks on the dispatch gate could not fail, so they said nothing.** Two fail-open paths
   went unexercised and one test rebuilt the code it judged instead of calling it. Each is now
