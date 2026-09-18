@@ -35,6 +35,20 @@ vi.mock('../db/client.js', () => {
 
 vi.mock('../ws/server.js', () => ({ roomManager: { publish: vi.fn() } }));
 
+// cm:why the chat derive is stubbed rather than modelled: this file's subject is
+// the blind-schedule rule, and since ISS-1030 a terminal device PATCH carrying
+// neither `messages` nor `toolCallCount` also fires the carrier derive — which
+// reads `agent_session_events` and `agent_sessions` through the same chained db
+// double every case here queues answers into, so every read it makes shifts that
+// queue under the assertions. What the derive itself does with a real carrier is
+// proved in `tests/integration/chat-transcript-carrier-e2e.test.ts`, against a
+// database rather than a queue.
+const deriveChatTurnFinalMock = vi.fn(async () => false);
+vi.mock('../jobs/session-transcript.js', () => ({
+  deriveChatTurnFinal: () => deriveChatTurnFinalMock(),
+  maybeDeriveIncrementalFor: () => null,
+}));
+
 const verifyDeviceCredentialMock = vi.fn(async (_token: unknown) => null as { id: string } | null);
 vi.mock('../auth/device-credential.js', () => ({
   verifyDeviceCredential: (token: unknown) => verifyDeviceCredentialMock(token),
@@ -73,7 +87,9 @@ vi.mock('../runners/apply-runner-limit.js', () => ({
   clearRunnerLimit: vi.fn(async () => undefined),
 }));
 
-const { isBlindScheduleRun, BLIND_SCHEDULE_RUN_REASON } = await import('./schedule-evidence.js');
+const { isBlindScheduleRun, BLIND_SCHEDULE_RUN_REASON, countTranscriptToolCalls } = await import(
+  './schedule-evidence.js'
+);
 const { agentSessionRoutes } = await import('./routes.js');
 const { signUserToken } = await import('../auth/jwt.js');
 const { errorHandler } = await import('../middleware/error.js');
@@ -289,5 +305,60 @@ describe('PATCH /api/agent-sessions/:id — ISS-859: a scheduled run that read n
     expect(res.status).toBe(200);
     expect(persistedUpdate().status).toBe('completed');
     expect(persistedUpdate().failureReason).toBeUndefined();
+  });
+});
+
+describe('countTranscriptToolCalls — the transcript answers what a run called', () => {
+  // cm:guard this exists because `count_tool_uses` in the runner's `chat.rs` does
+  // not any more. It was the ONLY record that a chat or schedule turn used a
+  // tool, and it existed solely because the transcript could not answer —
+  // measured on forge-dev, session 5250d5e1: 17 assistant turns over dozens of
+  // tool calls, zero tool frames stored. The transcript answers now.
+  it('counts the ordered blocks a turn actually drew', () => {
+    expect(
+      countTranscriptToolCalls([
+        { type: 'user', content: 'go' },
+        {
+          type: 'assistant',
+          blocks: [
+            { type: 'text', text: 'looking' },
+            { type: 'tool', toolCall: { id: 'a', name: 'Read' } },
+            { type: 'tool', toolCall: { id: 'b', name: 'Grep' } },
+            { type: 'todos', todos: [] },
+          ],
+          toolCalls: [{ id: 'a' }, { id: 'b' }],
+        },
+      ]),
+    ).toBe(2);
+  });
+
+  // cm:guard blocks OR toolCalls, never both summed: the derive writes the same
+  // call into both fields, so adding them doubles every count and a turn that
+  // called one tool would read as two — which, at zero, is the difference between
+  // a run recorded blind and one recorded clean.
+  it('does not double-count a call that appears in both fields', () => {
+    expect(
+      countTranscriptToolCalls([
+        {
+          type: 'assistant',
+          blocks: [{ type: 'tool', toolCall: { id: 'a' } }],
+          toolCalls: [{ id: 'a' }],
+        },
+      ]),
+    ).toBe(1);
+  });
+
+  it('falls back to bare toolCalls on a turn carrying no ordered blocks', () => {
+    expect(
+      countTranscriptToolCalls([{ type: 'assistant', toolCalls: [{ id: 'a' }, { id: 'b' }] }]),
+    ).toBe(2);
+  });
+
+  it('answers 0 for a turn that called nothing, and undefined where there is no transcript', () => {
+    expect(
+      countTranscriptToolCalls([{ type: 'assistant', content: 'Backlog reviewed: 47 issues.' }]),
+    ).toBe(0);
+    expect(countTranscriptToolCalls(null)).toBeUndefined();
+    expect(countTranscriptToolCalls(undefined)).toBeUndefined();
   });
 });

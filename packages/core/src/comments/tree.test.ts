@@ -154,3 +154,44 @@ describe('attachAuthors', () => {
     expect(tree[0]?.author).toBeNull();
   });
 });
+
+describe('the record a comment carries, on the node the browser reads', () => {
+  const fence = '```';
+  const withRecord = (id: string) =>
+    row(
+      id,
+      null,
+      `## Confirmation\n\n${fence}forge-record\nfinding: holds\n${fence}\n\n\`forge-record: confirmation · contract 1\``,
+    );
+
+  it('carries the parsed record on a comment that holds one', () => {
+    const [node] = buildCommentTree([withRecord('a')]);
+    expect(node?.record?.fields).toEqual([{ key: 'finding', value: 'holds', over: 0 }]);
+  });
+
+  it('carries the record kind the tag line names', () => {
+    expect(buildCommentTree([withRecord('a')])[0]?.record?.kind).toBe('confirmation');
+  });
+
+  it('carries no record on a comment that holds none', () => {
+    expect(buildCommentTree([row('a', null, 'Merged and deployed.')])[0]?.record).toBeNull();
+  });
+
+  // cm:guard the lens is the CALLER's answer for the whole page, and this case says the builder
+  // does not go and find one of its own: a tree built with no lens must read `product`, the same
+  // reading `projectLens` fails to, rather than the looser one.
+  it('reads as product where the caller named no lens', () => {
+    expect(buildCommentTree([withRecord('a')])[0]?.record?.lens).toBe('product');
+  });
+
+  it('carries the lens the caller resolved, onto every record on the page', () => {
+    const tree = buildCommentTree([withRecord('a'), withRecord('b')], undefined, 'technical');
+    expect(tree.map((n) => n.record?.lens)).toEqual(['technical', 'technical']);
+  });
+
+  it('carries the record onto a reply as well as onto a root', () => {
+    const reply = withRecord('a1');
+    const tree = buildCommentTree([row('a', null), { ...reply, parentId: 'a' }]);
+    expect(tree[0]?.replies[0]?.record?.kind).toBe('confirmation');
+  });
+});

@@ -64,7 +64,6 @@ const STORE_READERS_OUTSIDE = [
   'assistant/conversation-routes.ts',
   'assistant/conversation-send.ts',
   'assistant/conversation-turn.ts',
-  'assistant/routes.ts',
   'assistant/vision.ts',
 ];
 

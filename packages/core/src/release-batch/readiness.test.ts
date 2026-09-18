@@ -51,6 +51,7 @@ function project(over: {
   releaseStrategy?: string | null;
   facts?: Record<string, unknown>;
   repoPath?: string | null;
+  environments?: unknown;
 }) {
   const row = {
     // Every real project on this deployment declares a repository — the pipeline cannot check one
@@ -64,6 +65,9 @@ function project(over: {
     releaseModel: over.releaseModel ?? 'none',
     releaseStrategy: over.releaseStrategy ?? null,
     agentConfig: {},
+    // ISS-1069 — the default is a project that records no live address, because that is what 32 of
+    // 32 projects held when the column was added. The filled case is passed in by the tests about it.
+    environments: over.environments,
   };
   // The knowledge store answers the contract now, so what a test used to express as jsonb keys is
   // expressed as the slugs the store holds. The bodies are ignored; presence is the whole question.
@@ -73,6 +77,14 @@ function project(over: {
 }
 
 const PROBES = { probes: [{ url: 'https://example.test/api/health', commitPath: 'commit' }] };
+
+// ISS-1069 — a project that has answered every declaration now also records where it is deployed,
+// so the "nothing left to report" fixtures below carry it. Without it they would assert an empty
+// gap set against a project still missing one, which is the shape of a test passing for the wrong
+// reason.
+const LIVE_DECLARED = {
+  live: { url: 'https://app.example.test', commitUrl: 'https://example.test/api/health' },
+};
 
 function liveBinding(config: Record<string, unknown> = {}) {
   listBindings.mockResolvedValue([
@@ -145,6 +157,7 @@ describe('loadReleaseReadiness', () => {
 
     expect(out?.hasReleaseGate).toBe(true);
     expect(out?.gaps.sort()).toEqual([
+      'live-commit-endpoint',
       'release-procedure',
       'release-runner',
       'rollback',
@@ -158,6 +171,7 @@ describe('loadReleaseReadiness', () => {
       liveBranch: 'production',
       releaseStrategy: 'merge-branch',
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
+      environments: LIVE_DECLARED,
     });
     liveBinding({
       releaseRunnerLabel: 'prod-box',
@@ -180,6 +194,7 @@ describe('loadReleaseReadiness', () => {
       liveBranch: 'production',
       releaseStrategy: 'merge-branch',
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
+      environments: LIVE_DECLARED,
     });
     liveBinding({
       releaseRunnerLabel: 'prod-box',
@@ -305,6 +320,7 @@ describe('loadReleaseReadiness — more than one live channel', () => {
     project({
       releaseModel: 'publish',
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'ship it' },
+      environments: LIVE_DECLARED,
     });
     listBindings.mockResolvedValue(
       ['b-1', 'b-2'].map((id) => ({
@@ -335,6 +351,7 @@ describe('loadReleaseReadiness — more than one live channel', () => {
     project({
       releaseModel: 'publish',
       facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'ship it' },
+      environments: LIVE_DECLARED,
     });
     liveBinding({
       releaseRunnerLabel: 'prod-box',
@@ -361,5 +378,96 @@ describe('loadReleaseReadiness — the declared probes', () => {
 
     expect(out?.gaps).not.toContain('verify-probes');
     expect(out?.hasVerify).toBe(true);
+  });
+});
+
+/**
+ * ISS-1069 — the live address is its own gap, and an absent preview is no gap at all.
+ *
+ * The second half is the one that deletes a rule rather than adding one. Nothing in this module
+ * ever reported a missing staging URL; the only sentence in the tree that called an absent preview
+ * a lack was guide prose. So the property to hold is an EQUALITY: two projects identical but for
+ * their preview side must return the same gaps, which is a claim no single-project assertion can
+ * make.
+ */
+describe('loadReleaseReadiness — the live address, and the preview that is not a gap', () => {
+  const RELEASING = {
+    releaseModel: 'promote' as const,
+    liveBranch: 'production',
+    releaseStrategy: 'merge-branch',
+    facts: { ...CONTRACT_KNOWLEDGE, 'release-procedure': 'cut a tag, then deploy' },
+  };
+  const DECLARED = {
+    releaseRunnerLabel: 'prod-box',
+    verify: PROBES,
+    rollback: { mode: 'coolify-image' },
+  };
+
+  it('reports the live-endpoint gap for a releasing project that records no live commit endpoint', async () => {
+    project(RELEASING);
+    liveBinding(DECLARED);
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps).toContain('live-commit-endpoint');
+  });
+
+  // cm:guard a live URL alone does NOT close it. The commit endpoint is a different address on this
+  // fleet and the probe is built from it, so treating `url` as good enough would report a settled
+  // contract for a project that still cannot verify a release.
+  it('still reports the gap for a project holding a live url and no commit endpoint', async () => {
+    project({ ...RELEASING, environments: { live: { url: 'https://app.example.test' } } });
+    liveBinding(DECLARED);
+
+    expect((await loadReleaseReadiness(PROJECT_ID))?.gaps).toContain('live-commit-endpoint');
+  });
+
+  it('drops the gap once the commit endpoint is recorded', async () => {
+    project({ ...RELEASING, environments: LIVE_DECLARED });
+    liveBinding(DECLARED);
+
+    expect((await loadReleaseReadiness(PROJECT_ID))?.gaps).not.toContain('live-commit-endpoint');
+  });
+
+  it('reports the SAME gaps for a null preview as for a filled one', async () => {
+    project({ ...RELEASING, environments: { ...LIVE_DECLARED, preview: null } });
+    liveBinding(DECLARED);
+    const withoutPreview = await loadReleaseReadiness(PROJECT_ID);
+
+    project({
+      ...RELEASING,
+      environments: {
+        ...LIVE_DECLARED,
+        preview: {
+          url: 'https://stg.example.test',
+          apiUrl: 'https://api.stg.example.test',
+          urls: [{ label: 'Mailbox', url: 'https://mail.example.test' }],
+        },
+      },
+    });
+    liveBinding(DECLARED);
+    const withPreview = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(withoutPreview?.gaps).toEqual(withPreview?.gaps);
+    expect(withoutPreview?.gaps).toEqual([]);
+  });
+
+  it('reports no gap whose key is about a preview, on any project', async () => {
+    project(RELEASING);
+    liveBinding({});
+
+    const out = await loadReleaseReadiness(PROJECT_ID);
+
+    expect(out?.gaps.filter((g) => /preview|staging/i.test(g))).toEqual([]);
+  });
+
+  // cm:guard `verifySources` is what keeps the default from being silent: a channel verifying
+  // against a probe the OPERATOR never typed reads identically to one verifying against their own
+  // declaration unless something records which it was.
+  it('reports where each channel got its probes', async () => {
+    project({ ...RELEASING, environments: LIVE_DECLARED });
+    liveBinding({ releaseRunnerLabel: 'prod-box', rollback: { mode: 'coolify-image' } });
+
+    expect((await loadReleaseReadiness(PROJECT_ID))?.verifySources).toEqual(['environments-live']);
   });
 });

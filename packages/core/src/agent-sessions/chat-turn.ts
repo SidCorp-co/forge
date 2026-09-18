@@ -1,3 +1,4 @@
+import { randomUUID } from 'node:crypto';
 import { eq } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
@@ -30,6 +31,7 @@ import {
   readPersistedPageContext,
   samePageContext,
 } from './page-context.js';
+import { seedTurn } from './session-events.js';
 import { readSessionModel } from './session-model.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
 
@@ -186,8 +188,23 @@ const MAX_REHYDRATION_CHARS = 12_000;
  * migrates to a different runner (the on-disk `--resume` state is unreachable).
  * Returns '' when there is no prior history (a genuine cold start).
  */
+// cm:guard the label is read off the canonical `type` and there is no `role`
+// branch left to fall back to. Until ISS-1030 this read `role` alone; every
+// entry at rest is now canonical, so a `role` reading here would have labelled
+// the WHOLE prior conversation `?:` — the new box would be handed the words with
+// nothing saying which were the person's and which were its own answers, and it
+// would still have returned a prompt. That is a silent substitution, not a
+// missing feature, which is why it is a guard and not a comment.
+const TYPE_LABEL: Readonly<Record<string, string>> = {
+  user: 'User',
+  assistant: 'Assistant',
+  system: 'System',
+  tool_use: 'Tool',
+  tool_result: 'Tool',
+};
+
 export function buildRehydrationBlock(
-  prev: ReadonlyArray<{ role?: string; content?: unknown }>,
+  prev: ReadonlyArray<{ type?: string; content?: unknown }>,
 ): string {
   if (!prev.length) return '';
   const kept: string[] = [];
@@ -195,8 +212,7 @@ export function buildRehydrationBlock(
   for (let i = prev.length - 1; i >= 0; i--) {
     const m = prev[i];
     if (!m) continue;
-    const role =
-      m.role === 'assistant' ? 'Assistant' : m.role === 'user' ? 'User' : (m.role ?? '?');
+    const role = (m.type && TYPE_LABEL[m.type]) ?? m.type ?? '?';
     const content = typeof m.content === 'string' ? m.content : JSON.stringify(m.content ?? '');
     const line = `${role}: ${content}`;
     // Always keep at least the newest turn even if it alone exceeds the budget.
@@ -356,8 +372,13 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
 
   const prevMessages = Array.isArray(session.messages) ? session.messages : [];
   const now = new Date();
-  const userMessage = {
-    role: 'user',
+  // cm:guard CANONICAL (`type`), never `role`. This is the one entry core writes
+  // into a transcript itself, and while it wore the legacy shape every reader of
+  // `agent_sessions.messages` needed a branch for both — which is what ISS-1030
+  // removed. A `role` here puts both branches back.
+  const userMessage: Record<string, unknown> = {
+    id: randomUUID(),
+    type: 'user',
     content: decoratedMessage,
     timestamp: now.getTime(),
     ...(attachments.length ? { attachments } : {}),
@@ -429,7 +450,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     if (fallbackTitle) updates.title = fallbackTitle;
   }
 
-  const { updated, sync } = await withKernelMarker(db, async (tx) => {
+  const { updated, sync, eventSeqBase } = await withKernelMarker(db, async (tx) => {
     const [row] = await tx
       .update(agentSessions)
       .set(updates)
@@ -439,7 +460,16 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
     // Materialize the appended user turn in the same transaction so the legacy
     // blob and per-turn rows can never diverge if the turn insert throws.
     const s = await syncTurnsWithMessages(row.id, prevMessages, messages, tx);
-    return { updated: row, sync: s };
+    // cm:guard the seed goes in the SAME transaction as the turn it is the
+    // record of. Written after it, a crash in between leaves a session whose
+    // stored transcript holds a prompt its carrier does not, and the next rebuild
+    // silently drops that prompt.
+    const seeded = await seedTurn(tx, row.id, {
+      priorMessages: prevMessages,
+      entry: userMessage,
+      at: now,
+    });
+    return { updated: row, sync: s, eventSeqBase: seeded.lastSeq };
   });
   for (const t of sync.appended) broadcastTurnAppended(updated, t);
 
@@ -511,6 +541,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         sessionId: updated.id,
         repoPath,
         prompt,
+        eventSeqBase,
         projectSlug: project.slug,
         preBuilt: args.preBuilt ?? false,
         systemPrompt: TOOL_REFERENCE,
@@ -527,6 +558,7 @@ export async function dispatchChatTurn(args: DispatchChatTurnArgs): Promise<Agen
         sessionId: updated.id,
         message: decoratedMessage,
         claudeSessionId,
+        eventSeqBase,
         repoPath,
         projectSlug: project.slug,
         mcpServersOverride,

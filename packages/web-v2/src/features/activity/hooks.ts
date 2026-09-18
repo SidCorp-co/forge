@@ -4,7 +4,7 @@
 //
 // Query-key contract: every key starts with `['chat-logs']`. The chat-logs
 // table has no per-row WS broadcast today (rows are written best-effort from
-// the flag-gated chat provider in `core/src/assistant/run-turn.ts`), so live refresh
+// the chat provider's turn loop in `core/src/assistant/run-turn-core.ts`), so live refresh
 // rides three signals: (1) reconnect replay — `replayOnReconnect()` in
 // `lib/ws/event-router.ts` invalidates `['chat-logs']` after a dropped socket
 // (ISS-314); (2) `refetchOnWindowFocus`; (3) the explicit Refresh action.

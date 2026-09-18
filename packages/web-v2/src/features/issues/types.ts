@@ -10,7 +10,7 @@
 // `pipelineHealth`, mirroring how
 // `features/sessions/types.ts` re-typed the flat `agent_sessions` row.
 
-import type { BodyNode } from "@forge/contracts";
+import type { BodyNode, ForgeRecordView, RecordLens } from "@forge/contracts";
 import {
   REGISTRY_ISSUE_COMPLEXITIES,
   REGISTRY_ISSUE_PRIORITIES,
@@ -390,6 +390,8 @@ export interface CommentNode {
   authorId: string;
   /** ISS-967 — parsed tree for a `format:'html'` body, null otherwise. */
   nodes: BodyNode[] | null;
+  /** ISS-1089 — the `forge-record` block core parsed, with the project's lens. */
+  record: (ForgeRecordView & { lens: RecordLens }) | null;
   /** Non-null when posted by an agent/device (ISS-519). */
   authorDeviceId?: string | null;
   body: string;

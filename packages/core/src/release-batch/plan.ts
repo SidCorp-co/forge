@@ -215,6 +215,16 @@ export interface ReleaseChannel {
   releaseRunnerLabel: string | null;
   /** How the kernel proves the deploy landed. `null` → nothing is proven. */
   verify: VerifyConfig | null;
+  /**
+   * Where {@link ReleaseChannel.verify} came from, so the default is never silent.
+   *
+   * `binding` is the operator's own `verify` on the deploy binding. `environments-live` is the
+   * probe built from `environments.live` for a binding that declares no `verify` key AT ALL — a
+   * binding declaring one `parseVerifyConfig` cannot use takes no default and lands here as
+   * `none`, because filling in for a broken declaration is replacing the operator's choice rather
+   * than supplying its absence (ISS-1069).
+   */
+  verifySource: 'binding' | 'environments-live' | 'none';
   /** How this project gets back, or `null` when it declares no way. */
   rollback: ReleaseRollback | null;
 }

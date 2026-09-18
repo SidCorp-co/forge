@@ -1,6 +1,11 @@
 import type { BodyNode } from '../body/parse.js';
 import { bodyNodes } from '../body/prepare.js';
 import { actorKey, type ResolvedActor } from '../issues/actor-identity.js';
+import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
+import type { RecordLens } from '../messaging/record-screen.js';
+
+/** The record a comment carries, with the reading its project is drawn under. */
+export type CommentRecord = ForgeRecord & { readonly lens: RecordLens };
 
 export interface CommentRow {
   id: string;
@@ -36,6 +41,8 @@ export type CommentNode<R extends CommentRow = CommentRow> = R & {
   attachments: CommentAttachmentLite[];
   // cm:guard the tree ships on EVERY comment surface because web-v2 has no `@forge/core` dependency and cannot parse a component body; a builder that drops it renders literal `<forge-…>` markup with every test still green (ISS-967). `null` is markdown, or bytes this build's scanner cannot read.
   nodes: BodyNode[] | null;
+  // cm:guard the parsed `forge-record` block travels for the SAME reason `nodes` does, and it is the SAME parse the comment-write door screened: web-v2 re-deriving it would be a second parser that can disagree with the one that refused the comment, which is the defect ISS-1089 replaces rather than a step toward it. `null` is a comment carrying no fence.
+  record: CommentRecord | null;
   // ISS-519 — resolved author identity (email for a human, device name + Agent
   // marker for an agent comment). Optional so existing builders/tests that
   // don't enrich the tree still compile; the comments route attaches it (null
@@ -52,18 +59,26 @@ export type CommentNode<R extends CommentRow = CommentRow> = R & {
 // `attachmentsByCommentId` maps a comment id to its attachments; nodes with no
 // entry get an empty array. Callers that don't care about attachments may omit
 // it entirely.
+// cm:guard `lens` is resolved ONCE by the caller and handed in, not read per comment: it is a
+// property of the project, one query, and a tree builder that fetched it per row would make a page
+// of forty comments forty round trips for one answer (ISS-1089). It defaults to `product` for the
+// same reason `projectLens` fails to `product` — the stricter reading is the safe one to be wrong in.
 export function buildCommentTree<R extends CommentRow>(
   rows: R[],
   attachmentsByCommentId?: Map<string, CommentAttachmentLite[]>,
+  lens: RecordLens = 'product',
 ): CommentNode<R>[] {
   const byId = new Map<string, CommentNode<R>>();
-  for (const r of rows)
+  for (const r of rows) {
+    const record = parseForgeRecord(r.body);
     byId.set(r.id, {
       ...r,
       replies: [],
       attachments: attachmentsByCommentId?.get(r.id) ?? [],
       nodes: bodyNodes(r.body, r.format),
+      record: record ? { ...record, lens } : null,
     });
+  }
   const roots: CommentNode<R>[] = [];
   for (const r of rows) {
     const node = byId.get(r.id);

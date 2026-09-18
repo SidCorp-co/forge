@@ -53,7 +53,10 @@ function session(over: Record<string, unknown> = {}) {
     userId: '33333333-3333-4333-8333-333333333333',
     status: 'idle',
     title: 'Original chat',
-    messages: [{ role: 'user', content: 'original prompt' }],
+    // cm:guard CANONICAL, and that is the assertion: since ISS-1030 no entry at
+    // rest carries `role`, so a rerun reading one finds no prompt and answers 400
+    // on a conversation that plainly has one.
+    messages: [{ type: 'user', content: 'original prompt' }],
     metadata: { model: 'default' },
     updatedAt: new Date('2026-08-27T00:00:00.000Z'),
     ...over,

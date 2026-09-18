@@ -127,6 +127,7 @@ const CHECKS = [
     axis: 'relations',
     label: 'archmap',
     cmd: ['./.forge/archmap/archmap', 'check'],
+    exclusive: 'archmap',
     scanned: /archmap · (\d+) files/,
     needs: ['deps', 'observability-build'],
     // cm:guard `observability-build` belongs here for the same reason `core typecheck` declares it: archmap resolves TypeScript module edges, so an unbuilt `@forge/observability` makes every edge through it unresolvable. Measured 2026-09-14 in a fresh worktree — 205 unresolvable against a 200 ceiling where a built tree reports 171, and conformance-audit R7 then declared the REPO does not meet `hardened`. That is a false claim about the code, which is the exact bug `lib/prerequisite.mjs` exists to stop.
@@ -251,6 +252,8 @@ const CHECKS = [
     axis: 'meta',
     label: 'conformance audit',
     cmd: ['node', 'scripts/conformance-audit.mjs'],
+    // cm:guard the SAME group as the `archmap` check above: this script's R7 spawns `archmap check --stats` of its own, and two archmap processes in one checkout race. See groupGate() for what that costs.
+    exclusive: 'archmap',
     // cm:edge naming -> scripts/conformance-audit.mjs — parses that script's success line
     scanned: /^conformance-audit: (\d+) rules evaluated/m,
     unit: 'rules',
@@ -400,14 +403,40 @@ function runCheck(check, base) {
 
 // cm:guard results stay in CHECKS order however the processes finish — the report reads as an ordered list of axes and `ci-parity` reads off the same array, so landing order would shuffle both
 // cm:why the width is bounded rather than firing all 20: measured 2026-09-06 on 12 cores, serial 41.9s, width 4 32.6s, width 6 28.4s, width 12 28.4s — flat past 6, because tsc is itself multi-core and conformance-levels re-spawns eleven checkers
+// cm:guard checks declaring the same `exclusive` group never run at the same time as each other, and everything else stays parallel. A group is for a tool that is not safe to run twice at once in one checkout — `archmap` is the only one today, run both by the `relations` check and by `conformance-audit.mjs`'s R7. Racing them does not produce a slow run, it produces a FALSE "could not run": one process answers and the other exits 2 with `scope matched no files (.)`, which R7 reports as the graph resolving to nothing and `verify` reports as exit 2 about a tree where nothing is wrong. Reproduced deterministically on 2026-09-17 (two concurrent `archmap check --stats`: A exit 0, B exit 2; five sequential runs all exit 0) after three passes on ISS-1085 had recorded it as an unexplained intermittent. The trade: `verify` is serialised at its two slowest checks, measured below a minute of wall clock, bought against a gate that lied about itself. It ends when archmap is safe to run concurrently in one checkout — the binary is vendored under `.forge/archmap/` and cannot be fixed from this repo.
+function groupGate() {
+  const tails = new Map();
+  return async (group, fn) => {
+    if (!group) return fn();
+    const prev = tails.get(group) ?? Promise.resolve();
+    let release;
+    tails.set(
+      group,
+      prev.then(
+        () =>
+          new Promise((r) => {
+            release = r;
+          }),
+      ),
+    );
+    await prev;
+    try {
+      return await fn();
+    } finally {
+      release?.();
+    }
+  };
+}
+
 async function runAll(checks, base, width) {
   const results = new Array(checks.length);
   const tty = process.stdout.isTTY;
+  const inGroup = groupGate();
   let next = 0;
   let landed = 0;
   const worker = async () => {
     for (let i = next++; i < checks.length; i = next++) {
-      results[i] = await runCheck(checks[i], base);
+      results[i] = await inGroup(checks[i].exclusive, () => runCheck(checks[i], base));
       landed += 1;
       if (tty) process.stdout.write(`  … ${landed}/${checks.length} checks${' '.repeat(20)}\r`);
     }

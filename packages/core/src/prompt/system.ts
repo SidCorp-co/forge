@@ -372,7 +372,7 @@ export async function buildPipelinePreambleStructured(
   }
 
   // On a pipeline step the facts resolver reads the `projects` row anyway
-  // (branches + agentConfig + previewDeploy + integrations), so reuse its
+  // (branches + agentConfig + environments + integrations), so reuse its
   // branches for the Project Config block instead of reading `projects` a
   // second time. With no step (chat / generic preview) there is no facts
   // block, so just read the branches.
