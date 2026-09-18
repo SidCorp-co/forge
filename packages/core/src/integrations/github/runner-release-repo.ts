@@ -36,6 +36,8 @@ export function runnerReleaseSubject(what: { lookup: string; write?: string }): 
       lookup: what.lookup,
       create: write,
       update: write,
+      // cm:guard this path never merges, and the label says so rather than reading plausibly. `merge` joined `GitHubPublishOp` with ISS-1073, and a `Record` over the union makes every subject answer for it; a borrowed sentence like "merging the pull request" would put a refusal about a merge onto a release that sent no merge, and the operator would go looking for one.
+      merge: 'a merge, which the release path never sends',
     },
     permission:
       'the App has no `contents: write` permission. Set Contents to "Read and write" on the App, ' +
