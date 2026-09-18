@@ -2924,6 +2924,23 @@
 
 ### Fixed
 
+- **A master that cannot dispatch is told why, instead of being told to wait thirty seconds.** A
+  master pane asking to start work was refused with one fixed sentence: the box did not yet know
+  which project the pane served, and would work it out on its next sweep, within thirty seconds.
+  That promise was not the box's to make. A pane is placed only when several things hold — the
+  project is one core still serves to this box, its checkout is where the box expects, its runner
+  is taking work — and where one of them did not, the wait never ended. One project sat unable to
+  dispatch for fourteen hours on a sentence that said half a minute. The refusal now says which
+  condition failed, or, where the pane's own credentials have been replaced under it and no amount
+  of waiting will help, says that and says to replace the pane. Only the one case a sweep really
+  does resolve still mentions a sweep, and no case names a number of seconds any more.
+
+- **A project with nothing to do keeps its master.** A master pane whose project had run out of
+  claimable work stopped being registered at all, so the record of it timed out and the running pane
+  was left holding credentials for a session that no longer existed — unusable, with nothing saying
+  so. A quiet project's pane is now kept registered like any other. Nothing is started for a project
+  with no work, which was the point of the original behaviour and is unchanged.
+
 - **A finished release no longer holds a job slot.** Two ended release batches held a runner's
   whole pane budget for four hours, stopping every project on that box. The box now learns when a
   job is over.

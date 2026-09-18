@@ -315,7 +315,7 @@ fn run_choice(
 ///
 /// Writes a row and answers its id. Starts nothing, selects nothing, and moves
 /// no issue's status.
-// cm:guard the project is CHECKED and never derived, and an unknown pane is refused rather than served. `Masters` is an in-process optimisation and a daemon restart empties it while every master is still running, so a declaration in that window must be told this box does not yet know which project its pane serves — the next sweep re-adopts the pane and restores the answer. Serving it anyway, from the frame's own claim or from the only entry present, is how a pane on one project opens a run over another's issue (ISS-1050 criterion 7).
+// cm:guard the project is CHECKED and never derived, and an unknown pane is refused rather than served. `Masters` is an in-process optimisation and a daemon restart empties it while every master is still running, so a declaration in that window has to be refused. What that refusal may NOT do is promise a re-adoption on a deadline: the sweep places a pane only where its preconditions hold, and `why_unplaced` names the one that did not rather than naming a number of seconds (ISS-1092). Serving it anyway, from the frame's own claim or from the only entry present, is how a pane on one project opens a run over another's issue (ISS-1050 criterion 7).
 #[cfg(unix)]
 fn run_declare(
     ctl: &Arc<Control>,
@@ -324,10 +324,14 @@ fn run_declare(
     worktree_path: &str,
     session_id: &str,
 ) -> ClaimReply {
+    // cm:guard the refusal is BUILT from what the sweep recorded, and the project id above is read
+    // for that diagnosis only — `why_unplaced` answers a string and never a project, so this arm
+    // still serves nothing from the caller's own claim (ISS-1050 criterion 7). What changed in
+    // ISS-1092 is the second half of the sentence: this used to promise re-adoption "within thirty
+    // seconds" on every path, including ones where no sweep would ever place the pane, and a master
+    // holding a stale capability waited out a deadline that could not arrive.
     let Some(serves) = ctl.masters.project_for_session(session_id) else {
-        return ClaimReply::refused(
-            "this daemon does not yet know which project your pane serves — it re-adopts live panes on its next sweep, within thirty seconds",
-        );
+        return ClaimReply::refused(ctl.masters.why_unplaced(project_id));
     };
     if serves != project_id {
         return ClaimReply::refused(format!(
@@ -975,19 +979,45 @@ mod tests {
             );
         }
         // cm:guard `Masters` is an in-process optimisation and a daemon restart empties it while every
-        // master is still running, so a declaration in that window has to be REFUSED and told the
-        // window closes on its own. Serving it from the frame's own claim would let a pane on one
-        // project open a run over another's issue (ISS-1050 criterion 7).
+        // master is still running, so a declaration in that window has to be REFUSED. Serving it
+        // from the frame's own claim would let a pane on one project open a run over another's
+        // issue (ISS-1050 criterion 7). What that refusal SAYS is `why_unplaced`'s, and this test
+        // is what makes it so: it used to assert the word "sweep", which is the promise ISS-1092
+        // measured as false — the pane it was written for waited out fourteen hours of thirty
+        // seconds while the daemon had adopted a session it could never reconcile with.
         #[test]
-        fn a_pane_this_daemon_has_not_yet_adopted_is_refused_and_told_the_window_closes_itself() {
+        fn a_pane_this_daemon_has_not_adopted_is_refused_with_what_the_sweep_recorded() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
             let reply = run_declare(&ctl, "proj-1", &["ISS-1".into()], "/w/one", "sess-UNKNOWN");
             assert!(!reply.ok);
             let why = reply.reason.unwrap_or_default();
-            assert!(
-                why.contains("sweep"),
-                "a master told only `refused` would stop declaring; it has to know the next sweep fixes this: {why}"
+            assert_eq!(
+                why,
+                ctl.masters.why_unplaced("proj-1"),
+                "the refusal is the registry's account of this project and nothing the handler composed itself, or the two drift and only one of them is ever read"
             );
+            assert!(
+                why.contains("sess-a") && why.contains("stale"),
+                "this box holds a master for proj-1 under another session, which is the stale-capability state, and the pane is owed that rather than a wait: {why}"
+            );
+        }
+
+        // cm:guard the refusal may not carry a deadline on ANY path, and this walks the paths rather
+        // than one of them. The sentence this replaces was a constant, so it read correctly in the
+        // one state it was written for and lied in every other (ISS-1092 criterion 9).
+        #[test]
+        fn no_refusal_for_an_unplaced_pane_promises_a_number_of_seconds() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            ctl.masters
+                .note_served(crate::daemon::master::Served::Read(vec!["proj-9".into()]));
+            for project in ["proj-1", "proj-9", "proj-ABSENT"] {
+                let reply = run_declare(&ctl, project, &["ISS-1".into()], "/w/one", "sess-UNKNOWN");
+                let why = reply.reason.unwrap_or_default();
+                assert!(
+                    !why.contains("thirty seconds") && !why.contains("30 seconds"),
+                    "a deadline the sweep does not enforce is worse than no deadline: {why}"
+                );
+            }
         }
         // cm:guard the ledger's own refusal text reaches the master WHOLE. It names the row to close,
         // and a handler that replaced it with one word of its own would leave the pane with a refusal
