@@ -2967,6 +2967,14 @@
 - **A master that comes back after a crash can now say what became of the work it was holding, and
   must.** There was no command for it, and ending the work counted as an answer.
 
+- **A master that cannot start work is told why.** The refusal promised the box would sort itself
+  out within thirty seconds — nothing enforced that, and one project waited fourteen hours. It now
+  names the condition that failed.
+
+- **A project with nothing to do keeps its master.** A quiet project stopped being registered,
+  leaving its pane holding credentials for a session that no longer existed. It is registered now;
+  still nothing is started for an empty queue.
+
 - **A finished release no longer holds a job slot.** Two ended release batches held a runner's
   whole pane budget for four hours, stopping every project on that box. The box now learns when a
   job is over.
