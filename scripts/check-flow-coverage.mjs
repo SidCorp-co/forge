@@ -194,6 +194,26 @@ for (const flow of flows) {
           'coverage scope, which is a configuration fault, not an uncovered step.',
       );
     }
+    // cm:guard `nofn` is a MISPLACED annotation and is refused by name rather than counted as
+    // uncovered. `fnHitsAt` resolves a step to the tightest function containing its line, or one
+    // declared within 5 lines below; an annotation in a file header belongs to no function and
+    // answers `nofn` for every source. Reported as uncovered it read "no test enters it at all" —
+    // which sent ISS-1073 to write an integration test that DID enter the function and changed
+    // nothing, because the gate was never looking at a function. One CI round trip per reader.
+    const unresolved = per.filter((p) => p.state === 'nofn');
+    if (unresolved.length === per.length) {
+      const where = sites
+        .get(flow)
+        .filter((s) => s.step === step)
+        .map((s) => `${s.file}:${s.line}`)
+        .join(', ');
+      die(
+        `${flow}/${step}: the annotation at ${where} sits inside no function, so no coverage ` +
+          'report can say whether it ran. Move the `cm:flow` comment onto the function the step ' +
+          'names (the line directly above its declaration), which is where this gate reads it. ' +
+          'This is a misplaced annotation, not an uncovered step.',
+      );
+    }
     const settled = per.some((p) => p.authoritative && p.state === 'covered');
     const unitOnly = !settled && per.some((p) => !p.authoritative && p.state === 'covered');
     const stmtRan = per.some((p) => p.authoritative && p.stmt === 'covered');

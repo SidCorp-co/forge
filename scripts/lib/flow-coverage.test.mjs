@@ -84,6 +84,20 @@ describe('lookup', () => {
     expect(r.state).toBe('covered');
   });
 
+  // cm:guard `nofn` must stay its OWN state and never collapse into `uncovered`. An annotation in a
+  // file header belongs to no function, and while the two shared a verdict the gate printed "no test
+  // enters it at all" for a step whose function the integration suite entered eight times — ISS-1073
+  // spent a CI round trip writing a test that was already there. check-flow-coverage refuses this
+  // state by name; that refusal is only reachable while these two answers differ.
+  it('says nofn, not uncovered, for an annotation that sits inside no function', () => {
+    const r = lookup(source({ '/repo/packages/core/src/a.ts': entry }), {
+      file: 'packages/core/src/a.ts',
+      line: 1,
+    });
+    expect(r.state).toBe('nofn');
+    expect(r.state).not.toBe('uncovered');
+  });
+
   it('says nosource for an absent report and outofscope for an unlisted file', () => {
     expect(lookup({ missing: true }, { file: 'a.ts', line: 1 }).state).toBe('nosource');
     expect(lookup(source({}), { file: 'a.ts', line: 1 }).state).toBe('outofscope');

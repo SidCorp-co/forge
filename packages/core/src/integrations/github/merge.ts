@@ -30,7 +30,6 @@
  */
 // cm:guard NOTHING here retries and nothing falls back to another credential. The App is the only identity on this path, which is ISS-1073's outcome 4, and a refusal is the deliverable rather than a step on the way to trying something else. The queue this verb can be reached through retries with 5x exponential backoff (`jobs/queue-name.ts`), which is why the FIRST thing a merge does after resolving its inputs is ask whether GitHub already merged this pull request: a retry then records the evidence instead of merging again.
 // cm:edge lockstep -> packages/core/src/integrations/github/adapter.ts — `MERGE_EVENT` is the outbound verb name that reaches this, and the adapter's refusal lists it; a rename here without one there refuses the verb this file serves.
-// cm:flow release/stamp — the merge is the stamp: one operation writes issues.merged_at, issues.merged_commit_sha and the projection row's merged state
 
 import { eq } from 'drizzle-orm';
 import { db } from '../../db/client.js';
@@ -220,6 +219,8 @@ interface MergeAnswer {
  * holding a context for binding A and a row belonging to binding B would
  * validate A and then MERGE on B's repository.
  */
+// cm:why the annotation sits ON the function and not in the file header, where ISS-1073 first put it: `lib/flow-coverage.mjs:fnHitsAt` resolves a step to the tightest function containing its line (or one declared within 5 lines below), so a `cm:flow` above the imports belongs to no function and reads `nofn` — which the gate reports word for word as "no test enters it at all", whatever the integration suite actually walked.
+// cm:flow release/stamp — the merge is the stamp: one operation writes issues.merged_at, issues.merged_commit_sha and the projection row's merged state
 export async function mergeStoredPullRequest(
   req: MergeRequest,
   expectBindingId?: string,
