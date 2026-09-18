@@ -30,6 +30,7 @@ let app: import('hono').Hono<AppVars>;
 let accounts: typeof import('../../src/orgs/agent-accounts.js');
 let credential: typeof import('../../src/devices/credential.js');
 let authz: typeof import('../../src/lib/authz.js');
+let handles: typeof import('../../src/conversations/handles.js');
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -43,6 +44,7 @@ beforeAll(async () => {
   accounts = await import('../../src/orgs/agent-accounts.js');
   credential = await import('../../src/devices/credential.js');
   authz = await import('../../src/lib/authz.js');
+  handles = await import('../../src/conversations/handles.js');
   ({ app } = (await import('../../src/index.js')) as unknown as {
     app: import('hono').Hono<AppVars>;
   });
@@ -337,6 +339,57 @@ describe('minting a credential while the project set is being changed', () => {
     expect(await restReaches(token, projectA)).toBe(true);
     expect(await restReaches(token, projectB)).toBe(true);
     expect(await restReaches(token, projectC)).toBe(false);
+  });
+});
+
+describe('a multi-project agent and a project’s conversational voice', () => {
+  /**
+   * `docs/proposals/device-role-in-the-token-table.md` named this in advance as a
+   * consequence of letting an agent hold more than one project membership, and
+   * ISS-1093 is the change that takes that step.
+   *
+   * A project's handle is resolved as "the agent that is a member of this project,
+   * oldest first". An agent covering eight projects is a member of every one of
+   * them, so on the reading that held before this change it becomes the voice of
+   * whichever has no handle yet — and it holds a write-capable credential, which a
+   * minted handle deliberately does not.
+   */
+  // cm:guard the assertion is the MINT, not the absence of an error: resolving the handle has to
+  // create a fresh handle-only account rather than return the multi-project agent. Asserting only
+  // that some handle came back stays green over exactly the substitution this is about.
+  it('never makes a multi-project agent the handle of a project that has none', async () => {
+    const { agent } = await accounts.createAgentAccount({
+      orgId,
+      projectIds: [projectA, projectB],
+      handle: handle(),
+    });
+
+    const resolved = await harness.db.transaction((tx) =>
+      handles.resolveProjectHandle(tx as never, projectA),
+    );
+
+    expect(resolved.userId).not.toBe(agent.userId);
+    expect(resolved.minted).toBe(true);
+
+    // And the account it did mint is the tokenless kind.
+    const tokens = await harness.db.execute<{ n: number }>(
+      sql`SELECT count(*)::int AS n FROM personal_access_tokens WHERE user_id = ${resolved.userId}`,
+    );
+    expect(Number(tokens[0]?.n)).toBe(0);
+  });
+
+  // cm:guard the narrowing may not take the EXISTING answer away. A handle minted for one project
+  // is a member of that project and no other, so it must still be found — otherwise every room
+  // already open would mint a second handle for a project that has one.
+  it('still reuses the handle a project already has', async () => {
+    const first = await harness.db.transaction((tx) =>
+      handles.resolveProjectHandle(tx as never, projectA),
+    );
+    const again = await harness.db.transaction((tx) =>
+      handles.resolveProjectHandle(tx as never, projectA),
+    );
+    expect(again.userId).toBe(first.userId);
+    expect(again.minted).toBe(false);
   });
 });
 

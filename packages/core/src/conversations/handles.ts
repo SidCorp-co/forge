@@ -5,11 +5,17 @@
 // `kind:'agent'`, a member of one org and one project, whose authorization is
 // the membership it holds. What this module adds is that a conversation may
 // mint one, and that it mints one WITHOUT a token.
+//
+// Since ISS-1093 an agent MAY be a member of several projects, so "a member of
+// one project" stopped being true of agents in general. It is still what a
+// project's handle is, and `existingProjectHandle` now says so rather than
+// relying on it.
 
-import { and, asc, eq, sql } from 'drizzle-orm';
+import { and, asc, eq, ne, notExists, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
 import { organizationMembers, projectMembers, projects, users } from '../db/schema.js';
+import { alias } from 'drizzle-orm/pg-core';
 import type { Executor } from './db-executor.js';
 
 const LOCK_NAMESPACE = 'forge:conversation-handle';
@@ -38,12 +44,33 @@ export async function existingProjectHandle(
   tx: Executor,
   projectId: string,
 ): Promise<{ userId: string; handle: string | null } | undefined> {
+  // cm:guard a candidate must be a member of THIS project and of no other. Before ISS-1093 that
+  // was true of every agent by construction, so this narrowing changes the answer for no row that
+  // exists today — it excludes exactly the population ISS-1093 created. Without it, an agent an
+  // org admin made to cover eight projects becomes the conversational voice of whichever of them
+  // has no handle yet, purely by being older; and unlike a minted handle, which carries no
+  // `personal_access_tokens` row on purpose, that agent holds a write-capable credential. The
+  // guard on `resolveProjectHandle` below says minting a token here would put a principal with
+  // write authority into every room a person opens — this is the same hole reached from the other
+  // side, by a token-holding agent walking into the candidate list.
+  const other = alias(projectMembers, 'other_membership');
   const [row] = await tx
     .select({ userId: users.id, handle: organizationMembers.handle })
     .from(users)
     .innerJoin(projectMembers, eq(projectMembers.userId, users.id))
     .leftJoin(organizationMembers, eq(organizationMembers.userId, users.id))
-    .where(and(eq(projectMembers.projectId, projectId), eq(users.kind, 'agent')))
+    .where(
+      and(
+        eq(projectMembers.projectId, projectId),
+        eq(users.kind, 'agent'),
+        notExists(
+          tx
+            .select({ one: sql`1` })
+            .from(other)
+            .where(and(eq(other.userId, users.id), ne(other.projectId, projectId))),
+        ),
+      ),
+    )
     .orderBy(asc(users.createdAt), asc(users.id))
     .limit(1);
   return row;
