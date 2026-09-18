@@ -324,7 +324,7 @@ describe('an agent has no authorization path of its own', () => {
     const forPerson = await authz.effectiveProjectRole(person.id, projectA);
     expect(forAgent).not.toBeNull();
     expect(forAgent?.role).toEqual(forPerson?.role);
-    expect(forAgent?.source).toEqual(forPerson?.source);
+    expect(forAgent?.orgRole).toEqual(forPerson?.orgRole);
   });
 
   // Criterion 30.
@@ -367,9 +367,7 @@ describe('the org listing', () => {
     });
     await harness.db.execute(sql`DELETE FROM project_members WHERE user_id = ${agent.userId}`);
 
-    const listed = (await accounts.listAgentAccounts(orgId)).find(
-      (a) => a.userId === agent.userId,
-    );
+    const listed = (await accounts.listAgentAccounts(orgId)).find((a) => a.userId === agent.userId);
     expect(listed?.projects).toEqual([]);
     expect(listed?.canAct).toBe(false);
   });

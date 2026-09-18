@@ -67,7 +67,9 @@ describe('hydrateCreatorsForIssues', () => {
 
   it('legacy NULL created_via row is treated as human', async () => {
     selectWhere.mockReturnValueOnce([{ id: 'u1', email: 'legacy@example.com' }]);
-    const map = await hydrateCreatorsForIssues([{ id: 'i1', createdById: 'u1', createdVia: null, creatorAgency: null }]);
+    const map = await hydrateCreatorsForIssues([
+      { id: 'i1', createdById: 'u1', createdVia: null, creatorAgency: null },
+    ]);
     expect(map.get('i1')).toEqual({
       creatorEmail: 'legacy@example.com',
       creatorIsAgent: false,
@@ -124,7 +126,9 @@ describe('creatorIsAgentCondition', () => {
   it('is parenthesised as a whole, so an AND-composing caller cannot re-bind it', () => {
     const chunks = (creatorIsAgentCondition() as unknown as { queryChunks: unknown[] }).queryChunks;
     const text = chunks
-      .map((c) => (typeof c === 'object' && c && 'value' in c ? String((c as { value: unknown }).value) : ''))
+      .map((c) =>
+        typeof c === 'object' && c && 'value' in c ? String((c as { value: unknown }).value) : '',
+      )
       .join('');
     expect(text.trimStart().startsWith('(')).toBe(true);
     expect(text.trimEnd().endsWith(')')).toBe(true);

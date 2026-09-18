@@ -21,10 +21,10 @@ import {
   createAgentAccount,
   listAgentAccounts,
   mintAgentCredential,
-  setAgentProjects,
   revokeAgentAccount,
   revokeAgentCredentials,
   setAgentDisplayName,
+  setAgentProjects,
 } from './agent-accounts.js';
 import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-selves.js';
 

@@ -268,7 +268,8 @@ export async function listAgentAccounts(orgId: string): Promise<AgentAccount[]> 
     const activeTokens = row.activeTokens ?? 0;
     const existing = byAgent.get(row.userId);
     if (existing) {
-      if (row.projectId) existing.projects.push({ id: row.projectId, role: row.projectRole ?? 'member' });
+      if (row.projectId)
+        existing.projects.push({ id: row.projectId, role: row.projectRole ?? 'member' });
       existing.canAct = existing.activeTokens > 0 && existing.projects.length > 0;
       continue;
     }
@@ -415,7 +416,9 @@ export async function setAgentProjects(
     await tx.delete(projectMembers).where(eq(projectMembers.userId, agentUserId));
     await tx
       .insert(projectMembers)
-      .values(wanted.map((projectId) => ({ userId: agentUserId, projectId, role: 'member' as const })));
+      .values(
+        wanted.map((projectId) => ({ userId: agentUserId, projectId, role: 'member' as const })),
+      );
     const rows = await tx
       .update(personalAccessTokens)
       .set({ boundProjectId: fence.boundProjectId, projectIds: fence.projectIds })

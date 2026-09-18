@@ -83,7 +83,9 @@ async function createIssueWith(token: string, title: string): Promise<string> {
   return ((await res.json()) as { id: string }).id;
 }
 
-async function listAs(token: string): Promise<
+async function listAs(
+  token: string,
+): Promise<
   Array<{ id: string; creatorIsAgent: boolean; creatorLabel: string; creatorEmail: string | null }>
 > {
   const res = await app.request(`/api/projects/${projectId}/issues?limit=100`, {
@@ -192,9 +194,9 @@ describe('the issue list answers from the credential, not the channel', () => {
  * read as an agent — which only a sequence can show.
  */
 describe('one credential, one actor, across every kind of write in a run', () => {
-  async function activityFor(issueId: string): Promise<
-    Array<{ action: string; actor: { isAgent: boolean } | null }>
-  > {
+  async function activityFor(
+    issueId: string,
+  ): Promise<Array<{ action: string; actor: { isAgent: boolean } | null }>> {
     const res = await app.request(`/api/issues/${issueId}/activity?limit=100`, {
       headers: { authorization: `Bearer ${await signUserToken(personId)}` },
     });
@@ -261,9 +263,11 @@ describe('one credential, one actor, across every kind of write in a run', () =>
       headers: { authorization: `Bearer ${await signUserToken(personId)}` },
     });
     expect(thread.status).toBe(200);
-    const nodes = ((await thread.json()) as {
-      items: Array<{ body: string; author: { isAgent: boolean } | null }>;
-    }).items;
+    const nodes = (
+      (await thread.json()) as {
+        items: Array<{ body: string; author: { isAgent: boolean } | null }>;
+      }
+    ).items;
     expect(nodes[0]?.author?.isAgent).toBe(true);
   });
 
@@ -279,16 +283,16 @@ describe('one credential, one actor, across every kind of write in a run', () =>
     expect(posted.status).toBe(201);
     const commentId = ((await posted.json()) as { id: string }).id;
     // As if written before `author_agency` existed.
-    await harness.db.execute(
-      sql`UPDATE comments SET author_agency = NULL WHERE id = ${commentId}`,
-    );
+    await harness.db.execute(sql`UPDATE comments SET author_agency = NULL WHERE id = ${commentId}`);
 
     const thread = await app.request(`/api/issues/${id}/comments`, {
       headers: { authorization: `Bearer ${jwt}` },
     });
-    const nodes = ((await thread.json()) as {
-      items: Array<{ author: { isAgent: boolean } | null }>;
-    }).items;
+    const nodes = (
+      (await thread.json()) as {
+        items: Array<{ author: { isAgent: boolean } | null }>;
+      }
+    ).items;
     expect(nodes[0]?.author?.isAgent).toBe(false);
   });
 
@@ -308,16 +312,16 @@ describe('one credential, one actor, across every kind of write in a run', () =>
     });
     expect(posted.status).toBe(201);
     const commentId = ((await posted.json()) as { id: string }).id;
-    await harness.db.execute(
-      sql`UPDATE comments SET author_agency = NULL WHERE id = ${commentId}`,
-    );
+    await harness.db.execute(sql`UPDATE comments SET author_agency = NULL WHERE id = ${commentId}`);
 
     const thread = await app.request(`/api/issues/${id}/comments`, {
       headers: { authorization: `Bearer ${await signUserToken(personId)}` },
     });
-    const nodes = ((await thread.json()) as {
-      items: Array<{ author: { isAgent: boolean } | null }>;
-    }).items;
+    const nodes = (
+      (await thread.json()) as {
+        items: Array<{ author: { isAgent: boolean } | null }>;
+      }
+    ).items;
     expect(nodes[0]?.author?.isAgent).toBe(true);
   });
 });
@@ -398,7 +402,7 @@ describe('rows written before the column', () => {
   }
 
   // Criterion 11 — without this the change repairs nothing that was already filed.
-  it("an old agent-filed row is repaired from its own activity entry", async () => {
+  it('an old agent-filed row is repaired from its own activity entry', async () => {
     const id = await createIssueWith(await personPat(), 'filed before the column existed');
     await asIfWrittenBeforeTheColumn(id);
     expect((await rowOnList(await personPat(), id)).creatorIsAgent).toBe(false); // the defect

@@ -8,33 +8,6 @@
 
 ## [Unreleased]
 
-### Fixed
-
-- **Work an agent does now shows as the agent's on the issue list, not as yours.** The list asked
-  which door a write came through rather than which credential carried it, and each door stamps its
-  own answer: anything filed through the web API said `web`, and `web` meant a person. So a box
-  running your backlog on a token you own filed issues that the list attributed to you, by name and
-  address, while the activity log on those very same issues correctly recorded an agent. Two screens
-  answered the same question about the same event in opposite ways, and the one you read every
-  morning was the wrong one — twenty issues filed overnight looked like twenty you had typed
-  yourself. Filing now records what the credential established, the same answer the activity log has
-  always stored, so the two cannot disagree. Issues already filed are repaired on deploy from their
-  own activity entry, so the backlog reads correctly the first time you open it rather than only for
-  work done from now on; where no such entry exists nothing is invented and the row reads exactly as
-  it does today. Filtering moves with the label — asking for your own issues no longer returns work
-  a machine did on your credential.
-
-- **A comment an agent wrote now says so.** Whether a comment carried the agent marker depended on
-  the box the credential was issued to, so a comment written by an agent holding a person's token —
-  which is most of them — appeared as that person's own, even though who wrote it had been recorded
-  correctly all along and was sitting unread in the response. The marker now reads that record.
-  Comments written before it existed are unchanged.
-
-- **An agent account is recognised as an agent wherever its name appears.** An agent is an ordinary
-  member account with a flag, and the code that turns an author into a name and a badge never read
-  the flag — so an agent that wrote under its own credential, with its own name on the row, still
-  rendered as an ordinary person.
-
 ### Security
 
 - **The Attention inbox no longer shows you issues from projects you were removed from.**
@@ -3021,6 +2994,17 @@
   set is now 59.
 
 ### Fixed
+
+- **Work an agent does now shows as the agent's on the issue list, not as yours.** A box filing on
+  your token was credited to you, while the activity log said an agent. Issues already filed are
+  repaired on deploy.
+
+- **Filtering by your own issues no longer returns work a machine did on your credential.**
+
+- **A comment an agent wrote now says so.** The marker depended on which box issued the credential,
+  so an agent writing on a person's token showed as that person.
+
+- **An agent account is recognised as an agent wherever its name appears.**
 
 - **Six background checks that got slower as the tables grew now answer at a steady speed.** Each
   read a whole table to find a handful of rows. Same answers, with the shortcuts to reach them.

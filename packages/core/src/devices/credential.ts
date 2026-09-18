@@ -12,11 +12,11 @@
 import { createHash } from 'node:crypto';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { mintPat } from '../auth/pat.js';
-import { agentCredentialFence } from '../orgs/agent-accounts.js';
 import { deviceTokenNameFor } from '../auth/pat-format.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
+import { agentCredentialFence } from '../orgs/agent-accounts.js';
 
 // cm:guard pinned rather than inherited from `RULES.patRead`/`RULES.patWrite`: those defaults are operator knobs (`RATE_LIMIT_PAT_READ_MAX`, `RATE_LIMIT_PAT_WRITE_MAX`) and the read one is sized for a whole box of sessions, which a single box credential is not. A box does not degrade under a 429, it stops claiming. A daemon heartbeats, polls the pool for every binding and streams job events on one token, so it is the noisiest credential in the fleet and the least able to ask for another.
 const DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE = 600;

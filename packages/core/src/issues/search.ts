@@ -29,8 +29,8 @@ import { listResponse } from '../lib/pagination.js';
 import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
-import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import type { ActorAgency } from './actor-agency.js';
+import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
 import {
   buildCreatedByCondition,
   buildOriginCondition,
