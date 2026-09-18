@@ -134,6 +134,10 @@
   says where it stopped instead of ending mid-sentence and looking finished. A turn cannot report
   complete while anything it said is undelivered.
 
+
+- **An agent's report on an issue is now drawn as a card.** A headline, then one labelled row per
+  field, with an over-long field folded rather than shortened and a note saying how far over it ran.
+
 - **Sentry errors can become Forge issues on a schedule.** Forge files the ones clearing an
   admission bar you set on the Ops Console, as drafts. Everything it turns away is named in the
   run's record, and a repeat sighting comments.

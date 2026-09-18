@@ -6,13 +6,14 @@
  * `doors.ts` for why (ISS-997).
  */
 
-import { NO_ROLE, ROLE_HOLDER } from './audiences.js';
+import { NO_ROLE, ROLE_HOLDER, ROLE_PRODUCT, ROLE_TECHNICAL } from './audiences.js';
 import { ISSUE_REFERENCES_EXIST, STATUS_MATCHES_THE_ROW } from './claim-rules.js';
 import { type Audience, type CellId, type CellSpec, cellId, type Intent } from './contract.js';
 import { PROGRESS_FIGURES_MATCH } from './progress-rule.js';
 import {
   COMMENT_HAS_TEXT,
   ISSUE_LINK_SHAPE,
+  LEAD_HAS_TEXT,
   NO_DEVELOPER_DETAIL,
   NO_EMPTY_PROMISE,
   NO_OPTION_LINE,
@@ -82,6 +83,24 @@ const SHIPPED: readonly CellSpec[] = [
     PROGRESS_FIGURES_MATCH,
     NO_REDACTED_SECRET,
   ]),
+
+  /**
+   * A record's `lead`, on a project whose human members all read as product.
+   */
+  // cm:guard these two rows ARE the lens. The only difference between them is `no-developer-detail`,
+  // which is the one rule the issue makes the lens decide, and nothing under this directory branches
+  // on an audience value to do it — a project that later wants a third reading is a third row
+  // (ISS-1089). They are read by `record-screen.ts:screenLead` and by no door: the lead screen is a
+  // SECOND `screenMessage` call at the `comment-write` door, and that door's cell stays `role:report`.
+  cell(ROLE_PRODUCT, 'report', [LEAD_HAS_TEXT, NO_DEVELOPER_DETAIL]),
+
+  /**
+   * The same lead, where somebody who reads code is among the people reading it.
+   */
+  // cm:guard this cell is NOT empty and must not be emptied to "the lens that screens nothing": a
+  // lead with no text says nothing was found whoever reads it, and dropping `lead-has-text` here
+  // would admit a blank lead on exactly the projects whose readers would act on it.
+  cell(ROLE_TECHNICAL, 'report', [LEAD_HAS_TEXT]),
 
   /** A reply to somebody with no role, who cannot open the tracker to check it. */
   cell(NO_ROLE, 'report', [
