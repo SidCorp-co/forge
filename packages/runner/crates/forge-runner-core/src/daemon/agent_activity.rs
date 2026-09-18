@@ -27,7 +27,7 @@ pub fn now_ms() -> i64 {
 /// One hook event, narrowed to the boundaries a caller can act on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
-    /// A prompt was accepted and a turn began.
+    /// A prompt was submitted and a turn began.
     PromptSubmitted,
     /// The turn ended.
     Stopped,
@@ -135,12 +135,14 @@ pub struct Activity {
     // that asymmetry is the point rather than an omission. Those three are claims about something
     // still running, so a new conversation strands them and they gate the pane for good; this one
     // is assigned on EVERY way out of a turn, so a stale value cannot be read — the only reader
-    // asks after a prompt this session accepted, and that prompt's own ending overwrites it. A void
+    // asks after a prompt this session submitted, and that prompt's own ending overwrites it. A void
     // was written here first and removing it turned no test red, which is what says it was a second
     // live path rather than a belt and braces.
     // cm:guard held APART from `last_event`, which every later frame overwrites. A lead turn that dies on an account limit while a child is still outstanding emits `StopFailure` and then the child's own `SubagentStop`, so a reader asking `last_event == StoppedFailed` sees `SubagentStopped` and calls the pane finished cleanly — and `master.rs` then never retries the nudge, which is the one case the NUDGE_REFRESH ceiling exists for. Found by review on ISS-1100.
     pub turn_ended_failed: bool,
-    /// How many prompts this session has ACCEPTED, for the life of the session.
+    /// How many prompts this session has SUBMITTED, for the life of the session.
+    // cm:guard the word is the event's own — `UserPromptSubmit` — and it is not "accepted", "turns" or "passes". A submitted prompt is EVIDENCE that a turn began; it is not a count of turns, because an agent runs many tool calls inside one turn with no new prompt, and a resume or a compaction submits one nobody's turn asked for. ISS-1096 built this same field as `turns` in the same week and dropped the name for that reason; a third word for one act in this file is how that duplication started.
+    // cm:guard a SECOND reader is coming and no `cm:edge` can hold it yet, because its file is not on `main`: ISS-1096 adds `daemon/turn_evidence.rs`, whose `NeverStarted` verdict fires on this count standing still. That makes the monotonicity below load-bearing twice over — reset it and a pane that worked for an hour and was then `/clear`ed reads as never having been asked anything, and that reader kills a live release. Whoever lands ISS-1096 turns this into the `cm:edge contract` it wants to be.
     // cm:guard monotonic, and the conversation void below deliberately does not touch it. The void drops stale CLAIMS about a turn — a start with no end, a child that never reported back — because those gate a pane forever; a tally of how many turns began is not a claim about anything still running, and resetting it would make a turn taken after a `/clear` read as no turn at all. `master.rs` reads exactly this to tell a nudge that was never picked up from one that was, and that reading must survive a resume.
     pub prompts: u64,
 }

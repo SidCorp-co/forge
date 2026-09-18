@@ -238,7 +238,7 @@ struct MasterState {
 struct Nudge {
     digest: u64,
     at: Instant,
-    /// The master's accepted-prompt count at the moment it was nudged, or `None`
+    /// The master's submitted-prompt count at the moment it was nudged, or `None`
     /// where the session had never reported to `agent_activity` at all. A later
     /// count strictly above this one is the proof that a turn BEGAN after the
     /// nudge, which is the only thing that makes the nudge answered.
@@ -250,8 +250,9 @@ struct Nudge {
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum SinceNudge {
     /// This session has never reported anything, so there is no evidence either way.
+    // cm:guard this is also what a WINDOWS box reads, and the degradation is the safe one by construction rather than by luck. `control::serve` is `#[cfg(not(unix))] -> Err`, so no hook frame ever reaches `Activities` there, every session reads `Unreported`, `retry_owed` answers true, and `NUDGE_REFRESH` behaves exactly as it did before ISS-1100 — the ceiling on the clock. A box that cannot report its turns is told about its work too often, never too rarely.
     Unreported,
-    /// Not one prompt accepted since the nudge: it is sitting in a composer, or
+    /// Not one prompt submitted since the nudge: it is sitting in a composer, or
     /// the pane never ran it.
     NoTurn,
     /// A turn began after the nudge and is still running, or a child of it is.
@@ -3791,7 +3792,7 @@ mod give_back_tests {
         assert!(retry_owed(SinceNudge::Unreported));
     }
 
-    // cm:guard the evidence is a PROMPT accepted, not any hook frame. A child of an earlier pass finishing bumps `sequence` while the nudge still sits unsubmitted in the composer; reading that as a turn would strand the wedged pane this ceiling exists to rescue.
+    // cm:guard the evidence is a PROMPT submitted, not any hook frame. A child of an earlier pass finishing bumps `sequence` while the nudge still sits unsubmitted in the composer; reading that as a turn would strand the wedged pane this ceiling exists to rescue.
     #[test]
     fn a_child_of_an_earlier_pass_is_not_a_turn_the_nudge_produced() {
         let a = reported(&[
@@ -4080,7 +4081,7 @@ mod give_back_tests {
         age_last_nudge(&masters, "p1");
         assert!(
             masters.claim_nudge("p1", 7, Some(&wedged)),
-            "no prompt accepted since the nudge is a pass that never ran, and the ceiling exists for exactly that"
+            "no prompt submitted since the nudge is a pass that never ran, and the ceiling exists for exactly that"
         );
     }
 
