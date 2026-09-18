@@ -126,6 +126,14 @@
 - **A question can be marked private, and is then asked in a direct message.** If that message
   cannot be opened, the question is not asked at all rather than asked in the open.
 
+- **A chat now records the work, not just the answer.** Transcripts keep every tool call and
+  result, failures, timings, to-do lists, pauses and totals — the record a pipeline run already
+  kept. Old conversations are unchanged.
+
+- **A chat turn that stops recording now says so.** If output cannot be stored, the conversation
+  says where it stopped instead of ending mid-sentence and looking finished. A turn cannot report
+  complete while anything it said is undelivered.
+
 - **Sentry errors can become Forge issues on a schedule.** Forge files the ones clearing an
   admission bar you set on the Ops Console, as drafts. Everything it turns away is named in the
   run's record, and a repeat sighting comments.
@@ -2337,6 +2345,10 @@
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
 ### Removed
+- **The second, unused chat endpoint is gone.** The product had two ways to hold a conversation
+  with the assistant, and nothing ever called the older one. It has been removed with the switch
+  that turned it on; nothing else changed.
+
 
 - **GitHub issues are no longer copied into your project, and no GitHub event changes or closes a
   Forge issue.** A project that wants outside reports admits them once, through a setting that
