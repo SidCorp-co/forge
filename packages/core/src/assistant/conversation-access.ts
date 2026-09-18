@@ -21,9 +21,10 @@ const notFound = (message: string) =>
  */
 // cm:guard the scope check alone is the wrong rule for a `direct` room and became a live hole the moment a screen read this router: `derivedScope` answers what the room is ABOUT, so every member of the project passed it and one person's private chat was readable by all of them. `agent_sessions` has had this fence since ISS-522 (`eq(agentSessions.userId, userId)` on the interactive list) and the conversation store never needed one because nothing read it (ISS-1004 step 5).
 // cm:guard it refuses a `direct` room whose people were never recorded — a Rocket.Chat DM, where the collector opens the venue and adds no person — rather than falling back to the scope check. Nobody reading such a room in the Forge UI is the safe half of the trade and the visible one; the other half would be handing Bob the transcript of Alice's DM with the bot.
+// cm:guard `userId` is nullable here for the same reason `assertConversationRole` takes one: a caller that named nobody is a caller, and a door reached without an authority must be refusable rather than untypable. Nothing about the answer moved — a null was already not in any room, and `assertConversationReadable` refuses it first on every path that composes the two (ISS-1090).
 export async function assertInTheRoom(
   row: ConversationRow,
-  userId: string,
+  userId: string | null | undefined,
   tx: Executor = defaultDb,
 ): Promise<void> {
   if (row.shape !== 'direct') return;
@@ -56,7 +57,10 @@ export async function assertMembershipActor(
 }
 
 /** The room, if this caller may look at it. */
-export async function readableConversation(id: string, userId: string): Promise<ConversationRow> {
+export async function readableConversation(
+  id: string,
+  userId: string | null | undefined,
+): Promise<ConversationRow> {
   const row = await getConversation(id);
   if (!row) throw notFound('conversation not found');
   await assertConversationReadable(row.id, userId);

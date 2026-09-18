@@ -112,6 +112,10 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **A room can be asked about its own past by topic.** The assistant searches everything the room
+  kept, not only what it answered, replying with the words said and links to them. Anyone who
+  cannot open the room is refused.
+
 - **The database can now say which queries cost it the most, and its sizing settings live with
   the deployment.** Per-statement timing starts at the next database restart. Sizing keeps
   today's values until someone reads the machine.

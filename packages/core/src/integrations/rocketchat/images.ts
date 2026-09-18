@@ -14,10 +14,12 @@ import { buildChatToolContext } from '../../assistant/tools/principal.js';
 import { buildProjectToolset } from '../../assistant/tools/registry.js';
 import { withTurnImages } from '../../assistant/tools/turn-images.js';
 import type { ImageResolver, TurnImage } from '../../assistant/vision.js';
+import { buildTranscriptSearchToolset } from '../../conversations/transcript-search-tool.js';
 import { logger } from '../../logger.js';
 import type { ChatTurnFacts } from '../../mcp/tools/lib.js';
 import { buildRocketChatHistoryToolset, buildRocketChatQuoteContextToolset } from './context.js';
 import {
+  buildMessagePermalink,
   fetchAttachmentBytes,
   type RocketChatImageRef,
   type RocketChatRestAuth,
@@ -94,6 +96,8 @@ export async function prepareFastTurn(opts: {
   turn: ChatTurnFacts;
   restAuth: RocketChatRestAuth;
   rid: string;
+  /** The thread this venue is, where it is one; a thread is its own conversation (ISS-1090). */
+  tmid?: string | undefined;
   images: readonly RocketChatImageRef[];
   externalToolsets: ChatToolset[];
 }): Promise<FastTurnInputs> {
@@ -112,10 +116,40 @@ export async function prepareFastTurn(opts: {
         buildProjectToolset(ctx),
         buildRocketChatHistoryToolset(opts.restAuth, opts.rid),
         buildRocketChatQuoteContextToolset(opts.restAuth, opts.rid),
+        ...transcriptSearchToolsets(opts),
         buildEscalationToolset(),
         ...opts.externalToolsets,
       ),
       images,
     ),
   };
+}
+
+/**
+ * The room's own past, where this turn has a room to ask about.
+ */
+// cm:guard attached only where the turn NAMES a conversation, and never as a tool that always refuses: a turn with no conversation row is a path that does not collect a transcript, so a tool offered there would spend the model's attention on a room that does not exist.
+// cm:guard a THREAD is told apart and said so: `conversation-port.ts:rocketChatVenueId` gives a thread its own `external_id`, so this conversation holds the thread and not the channel around it. The alternative — searching the parent room too — answers under a second room's scope, which is the widening ISS-1090 rule 1 forbids, so the turn is told what it cannot reach rather than quietly given less than it asked for.
+function transcriptSearchToolsets(opts: {
+  principalUserId: string;
+  turn: ChatTurnFacts;
+  restAuth: RocketChatRestAuth;
+  rid: string;
+  tmid?: string | undefined;
+}): ChatToolset[] {
+  const conversationId = opts.turn.conversationId;
+  if (!conversationId) return [];
+  return [
+    buildTranscriptSearchToolset({
+      conversationId,
+      principalUserId: opts.principalUserId,
+      permalink: (externalId) => buildMessagePermalink(opts.restAuth, opts.rid, externalId),
+      ...(opts.tmid
+        ? {
+            venueLimitation:
+              'this search covers only the thread this message is in; messages posted in the surrounding channel are a different conversation and are not in it',
+          }
+        : {}),
+    }),
+  ];
 }
