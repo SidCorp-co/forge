@@ -10,7 +10,7 @@
 // name from the second. Migration 0254 moved every key across; what is left in
 // this file is the part that was never prose.
 //
-// Reserved keys are DERIVED — from project columns, from `previewDeploy`, or
+// Reserved keys are DERIVED — from project columns, from `environments`, or
 // from the connected integrations — and are resolved by
 // `prompt/facts/resolve.ts`. Everything else is a knowledge entry, reached with
 // `forge_knowledge`.

@@ -1,0 +1,4 @@
+ALTER TABLE "admin_thresholds" ADD COLUMN "sentry_min_event_count" integer DEFAULT 10 NOT NULL;--> statement-breakpoint
+ALTER TABLE "admin_thresholds" ADD COLUMN "sentry_min_user_count" integer DEFAULT 2 NOT NULL;--> statement-breakpoint
+ALTER TABLE "admin_thresholds" ADD CONSTRAINT "admin_thresholds_sentry_min_event_count_ck" CHECK ("admin_thresholds"."sentry_min_event_count" >= 1 AND "admin_thresholds"."sentry_min_event_count" <= 1000000);--> statement-breakpoint
+ALTER TABLE "admin_thresholds" ADD CONSTRAINT "admin_thresholds_sentry_min_user_count_ck" CHECK ("admin_thresholds"."sentry_min_user_count" >= 1 AND "admin_thresholds"."sentry_min_user_count" <= 1000000);

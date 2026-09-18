@@ -15,8 +15,6 @@ import { buildListEnvelope, overfetch } from './list-envelope.js';
  * single project (the MCP caller passes `projectId` explicitly).
  */
 
-const MESSAGE_TAIL = 20;
-
 const listInputSchema = z
   .object({
     projectId: z.uuid(),
@@ -31,7 +29,7 @@ const getInputSchema = z.object({ sessionId: z.uuid() }).strict();
 export const forgeAgentSessionsListTool: ContextScopedMcpToolFactory = ({ principal }) => ({
   name: 'forge_agent_sessions.list',
   description:
-    'List agent sessions for a project. Optional issueId/status filters. Returns a lightweight projection per session: the heavy jsonb columns (messages transcript, diff, usage, pipelineTelemetry, pipelineHealth, pipelineControl) are OMITTED to stay under the response token cap — `messageCount` exposes the transcript length; fetch the messages (last-20 tail) via forge_agent_sessions.get. EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. Requires project membership.',
+    'List agent sessions for a project. Optional issueId/status filters. Returns a lightweight projection per session: the heavy jsonb columns (messages transcript, diff, usage, pipelineTelemetry, pipelineHealth, pipelineControl) are OMITTED to stay under the response token cap — `messageCount` is the number of turns recorded for the session, and is `null` for a session predating the turn ledger (before July 2026), which means "not known" rather than "no messages"; fetch the session to see its real length; fetch the messages (last-20 tail) via forge_agent_sessions.get. EVERY list response carries `returned`, `limit` and `hasMore` — read `hasMore` before reporting a count as complete, because a list bound by your own limit is otherwise indistinguishable from a complete one. `truncated`/`truncatedBy` say which cap bit. Requires project membership.',
   inputSchema: zodToMcpSchema(listInputSchema),
   handler: async (args) => {
     const { projectId, issueId, status, limit } = listInputSchema.parse(args);
@@ -65,14 +63,7 @@ export const forgeAgentSessionsGetTool: ContextScopedMcpToolFactory = ({ princip
     if (!row) throw new Error('NOT_FOUND: agent session not found');
     await assertPrincipalIsMember(principal, row.projectId);
 
-    const allMessages = Array.isArray(row.messages) ? (row.messages as unknown[]) : [];
-    const truncated = allMessages.slice(-MESSAGE_TAIL);
-    return {
-      session: {
-        ...row,
-        messages: truncated,
-        totalMessages: allMessages.length,
-      },
-    };
+    // cm:guard ISS-1023 — the tail and the total are the database's now; see `service.ts`.
+    return { session: row };
   },
 });

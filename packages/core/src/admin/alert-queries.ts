@@ -263,7 +263,7 @@ async function alertRunnerStarved(starvedGraceSeconds: number): Promise<AdminAle
   const starved: StarvedProject[] = [];
   for (const c of candidates) {
     const { ctes, predicates } = buildBarrierFragments({
-      projectIdRef: sql`${c.project_id}`,
+      projectIds: [c.project_id],
       livenessSeconds,
     });
     // cm:guard take runner health from the SSOT `fresh_capable_runners` CTE, never a hand-rolled copy of its clauses — the copy that used to live here drifted twice (main added `limit_reason <> 'auth'` and the `provision_status` gate without this file), and each missing clause counts a runner the dispatcher will never use as available, so real starvation reads `ok` and the alert meant to catch a wedged queue is what hides it.

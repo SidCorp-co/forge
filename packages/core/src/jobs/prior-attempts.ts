@@ -4,16 +4,17 @@
 // `injectTurnLevelRules` is.
 
 import { scrubLogText } from '@forge/observability';
-import { desc, eq, sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { z } from 'zod';
 import { db } from '../db/client.js';
-import { agentSessions, jobs } from '../db/schema.js';
+import { agentSessionTurns, jobs } from '../db/schema.js';
 import { logger } from '../logger.js';
 
 export interface PriorAttempt {
   attempt: number;
   sessionId: string | null;
-  messageCount: number;
+  /** Turns recorded for that attempt's session; `null` when the ledger holds none for it. */
+  messageCount: number | null;
   failureReason: string | null;
   salvage: SalvageRecord | null;
 }
@@ -86,16 +87,20 @@ export async function loadPriorAttempts(
         .where(eq(jobs.id, cursor))
         .limit(1);
       if (!row) break;
-      let messageCount = 0;
+      // cm:guard ISS-1023 — counted off the turn ledger, never by selecting `messages`. This
+      // pulled the WHOLE transcript of every prior attempt across the wire to call `.length` on
+      // it, once per attempt in the retry chain, on the dispatch path: 233 KB average and 35 MB at
+      // the tail, to print one number into a prompt. `null` is "not known from the ledger" and the
+      // rendering below says so rather than printing a zero it cannot stand behind.
+      let messageCount: number | null = null;
       if (row.agentSessionId) {
         const [s] = await db
-          .select({ messages: agentSessions.messages })
-          .from(agentSessions)
-          .where(eq(agentSessions.id, row.agentSessionId))
-          .orderBy(desc(agentSessions.createdAt))
-          .limit(1);
-        const msgs = s?.messages;
-        messageCount = Array.isArray(msgs) ? msgs.length : 0;
+          .select({
+            turns: sql<number | null>`max(${agentSessionTurns.turnIndex}) + 1`,
+          })
+          .from(agentSessionTurns)
+          .where(eq(agentSessionTurns.agentSessionId, row.agentSessionId));
+        messageCount = s?.turns ?? null;
       }
       out.push({
         attempt: row.attempts,
@@ -165,7 +170,12 @@ export function renderPriorAttemptsBlock(attempts: PriorAttempt[], currentAttemp
   if (olderWithSessions.length > 0) {
     lines.push(
       `- Earlier attempts also failed and are readable the same way: ${olderWithSessions
-        .map((a) => `attempt ${a.attempt} \`${a.sessionId}\` (${a.messageCount} messages)`)
+        .map(
+          (a) =>
+            `attempt ${a.attempt} \`${a.sessionId}\` (${
+              a.messageCount === null ? 'length not recorded' : `${a.messageCount} messages`
+            })`,
+        )
         .join(', ')}.`,
     );
   }

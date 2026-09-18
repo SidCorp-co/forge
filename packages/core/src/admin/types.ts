@@ -132,7 +132,20 @@ export interface AdminThresholds {
   deliveryFailRatePct: number;
   interventionLabels: string[];
   ghostRunnerOfflineDays: number;
+  /** ISS-1085 slice 3 — the smallest event count a Sentry issue may carry and still be filed. */
+  sentryMinEventCount: number;
+  /** ISS-1085 slice 3 — the smallest affected-user count a Sentry issue may carry and still be filed. */
+  sentryMinUserCount: number;
 }
+
+// cm:guard the bounds are declared ONCE here and read by the column, by the PUT schema and by the
+// admission gate's own test. A threshold of 0 or below is not a lenient policy, it is the gate
+// turned off with nothing saying so — the Sentry pull files at `draft` on a project whose backlog a
+// person reads, and the issue this came from measured 688 open issues and 45% dropped on one
+// project already. The upper bound exists so a typo'd 10000000 reads as a refusal rather than as a
+// pull that silently files nothing forever.
+export const SENTRY_THRESHOLD_MIN = 1;
+export const SENTRY_THRESHOLD_MAX = 1_000_000;
 
 // cm:edge lockstep -> packages/core/src/db/schema.ts — `adminThresholds` builds its column defaults from THIS object, so the empty table and the fallback below can never disagree; a value edited here moves both, and adding a field without a column makes the PUT silently drop it.
 export const ADMIN_THRESHOLD_DEFAULTS: AdminThresholds = {
@@ -144,4 +157,9 @@ export const ADMIN_THRESHOLD_DEFAULTS: AdminThresholds = {
   deliveryFailRatePct: 20,
   interventionLabels: ['kernel-hardening', 'onboarding'],
   ghostRunnerOfflineDays: 14,
+  // cm:why 10 and 2, not 1 and 1 — ISS-1085's admission gate defaults to NOT filing, and a
+  // threshold of 1 files every one-off error the moment one person hits it once. Ten events from
+  // two distinct people is the smallest signal this fleet would spend an agent on.
+  sentryMinEventCount: 10,
+  sentryMinUserCount: 2,
 };

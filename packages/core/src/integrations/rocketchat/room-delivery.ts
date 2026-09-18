@@ -158,7 +158,7 @@ export async function hasInFlightRoomSession(
   return rows.length > 0;
 }
 
-// cm:guard two on-disk shapes exist (desktop carries `entry.role`, the CLI runner carries `entry.type`) and `messageRoleToTurnRole` is the canonical normalizer for both — do not re-derive the discriminator here
+// cm:guard the discriminator is `messageRoleToTurnRole` and is not re-derived here. Two on-disk shapes used to exist and that normalizer read both; since ISS-1030 there is one, every row at rest was rewritten, and what a device on the previous release sends is converted on the way in. Reading `entry.role` here would put the second shape back in the one place a legacy entry can still reach — a room reply.
 export function extractFinalAssistantText(messages: unknown): string | null {
   if (!Array.isArray(messages)) return null;
   for (let i = messages.length - 1; i >= 0; i--) {

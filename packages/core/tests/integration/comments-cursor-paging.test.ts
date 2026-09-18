@@ -151,6 +151,7 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
 
   // cm:guard the field set on a comment NODE is what the issue-detail screen renders, and ISS-956 moved this route off its own private projection onto the service's. Pin the keys: an extra one (the cursor key that mints the token is selected on the same query) leaks the paging machinery into the screen's data, and a missing one blanks an author line with nothing failing.
   // cm:why `stage` and `authorAgency` joined the list in ISS-969 as a deliberate widening, not a leak: both are stored columns of the comment rather than paging machinery, and together they are what makes a stage-produced record say which stage produced it and whether a person or an agent wrote it. This list breaking was the intended way to notice.
+  // cm:why `record` joined it in ISS-1089 the same way, and it is DERIVED rather than stored: it is the `forge-record` block core parsed out of `body`, carried here for the reason `nodes` is carried — web-v2 has no `@forge/core` dependency, so a browser that re-parsed it would be a second parser able to disagree with the one that screened the comment at the write door. It is null on every comment with no fence.
   it('renders a comment with the same fields as before the cursor (AC 14)', async () => {
     const { owner, issueId, jwt } = await seed();
     const rootId = await addComment(issueId, owner.id, 'root');
@@ -173,6 +174,7 @@ describe('ISS-956 comment thread paging — the envelope and the walk', () => {
         'issueId',
         'nodes',
         'parentId',
+        'record',
         'replies',
         'stage',
         'updatedAt',

@@ -2,6 +2,66 @@ services:
   postgres:
     image: pgvector/pgvector:pg17
     restart: unless-stopped
+    # cm:guard the ONLY place this deployment's Postgres server parameters can be set.
+    # The image runs initdb once, on an empty volume, and writes postgresql.conf INTO the
+    # volume — so a value edited there is invisible to this repository, absent on a fresh
+    # volume, and gone with the volume. A server command-line option outranks both
+    # postgresql.conf and postgresql.auto.conf (pg_settings.source reads `command line`)
+    # and lives here, so it is reapplied on every redeploy. Anything added below must be
+    # a parameter the postmaster accepts at startup; an unrecognised one makes Postgres
+    # refuse to start and takes core down with it through depends_on.
+    #
+    # The image's entrypoint keys off argv[0] being `postgres`, so the first item has to
+    # stay `postgres` or initdb, the password bootstrap and `listen_addresses = '*'`
+    # never run.
+    command:
+      - postgres
+      # ISS-1026. Per-statement attribution: without the library preloaded, nothing can
+      # attribute a query to its caller and an efficiency pass is left inferring from
+      # pg_stat_user_tables counters. `pg_stat_statements` is created by migration 0275.
+      # This needs a postmaster RESTART, never a reload — a reload leaves the library
+      # unloaded and the view answering `must be loaded via shared_preload_libraries`,
+      # which is the loud break rather than a silent empty result.
+      - -c
+      - shared_preload_libraries=pg_stat_statements
+      # ISS-1026. Block read/write timings, which is what makes an I/O-bound query
+      # distinguishable from a CPU-bound one in pg_stat_statements and pg_stat_database.
+      # Costs one clock read per block access: negligible where clocksource is tsc,
+      # measurable where it is hpet or acpi_pm. `cat
+      # /sys/devices/system/clocksource/clocksource0/current_clocksource` on the host
+      # says which, and `pg_test_timing` prices it.
+      - -c
+      - track_io_timing=on
+      # ISS-1026 — SIZING. Every default below is EXACTLY what the beta server reported
+      # on 2026-09-17, so applying this file with none of these variables set changes no
+      # sizing at all and cannot make the postmaster fail to start. That is deliberate:
+      # the host's memory has to be READ before these are moved, and the reading was not
+      # available to the change that added them.
+      #
+      # shared_buffers is the one that is an outage rather than a bad setting. It is a
+      # shared-memory allocation taken at startup; larger than what the box can give and
+      # Postgres does not start. This container has no memory limit (no deploy.resources
+      # here, and limits_memory is 0 on the Coolify application), so its bound is the
+      # HOST, which carries other applications besides this one.
+      #
+      # Read the host, then set the variables in the deployment's environment:
+      #   free -b                                    -> MemTotal, and what is already in use
+      #   lsblk -d -o NAME,ROTA                      -> ROTA 0 is SSD/NVMe, 1 is spinning
+      # Then, of the memory this deployment may claim:
+      #   PG_SHARED_BUFFERS        ~25% of it, and never above what is actually free
+      #   PG_EFFECTIVE_CACHE_SIZE  ~50-75% of it. A planner estimate only — it allocates
+      #                            nothing, so a wrong value costs plans, not startup
+      #   PG_WORK_MEM              per sort/hash node, so the worst case is roughly
+      #                            max_connections (100 here) x concurrent nodes x this
+      #   PG_RANDOM_PAGE_COST      1.1 on SSD/NVMe, 4 on spinning disk
+      - -c
+      - shared_buffers=${PG_SHARED_BUFFERS:-128MB}
+      - -c
+      - effective_cache_size=${PG_EFFECTIVE_CACHE_SIZE:-4GB}
+      - -c
+      - work_mem=${PG_WORK_MEM:-4MB}
+      - -c
+      - random_page_cost=${PG_RANDOM_PAGE_COST:-4.0}
     environment:
       POSTGRES_DB: forge
       POSTGRES_USER: forge

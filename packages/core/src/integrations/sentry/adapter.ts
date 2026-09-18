@@ -1,23 +1,29 @@
 /**
- * ISS-524 — Sentry integration adapter.
+ * ISS-524 / ISS-1085 — Sentry integration adapter.
  *
- * Sentry's role in Forge is read-only log access for the project's agents,
- * delivered entirely by the official `@sentry/mcp-server` injected into the
- * runner (see `resolver.ts`). Core therefore does NOT implement outbound/inbound
- * delivery for this provider — the only direct REST call core makes is the
- * test-connection `GET /api/0/organizations/`, which validates the auth token
- * and surfaces the accessible orgs back to the config UI. Mirrors the postman
- * adapter (MCP-injection archetype).
+ * Sentry reaches Forge's agents through the official `@sentry/mcp-server` injected into the runner
+ * (see `resolver.ts`), and core reaches Sentry through three outbound calls of its own: read one
+ * issue, set one issue's status, and list a target's unresolved issues (`issues.ts`). Those two are the half of the Forge/Sentry loop that
+ * lets a Forge issue closed with a merged SHA tell Sentry `resolvedInNextRelease` — not bare
+ * `resolved`, because merged is not serving. Core also makes the test-connection call
+ * `GET /api/0/organizations/`, which validates the auth token and surfaces the accessible orgs to
+ * the config UI.
  *
- * ISS-532 adoption point: Sentry event payloads are untrusted, but today they
- * reach the agent only via the runner-injected `@sentry/mcp-server` — they do
- * NOT pass through any core serializer, so there is no prompt-assembly
- * chokepoint to harden here. IF core ever ingests Sentry event text into an
- * issue/comment/prompt (e.g. an auto-file-issue-from-event path), route that
- * text through `markUntrusted()` from `prompt/sanitize.ts` at the point of
- * ingestion — same as the issue/comment/attachment chokepoints.
+ * Sentry text reaches a Forge issue by TWO doors now: the scheduled pull (`intake.ts`, slice 3) and
+ * the inbound webhook (`webhook.ts`, slice 4). They share one decision — `intake-issue.ts` — so the
+ * webhook changes the intake's latency and never its capability, which is why the pull was built
+ * first: if Forge is down a delivery is lost for good, while a pull catches up on the next tick.
+ *
+ * The chokepoint that omission used to stand in for is now real code and is described where it
+ * lives, in `intake.ts`'s header. In short: every free-text field is `sanitizeUntrusted`-stripped on
+ * the way in (`issues.ts:text()`), the DATA frame is applied at the agent-facing projection rather
+ * than at the database write — `prompt/user.ts` and `mcp/tools/forge-issues.ts:serialize`, both of
+ * which would DESTROY a stored frame, since `markUntrusted` strips frame tokens from its own input
+ * — and the row the pull writes is a closed shape with no priority, category or label for Sentry
+ * text to steer. The one agent-facing projection that does not frame is `serializeListRow`, priced
+ * in its own `cm:why` and recorded at
+ * `docs/proposals/an-mcp-list-title-is-char-stripped-and-not-framed.md`.
  */
-
 import { logger } from '../../logger.js';
 import { isPreviousCredentialValid } from '../rotation.js';
 import { updateConnection } from '../store.js';
@@ -27,10 +33,12 @@ import {
   type IntegrationAdapterMethods,
 } from '../types.js';
 import { sentryRestBase } from './endpoints.js';
+import { dispatchSentryOutbound } from './issues.js';
 import { buildSentryMcpEntry } from './resolver.js';
 import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
 import { renderSentryTargetsLine, resolveSentryTargets } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
+import { handleSentryWebhook, SENTRY_RESOURCE_HEADER, SENTRY_SIGNATURE_HEADER } from './webhook.js';
 
 const PROBE_TIMEOUT_MS = 15_000;
 
@@ -40,11 +48,6 @@ interface SentryOrg {
   slug?: string;
   name?: string;
 }
-
-const notSupported = (op: string): never => {
-  // Sentry is MCP-injection-only; no webhook/dispatch surface exists.
-  throw new Error(`sentry: ${op} is not supported (MCP-injection-only provider)`);
-};
 
 const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecrets> = {
   async healthcheck(ctx): Promise<HealthCheckResult> {
@@ -160,9 +163,13 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
     }
   },
 
-  async handleInbound() {
-    return notSupported('handleInbound');
-  },
+  // The generic door (`registry.ts:dispatchThrough`) lands here; the work is in `issues.ts` so this
+  // file stays the declaration rather than becoming the client.
+  dispatchOutbound: dispatchSentryOutbound,
+
+  // The generic door (`webhooks/inbound-routes.ts`) lands here; the work is in `webhook.ts` so this
+  // file stays the declaration rather than becoming the handler.
+  handleInbound: handleSentryWebhook,
 };
 
 /**
@@ -174,12 +181,17 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
 export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>({
   provider: 'sentry',
   capabilities: {
-    canDispatch: false,
-    canReceiveWebhook: false,
+    canDispatch: true,
+    canReceiveWebhook: true,
     canDeploy: false,
     liveConfirmGate: false,
-    hasDeliveryLog: false,
+    // cm:why true follows `canDispatch`: every outbound call writes an `integration_deliveries` row,
+    // and a provider whose rows exist while its declaration says the log is meaningless is a state
+    // that lies — the connection drawer would hide deliveries an operator has to be able to read.
+    hasDeliveryLog: true,
     multiBinding: false,
+    webhookHeader: SENTRY_RESOURCE_HEADER,
+    webhookSignatureHeader: SENTRY_SIGNATURE_HEADER,
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',

@@ -52,6 +52,15 @@ export interface QuietJobCandidateOptions {
    * row as a miss reports the gate working.
    */
   killGateCutoffIso?: string;
+  /**
+   * How many candidates one call may take, oldest dispatch first.
+   *
+   * ISS-1021 — a REAPER's term, never an alarm's. A reaper writes each row it takes terminal, so
+   * its candidate set shrinks and a bound is a deferral; the stale alarm writes nothing and must
+   * keep seeing the whole backlog, because saying the loop fell behind is the one thing it is for.
+   * Leave it unset and the query is unbounded exactly as it was.
+   */
+  limit?: number | undefined;
 }
 
 /**
@@ -76,6 +85,24 @@ export function quietJobCandidateQuery(opts: QuietJobCandidateOptions): SQL {
   const killGateClause = opts.killGateCutoffIso
     ? sql`AND (j.kill_requested_at IS NULL OR j.kill_requested_at <= ${opts.killGateCutoffIso})`
     : sql``;
+  // cm:guard the bound goes AFTER the whole eligibility predicate, which is what an ORDER BY plus
+  // LIMIT in the same statement gives — a bound applied to a subquery that had not yet run the
+  // quiet test would take 200 live jobs and reap none of them.
+  // cm:guard NULLS FIRST is not cosmetic: ASC puts NULLs last in Postgres, so a job with no
+  // `dispatched_at` would sit behind every dated candidate and never be reached once the backlog
+  // passes one page.
+  // cm:guard refuse BEFORE the value reaches `sql.raw`, exactly as `quietMinutes` above does — a
+  // LIMIT cannot be parameterised through drizzle's template here, so this check is the only thing
+  // between a caller and injected SQL, and a check that runs after the interpolation is no check.
+  if (opts.limit !== undefined && (!Number.isInteger(opts.limit) || opts.limit <= 0)) {
+    throw new Error(
+      `quietJobCandidateQuery: limit must be a positive integer, got ${String(opts.limit)}`,
+    );
+  }
+  const limitClause =
+    opts.limit === undefined
+      ? sql``
+      : sql`ORDER BY j.dispatched_at ASC NULLS FIRST LIMIT ${sql.raw(String(opts.limit))}`;
 
   return sql`
     SELECT ${opts.columns}
@@ -90,5 +117,6 @@ export function quietJobCandidateQuery(opts: QuietJobCandidateOptions): SQL {
       AND ${LAST_PROGRESS_AT} < now() - interval '${sql.raw(String(opts.quietMinutes))} minutes'
       ${projectClause}
       ${killGateClause}
+    ${limitClause}
   `;
 }

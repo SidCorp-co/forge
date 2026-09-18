@@ -33,14 +33,8 @@ export interface AgentTodo {
   activeForm?: string;
 }
 
-/** Structured content blocks within an assistant message entry (v1 desktop shape). */
-export type ContentBlock =
-  | { type: "text"; text: string }
-  | { type: "tool_use"; tool: ToolCallData }
-  | { type: "todos"; todos: AgentTodo[] };
-
 /**
- * A tool call as serialized on the canonical runner block. Differs from the v1
+ * A tool call as serialized on the canonical block. Differs from the render-ready
  * `ToolCallData` in two field names: the captured output lives on `output`
  * (string) rather than `result`. Normalize via `result ?? output` when mapping.
  */
@@ -55,9 +49,8 @@ export interface CanonicalToolCall {
 }
 
 /**
- * The canonical content block written by the CLI-runner transcript derive
- * (`packages/core/src/lib/agent-stream-parser.ts`). Note the field drift vs the
- * v1 `ContentBlock`: `tool` (not `tool_use`), `toolCall` (not `tool`).
+ * The canonical content block written by the transcript derive
+ * (`packages/core/src/lib/agent-stream-parser.ts`).
  */
 export type CanonicalBlock =
   | { type: "text"; text?: string }
@@ -69,13 +62,6 @@ export type CanonicalBlock =
   // is a block the database drops on the way out.
   | { type: "thinking"; thinking?: string; durationMs?: number };
 
-/**
- * A message entry. Two shapes coexist:
- *   - desktop / edited turns: `role` + `contentBlocks`/`toolCalls` + `content`;
- *   - CLI-runner derive: `type` + ordered `blocks` (+ `content` for plain text).
- * Stored at `agent_session_turns.content.value` (turns path) or directly in
- * `agent_sessions.messages` (messages fallback).
- */
 /** A file attached to a chat user turn (ISS-499). Same `{id,name,mime,size,url}`
  * shape the shared `AttachmentList` renderer accepts. */
 export interface SessionAttachment {
@@ -99,16 +85,19 @@ export interface RunTotals {
   isError?: boolean;
 }
 
+/**
+ * One transcript entry, in the one shape every producer writes. Stored at
+ * `agent_session_turns.content.value` (turns path) or directly in
+ * `agent_sessions.messages` (messages fallback).
+ */
 export interface MessageEntry {
   id?: string;
-  role?: "user" | "assistant" | "tool" | "system";
-  /** Canonical entry kind (CLI-runner shape) when `role` is absent. */
+  /** What this entry is. */
   type?: "user" | "assistant" | "tool" | "system" | "tool_use" | "tool_result";
   content?: unknown;
   timestamp?: number;
   toolCalls?: ToolCallData[];
-  contentBlocks?: ContentBlock[];
-  /** Ordered canonical blocks (CLI-runner shape). */
+  /** Ordered canonical blocks. */
   blocks?: CanonicalBlock[];
   /** Files the user attached to this turn (ISS-499); persisted on the user message. */
   attachments?: SessionAttachment[];
@@ -342,20 +331,6 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
         out.push({ type: "text", text: b.text });
       }
     }
-  } else if (entry.contentBlocks?.length) {
-    for (const b of entry.contentBlocks) {
-      if (b.type === "tool_use") {
-        out.push(
-          b.tool.name === "TodoWrite"
-            ? todoWriteToTodos(b.tool.input)
-            : { type: "tool", tool: toToolCallData(b.tool) },
-        );
-      } else if (b.type === "todos") {
-        out.push({ type: "todos", todos: b.todos });
-      } else if (b.type === "text" && b.text) {
-        out.push({ type: "text", text: b.text });
-      }
-    }
   } else {
     if (entry.toolCalls?.length) {
       // cm:guard EVERY tool call reaches a card through `toToolCallData`, these two v1 paths
@@ -399,10 +374,20 @@ function withPauseCount(entry: MessageEntry, blocks: RenderBlock[]): RenderBlock
   return [{ type: "thinking", count }, ...blocks];
 }
 
-/** Role decision for an entry: prefer the explicit `role`, else the canonical
- *  `type` (`user` → prompt; everything else → agent). */
+/**
+ * Role decision for an entry, off the canonical `type`: `user` → prompt,
+ * `assistant` → agent, everything else → tool.
+ */
+// cm:guard no `role` branch, and re-adding one puts the second shape back.
+// Until ISS-1030 this read `entry.role` first, because the desktop runner and
+// edited turns wrote one shape while the derive wrote another. Both producers
+// speak the canonical entry now, `db/backfill-canonical-transcripts.ts` rewrote
+// every row at rest, and what a device on the previous release sends is
+// converted on the way in by core's `agent-sessions/canonical-legacy.ts`.
+// cm:edge lockstep -> packages/core/src/agent-sessions/turns-helpers.ts — the
+// same decision one layer in, and it has to read the same shape: the two answer
+// for the same entry arriving by two doors.
 function entryRole(entry: MessageEntry): TurnRole {
-  if (entry.role) return entry.role === "user" ? "user" : entry.role === "assistant" ? "assistant" : "tool";
   if (entry.type === "user") return "user";
   if (entry.type === "assistant") return "assistant";
   return "tool";

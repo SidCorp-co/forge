@@ -12,6 +12,7 @@ import { assertProjectRole, loadProjectAccess, projectRoleAtLeast } from '../lib
 import { cursorList, listResponse, paginationSchema } from '../lib/pagination.js';
 import { uploadBodyLimit } from '../lib/upload-body-limit.js';
 import { logger } from '../logger.js';
+import { projectLens } from '../messaging/record-screen.js';
 import {
   type AuthVars,
   assertEmailVerified,
@@ -265,7 +266,14 @@ export function registerIssueCommentRoutes(router: Hono<{ Variables: AuthVars }>
         }
       }
 
-      const tree = buildCommentTree(rows, attachmentsByCommentId);
+      // cm:guard one query for the whole page, taken here rather than inside the tree builder: the
+      // lens is the PROJECT's, so a card drawn per comment reads the same answer, and resolving it
+      // per row would cost a round trip per comment for one value (ISS-1089).
+      const tree = buildCommentTree(
+        rows,
+        attachmentsByCommentId,
+        await projectLens(issue.projectId),
+      );
 
       // cm:guard the display identity only — `authorDeviceId` says WHICH BOX a credential was issued to since ISS-932 wave 4, not that an agent wrote the comment. Whether a person or an agent wrote it is `authorAgency` (ISS-969); routing this branch off agency instead would name a device that did not exist, and reading agency off this branch would call a person on a paired box an agent.
       const refs: ActorRef[] = rows.map((r) =>

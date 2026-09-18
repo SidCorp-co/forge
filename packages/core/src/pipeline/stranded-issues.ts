@@ -12,14 +12,27 @@
 // decision, and a close is a claim about shipped work that a pass which
 // cannot read the repository must not make.
 
-import { and, eq, isNotNull, lt, notInArray, sql } from 'drizzle-orm';
+import { and, asc, eq, isNotNull, notInArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueStatuses, issues, projects } from '../db/schema.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { emitNotification } from '../notifications/emit.js';
-import { projectAdminUserIds } from '../notifications/project-admins.js';
+import { projectAdminUserIdsFor } from '../notifications/project-admins.js';
 import { isTerminalPlacement } from './status-assertions.js';
+import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
+
+/**
+ * How many strands one pass surfaces, matching the run axis and `PAUSED_RUN_SCAN_LIMIT`.
+ *
+ * ISS-1021 — the bound alone would be a blind spot, because neither detector writes anything on
+ * the row it surfaces and so never removes it from its own candidate set. `sweep-cursor.ts` is the
+ * other half: the pass resumes after the last key it read and wraps at the end.
+ */
+export const STRANDED_SCAN_LIMIT = 200;
+
+/** One pass's memo of `projectAdminUserIdsFor`, filled in one round trip before the loop. */
+type AdminsByProject = ReadonlyMap<string, string[]>;
 
 /**
  * How long an issue may sit `waiting` with merged code before it is stranded.
@@ -90,6 +103,7 @@ export function owedCloseResolutionKey(issueId: string): string {
 // window, in the module whose whole job is breaking silence.
 async function surfaceOnce(args: {
   now: Date;
+  admins: AdminsByProject;
   projectId: string;
   issueId: string;
   resolutionKey: string;
@@ -106,7 +120,12 @@ async function surfaceOnce(args: {
   // pending record going stale, and a record whose delivery a silence held back is delivered
   // when the silence expires. Do not put a producer-level "already exists" guard back: it
   // would make all three unreachable while looking like a saved query.
-  const adminIds = await projectAdminUserIds(args.projectId);
+  // cm:guard ISS-1021 — read the memo the CALLER filled, never look the project up again here.
+  // This ran once per row and the passes re-derived one project's admin set many times in a tick:
+  // measured on beta 2026-09-17, 14 strands across 6 projects and 60 owed closes across 15 asked
+  // 222 queries a minute for 21 distinct answers. The rule itself is unmoved and still lives in
+  // `notifications/project-admins.ts`; only the number of round trips did.
+  const adminIds = args.admins.get(args.projectId) ?? [];
   if (adminIds.length === 0) return -1;
   // cm:why ISS-1063 — ONE record, a delivery per admin, where this used to write one row
   // per admin: 2997 `issue_stranded` rows on the replica were 545 conditions wearing
@@ -143,6 +162,15 @@ export async function detectStrandedIssues(
   try {
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
 
+    // cm:guard the cursor key carries the SCOPE — this detector is also called for one project by
+    // `/pipeline/sweep`, and a shared position would let that call drag the fleet-wide sweep's own
+    // traversal past rows it never read.
+    const cursorKey = `stranded:${scope.projectId ?? '*'}`;
+    // The staleness cutoff IS this traversal's far edge: it is the bound that walks forward with
+    // the clock and lets newly-aged strands in, so freezing it for the traversal's length is what
+    // makes the set finite and the wrap reachable.
+    const window = sweepWindow(cursorKey, cutoff.toISOString());
+
     const rows = await db
       .select({
         id: issues.id,
@@ -152,6 +180,11 @@ export async function detectStrandedIssues(
         title: issues.title,
         mergedAt: issues.mergedAt,
         updatedAt: issues.updatedAt,
+        // cm:guard the cursor's timestamp comes back rendered by POSTGRES, never from the `Date`
+        // beside it. A timestamptz carries microseconds, a JS `Date` holds milliseconds, and a key
+        // minted from the rounded value re-selects the row it was taken from — the page never
+        // advances and the traversal stalls one row in.
+        cursorTs: sql<string>`"issues"."updated_at"::text`,
         projectName: projects.name,
       })
       .from(issues)
@@ -159,10 +192,30 @@ export async function detectStrandedIssues(
       .where(
         and(
           eq(issues.status, 'waiting'),
-          lt(issues.updatedAt, cutoff),
+          sql`"issues"."updated_at" < ${window.until}::timestamptz`,
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
+          // cm:guard write the columns LITERALLY and qualified — drizzle renders a column
+          // reference interpolated into a raw template UNQUALIFIED, and a bare `id` here resolves
+          // against whichever joined table claims it first.
+          ...(window.after
+            ? [
+                sql`("issues"."updated_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
+              ]
+            : []),
         ),
-      );
+      )
+      .orderBy(asc(issues.updatedAt), asc(issues.id))
+      .limit(STRANDED_SCAN_LIMIT);
+
+    const filled = rows.length === STRANDED_SCAN_LIMIT;
+    const lastRow = rows.at(-1);
+    const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
+    advanceSweep(cursorKey, window, last, filled);
+
+    // cm:guard ONE round trip for every project this page touches, before the loop. The memo is
+    // per-PASS and not a process-level cache on purpose: an admin added between two ticks is
+    // reaching the next tick's notification, which a longer-lived cache would delay silently.
+    const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
 
     let notified = 0;
     let unreachable = 0;
@@ -177,6 +230,7 @@ export async function detectStrandedIssues(
 
       const sent = await surfaceOnce({
         now,
+        admins,
         groupKey: sweepGroupKey('stranded', now),
         groupTitle: 'Issues are parked with nothing coming for them',
         projectId: row.projectId,
@@ -195,6 +249,17 @@ export async function detectStrandedIssues(
       logger.warn(
         { detected: rows.length, notified, unreachable, issueIds: rows.map((r) => r.id) },
         'stranded-issues: a waiting park with nothing coming for it',
+      );
+    }
+
+    // cm:guard say it when the page filled, and say it on `rows.length` rather than on `notified`
+    // — unlike the paused-run scan this page is ALL actionable work, so a full page is never a
+    // benign steady state here, and the count is what tells a reader the traversal is running
+    // behind rather than caught up.
+    if (filled) {
+      logger.warn(
+        { limit: STRANDED_SCAN_LIMIT, examined: rows.length, resumesAfter: last?.ts ?? null },
+        'stranded-issues: the waiting-park scan filled its page — the rest is read on later passes',
       );
     }
 
@@ -226,6 +291,9 @@ export async function detectOwedCloses(
     const cutoff = new Date(now.getTime() - STRANDED_GRACE_MS);
     const terminal = issueStatuses.filter(isTerminalPlacement);
 
+    const cursorKey = `owed-close:${scope.projectId ?? '*'}`;
+    const window = sweepWindow(cursorKey, cutoff.toISOString());
+
     const rows = await db
       .select({
         id: issues.id,
@@ -234,6 +302,8 @@ export async function detectOwedCloses(
         issSeq: issues.issSeq,
         status: issues.status,
         mergedAt: issues.mergedAt,
+        // cm:guard rendered by POSTGRES for the same microsecond reason as the waiting scan above.
+        cursorTs: sql<string>`"issues"."merged_at"::text`,
         projectName: projects.name,
       })
       .from(issues)
@@ -241,14 +311,28 @@ export async function detectOwedCloses(
       .where(
         and(
           isNotNull(issues.mergedAt),
-          lt(issues.mergedAt, cutoff),
+          sql`"issues"."merged_at" < ${window.until}::timestamptz`,
           notInArray(issues.status, terminal),
+          ...(window.after
+            ? [
+                sql`("issues"."merged_at", "issues"."id") > (${window.after.ts}::timestamptz, ${window.after.id}::uuid)`,
+              ]
+            : []),
           // cm:guard write `issues.id` LITERALLY in both subqueries — drizzle renders a column reference interpolated into a raw `sql` template UNQUALIFIED, so `${'$'}{issues.id}` becomes a bare `id`, which inside `from jobs j` resolves to `j.id` and makes the clause `j.issue_id = j.id`: never true, `not exists` always true, and the exclusion silently disappears. Caught by owed-close-e2e.test.ts, which is the only place it can be caught.
           sql`not exists (select 1 from jobs j where j.issue_id = issues.id and j.status in ('queued','dispatched','running'))`,
           sql`not exists (select 1 from pipeline_runs r where r.issue_id = issues.id and r.status = 'running')`,
           ...(scope.projectId ? [eq(issues.projectId, scope.projectId)] : []),
         ),
-      );
+      )
+      .orderBy(asc(issues.mergedAt), asc(issues.id))
+      .limit(STRANDED_SCAN_LIMIT);
+
+    const filled = rows.length === STRANDED_SCAN_LIMIT;
+    const lastRow = rows.at(-1);
+    const last: SweepPosition | null = lastRow ? { ts: lastRow.cursorTs, id: lastRow.id } : null;
+    advanceSweep(cursorKey, window, last, filled);
+
+    const admins = await projectAdminUserIdsFor(rows.map((r) => r.projectId));
 
     let notified = 0;
     let unreachable = 0;
@@ -258,6 +342,7 @@ export async function detectOwedCloses(
       const age = days >= 1 ? `${days} day${days === 1 ? '' : 's'}` : 'hours';
       const sent = await surfaceOnce({
         now,
+        admins,
         groupKey: sweepGroupKey('owed-close', now),
         groupTitle: 'Issues whose code shipped and whose close was never written',
         projectId: row.projectId,
@@ -274,6 +359,13 @@ export async function detectOwedCloses(
       logger.warn(
         { detected: rows.length, notified, unreachable, issueIds: rows.map((r) => r.id) },
         'stranded-issues: merged code under a live status with nothing running',
+      );
+    }
+
+    if (filled) {
+      logger.warn(
+        { limit: STRANDED_SCAN_LIMIT, examined: rows.length, resumesAfter: last?.ts ?? null },
+        'stranded-issues: the owed-close scan filled its page — the rest is read on later passes',
       );
     }
 

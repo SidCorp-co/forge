@@ -52,6 +52,17 @@ const KERNEL_AUTHORED = [
   'pipeline/autonomous-rescue-comment.ts',
   'pm/routes.ts',
   'release-batch/releasing-recovery.ts',
+  // cm:why ISS-1085 slice 3, moved by slice 4 — the same shape as `webhooks/github-adapter.ts`
+  // below, and classified the same way for the same reason: core formats the whole body from a
+  // template of its own and takes the `markdown` column default, so there is no caller format for a
+  // door to gate. What it interpolates IS untrusted — Sentry event text — and that is answered by
+  // the chokepoint this list is not about: `sanitizeUntrusted` at ingestion and `markUntrusted` at
+  // the agent-facing projection, described in `integrations/sentry/intake.ts`'s header and asserted
+  // in `integrations/sentry/chokepoint.test.ts`. `prepareBody` would normalise a body core wrote
+  // and would answer no question this path has. The entry names `intake-issue.ts` rather than
+  // `intake.ts` because slice 4 lifted the filing and the re-sighting comment out of the pull loop
+  // so the webhook could share them — one body writer, reached by two doors.
+  'integrations/sentry/intake-issue.ts',
   'webhooks/github-adapter.ts',
 ];
 

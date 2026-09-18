@@ -36,6 +36,7 @@ const channel = (over: Partial<ReleaseChannel> = {}): ReleaseChannel => ({
   instructions: null,
   releaseRunnerLabel: null,
   verify: null,
+  verifySource: 'none',
   rollback: null,
   ...over,
 });

@@ -19,9 +19,6 @@
  */
 
 const flagDefs = {
-  // cm:guard v1 EPIC 1 — this flag only MOUNTS the chat routes; serving them also needs LITELLM_API_URL + LITELLM_API_KEY (one OpenAI-compatible adapter since the 2026-09-03 rename, no second vendor path), and flag-on with those blank 500s on the first chat request rather than degrading — a deployment not shipping chat sets FEATURE_CHAT_PROVIDER=false instead of leaving the provider env empty
-  chatProvider: true,
-
   // v1 EPIC 3 — Pipeline control + runner/device fleet observability
   pipelineControl: true,
 

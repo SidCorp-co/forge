@@ -26,7 +26,6 @@ import { registerWebConversationAdapter } from './assistant/conversation-drain.j
 import { conversationRoutes } from './assistant/conversation-routes.js';
 import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/identity/routes.js';
 import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
-import { chatRoutes } from './assistant/routes.js';
 import { registerAssistantWeekly, unregisterAssistantWeekly } from './assistant/weekly/register.js';
 import { assistantWeeklyRoutes } from './assistant/weekly/routes.js';
 import { devForceVerifyRoutes } from './auth/dev-force-verify.js';
@@ -429,11 +428,6 @@ app.route('/api/app-config', appConfigRoutes);
 app.route('/api/domain-templates', domainTemplateRoutes);
 app.route('/api/runners', runnerRoutes);
 
-// cm:why flag-gated so a default `main` build behaves as if `/api/chat` does not exist (ISS-270)
-if (isEnabled('chatProvider')) {
-  app.route('/api/chat', chatRoutes);
-}
-
 if (isEnabled('pmAgent')) {
   app.route('/api/projects', pmRoutes);
 }
@@ -469,9 +463,14 @@ if (isMain) {
   // cm:why here, beside the skill seed — the platform invariant set lives in code, so a deploy is exactly when it can change (ISS-795 stage ①)
   await sweepPolicyLanded();
   await seedDomainTemplates(db);
-  if (isEnabled('chatProvider')) {
-    bootstrapChatProviders();
-  }
+  // cm:guard UNCONDITIONAL, and it has to be. This used to sit behind the
+  // `chatProvider` flag, which also mounted `POST /api/chat`; `/api/conversations`
+  // is mounted unconditionally and drains through the same provider registry, so
+  // a deployment that turned the flag off left the conversation door answering
+  // with no provider behind it — the shape `assistant/conversation-drain.ts`
+  // already names on its own gate. ISS-1030 removed the SSE door and the flag
+  // with it, and this is the half that was never the flag's to decide.
+  bootstrapChatProviders();
   // cm:guard the Forge UI is a conversation ADAPTER and registers like one — one call, which is the whole of what ISS-1002 claimed a second adapter costs the store, and this line is the first payment of it. The call is `assistant/`'s own so that this file reaches no module it did not already (ISS-1004 step 5).
   registerWebConversationAdapter();
   bootstrapRunnerAdapters();

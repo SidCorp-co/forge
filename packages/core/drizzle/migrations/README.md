@@ -39,8 +39,14 @@ emits a snapshot under `meta/`.
    journal's existing `max(when)` (those are hand-picked, spaced a day apart).
    Drizzle reads the single highest `created_at` in the target DB and skips
    lower entries silently, forever — the container then serves new code against
-   an old schema. Raise the generated `when` to `max(when) + 86400000` by hand;
-   `db/migrations-journal.test.ts` is the gate.
+   an old schema. Raise the generated `when` by hand to a whole number of days
+   above the journal's `max(when)` — `+ 86400000` where yours is the only
+   migration open, and enough to clear the highest `when` any unmerged sibling
+   holds where it is not. Read the siblings immediately before the push that
+   lands it: every branch deriving `+ 86400000` from one `main` lands on the
+   same number, and the gate reads only your own journal, so it is green on a
+   value a sibling is about to take. `db/migrations-journal.test.ts` holds the
+   shape — whole days, strictly above, at most 30 ahead — not the collision.
 2. It does not re-emit an index that Postgres dropped with the column. If your
    change drops and re-adds a column (the only way to alter a generated
    column's expression), every index on that column goes with it and drizzle's
@@ -48,6 +54,36 @@ emits a snapshot under `meta/`.
 
 Both mean the generated file is a starting point on this repo, not a finished
 one. Keep the snapshot drizzle emitted; rewrite the SQL and the journal entry.
+
+### When a sibling migration lands on `main` first
+
+Regenerate yours on the merged tree; do not renumber by hand. Measured twice on ISS-1030: on
+2026-09-17 its `0266`/`0267` were buried by `0268` landing an hour earlier at a `when` 16 days
+above them, and on 2026-09-18 the renumbered `0269`/`0270` were buried again by `0272`. As they
+stood, drizzle would have skipped both silently and forever. Expect this once per sibling that
+lands, not once per branch.
+
+Renaming the files and raising the `when` is not enough, because a snapshot records the schema it
+was diffed FROM: yours chains off the snapshot `main` held when you generated it, and `main` now
+carries another one. The chain gate fails it by name, and the first `pnpm db:generate` after that
+re-emits DDL the database already has. So after `git merge origin/main`:
+
+1. Delete your `.sql` files, your `meta/<idx>_snapshot.json` files, and your entries from
+   `meta/_journal.json` (`git checkout origin/main -- meta/_journal.json` restores it whole).
+2. `pnpm db:generate` once. It emits ONE `.sql` carrying every table your branch adds, plus one
+   snapshot chained off whatever `main`'s head snapshot now is — which is the only thing you are
+   keeping. Splitting the modules across several passes is not needed: only the HEAD entry owes a
+   snapshot, and `migrations-journal.test.ts` allows an entry that carries none.
+3. Diff the emitted SQL against what you had; it should be the union of your files, statement for
+   statement. Anything else is a real schema change you did not mean to make. Restore your own
+   `.sql` files under their new `idx`, discard the emitted one, and rename the emitted snapshot to
+   `meta/<head idx>_snapshot.json`.
+4. Set the `when` values by hand — `generate` writes `Date.now()`, which is months below the floor.
+
+**Neither `when` test can see this.** With the stale numbering sitting BELOW a higher-`idx` entry
+from `main`, the journal still reads strictly increasing in `idx` order and the head entry is still
+a whole day above the previous maximum, so both go green; only the snapshot chain reds. Read the
+floor off `main` and off every unmerged sibling yourself — the gate reads your journal alone.
 
 ### Hand-written SQL (rare)
 

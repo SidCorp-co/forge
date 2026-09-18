@@ -35,7 +35,7 @@ import {
   splitProviderConfig,
   updateSchema,
 } from './provider-schemas.js';
-import { enqueueCoolifyDispatch } from './queue.js';
+import { enqueueOutboundDispatch } from './queue.js';
 import { getAdapter, getIntegration } from './registry.js';
 import { rocketChatBindingOfProject } from './rocketchat/binding.js';
 import { fetchBotRooms } from './rocketchat/rest-client.js';
@@ -447,14 +447,10 @@ integrationsRoutes.get('/:projectId/integrations/:id/deliveries', async (c) => {
   return c.json({ items: rows });
 });
 
-// Re-dispatch a failed outbound delivery. Async by design: we re-enqueue the
-// SAME outbound path the original used (enqueueCoolifyDispatch → worker →
-// coolifyAdapter.dispatchOutbound) with a FRESH requestId, so the worker/adapter
-// records the new delivery row. The route must NOT pre-record it — the
-// (binding_id, request_id) partial unique index would collide. Outbound
-// deliveries are Coolify-only today (postman/epodsystem are MCP-injection with
-// no outbound), so the `direction==='outbound'` guard scopes retry correctly
-// without per-provider branching.
+// Re-dispatch a failed outbound delivery. Async by design: we re-enqueue the SAME outbound path
+// the original used (enqueueOutboundDispatch → worker → dispatchThrough → that binding's own
+// adapter) with a FRESH requestId, so the worker/adapter records the new delivery row. The route
+// must NOT pre-record it — the (binding_id, request_id) partial unique index would collide.
 integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/retry', async (c) => {
   const projectId = c.req.param('projectId');
   const id = c.req.param('id');
@@ -476,17 +472,22 @@ integrationsRoutes.post('/:projectId/integrations/:id/deliveries/:deliveryId/ret
     });
   }
 
-  // Carry the original tracking keys forward; a fresh requestId keeps the new
+  // Carry the original request forward WHOLE; a fresh requestId keeps the new
   // delivery row distinct and stops pg-boss's singletonKey from collapsing it.
+  // cm:guard `payload` is the recorded request, not a rebuild of it — that is what makes Retry a
+  // replay. A Sentry status update names a target label and a status that `{ runId, issueId }`
+  // cannot carry, so rebuilding the payload here would re-dispatch a DIFFERENT request under a
+  // button that says it repeats the one that failed (ISS-1085).
   const p = (delivery.payload ?? {}) as { runId?: string | null; issueId?: string | null };
   const requestId = `retry_${randomBytes(12).toString('hex')}`;
-  await enqueueCoolifyDispatch({
+  await enqueueOutboundDispatch({
     jobKind: 'coolify.dispatch',
     bindingId: id,
     runId: p.runId ?? null,
     issueId: p.issueId ?? null,
     eventName: delivery.eventName,
     requestId,
+    payload: (delivery.payload ?? {}) as Record<string, unknown>,
   });
   return c.json({ requestId, queued: true }, 202);
 });

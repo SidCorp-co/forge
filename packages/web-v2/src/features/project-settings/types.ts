@@ -13,7 +13,7 @@ export interface ProjectUpdateInput {
 	liveBranch?: string | null;
 	releaseModel?: "none" | "promote" | "publish";
 	releaseStrategy?: "merge-branch" | "cherry-pick" | "tag-mr" | null;
-	previewDeploy?: PreviewDeployConfig | null;
+	environments?: EnvironmentsConfig | null;
 	orgId?: string;
 	/** ISS-609 — chat/RC-bot reply-style knob; scoped server-side write into
 	 *  `agentConfig.personaStyle`. null/'' clears it. */
@@ -23,35 +23,56 @@ export interface ProjectUpdateInput {
 	rocketChatAnswerMode?: "fast" | "agent" | null;
 }
 
-/** One `previewDeploy.testingUrls` row — mirrors `testingUrlSchema` in core. */
+/** One `environments.preview.urls` row — mirrors `testingUrlSchema` in core. */
 export interface TestingUrl {
 	label: string;
 	url: string;
 }
 
-/** One `previewDeploy.testCredentials` row — mirrors `testCredentialSchema`. */
+/** One `environments.testCredentials` row — mirrors `testCredentialSchema`. */
 export interface TestCredential {
 	label: string;
 	username: string;
 	password: string;
 }
 
+/** The preview side — `null` on the column means this project HAS no preview side. */
+export interface PreviewEnvironmentConfig {
+	url?: string | null;
+	apiUrl?: string | null;
+	urls?: TestingUrl[];
+	[key: string]: unknown;
+}
+
 /**
- * The `previewDeploy` jsonb blob on a project — staging endpoints + the testing
- * URLs / credentials QA uses against a deployment. Mirrors the known keys of
- * `previewDeployPatchSchema` in `packages/core/src/projects/routes.ts`; the
- * server schema is `.catchall(z.unknown())`, so unknown keys round-trip
- * untouched (the Testing tab spreads the stored blob on save to preserve them).
- * `Project.previewDeploy` is untyped jsonb (`unknown`) — cast through this.
+ * The live side — the address a release ships to.
+ *
+ * `commitUrl` is a SEPARATE address from `url`: it is the endpoint that reports the running
+ * commit, and `commitPath` is the dot path to it inside that endpoint's JSON body. Neither is
+ * derivable from `url`, which is why all three are stored (ISS-1069).
  */
-export interface PreviewDeployConfig {
-	stagingUrl?: string | null;
-	stagingApiUrl?: string | null;
-	testingUrls?: TestingUrl[];
+export interface LiveEnvironmentConfig {
+	url?: string | null;
+	apiUrl?: string | null;
+	commitUrl?: string | null;
+	commitPath?: string | null;
+	[key: string]: unknown;
+}
+
+/**
+ * The `environments` jsonb blob on a project — BOTH sides of a deployment plus the credentials
+ * and the limits QA needs against either. Mirrors the known keys of `environmentsPatchSchema` in
+ * `packages/core/src/projects/environments.ts`; the server schema is `.catchall(z.unknown())` at
+ * every level, so unknown keys round-trip untouched (the Testing tab spreads the stored blob on
+ * save to preserve them). `Project.environments` is untyped jsonb (`unknown`) — cast through this.
+ */
+export interface EnvironmentsConfig {
+	preview?: PreviewEnvironmentConfig | null;
+	live?: LiveEnvironmentConfig | null;
 	testCredentials?: TestCredential[];
-	/** ISS-767 — how to use the resources above and, more importantly, what they
-	 *  CANNOT do. Read by agents before they plan a live walk. Never a secret. */
-	notes?: string | null;
+	/** ISS-1069 — what this environment does NOT have. Read by agents before they plan a live
+	 *  walk. Never a secret. Replaced `notes`, which invited anything and was set on 4 of 32. */
+	limits?: string | null;
 	[key: string]: unknown;
 }
 
@@ -179,13 +200,14 @@ export interface ReleaseReadiness {
 		| "rollback"
 		| "rollback-prose"
 		| "verify-probes"
+		| "live-commit-endpoint"
 	)[];
 }
 
 /**
  * The `agentConfig` jsonb blob on a project — read-only surface for plugins
  * (ISS-813). `Project.agentConfig` is untyped jsonb (`unknown`), same reason
- * `previewDeploy` needs `PreviewDeployConfig` — cast through this, as
+ * `environments` needs `EnvironmentsConfig` — cast through this, as
  * `rocketchat-section.tsx:89` already does for `agentConfig.rocketChatAnswerMode`.
  */
 export interface ProjectAgentConfig {

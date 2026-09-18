@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { cellFor } from './cells.js';
-import type { DoorId, Intent } from './contract.js';
+import type { DoorId } from './contract.js';
 import { cellPair, DOORS, doorCell, doorPolicy } from './doors.js';
 import { withRepairs } from './repairs.js';
 
@@ -27,11 +27,20 @@ describe('the door table', () => {
     expect(d.ending === 'fallback' ? d.repairs : null).toBe(repairs);
   });
 
+  // cm:guard carved with `cellPair` and not with `String.split(':')`: since ISS-1089 two shipped
+  // cells carry an audience with a colon in it, and a split at the FIRST colon turns
+  // `role:product:report` into audience `role` and intent `product:report` — which resolves to no
+  // cell. No door names one today, so a `split` here would go on passing until one did.
   it('names a cell that exists, at every door', () => {
     for (const d of DOORS) {
-      const [audience, intent] = d.cell.split(':') as [string, Intent];
+      const { audience, intent } = cellPair(d.cell);
       expect(cellFor(audience, intent), d.id).toBeDefined();
     }
+  });
+
+  it('carves a two-colon cell id at its last colon, the way the cells themselves are keyed', () => {
+    expect(cellPair('role:product:report')).toEqual({ audience: 'role:product', intent: 'report' });
+    expect(cellFor('role:product', 'report')).toBeDefined();
   });
 
   it('says why it ends where it does, at every door', () => {

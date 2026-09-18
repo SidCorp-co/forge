@@ -31,7 +31,7 @@ import type { ChatStreamEvent } from './providers/types.js';
 // on, and there are few of them.
 // cm:guard the window lives HERE, beside the accumulator both paths drive, rather than in either
 // caller: the decision that fixed it at 120ms stated its undo as raising or lowering one shared
-// constant. It had a copy in `run-turn.ts` and a second in `conversation-progress.ts` for exactly
+// constant. It had a copy in the SSE door's turn loop and a second in `conversation-progress.ts` for exactly
 // one commit (ISS-1078), which is how two surfaces start coalescing differently while a comment
 // says they cannot.
 export const ENTRY_FLUSH_MS = 120;

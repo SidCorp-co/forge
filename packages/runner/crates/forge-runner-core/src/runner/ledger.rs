@@ -823,15 +823,29 @@ impl Ledger {
     }
 
     /// The runs this master inherited that it has not yet said anything about.
-    // cm:guard `ended_by IS NULL` as well as the choice being unset: a run that ended while the
-    // master was away needs no choice about whether to continue it, and gating a declaration on one
-    // would wedge the pane behind a question with no answer.
+    // cm:guard the obligation survives the run ENDING, and only `record_resume_choice` discharges it.
+    // This read carried `ended_by IS NULL` until ISS-1050 criterion 29 was measured in the field, and
+    // that term did two things: nothing for the case it was written for, and everything for the case
+    // that broke. A run that ended while the master was away is already excluded by
+    // `owe_resume_choices`, which stamps only rows with `ended_by IS NULL` — so such a run carries no
+    // `resume_owed_at` and this query never sees it either way. What the term actually bought was an
+    // escape: a run stamped at the resume and then CLOSED stopped being owed, and closing is the one
+    // thing a pane must do before it can declare again, because of the one-unbound-row rule. Measured
+    // on forge-vm 2026-09-16T12:34Z: four runs stamped, two closed `ended_by = master` with the
+    // decision written into the close's reason — `"restart: the subagent died with the previous
+    // pane…"` — and five later declarations refused by nothing. `resume_choice` was 0 of 365 across
+    // eight days because the gate was released by the close on the normal path, every time.
+    // cm:guard this is NOT a wedge, and the two tests beside criterion 29's in `control.rs` are what
+    // keep it from becoming one: `record_resume_choice` never read `ended_by`, so a pane can still
+    // answer for a run that has ended, and `choices_awaiting_report` never read it either, so that
+    // answer still reaches the issue. A term added to either would turn this gate into a pane that
+    // can never declare again.
     pub fn runs_awaiting_choice(&self, master_session_id: &str, boot_id: &str) -> Result<Vec<Run>> {
         let mut stmt = self
             .conn
             .prepare(&format!(
                 "{SELECT_RUN} WHERE master_session_id = ?1 AND boot_id = ?2
-                   AND ended_by IS NULL AND resume_owed_at IS NOT NULL AND resume_choice IS NULL"
+                   AND resume_owed_at IS NOT NULL AND resume_choice IS NULL"
             ))
             .map_err(sql_err)?;
         let rows = stmt

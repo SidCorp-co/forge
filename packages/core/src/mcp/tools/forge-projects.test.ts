@@ -437,22 +437,18 @@ describe('forge_projects.create', () => {
   });
 });
 
+function mockUpdateReturning(row: Record<string, unknown>) {
+  updateImpl.mockImplementationOnce(() => ({
+    set: () => ({ where: () => ({ returning: () => Promise.resolve([row]) }) }),
+  }));
+}
+
 describe('forge_projects.update', () => {
   /**
    * The gate is ONE authz query (effectiveProjectRole) followed by an
    * org-tier check: org owner/admin on the project's org may update; a
    * merely-invited project admin may NOT.
    */
-  function mockUpdateReturning(row: Record<string, unknown>) {
-    updateImpl.mockImplementationOnce(() => ({
-      set: () => ({
-        where: () => ({
-          returning: () => Promise.resolve([row]),
-        }),
-      }),
-    }));
-  }
-
   it('org owner applies patch and returns the updated row', async () => {
     mockAccess({ memberRole: null, orgRole: 'owner' });
     mockUpdateReturning({
@@ -474,78 +470,100 @@ describe('forge_projects.update', () => {
     expect(res.project.repoPath).toBe('/srv/a');
     // Sensitive REST-only fields must NOT appear in the response shape so a
     // future .returning() refactor that selects them can't ship silently.
-    for (const k of [
-      'apiKey',
-      'webhookSecret',
-      'agentConfig',
-      'previewDeploy',
-      'defaultDeviceId',
-    ]) {
+    for (const k of ['apiKey', 'webhookSecret', 'agentConfig', 'environments', 'defaultDeviceId']) {
       expect(res.project).not.toHaveProperty(k);
     }
     // exactly one select — the single org-aware authz query.
     expect(selectImpl).toHaveBeenCalledTimes(1);
   });
+});
 
-  // cm:guard previewDeploy holds testCredentials; the notes write MERGES into the existing jsonb. Replacing it would silently delete the project's test logins the first time somebody saved a note.
-  it('previewDeployNotes merges into previewDeploy without dropping the credentials beside it', async () => {
-    mockAccess({ memberRole: null, orgRole: 'owner' });
-    mockSelect([
-      {
-        previewDeploy: {
-          testCredentials: [{ label: 'Admin', username: 'bot@x', password: 'keep-me' }],
-          testingUrls: [{ url: 'https://beta.x', label: 'Beta' }],
-        },
-      },
-    ]);
+// cm:why its own describe, because the block above was at the function line budget. The subject is narrow: REST replaces the column wholesale and this door must do the opposite, so an agent recording a limit cannot delete the credentials beside it (ISS-1069).
+describe('forge_projects.update · environments', () => {
+  const STORED = {
+    live: { url: 'https://app.x', commitUrl: 'https://api.x/health', commitPath: 'commit' },
+    preview: { url: 'https://beta.x', apiUrl: null, urls: [] },
+    testCredentials: [{ label: 'Admin', username: 'bot@x', password: 'keep-me' }],
+    futureKnob: 'keep-me-too',
+  };
+
+  function captureUpdate(): () => Record<string, unknown> | undefined {
     let applied: Record<string, unknown> | undefined;
-    updateImpl.mockImplementationOnce(() => ({
-      set: (v: Record<string, unknown>) => {
-        applied = v;
-        return { where: () => ({ returning: () => Promise.resolve([{ id: PROJECT_A }]) }) };
-      },
-    }));
+    const set = (v: Record<string, unknown>) => {
+      applied = v;
+      return { where: () => ({ returning: () => Promise.resolve([{ id: PROJECT_A }]) }) };
+    };
+    updateImpl.mockImplementationOnce(() => ({ set }));
+    return () => applied;
+  }
 
-    const tool = forgeProjectsUpdateTool(patCtx());
-    await tool.handler({
+  // cm:guard a READ-MODIFY-WRITE and never a replacement: `environments` holds the credentials and
+  // the live address, so a door that replaced the blob would delete a project's test logins the
+  // first time somebody recorded a limit. That is the price stated for keeping REST's own
+  // wholesale-replacement semantics beside this narrow write.
+  it('writes limits and keeps the live side, the preview side, the credentials and an unknown key', async () => {
+    mockAccess({ memberRole: null, orgRole: 'owner' });
+    mockSelect([{ environments: STORED }]);
+    const applied = captureUpdate();
+
+    await forgeProjectsUpdateTool(patCtx()).handler({
       projectId: PROJECT_A,
-      patch: { previewDeployNotes: 'the QA account cannot reach this project' },
+      patch: { environmentsLimits: 'the QA account cannot reach this project' },
     });
 
-    const pd = applied?.previewDeploy as Record<string, unknown>;
-    expect(pd.notes).toBe('the QA account cannot reach this project');
-    expect(pd.testCredentials).toEqual([
-      { label: 'Admin', username: 'bot@x', password: 'keep-me' },
-    ]);
-    expect(pd.testingUrls).toEqual([{ url: 'https://beta.x', label: 'Beta' }]);
+    expect(applied()?.environments).toEqual({
+      ...STORED,
+      limits: 'the QA account cannot reach this project',
+    });
   });
 
-  it('previewDeployNotes: null clears the note and keeps the rest', async () => {
+  it('null clears the limits and keeps the rest', async () => {
     mockAccess({ memberRole: null, orgRole: 'owner' });
-    mockSelect([{ previewDeploy: { notes: 'old', testCredentials: [{ label: 'Admin' }] } }]);
-    let applied: Record<string, unknown> | undefined;
-    updateImpl.mockImplementationOnce(() => ({
-      set: (v: Record<string, unknown>) => {
-        applied = v;
-        return { where: () => ({ returning: () => Promise.resolve([{ id: PROJECT_A }]) }) };
-      },
-    }));
-    const tool = forgeProjectsUpdateTool(patCtx());
-    await tool.handler({ projectId: PROJECT_A, patch: { previewDeployNotes: null } });
-    const pd = applied?.previewDeploy as Record<string, unknown>;
-    expect(pd.notes).toBeNull();
-    expect(pd.testCredentials).toEqual([{ label: 'Admin' }]);
+    mockSelect([{ environments: STORED }]);
+    const applied = captureUpdate();
+
+    await forgeProjectsUpdateTool(patCtx()).handler({
+      projectId: PROJECT_A,
+      patch: { environmentsLimits: null },
+    });
+
+    expect(applied()?.environments).toEqual({ ...STORED, limits: null });
   });
 
-  it('a non-org-admin cannot write the notes either', async () => {
+  // cm:guard the retired key is refused with a message NAMING its replacement, not with zod's own
+  // "Unrecognized key". An agent holding a tool description one version old is told what to send
+  // instead, which is the whole difference between a refusal and a dead end.
+  const RETIRED: [string, string | null][] = [
+    ['a value', 'anything'],
+    ['null', null],
+  ];
+  it.each(RETIRED)(
+    'refuses previewDeployNotes carrying %s, by name, writing nothing',
+    async (_l, value) => {
+      mockAccess({ memberRole: null, orgRole: 'owner' });
+      await expect(
+        forgeProjectsUpdateTool(patCtx()).handler({
+          projectId: PROJECT_A,
+          patch: { previewDeployNotes: value },
+        }),
+      ).rejects.toThrow(/environmentsLimits/);
+      expect(updateImpl).not.toHaveBeenCalled();
+    },
+  );
+
+  it('refuses a non-org-admin the limits write too', async () => {
     mockAccess({ memberRole: 'admin', orgRole: 'member' });
-    const tool = forgeProjectsUpdateTool(patCtx());
     await expect(
-      tool.handler({ projectId: PROJECT_A, patch: { previewDeployNotes: 'nope' } }),
+      forgeProjectsUpdateTool(patCtx()).handler({
+        projectId: PROJECT_A,
+        patch: { environmentsLimits: 'nope' },
+      }),
     ).rejects.toThrow(/FORBIDDEN/);
     expect(updateImpl).not.toHaveBeenCalled();
   });
+});
 
+describe('forge_projects.update · the rest', () => {
   it('org admin (non-owner) is accepted', async () => {
     mockAccess({ memberRole: null, orgRole: 'admin' });
     mockUpdateReturning({
@@ -662,6 +680,42 @@ describe('forge_projects.update', () => {
   });
 });
 
+const SHARED_CREATED_AT = new Date('2026-05-25T00:00:00.000Z');
+
+const FULL_PROJECT_ROW = {
+  id: PROJECT_A,
+  slug: 'a',
+  name: 'A',
+  description: 'desc',
+  orgId: ORG_ID,
+  createdBy: OWNER_ID,
+  repoPath: '/srv/a',
+  workspaceSetup: 'pnpm install --frozen-lockfile',
+  baseBranch: 'main',
+  liveBranch: 'main',
+  defaultDeviceId: DEVICE_ID,
+  environments: {
+    preview: {
+      url: 'https://stg.example.com',
+      apiUrl: 'https://api.stg.example.com',
+      urls: [{ label: 'Test', url: 'https://test.example.com' }],
+    },
+    live: {
+      url: 'https://app.example.com',
+      apiUrl: null,
+      commitUrl: 'https://api.example.com/health',
+      commitPath: 'data.commit',
+    },
+    testCredentials: [{ label: 'qa', username: 'qa@x', password: 'p4ss' }],
+    limits: 'no outbound email',
+  },
+  createdAt: SHARED_CREATED_AT,
+};
+
+function mockProjectSelect(row: unknown | null) {
+  mockSelect(row === null ? [] : [row]);
+}
+
 describe('forge_projects.get', () => {
   /**
    * Handler issues queries in this fixed order:
@@ -669,33 +723,6 @@ describe('forge_projects.get', () => {
    *   2. effectiveProjectRole — single org-aware authz select; a null
    *      effective role → NOT_FOUND.
    */
-  const CREATED_AT = new Date('2026-05-25T00:00:00.000Z');
-
-  const FULL_PROJECT_ROW = {
-    id: PROJECT_A,
-    slug: 'a',
-    name: 'A',
-    description: 'desc',
-    orgId: ORG_ID,
-    createdBy: OWNER_ID,
-    repoPath: '/srv/a',
-    workspaceSetup: 'pnpm install --frozen-lockfile',
-    baseBranch: 'main',
-    liveBranch: 'main',
-    defaultDeviceId: DEVICE_ID,
-    previewDeploy: {
-      stagingUrl: 'https://stg.example.com',
-      stagingApiUrl: 'https://api.stg.example.com',
-      testingUrls: ['https://test.example.com'],
-      testCredentials: [{ label: 'qa', username: 'qa@x', password: 'p4ss' }],
-    },
-    createdAt: CREATED_AT,
-  };
-
-  function mockProjectSelect(row: unknown | null) {
-    mockSelect(row === null ? [] : [row]);
-  }
-
   it('org owner reads project — effective role admin, full shape returned', async () => {
     mockProjectSelect(FULL_PROJECT_ROW);
     mockAccess({ memberRole: null, orgRole: 'owner' });
@@ -809,7 +836,7 @@ describe('forge_projects.get', () => {
         'id',
         'name',
         'orgId',
-        'previewDeploy',
+        'environments',
         'liveBranch',
         'releaseModel',
         'releaseStrategy',
@@ -823,20 +850,49 @@ describe('forge_projects.get', () => {
     expect(res.project).not.toHaveProperty('webhookSecret');
     expect(res.project).not.toHaveProperty('apiKey');
   });
+});
 
-  it('previewDeploy=null returns normalized defaults instead of crashing', async () => {
-    mockProjectSelect({ ...FULL_PROJECT_ROW, previewDeploy: null });
+// cm:why its own describe, for the reason the update block was split: that callback was at the function line budget. The subject is the READING — the handler hand-builds its response, so a column selected and then dropped from the return literal yields a key holding `undefined`, which is how `workspaceSetup` shipped invisible on 2026-08-18.
+describe('forge_projects.get · environments', () => {
+  it('environments=null returns normalized defaults instead of crashing', async () => {
+    mockProjectSelect({ ...FULL_PROJECT_ROW, environments: null });
     mockAccess({ memberRole: 'member', orgRole: null });
     const tool = forgeProjectsGetTool(patCtx());
     const res = (await tool.handler({ projectId: PROJECT_A })) as {
-      project: { previewDeploy: Record<string, unknown> };
+      project: { environments: Record<string, unknown> };
     };
-    expect(res.project.previewDeploy).toEqual({
-      stagingUrl: null,
-      stagingApiUrl: null,
-      testingUrls: [],
+    expect(res.project.environments).toEqual({
+      preview: null,
+      live: { url: null, apiUrl: null, commitUrl: null, commitPath: null },
       testCredentials: [],
-      notes: null,
+      limits: null,
+    });
+  });
+
+  // cm:guard the READING and not the stored blob. The handler hand-builds its response, so a
+  // column selected and then dropped from the return literal yields a key holding `undefined` —
+  // which is how `workspaceSetup` shipped invisible on 2026-08-18. Assert the VALUES.
+  it('returns the normalised reading of environments, both sides', async () => {
+    mockProjectSelect(FULL_PROJECT_ROW);
+    mockAccess({ memberRole: 'member', orgRole: null });
+    const tool = forgeProjectsGetTool(patCtx());
+    const res = (await tool.handler({ projectId: PROJECT_A })) as {
+      project: { environments: Record<string, unknown> };
+    };
+    expect(res.project.environments).toEqual({
+      preview: {
+        url: 'https://stg.example.com',
+        apiUrl: 'https://api.stg.example.com',
+        urls: [{ label: 'Test', url: 'https://test.example.com' }],
+      },
+      live: {
+        url: 'https://app.example.com',
+        apiUrl: null,
+        commitUrl: 'https://api.example.com/health',
+        commitPath: 'data.commit',
+      },
+      testCredentials: [{ label: 'qa', username: 'qa@x', password: 'p4ss' }],
+      limits: 'no outbound email',
     });
   });
 

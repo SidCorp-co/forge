@@ -55,10 +55,15 @@ export function declarationRefusal(err: unknown): HTTPException | null {
 // cm:guard the message must name the CONFIG KEY and the shape, because this refusal is the first
 // thing a project with a fresh gate meets and an operator cannot guess `verify.probes` from
 // "no probes declared".
+// cm:guard BOTH ways out, and the project one FIRST. ISS-1069 measured what naming only the binding
+// costs: `sidpeak` read this message, went to declare `verify`, and needed a hostname Forge held no
+// field for — its two recorded URLs both served staging and its live address existed only in the
+// Coolify UI. Filling one project field now answers this for every binding it has, so an operator
+// who is told only about `verify` is being sent the long way round.
 export function undeclaredProbes(): HTTPException {
   return conflict(
     'RELEASE_PROBES_UNDECLARED',
-    'One of this project\'s live deploy bindings declares no verification probes, so nothing but the agent\'s own word could say the release happened. Set `verify` on the binding config: `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`',
+    'One of this project\'s live deploy bindings declares no verification probes, so nothing but the agent\'s own word could say the release happened. Two ways out. Either record where this project is deployed — `environments.live.commitUrl`, the endpoint that reports the running commit, and `environments.live.commitPath`, the dot path to it inside that endpoint\'s JSON body (`commit`, or `data.commit`; leave it empty where the whole body is the commit) — which answers this for every live binding at once. Or declare probes on the binding itself, which overrides the project\'s: `verify` = `{"probes":[{"url":"https://<host>/api/health","commitPath":"commit"}]}`. A binding that declares a `verify` Forge cannot read takes NO project default: correct it or remove it.',
   );
 }
 

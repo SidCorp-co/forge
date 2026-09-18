@@ -3,6 +3,7 @@ import { drizzle } from 'drizzle-orm/postgres-js';
 import { migrate } from 'drizzle-orm/postgres-js/migrator';
 import postgres from 'postgres';
 import { initSentry, Sentry } from '../observability/sentry.js';
+import { runCanonicalBackfillOnce } from './backfill-canonical-transcripts.js';
 import {
   describeUnrecorded,
   type JournalEntry,
@@ -24,6 +25,17 @@ try {
   console.log('[migrate] applying migrations from', migrationsFolder);
   // cm:guard a migration's `when` in meta/_journal.json must exceed every already-recorded created_at or it's silently skipped forever, not an error (ISS-807)
   await migrate(db, { migrationsFolder });
+
+  // cm:guard this THROWS on a row it cannot represent and the outer catch exits
+  // non-zero, which is the whole point: the deploy stops naming the row rather
+  // than the row being cleaned away so the deploy succeeds (ISS-1030).
+  const backfill = await runCanonicalBackfillOnce(sql);
+  if (backfill.ran) {
+    const { entries, sessions, turns } = backfill.report;
+    console.log(
+      `[migrate] canonical-transcript backfill: ${entries} entr(ies) rewritten across ${sessions} session(s) and ${turns} turn row(s)`,
+    );
+  }
 
   // cm:guard ISS-809 — this is a WARNING, never an exit. Measured on forge-beta 2026-08-11: 3 journal entries (0041_pm_agent, 0062_personal_access_tokens, 0063_mcp_audit_log) have no bookkeeping row, yet every table they create EXISTS. The DDL ran; only the ledger is incomplete. A hard gate here would refuse to start a container whose schema is entirely correct — turning a reporting gap into an outage. The authored-wrong case ISS-807 actually hit is caught before merge by migrations-journal.test.ts instead.
   const journal = JSON.parse(readFileSync(`${migrationsFolder}/meta/_journal.json`, 'utf8')) as {
