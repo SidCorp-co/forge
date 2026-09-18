@@ -157,7 +157,10 @@ describe('deliverLegacyAgentChatReplyOnce', () => {
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: undefined },
       'Here is the final answer.',
-      { ok: true, problems: [] },
+      // cm:guard the proof NAMES the string being posted, which is the assertion ISS-978 F5 found
+      // missing everywhere: `{ ok: true, problems: [] }` was satisfied by any literal and said nothing
+      // about which text had been screened.
+      { text: 'Here is the final answer.', door: 'agent-chat-completion' },
     );
   });
 
@@ -446,7 +449,10 @@ describe('deliverLegacyAgentChatReplyOnce: which failures earn a redispatch', ()
     expect(sendFixedReply).toHaveBeenCalledWith(
       { kind: 'rest', auth: AUTH, rid: 'room-1', tmid: 'thread-1' },
       'answer',
-      { ok: true, problems: [] },
+      // cm:guard the proof NAMES the string being posted, which is the assertion ISS-978 F5 found
+      // missing everywhere: `{ ok: true, problems: [] }` was satisfied by any literal and said nothing
+      // about which text had been screened.
+      { text: 'answer', door: 'agent-chat-completion' },
     );
   });
 

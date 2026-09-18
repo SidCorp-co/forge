@@ -1,4 +1,5 @@
 import { describe, expect, it } from 'vitest';
+import { problemsOf } from '../../messaging/contract.js';
 import { screenCarriedComment } from './comment-carry.js';
 import { threadRootText } from './comment-render.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
@@ -27,7 +28,7 @@ describe('a comment carried into a room', () => {
     for (const shout of ['@all ship it', 'please look @here', 'hey @channel']) {
       const verdict = screenCarriedComment(shout);
       expect(verdict.ok).toBe(false);
-      expect(verdict.problems.join(' ')).toContain('addresses the whole room');
+      expect(problemsOf(verdict).join(' ')).toContain('addresses the whole room');
     }
   });
 

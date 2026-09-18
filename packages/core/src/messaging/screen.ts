@@ -27,7 +27,11 @@ export interface ScreenInput {
   readonly facts?: MessageFacts;
 }
 
-const OK: MessageVerdict = { ok: true };
+// cm:guard THE mint. `MessageVerdict`'s `ok` arm is nominal (`contract.ts`), so this cast is the only
+// way one comes into being in this module, and a caller that wants to say "this passed" has to run a
+// real screen to get one. `verdict-mint.test.ts` holds the whole list of files allowed to cast, which
+// is what stops the fifth reply path minting its own the way five of them used to (ISS-978 F5).
+const OK = { ok: true } as MessageVerdict;
 
 function refusalsFor(rule: MessageRule, text: string, facts: MessageFacts): MessageRefusal[] {
   return rule.check(text, facts).map((b) => ({

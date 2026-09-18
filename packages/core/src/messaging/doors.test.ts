@@ -3,6 +3,7 @@ import { cellFor } from './cells.js';
 import type { DoorId } from './contract.js';
 import { cellPair, DOORS, doorCell, doorPolicy } from './doors.js';
 import { withRepairs } from './repairs.js';
+import { screenAtDoor } from './screen.js';
 
 const EXPECTED: ReadonlyArray<[DoorId, string, string, number | null]> = [
   ['comment-write', 'role:report', 'refusal', null],
@@ -101,7 +102,10 @@ describe('the door table', () => {
 
 describe('the repair budget, counted in one place', () => {
   const failing = { ok: false as const, refusals: [] };
-  const passing = { ok: true as const };
+  // cm:guard a REAL passing verdict from the screen, not a literal: since ISS-978 the `ok` arm is
+  // nominal and a hand-built one no longer compiles — which is the whole of F5 and is why this fixture
+  // has to go through the screen the way every producer now does.
+  const passing = screenAtDoor('chat-sync', ['good']);
 
   it('spends a fallback door’s one repair and then stops', async () => {
     let asked = 0;
@@ -123,6 +127,10 @@ describe('the repair budget, counted in one place', () => {
       rewrite: async () => ['good'],
     });
     expect(out).toMatchObject({ kind: 'passed', segments: ['good'], attempts: 2 });
+    // cm:guard the PASSING verdict comes out with it: since ISS-978 it is the only thing that can mint
+    // the proof the repaired text is posted under, so a `passed` outcome that dropped it would send
+    // every repairing door back to hand-building one.
+    expect(out.kind === 'passed' && out.verdict.ok).toBe(true);
   });
 
   it('asks for no repair at a door that declares none', async () => {

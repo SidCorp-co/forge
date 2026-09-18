@@ -66,12 +66,20 @@ export interface MessageRefusal {
   readonly example: string;
 }
 
+declare const judgedByTheScreen: unique symbol;
+
 /**
  * The whole result of screening. There is NO text on it, in either arm.
  */
 // cm:guard the absence of a text field is the "nothing rewrites what an agent wrote" rule made structural: a layer that could hand back an edited message could turn `blocked: condition 3 was not met` into something friendlier and destroy the one fact the reader needed. Adding a text field here is how that becomes possible again, so do not.
+// cm:guard the `ok` arm is NOMINAL — `judgedByTheScreen` is a module-private `unique symbol`, so no
+// object literal written anywhere else can satisfy it and `{ ok: true }` typed by hand stops
+// compiling. Before ISS-978 this arm was structural, and five reply paths hand-built one: the claim
+// that a passing verdict is evidence a screen ran was true of none of them. A file that mints one
+// declares itself a screen by casting, and `verdict-mint.test.ts` fails CI on a cast this repo has
+// not agreed to.
 export type MessageVerdict =
-  | { readonly ok: true }
+  | { readonly ok: true; readonly [judgedByTheScreen]: true }
   | { readonly ok: false; readonly refusals: readonly MessageRefusal[] };
 
 /** A cell: the pair, and the rules that pair is read against. */

@@ -24,6 +24,7 @@ import type {
 import { db } from '../../db/client.js';
 import { integrationBindings, integrationConnections } from '../../db/schema.js';
 import { logger } from '../../logger.js';
+import { reframed } from '../../messaging/proven.js';
 import { decryptConnectionSecrets } from '../store.js';
 import type { RocketChatIncomingMessage } from './ddp-client.js';
 import { type LiveConnection, liveConnectionFor } from './live-connections.js';
@@ -271,11 +272,23 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
         `rocketchat: no active connection on ${parts.namespace} holds a binding for room ${parts.rid} under project ${venue.projectId}, so ${venue.externalId} cannot be posted to — the room may have been rebound since this conversation was opened`,
       );
     }
-    const proof: ReplySendProof =
-      message.problems.length === 0
-        ? FIXED_REPLY_CONSTANT
-        : { ok: true, problems: [...message.problems] };
     const text = opts?.addressee ? `@${opts.addressee} ${message.text}` : message.text;
+    // cm:guard the proof is the one the SCREEN minted upstream, re-framed over the addressed string
+    // rather than rebuilt: this port cannot re-screen, because the door that judged this text is the
+    // conversation's and its cell's rules read facts gathered in the turn that is now over — screening
+    // at `chat-sync` instead would judge a `role:chat` reply against a `public:report` cell and refuse
+    // messages that are right. `reframed` refuses anything that does not CONTAIN the admitted string,
+    // so the address can be added and the answer cannot be replaced (ISS-978 F5).
+    // cm:guard a null `proof` means this codebase wrote the text, read off the value rather than
+    // inferred from `problems.length === 0` the way it was until ISS-978 — under which a clean model
+    // reply went out claiming to be a fixed constant.
+    const proof: ReplySendProof | null =
+      message.proof === null ? FIXED_REPLY_CONSTANT : reframed(message.proof, text);
+    if (!proof) {
+      throw new Error(
+        `rocketchat: the addressed message no longer contains the text its screen admitted, so it cannot be posted under that proof (venue ${venue.externalId})`,
+      );
+    }
     const tmid = parts.tmid ?? opts?.anchor ?? undefined;
     const receipt = await sendFixedReply({ kind: 'rest', auth, rid: parts.rid, tmid }, text, proof);
     return text === message.text ? receipt : { ...receipt, deliveredText: text };

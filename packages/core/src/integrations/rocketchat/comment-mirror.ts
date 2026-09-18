@@ -20,6 +20,8 @@ import {
 } from '../../db/schema-rocketchat.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
+import { problemsOf } from '../../messaging/contract.js';
+import { proven, wholeAgentText } from '../../messaging/proven.js';
 import type { HooksBus } from '../../pipeline/hooks.js';
 import { screenCarriedComment } from './comment-carry.js';
 import { drainOwedAnnouncements } from './comment-inbound.js';
@@ -330,13 +332,17 @@ export async function deliverOwedComment(
   }
 
   // cm:guard the body is screened BEFORE the thread is opened, so a refused comment does not leave an empty root in the room naming an issue nobody will see a comment about (ISS-981).
+  // cm:guard the screen runs ONCE and its verdict is what mints the proof: a second call to re-derive
+  // the problems would be a second judgement of the same string, and two judgements are two answers.
   const verdict = screenCarriedComment(owed.body);
-  if (!verdict.ok) {
+  const admitted = proven('comment-write', wholeAgentText(owed.body), verdict);
+  if (!admitted) {
+    const problems = problemsOf(verdict);
     logger.error(
-      { commentId: owed.commentId, problems: verdict.problems },
+      { commentId: owed.commentId, problems },
       'rocketchat.comment-mirror: the comment was refused by the screen; not posted',
     );
-    await settleRefused(owed.commentId, verdict.problems.join('; '), now);
+    await settleRefused(owed.commentId, problems.join('; '), now);
     return 'refused';
   }
 
@@ -348,10 +354,11 @@ export async function deliverOwedComment(
     }
     const tmid = thread.tmid;
 
-    const receipt = await sendFixedReply({ kind: 'rest', auth, rid: room.rid, tmid }, owed.body, {
-      ok: true,
-      problems: verdict.problems,
-    });
+    const receipt = await sendFixedReply(
+      { kind: 'rest', auth, rid: room.rid, tmid },
+      admitted.text,
+      admitted,
+    );
     await settleDelivered(owed.commentId, receipt.messageId, now);
     return 'delivered';
   } catch (err) {

@@ -46,7 +46,7 @@ vi.mock('../../db/client.js', () => {
       update: () => updateChain,
       insert: () => ({
         values: () => ({
-          onConflictDoUpdate: () => ({ returning: () => Promise.resolve([{ id: 'd-1' }]) }),
+          onConflictDoUpdate: () => ({ returning: () => Promise.resolve([{ attempts: 1 }]) }),
         }),
       }),
     },
@@ -83,7 +83,7 @@ vi.mock('../../messaging/screen.js', () => ({ screenAtDoor: () => ({ ok: true, p
 vi.mock('../../messaging/contract.js', () => ({ problemsOf: () => [] }));
 vi.mock('./question-render.js', () => ({
   agentAuthoredSegments: () => [],
-  renderRound: () => 'the round',
+  renderRound: () => ({ text: 'the round', screened: [] }),
 }));
 vi.mock('../../issues/issue-prefix-read.js', () => ({ activeIssuePrefix: async () => 'ISS' }));
 vi.mock('../../lib/issue-ref.js', () => ({ formatIssueRef: () => 'ISS-1' }));

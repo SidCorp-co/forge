@@ -15,12 +15,12 @@ import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
 import { logger } from '../../logger.js';
 import { problemsOf } from '../../messaging/contract.js';
-import { screenAtDoor } from '../../messaging/screen.js';
+import { screenForDoor } from '../../messaging/proven.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';
 import { emitNotification } from '../../notifications/emit.js';
 import { sendFixedReply } from './outbound.js';
 import { isUnreachableRoom, resolveQuestionDestination } from './question-destination.js';
-import { agentAuthoredSegments, renderRound } from './question-render.js';
+import { renderRound } from './question-render.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
 import { registerThread, releaseQuestionThread } from './thread-registry.js';
 
@@ -128,27 +128,54 @@ async function reportUndeliverable(
  */
 // cm:guard ONE statement, and the `where` on the conflict branch is what makes it a claim: the drain runs on EVERY core instance, and the DDP connection's advisory lock guards the socket rather than this table. Two instances deriving the same owed round and both posting is a question asked twice in one room, and `onConflictDoUpdate` without this predicate prevents only the second ROW (ISS-978 criterion 5).
 // cm:guard the claim is written BEFORE the post and is deliberately not `delivered`: it says an attempt is in flight, never that one succeeded, so a claim whose process died is retried the moment its `next_attempt_at` passes rather than being mistaken for a delivery (ISS-978 criterion 6).
-async function claimRound(owed: OwedRound, now: Date): Promise<boolean> {
-  const attempts = owed.attempts + 1;
-  const nextAttemptAt = new Date(now.getTime() + RETRY_BACKOFF_MS * attempts);
+// cm:guard the attempt count is computed BY THE ROW and read back, never carried in from the derivation:
+// `owedRounds` reads every round before the loop posts any of them, so `owed.attempts` is a value from
+// before this claim and writing `owed.attempts + 1` under `set:` is a lost update — a second drain that
+// derived the same round at the same moment overwrites the first one's increment with its own copy of
+// the same stale number. The count then stops rising, `MAX_ATTEMPTS` is never reached, and the
+// exhaustion branch below — the one thing that tells anybody a question will not be asked — never runs
+// (ISS-978 F2).
+// cm:guard `now` is taken at the CLAIM and not handed down from the drain: the loop is sequential and
+// posts to another host, so a `now` captured before it can be minutes stale by the time a later round
+// is claimed, and `nextAttemptAt = staleNow + backoff` is then a retry time already in the past. That
+// round is immediately re-derivable by any other core instance while this one is still posting it,
+// which is the same question in the same room twice (ISS-978 F1).
+// cm:guard serialise to ISO and cast before binding — postgres-js throws on a raw `Date` param at bind time, so the claim fails rather than mis-selecting and the whole drain is lost.
+async function claimRound(owed: OwedRound, now: Date): Promise<number | null> {
+  const attempts = sql<number>`coalesce(${rocketchatQuestionDeliveries.attempts}, 0) + 1`;
   const claimed = await db
     .insert(rocketchatQuestionDeliveries)
     .values({
       questionId: owed.questionId,
       round: owed.round,
       status: 'claimed',
-      attempts,
-      nextAttemptAt,
+      attempts: 1,
+      nextAttemptAt: new Date(now.getTime() + RETRY_BACKOFF_MS),
       updatedAt: now,
     })
     .onConflictDoUpdate({
       target: [rocketchatQuestionDeliveries.questionId, rocketchatQuestionDeliveries.round],
-      set: { status: 'claimed', attempts, nextAttemptAt, updatedAt: now },
-      // cm:guard serialise to ISO and cast before binding — postgres-js throws on a raw `Date` param at bind time, so the claim fails rather than mis-selecting and the whole drain is lost.
+      set: {
+        status: 'claimed',
+        attempts,
+        nextAttemptAt: sql`${now.toISOString()}::timestamptz + (${RETRY_BACKOFF_MS} * ${attempts}) * interval '1 millisecond'`,
+        updatedAt: now,
+      },
       setWhere: sql`${rocketchatQuestionDeliveries.status} <> 'delivered' and (${rocketchatQuestionDeliveries.nextAttemptAt} is null or ${rocketchatQuestionDeliveries.nextAttemptAt} <= ${now.toISOString()}::timestamptz)`,
     })
-    .returning({ id: rocketchatQuestionDeliveries.id });
-  return claimed.length > 0;
+    .returning({ attempts: rocketchatQuestionDeliveries.attempts });
+  // cm:guard an empty `returning` is the claim being REFUSED by `setWhere` — another instance holds the
+  // round — and is the only thing that reads as null here. A row that came back without its count would
+  // be a schema that has stopped matching this query, so it throws rather than being read as a refusal:
+  // silently treating it as held would wedge every delivery on this box with nothing in the log.
+  const row = claimed[0];
+  if (!row) return null;
+  if (typeof row.attempts !== 'number') {
+    throw new Error(
+      `rocketchat.question-delivery: the claim on question ${owed.questionId} round ${owed.round} returned a row with no attempt count`,
+    );
+  }
+  return row.attempts;
 }
 
 async function settle(
@@ -181,15 +208,20 @@ async function settle(
 // silence is OURS" (ISS-978). `refuse` is the one place that settles and tells, so exhaustion goes
 // through it like every other cause; `undeliverable` then retries flat and uncapped, which is right
 // here too — a parked run still needs its question asked, and the operator has been told once.
+// cm:guard the number read here is the one the CLAIM wrote and returned, not `owed.attempts + 1`: the
+// derivation's copy is from before the claim, so the exhaustion test would be taken against a count
+// that a competing drain has already moved past — the round would keep failing quietly beyond
+// MAX_ATTEMPTS and never settle (ISS-978 F1, F2).
 async function noteFailure(
   owed: OwedRound,
+  attempt: number,
   lastError: string,
   now: Date,
 ): Promise<'failed' | 'undeliverable'> {
-  if (owed.attempts + 1 >= MAX_ATTEMPTS) {
+  if (attempt >= MAX_ATTEMPTS) {
     return refuse(
       owed,
-      `this round failed ${owed.attempts + 1} times and will not be retried on the ordinary schedule — the last failure was: ${lastError}`,
+      `this round failed ${attempt} times and will not be retried on the ordinary schedule — the last failure was: ${lastError}`,
       now,
     );
   }
@@ -223,7 +255,8 @@ export async function deliverOwedRound(
   const step = question.steps[owed.round - 1];
   if (!step) return 'failed';
 
-  if (!(await claimRound(owed, now))) return 'held';
+  const attempt = await claimRound(owed, now);
+  if (attempt === null) return 'held';
 
   const destination = await resolveQuestionDestination({
     questionId: owed.questionId,
@@ -235,16 +268,44 @@ export async function deliverOwedRound(
     return refuse(owed, destination.reason, now);
   }
 
-  const verdict = screenAtDoor('question-delivery', agentAuthoredSegments(step));
-  if (!verdict.ok) {
+  const [issue] = owed.issueId
+    ? await db
+        .select({ issSeq: issues.issSeq })
+        .from(issues)
+        .where(eq(issues.id, owed.issueId))
+        .limit(1)
+    : [];
+  // cm:guard the round is RENDERED before it is screened, and the screen reads the value the render
+  // handed back rather than a segment list assembled beside it. Those were two expressions here until
+  // ISS-978 — `screenAtDoor(..., agentAuthoredSegments(step))` and `renderRound(...)` — with nothing
+  // but intent connecting the string that was judged to the string that was posted, which is exactly
+  // what F5 found. The render now owns both halves and `screenForDoor` mints a proof naming the text.
+  const screening = screenForDoor(
+    'question-delivery',
+    renderRound({
+      issueKey: issue?.issSeq
+        ? formatIssueRef(await activeIssuePrefix(owed.projectId), issue.issSeq)
+        : null,
+      step,
+      rounds: question.steps.length,
+      parkDeadlineAt: question.parkDeadlineAt ?? null,
+      askedBy: askerOf(question.origin ?? null),
+    }),
+  );
+  if (!screening.ok) {
     // cm:guard the refusal is NOT posted as a fallback message into the room: the only text this round has is the text that failed the screen, and posting a stand-in would tell somebody a decision is waiting while hiding what it is. The round stays owed and the log names the problems (ISS-978 criterion 28).
     logger.error(
-      { questionId: owed.questionId, round: owed.round, problems: problemsOf(verdict) },
+      {
+        questionId: owed.questionId,
+        round: owed.round,
+        problems: problemsOf(screening.verdict),
+      },
       'rocketchat.question-delivery: the round was refused by the operator screen; not posted',
     );
     return await noteFailure(
       owed,
-      `screen refused the round: ${problemsOf(verdict).join('; ')}`,
+      attempt,
+      `screen refused the round: ${problemsOf(screening.verdict).join('; ')}`,
       now,
     );
   }
@@ -254,7 +315,7 @@ export async function deliverOwedRound(
     questionId: owed.questionId,
   });
   if (!auth) {
-    return await noteFailure(owed, 'the connection carries no usable credentials', now);
+    return await noteFailure(owed, attempt, 'the connection carries no usable credentials', now);
   }
 
   const ref = {
@@ -274,23 +335,6 @@ export async function deliverOwedRound(
     }
   }
 
-  const [issue] = owed.issueId
-    ? await db
-        .select({ issSeq: issues.issSeq })
-        .from(issues)
-        .where(eq(issues.id, owed.issueId))
-        .limit(1)
-    : [];
-  const text = renderRound({
-    issueKey: issue?.issSeq
-      ? formatIssueRef(await activeIssuePrefix(owed.projectId), issue.issSeq)
-      : null,
-    step,
-    rounds: question.steps.length,
-    parkDeadlineAt: question.parkDeadlineAt ?? null,
-    askedBy: askerOf(question.origin ?? null),
-  });
-
   // cm:guard the POST has a try of its own, and the anchor is given back only from here. A post that returned is a message somebody can already see and reply to, so releasing the anchor after one would leave a real round standing under a triple nothing owns: replies to it open ordinary windows, and another question can take the same anchor and consume them. Releasing is about an anchor whose message never appeared, which is exactly and only a post that threw (ISS-1091 criteria 20, 21).
   let receipt: { messageId: string | null };
   try {
@@ -301,8 +345,8 @@ export async function deliverOwedRound(
         rid: destination.rid,
         ...(destination.tmid ? { tmid: destination.tmid } : {}),
       },
-      text,
-      { ok: true, problems: problemsOf(verdict) },
+      screening.proven.text,
+      screening.proven,
     );
   } catch (err) {
     await releaseTakenAnchor(destination, owed.questionId);
@@ -318,7 +362,7 @@ export async function deliverOwedRound(
         now,
       );
     }
-    return await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
+    return await noteFailure(owed, attempt, err instanceof Error ? err.message : String(err), now);
   }
 
   // cm:guard everything past the post KEEPS the anchor, whatever it does: the round is on the wall of a room, and the retry that follows has to find the same triple rather than race a competitor for it.
@@ -327,6 +371,7 @@ export async function deliverOwedRound(
     if (!tmid) {
       return await noteFailure(
         owed,
+        attempt,
         'the post named no message id, so no thread can be registered',
         now,
       );
@@ -344,7 +389,7 @@ export async function deliverOwedRound(
       { err, questionId: owed.questionId, round: owed.round, rid: destination.rid },
       'rocketchat.question-delivery: the round was posted and recording it failed',
     );
-    return await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
+    return await noteFailure(owed, attempt, err instanceof Error ? err.message : String(err), now);
   }
 }
 
@@ -383,10 +428,20 @@ export interface QuestionDrainResult {
   held: number;
 }
 
+// cm:guard the clock is READ PER ROUND and not once for the pass: this loop is sequential and every
+// iteration posts to another host, so a drain over a dozen owed rounds spans minutes. A single `now`
+// captured at the top then becomes the retry time written for the LAST round — `staleNow + backoff`
+// can already be in the past when it lands, which makes that round immediately re-derivable by any
+// other core instance while this one is still posting it. That is the same question in the same room
+// twice, which is the one thing `claimRound` exists to prevent (ISS-978 F1).
+// cm:why a caller may still pass a fixed `Date`, and that means "hold time here": the retry-schedule
+// tests drive the backoff by moving one value, and a clock they cannot freeze is a clock they cannot
+// test against.
 export async function drainQuestionDeliveries(
-  now: Date = new Date(),
+  clock: Date | (() => Date) = () => new Date(),
 ): Promise<QuestionDrainResult> {
-  const owed = await owedRounds(now);
+  const at = typeof clock === 'function' ? clock : (): Date => clock;
+  const owed = await owedRounds(at());
   const result: QuestionDrainResult = {
     owed: owed.length,
     delivered: 0,
@@ -395,7 +450,7 @@ export async function drainQuestionDeliveries(
     held: 0,
   };
   for (const round of owed) {
-    const outcome = await deliverOwedRound(round, now);
+    const outcome = await deliverOwedRound(round, at());
     result[outcome] += 1;
   }
   return result;

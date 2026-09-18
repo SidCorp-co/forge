@@ -9,6 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { codeAuthored } from '../conversations/ports.js';
 
 const published: Array<{ room: string; event: string; data: unknown }> = [];
 
@@ -66,7 +67,7 @@ beforeEach(() => {
 
 describe('the Forge UI adapter · deliver', () => {
   it('publishes to each live person’s own user room and to no other room', async () => {
-    const receipt = await webConversationPorts.deliver(venue, { text: 'hello', problems: [] });
+    const receipt = await webConversationPorts.deliver(venue, codeAuthored('hello'));
 
     expect(published.map((p) => p.room).sort()).toEqual(['user:alice', 'user:bob']);
     expect(published.every((p) => p.event === WEB_CONVERSATION_EVENT)).toBe(true);
@@ -75,12 +76,15 @@ describe('the Forge UI adapter · deliver', () => {
 
   // cm:guard the one this file exists for: a project-room fan-out passes every other assertion here, because the tab that asked is subscribed to both.
   it('publishes to no project room', async () => {
-    await webConversationPorts.deliver(venue, { text: 'hello', problems: [] });
+    await webConversationPorts.deliver(venue, codeAuthored('hello'));
     expect(published.filter((p) => p.room.startsWith('project:'))).toEqual([]);
   });
 
   it('carries the text and the screen’s verdict, so a tab renders without reading back', async () => {
-    await webConversationPorts.deliver(venue, { text: 'the answer', problems: ['softened'] });
+    await webConversationPorts.deliver(venue, {
+      ...codeAuthored('the answer'),
+      problems: ['softened'],
+    });
     expect(published[0]?.data).toMatchObject({
       conversationId: 'conv-1',
       role: 'assistant',
@@ -95,23 +99,23 @@ describe('the Forge UI adapter · deliver', () => {
       if (userId === 'bob') throw new Error('no role on this project any more');
       return ['project-1'];
     });
-    await webConversationPorts.deliver(venue, { text: 'hello', problems: [] });
+    await webConversationPorts.deliver(venue, codeAuthored('hello'));
     expect(published.map((p) => p.room)).toEqual(['user:alice']);
   });
 
   it('refuses by name when the room went while the turn ran', async () => {
     findConversation.mockResolvedValue(null);
-    await expect(
-      webConversationPorts.deliver(venue, { text: 'hello', problems: [] }),
-    ).rejects.toThrow(/no conversation is open at web venue "venue-1"/);
+    await expect(webConversationPorts.deliver(venue, codeAuthored('hello'))).rejects.toThrow(
+      /no conversation is open at web venue "venue-1"/,
+    );
     expect(published).toEqual([]);
   });
 
   it('delivers to a room nobody has open without calling it a failure', async () => {
     listParticipants.mockResolvedValue([{ kind: 'handle', userId: 'agent-1' }]);
-    await expect(
-      webConversationPorts.deliver(venue, { text: 'hello', problems: [] }),
-    ).resolves.toMatchObject({ messageId: expect.any(String) });
+    await expect(webConversationPorts.deliver(venue, codeAuthored('hello'))).resolves.toMatchObject(
+      { messageId: expect.any(String) },
+    );
     expect(published).toEqual([]);
   });
 });

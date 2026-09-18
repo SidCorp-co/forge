@@ -232,7 +232,10 @@ describe('deliverEscalationReplyOnce', () => {
         tmid: undefined,
       },
       'Bao says: here is the synthesized answer.',
-      { ok: true, problems: [] },
+      // cm:guard the proof NAMES the string being posted, which is the assertion ISS-978 F5 found
+      // missing everywhere: `{ ok: true, problems: [] }` was satisfied by any literal and said nothing
+      // about which text had been screened.
+      { text: 'Bao says: here is the synthesized answer.', door: 'escalation-synthesis' },
     );
     expect(sendFixedReply.mock.calls[0]?.[1]).not.toContain('raw PM answer');
   });
