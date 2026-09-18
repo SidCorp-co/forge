@@ -238,9 +238,5 @@ export interface ImprovementMessageEntry extends ImprovementMessage {
   } | null;
 }
 
-export type UxContractRuleRow = typeof schema.uxContractRules.$inferSelect;
-export type UxFindingRow = typeof schema.uxFindings.$inferSelect;
-
-
 // cm:why ISS-800 — Divergence Charter row type, Update Pipeline §5
 export type DivergenceCharterRow = typeof schema.divergenceCharters.$inferSelect;

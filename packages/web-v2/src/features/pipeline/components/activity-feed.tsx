@@ -154,7 +154,7 @@ function ActivityRow({ entry }: { entry: ActivityEntry }) {
             {entry.outcome}
           </span>
           {entry.repeats > 1 && (
-            // cm:guard the sr-only twin is not decoration — WHICH attempts folded exists nowhere else on this screen, and a tooltip on a non-interactive badge reaches a pointer and nothing else, so without it a screen reader is told sixteen attempts collapsed and never which ones (ux-contract §4)
+            // cm:guard the sr-only twin is not decoration — WHICH attempts folded exists nowhere else on this screen, and a tooltip on a non-interactive badge reaches a pointer and nothing else, so without it a screen reader is told sixteen attempts collapsed and never which ones. The rule: information a sighted reader gets from a hover has to reach a screen reader some other way
             <Tooltip label={repeatLabel(entry.positions)}>
               <span className="inline-flex">
                 <Badge tone={entry.tone === "failure" ? "red" : "neutral"}>

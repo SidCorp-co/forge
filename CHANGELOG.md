@@ -2379,6 +2379,10 @@
   that turned it on; nothing else changed.
 
 
+- **The UX Contract settings screen is retired.** Your project's UI checklist stays word for
+  word as an ordinary rule on the Knowledge screen, fetched when a change touches the UI
+  instead of pasted into every briefing.
+
 - **GitHub issues are no longer copied into your project, and no GitHub event changes or closes a
   Forge issue.** A project that wants outside reports admits them once, through a setting that
   starts closed everywhere:
