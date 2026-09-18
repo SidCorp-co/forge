@@ -65,6 +65,15 @@ export const FAILURE_CAUSES = [
   'heartbeat_timeout',
   /** nobody picked it up. 20 sessions all-time. */
   'queue_timeout',
+  /** a worker reported on the session and then stopped, and no report that a
+   *  turn had begun ever arrived. NAMED FOR WHAT WAS OBSERVED and not for what
+   *  it usually means: core sees reports, never the pane, so silence past the
+   *  quiet threshold establishes that no turn was REPORTED and never that none
+   *  ran. Writers: jobs/loop-monitor.ts (the quiet arm of the queue hop), and
+   *  the runner's `turn_evidence::never_started_reason` through `CAUSE_RULES`,
+   *  which is the reading that CAN say more because it watches the pane
+   *  (ISS-1101, pairing with ISS-1096). New; no live rows by construction. */
+  'turn_never_reported',
   /** the ack hop reaped it. 7 sessions all-time. */
   'no_client_ack',
   /** the websocket publish that carries a chat turn failed. Writers:
@@ -182,6 +191,8 @@ export const FAILURE_CAUSE_PRESENTATION: Record<FailureCause, FailureCausePresen
   session_lost: 'failure',
   heartbeat_timeout: 'swept',
   queue_timeout: 'swept',
+  // cm:why `failure` and not `swept` beside the two timeouts above: those are cleanup nobody need act on, and this one asks a person to go and look at why nothing reported a turn — which is the whole reason the runner half names the CONDITION rather than a timeout.
+  turn_never_reported: 'failure',
   no_client_ack: 'swept',
   ws_publish_failed: 'failure',
   forge_budget_exhausted: 'swept',

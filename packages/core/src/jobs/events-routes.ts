@@ -115,6 +115,36 @@ function isParkEvent(e: { kind: string; data?: unknown }): boolean {
   return runtimeStateOf(e) === 'awaiting_input';
 }
 
+/** The runtime states that report a turn ran, as against one that reports the process only. */
+// cm:guard `starting` is NOT here and that is the whole membership rule: it is what `turn_evidence.rs` beats for a pane whose prompt was DELIVERED and never submitted, which is the reading this set exists to refuse. `closed` is not here either — a session that ended reports nothing about a turn having begun.
+const TURN_RUNTIME_STATES: ReadonlySet<SessionRuntimeState> = new Set(['working', 'checkpointing']);
+
+/** The frame kinds that are the agent's own output, and so cannot exist unless a turn was asked. */
+// cm:guard an ALLOWLIST here, opposite to `isPartialStreamEvent`'s denylist, and the asymmetry is the point: that one decides what to STORE, where a missed kind is data lost forever, while this one decides what to ASSERT, where a missed kind costs a session the `running` reading until its next beat carries a state. A new kind is admitted here only once somebody can say a turn must have run for it to exist.
+const TURN_EVENT_KINDS: ReadonlySet<string> = new Set([
+  'stdout',
+  'stderr',
+  'tool_call',
+  'tool_result',
+  'result',
+]);
+
+/**
+ * Whether this frame reports that a turn BEGAN, as against reporting that the
+ * box is alive.
+ */
+// cm:why ISS-1101 — `!isParkEvent` answered true for the pane lane's own beat, `("progress", {"source":"pool_jobs","state":"running"})`, which carries no `runtimeState` at all and is the ONLY thing that lane posts before a turn runs. Core therefore read `running` off a pane holding an unsubmitted prompt: measured sid-desk 2026-09-18, a release batch at $0.00 spend for thirty-one minutes with four issues sitting at `releasing` and no reader able to tell it from a deploy.
+// cm:guard a `progress` frame carrying NO `runtimeState` is NOT evidence, and that is the discriminating case rather than an edge one — `db/schema.ts` states that a NULL `runtime_state` means "this runner never reported, infer nothing", and inferring `running` from it is the same assertion one column over. `intervention` and `kill_ack` are absent for the same reason: neither is the agent's output.
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/turn_evidence.rs — `Evidence::runtime_state` is what decides which word the beat carries, and `pool_jobs.rs#CoreReport::progress` is what puts it on the wire. A rename on either side fails nothing: the key is read by name out of untyped jsonb and an unknown word is DROPPED, which silently restores the unconditional flip this rule exists to remove.
+// cm:guard the DECLARED cost, and it is a PRE-EXISTING hole made visible rather than one opened here: a box whose pane it could not hook beats `Evidence::Unproven`, which carries no `runtimeState` at all, so its session reads `queued` with a NULL `runtime_state` and a fresh `last_heartbeat_at` for the whole job. NOTHING on the session axis terminates that row while the box keeps beating — the queue arm needs `last_heartbeat_at IS NULL`, the quiet arm needs it OLDER than the cutoff, the heartbeat hop needs `status='running'` AND a stale beat, and the no-client hop excludes `pipeline`/`pm` through `NON_CLIENT_METADATA_TYPES`. That was equally true before this change and for the same reason: the queue arm has always carried `status='queued'`, and on the old predicate the first beat flipped the row to `running`, so the queue arm could never see it either. What moved is the LABEL, from a `running` that was a lie to a `queued` that is not. The job axis is unchanged too: every ingested frame becomes a `job_events` row, so `progress-signal.ts#LAST_PROGRESS_AT` stays fresh and the result hop reads the job as progressing on either predicate — and the pool's orphan-hygiene exclusion keys on the parent `pipeline_run`, never on this status, so no runner slot turns on it. ISS-1096 criterion 18 recorded the same hole from the box's side: for an unhooked job there is no bound at all from this box. Bounding it needs evidence neither side has and is nobody's work yet.
+function isTurnEvidence(e: { kind: string; data?: unknown }): boolean {
+  if (e.kind === 'progress') {
+    const state = runtimeStateOf(e);
+    return state !== undefined && TURN_RUNTIME_STATES.has(state);
+  }
+  return TURN_EVENT_KINDS.has(e.kind);
+}
+
 // cm:guard a DENYLIST of one proven-unread frame, never an allowlist — a frame kind the CLI adds tomorrow must keep being stored, and an allowlist would drop it in silence, which is the one failure this filter must not become
 // cm:edge contract -> packages/core/src/lib/agent-stream-parser.ts — `stream_event` is dropped because that parser answers `{messages:[]}` for it and nothing else in core or web reads one; teaching any reader to consume one means deleting this filter FIRST, because the frames it would need were never stored
 // cm:guard filter ONLY what is persisted, never the batch the signals above read — the ack stamp, the session heartbeat, `runtime_state` and the derive cadence are all computed from the UNFILTERED batch above, so dropping these rows cannot make a busy session look quiet, which is the whole reason `--include-partial-messages` is on (ISS-479)
@@ -216,6 +246,8 @@ jobEventsRoutes.post(
     if (linkedSessionId && events.some((e) => !isParkEvent(e))) {
       try {
         const heartbeatNow = new Date();
+        // cm:guard ISS-1101 — the two halves of this statement answer DIFFERENT questions and only one of them needs evidence. `lastHeartbeatAt`/`updatedAt` say the box is alive, which any non-park frame proves; `status`/`startedAt` say the AGENT began a turn, which only `isTurnEvidence` proves. Collapsing them back into one predicate is the defect: the session then reads running-and-recently-alive, the reading an operator trusts most, off a beat from a pane nobody had asked anything.
+        const sawTurn = events.some(isTurnEvidence);
         // cm:why ONE statement (ISS-1014), replacing a CAS on `status='queued'` that missed on every batch after the first plus a second UPDATE that then did the bump — two statements inside a transaction, about twice a second for every running job on the box. The CTE carries the row as it stood BEFORE the write, which is the only way one statement can still report whether the queued→running flip was THIS batch's, and that is what keeps the broadcast firing exactly once.
         // cm:guard the `FOR UPDATE` in the CTE is what makes that exactly-once, and a plain `UPDATE ... FROM agent_sessions prev` self-join is NOT equivalent: under READ COMMITTED a second concurrent first batch would block on the row lock, re-check the now-`running` row against a predicate that still admits it, and read its own pre-write snapshot as `queued` — two batches, two `startedRunning`, two broadcasts of a flip that happened once. `FOR UPDATE` makes the loser re-read the WINNER's row, so it sees `running` and stays quiet.
         // cm:guard the CTE carries the status predicate, and the UPDATE therefore matches nothing when the session is already terminal — the join has no row to join to. Widening the CTE's `IN` list would turn this into a door that revives a cancelled or failed session, and `lifecycle/transition-guard.test.ts` would not catch it, because `'running'` is not a terminal literal.
@@ -234,13 +266,22 @@ jobEventsRoutes.post(
             )
             .for('update'),
         );
+        // cm:guard the flip columns are OMITTED rather than written back to themselves when the batch
+        // carries no turn evidence, and it is still ONE statement either way — the ISS-1014 rule that
+        // put this CTE here in the first place. A `status = status` self-assignment would read the same
+        // to the row and hand every reader of `kernel_transitions` a status write that changed nothing.
+        const flip = sawTurn
+          ? {
+              status: 'running' as const,
+              startedAt: sql`CASE WHEN ${previous.status} = 'queued' THEN ${heartbeatNow.toISOString()}::timestamptz ELSE ${agentSessions.startedAt} END`,
+            }
+          : {};
         const beat = await withKernelMarker(db, async (tx) =>
           tx
             .with(previous)
             .update(agentSessions)
             .set({
-              status: 'running',
-              startedAt: sql`CASE WHEN ${previous.status} = 'queued' THEN ${heartbeatNow.toISOString()}::timestamptz ELSE ${agentSessions.startedAt} END`,
+              ...flip,
               lastHeartbeatAt: heartbeatNow,
               updatedAt: heartbeatNow,
             })
@@ -250,7 +291,12 @@ jobEventsRoutes.post(
               id: agentSessions.id,
               projectId: agentSessions.projectId,
               deviceId: agentSessions.deviceId,
-              startedRunning: sql<boolean>`${previous.status} = 'queued'`,
+              // cm:guard the broadcast flag reads the SAME condition the write did. Left as the bare
+              // `prev.status = 'queued'` it announces a flip to every listener on a batch that did not
+              // make one, and the room then shows `running` for a row that still says `queued`.
+              startedRunning: sawTurn
+                ? sql<boolean>`${previous.status} = 'queued'`
+                : sql<boolean>`false`,
             }),
         );
         const beaten = beat[0];

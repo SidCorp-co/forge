@@ -7,7 +7,7 @@ const zeroAxis = { reaped: 0, killRequested: 0, awaitingKill: 0 };
 // cm:guard the loop monitor stays MOCKED here — this suite asserts the sweeper's own contract (pass ordering, the alarm passes, the still-active reapers), and unmocking it pulls in the whole reap graph, whose writes then answer assertions about passes that never ran (ISS-449)
 const zeroLoopResult = {
   ackMisses: zeroAxis,
-  sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
+  sessions: { queueTimedOut: 0, turnNeverReported: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
   sessionLostJobs: zeroAxis,
   resultMisses: zeroAxis,
 };
@@ -255,7 +255,7 @@ describe('runPipelineSweep — loop-first ordering (ISS-449)', () => {
     const sessionLostJobs = { reaped: 3, killRequested: 0, awaitingKill: 0 };
     runLoopMonitorMock.mockResolvedValueOnce({
       ackMisses,
-      sessions: { queueTimedOut: 2, heartbeatTimedOut: 0, noClientAcked: 0 },
+      sessions: { queueTimedOut: 2, turnNeverReported: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
       sessionLostJobs,
       resultMisses: zeroAxis,
     });
@@ -263,7 +263,7 @@ describe('runPipelineSweep — loop-first ordering (ISS-449)', () => {
     expect(runLoopMonitorMock).toHaveBeenCalledTimes(1);
     expect(result.loop).toEqual({
       ackMisses,
-      sessions: { queueTimedOut: 2, heartbeatTimedOut: 0, noClientAcked: 0 },
+      sessions: { queueTimedOut: 2, turnNeverReported: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
       sessionLostJobs,
       resultMisses: zeroAxis,
     });
@@ -277,31 +277,76 @@ describe('alarmZombieSessions — demoted to alarm-only (ISS-449)', () => {
   it('keeps the pipeline/pm scoping + ISS-420 no-client predicate in the detection SELECTs', async () => {
     await alarmZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
 
-    // cm:guard the COUNT is the assertion — three detection SELECTs (queued-past-timeout, running-with-stale-heartbeat, no-client-ack), and a fourth pass added without a fourth SELECT asserted here would alarm rows nobody proved were alarmable.
-    expect(dbExecute).toHaveBeenCalledTimes(3);
-    const [pass1, pass2, pass3] = dbExecute.mock.calls.map((c) => sqlText(c[0]));
+    // cm:guard the COUNT is the assertion — four detection SELECTs since ISS-1101 split the queue arm (never-heard-from, heard-then-silent, running-with-stale-heartbeat, no-client-ack), and a fifth pass added without a fifth SELECT asserted here would alarm rows nobody proved were alarmable.
+    expect(dbExecute).toHaveBeenCalledTimes(4);
+    const [pass1, pass2, pass3, pass4] = dbExecute.mock.calls.map((c) => sqlText(c[0]));
 
     expect(pass1).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
     expect(pass2).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass3).toMatch(/COALESCE/i);
+    expect(pass3).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
+    expect(pass4).toMatch(/COALESCE/i);
     expect(
-      pass3,
+      pass4,
       'this arm and the no-client hop it alarms for are ONE predicate, and both must exclude every type that never reports a `claude_session_id`: a run session (reaped by `devices/run-session-reaper.ts` — two sweeps over one row is two writers on one fact) and a master (a tmux pane, which matches every term of this arm and survives only on the daemon re-registering it) (ISS-933 criteria 21 and 25a)',
     ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'master'\s*,\s*'run_session'\s*\)/);
-    expect(pass3).toMatch(/claude_session_id\s+IS\s+NULL/i);
+    expect(pass4).toMatch(/claude_session_id\s+IS\s+NULL/i);
     expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
-    expect(pass2).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
+    expect(pass3).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
+  });
+
+  // cm:guard ISS-1101 — this file is the MIRROR half, and a mirror that stops matching the loop is
+  // not a lesser failure than one that over-matches: every claimed-and-beating queued session would
+  // be alarmed as a loop-miss every single minute, which is how the coverage proof turns into noise
+  // nobody reads. Both senses asserted, because leaving the same one in both queries leaves the
+  // second alarm inert and everything else here green.
+  it("mirrors the loop's two queue arms, split on last_heartbeat_at in opposite senses", async () => {
+    await alarmZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
+
+    const [neverHeard, heardThenSilent] = dbExecute.mock.calls.map((c) => sqlText(c[0]));
+    expect(neverHeard).toMatch(/s\.last_heartbeat_at\s+IS\s+NULL/i);
+    expect(neverHeard).not.toMatch(/s\.last_heartbeat_at\s+IS\s+NOT\s+NULL/i);
+    expect(heardThenSilent).toMatch(/s\.last_heartbeat_at\s+IS\s+NOT\s+NULL/i);
+    expect(heardThenSilent).toMatch(/s\.status\s*=\s*'queued'/i);
+  });
+
+  // cm:guard the heard-then-silent arm alarms on the HEARTBEAT hop. Filed under `claim` it puts a
+  // loop-miss about a session a worker plainly holds beside the ones nobody ever picked up, and the
+  // two call for opposite things from whoever reads the alarm.
+  it('alarms a heard-then-silent queued session on the heartbeat hop, not the claim hop', async () => {
+    dbExecute
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([{ id: 's-n', project_id: 'p1', pipeline_run_id: null }])
+      .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([]);
+
+    const result = await alarmZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
+
+    expect(result.turnNeverReported).toBe(1);
+    expect(loggerWarn).toHaveBeenCalledWith(
+      expect.objectContaining({ hop: 'heartbeat', ids: ['s-n'] }),
+      'loop-miss',
+    );
+    expect(loggerWarn).not.toHaveBeenCalledWith(
+      expect.objectContaining({ hop: 'claim', ids: ['s-n'] }),
+      'loop-miss',
+    );
   });
 
   it('a match is alarmed (loop-miss + wedge), never reaped', async () => {
     dbExecute
       .mockResolvedValueOnce([{ id: 's-q', project_id: 'p1', pipeline_run_id: null }])
       .mockResolvedValueOnce([])
+      .mockResolvedValueOnce([])
       .mockResolvedValueOnce([]);
 
     const result = await alarmZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
 
-    expect(result).toEqual({ queueTimedOut: 1, heartbeatTimedOut: 0, noClientAcked: 0 });
+    expect(result).toEqual({
+      queueTimedOut: 1,
+      turnNeverReported: 0,
+      heartbeatTimedOut: 0,
+      noClientAcked: 0,
+    });
     expect(loggerWarn).toHaveBeenCalledWith(
       expect.objectContaining({ hop: 'claim', ids: ['s-q'] }),
       'loop-miss',
