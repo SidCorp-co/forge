@@ -19,7 +19,7 @@ use std::sync::Mutex;
 
 use crate::daemon::agent_activity::{now_ms, Activities};
 use crate::daemon::turn_evidence::{self, Evidence, Watch};
-use crate::daemon::{hook_install, session_tokens, terminal};
+use crate::daemon::{control, hook_install, session_tokens, terminal};
 use crate::error::{Error, Result};
 use crate::transport::events::{self, JobEventInput};
 use crate::transport::pool::{self, PoolEntry, Prepared, Started};
@@ -333,7 +333,14 @@ pub async fn take_one(
     // cm:guard established BEFORE the pane is opened, and it has to be: Claude Code reads
     // `.claude/settings.local.json` and its environment at STARTUP and never again, so a channel
     // opened afterwards is a channel this pane will never have.
-    let (env, channel) = open_channel(&cwd, &prepared.agent_session_id, project_id, &pane, tokens);
+    let (env, channel) = open_channel(
+        &cwd,
+        &prepared.agent_session_id,
+        project_id,
+        &pane,
+        tokens,
+        control::HOOKS_CAN_REPORT,
+    );
 
     if let Err(e) = panes.open(&pane, &cwd, &prompt, &env).await {
         give_back(pool_ports, &prepared.job_id, session_id).await;
@@ -405,8 +412,21 @@ fn open_channel(
     project_id: &str,
     pane: &str,
     tokens: Option<&session_tokens::SessionTokens>,
+    hooks_can_report: bool,
 ) -> (Vec<(String, String)>, Option<String>) {
     let env = terminal::pane_env();
+    // cm:guard FIRST, before the mint and before the hooks are written: on a platform whose daemon
+    // cannot host the control socket there is no frame to receive, so a capability minted here would
+    // buy a `Hooked` watch whose silence means nothing and would fail every healthy job at the
+    // window. Nothing else in this function is platform-aware — `hook_install::install` and
+    // `SessionTokens::mint` both succeed on windows — so this is the only place that asymmetry can
+    // be answered.
+    if !hooks_can_report {
+        tracing::info!(
+            "[pool] {project_id}: this platform hosts no control socket — {pane} starts unhooked, and nothing will be concluded from its silence"
+        );
+        return (env, None);
+    }
     // cm:guard `agent_session_id` is `#[serde(default)]` on `PreparedJob`, so an older core answers the empty string rather than failing to parse. Minting a capability for "" would put an entry in the token map that every pane on the box could claim.
     if agent_session_id.is_empty() {
         tracing::error!(
@@ -1049,6 +1069,68 @@ mod tests {
             tokens: session_tokens::SessionTokens::at(home.path().join("control-tokens.json")),
             _home: home,
         }
+    }
+
+    // cm:guard THE pair this whole `hooks_can_report` parameter exists for, and they differ in that
+    // one argument and nothing else. A `#[cfg(not(unix))]` arm would make the second unreachable on
+    // every machine this suite runs on, so the guard would be green here and wrong on windows —
+    // which is the shape ISS-1094 was bitten by and the reason the platform is a value.
+    fn channel_for(hooks_can_report: bool) -> (Vec<(String, String)>, Option<String>, TempHome) {
+        let home = TempHome::new("channel");
+        let tokens = session_tokens::SessionTokens::at(home.path().join("control-tokens.json"));
+        let (env, channel) = open_channel(
+            home.path(),
+            "sess-1",
+            "p1",
+            "forge-job-j1",
+            Some(&tokens),
+            hooks_can_report,
+        );
+        (env, channel, home)
+    }
+
+    #[test]
+    fn a_box_whose_daemon_hosts_the_socket_opens_the_channel() {
+        let (env, channel, _home) = channel_for(true);
+        assert_eq!(
+            channel.as_deref(),
+            Some("sess-1"),
+            "a box that can receive frames claims the session its hooks report under"
+        );
+        assert!(
+            env.iter().any(|(k, _)| k == session_tokens::TOKEN_ENV),
+            "the pane carries the capability its hooks are refused without"
+        );
+    }
+
+    // cm:guard the failing half: on windows `control::serve` is `cfg(not(unix)) -> Err` and
+    // `daemon::run` wraps the whole socket arm in `cfg(unix)`, so no frame can ever arrive — while
+    // `hook_install::install` and `SessionTokens::mint` would both have succeeded. A `Hooked` watch
+    // there is a licence to fail every healthy job on the box at the window.
+    #[test]
+    fn a_box_whose_daemon_hosts_no_socket_opens_none_and_claims_no_session() {
+        let (env, channel, _home) = channel_for(false);
+        assert_eq!(
+            channel, None,
+            "no session id may be claimed where no frame can arrive"
+        );
+        assert!(
+            !env.iter().any(|(k, _)| k == session_tokens::TOKEN_ENV),
+            "no capability is minted into a pane whose reports nothing can receive"
+        );
+    }
+
+    // cm:guard the two halves must not agree by accident — this is what says the parameter is load
+    // bearing rather than decorative, and it is the assertion a reader checks when the guard is
+    // deleted.
+    #[test]
+    fn the_platform_is_what_decides_the_channel_and_nothing_else_differs() {
+        let (_, hooked, _a) = channel_for(true);
+        let (_, unhooked, _b) = channel_for(false);
+        assert_ne!(
+            hooked, unhooked,
+            "same cwd, same session, same token store — only the platform differs"
+        );
     }
 
     async fn take(w: &World, bound: usize) -> Took {

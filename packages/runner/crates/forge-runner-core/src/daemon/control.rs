@@ -183,6 +183,12 @@ pub struct GateMemory {
     allowed: std::collections::HashSet<String>,
 }
 
+/// Whether a session on this box can report a turn at all.
+// cm:guard the SAME fact `serve` states below with its `cfg`, carried as a VALUE so a caller can take it as a parameter. `socket_path`, `hook_install::install` and `SessionTokens::mint` are all platform-independent, so without this a windows box mints a capability, installs hooks, records the job `Hooked` and then never receives a frame — and `turn_evidence` fails every healthy pool job on it at the window. Inert in the dangerous direction, on the one platform no test here runs.
+// cm:guard a value and NOT a `#[cfg(not(unix))]` arm in the caller, which is the whole reason it exists: `cargo check --target x86_64-pc-windows-msvc` dies in `ring` and `libsqlite3-sys` build scripts before this crate is reached, and every test on this box runs where `cfg(unix)` is true — so a mutation planted in such an arm fires nowhere anybody can run it, and the green means nothing. As a parameter both arms are reachable from a linux test (ISS-1096).
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/control.rs:serve — if the socket ever grows a non-unix transport, this moves with `serve`'s gate or the two disagree silently, in the direction that kills healthy releases.
+pub const HOOKS_CAN_REPORT: bool = cfg!(unix);
+
 /// Serve until `cancel` flips.
 // cm:guard REFUSE on a platform with no unix socket, never degrade to a daemon that starts without one. Turn boundaries are how everything on this box tells a working pane from a stopped one, and a daemon that came up with no socket would report healthy while every liveness reader on it went blind.
 #[cfg(not(unix))]
