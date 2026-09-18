@@ -51,6 +51,10 @@ afterAll(async () => {
   if (harness) await harness.cleanup();
 });
 
+function rowsOf<T>(result: unknown): T[] {
+  return Array.isArray(result) ? (result as T[]) : (((result as { rows?: T[] }).rows ?? []) as T[]);
+}
+
 let ownerId: string;
 let projectA: string;
 
@@ -314,6 +318,95 @@ describe('the coverage watermark', () => {
     });
     expect(out.matches).toHaveLength(1);
     expect(out.coverage.messagesBeyondIndex).toBe(0);
+  });
+
+  it('advances past silences that are tabs and newlines, which SQL and TypeScript must agree are empty', async () => {
+    // `btrim` with no second argument trims SPACES only, so a `\n`-only row reads as text to
+    // Postgres and as a silence to `eligibleForIndex`. The tail then counts eleven messages
+    // against a ceiling of ten and every later pass throws, for ever.
+    const room = await openRoom(store, projectA);
+    await say(store, room.id, [{ text: 'the early word: aardvark' }]);
+    await index.indexConversationOnce(room.id);
+    await say(
+      store,
+      room.id,
+      Array.from({ length: 12 }, (_, i) => ({ text: i % 2 === 0 ? '\n' : '\t  \r' })),
+    );
+    await say(store, room.id, [{ text: 'the late word: zebra' }]);
+    const pass = await index.indexConversationOnce(room.id);
+    expect(pass.indexedThroughSeq).toBe(13);
+    const out = await search.searchConversationTranscript({
+      conversationId: room.id,
+      userId: ownerId,
+      query: 'zebra',
+    });
+    expect(out.matches).toHaveLength(1);
+    expect(out.matches[0]?.sources.map((source) => source.seq)).toEqual([0, 13]);
+  });
+
+  it('reports a rebuild that has not caught up rather than the coverage it had before', async () => {
+    // A rebuild throws every passage away and re-indexes a bounded batch, so the watermark
+    // GOES DOWN while it runs. A caller told the old figure would be told the room is fully
+    // indexed by an index that no longer holds most of it.
+    const room = await openRoom(store, projectA);
+    await say(
+      store,
+      room.id,
+      Array.from({ length: index.INDEX_PASS_MESSAGE_LIMIT + 100 }, (_, i) => ({
+        text: `note ${i} about the ladder`,
+      })),
+    );
+    await index.indexConversationOnce(room.id);
+    await index.indexConversationOnce(room.id);
+    const full = await search.searchConversationTranscript({
+      conversationId: room.id,
+      userId: ownerId,
+      query: 'ladder',
+    });
+    expect(full.coverage.messagesBeyondIndex).toBe(0);
+
+    await index.rebuildConversationIndex(room.id);
+    const during = await search.searchConversationTranscript({
+      conversationId: room.id,
+      userId: ownerId,
+      query: 'ladder',
+    });
+    expect(during.coverage).toMatchObject({
+      indexedThroughSeq: index.INDEX_PASS_MESSAGE_LIMIT - 1,
+      messagesBeyondIndex: 100,
+    });
+    expect(during.limitation).toContain('100 newer message(s) are not in it yet');
+  });
+
+  it('holds one snapshot across a rebuild that commits mid-read', async () => {
+    // What the retrieval rests on: inside `repeatable read` the watermark a reader saw does
+    // not move under it, so the figure it reports and the passages it reports are one index.
+    const room = await openRoom(store, projectA);
+    await say(store, room.id, [{ text: 'a word to find: quetzal' }]);
+    await index.indexConversationOnce(room.id);
+    const reader = independent();
+    const seen: number[] = [];
+    await reader.db.transaction(
+      async (tx) => {
+        const first = await tx.execute(
+          sql`SELECT indexed_through_seq AS n FROM conversation_index_state WHERE conversation_id = ${room.id}::uuid`,
+        );
+        seen.push(rowsOf<{ n: number }>(first)[0]?.n ?? -99);
+        await harness.db.execute(
+          sql`UPDATE conversation_index_state SET indexed_through_seq = -1 WHERE conversation_id = ${room.id}::uuid`,
+        );
+        const second = await tx.execute(
+          sql`SELECT indexed_through_seq AS n FROM conversation_index_state WHERE conversation_id = ${room.id}::uuid`,
+        );
+        seen.push(rowsOf<{ n: number }>(second)[0]?.n ?? -99);
+      },
+      { isolationLevel: 'repeatable read', accessMode: 'read only' },
+    );
+    expect(seen).toEqual([0, 0]);
+    const after = await harness.db.execute(
+      sql`SELECT indexed_through_seq AS n FROM conversation_index_state WHERE conversation_id = ${room.id}::uuid`,
+    );
+    expect(rowsOf<{ n: number }>(after)[0]?.n).toBe(-1);
   });
 
   it('names what is beyond it and finds it once the next pass has run', async () => {

@@ -19,7 +19,7 @@ import { db as defaultDb } from '../db/client.js';
 import { conversationMessages } from '../db/schema-conversations.js';
 import { conversationIndexState, conversationPassages } from '../db/schema-transcript-index.js';
 import { identifierTsQuery } from '../db/schema-types.js';
-import { PASSAGE_MAX_MESSAGES, WATERMARK_EMPTY } from './transcript-index.js';
+import { hasText, PASSAGE_MAX_MESSAGES, WATERMARK_EMPTY } from './transcript-index.js';
 
 /** Passages one call may return, however many the caller asks for. */
 export const RETRIEVAL_MAX_RESULTS = 5;
@@ -92,13 +92,24 @@ const clip = (s: string, cap: number): string => (s.length > cap ? s.slice(0, ca
  * Search one room's indexed past.
  */
 // cm:guard `readableConversation` is the FIRST act and its refusal is thrown rather than turned into an empty result: a caller outside the room's scope is told so by name — `CONVERSATION_NO_AUTHORITY`, `CONVERSATION_NO_SCOPE`, `CONVERSATION_OUT_OF_SCOPE`, `NOT_IN_THE_ROOM` — because a narrowed result set and an honest "no matches" are indistinguishable to whoever reads them, and one of them is a leak that looks like an answer (ISS-1090 rule 1).
-// cm:guard COVERAGE is read before the hits, and the order is load-bearing: a pass committing between the two can only make the real coverage better than the one reported, so this understates what is indexed and can never claim coverage the index does not hold. Reading the hits first would let a room report itself fully indexed while showing rows from a pass that had not finished (plan consult F1).
+// cm:guard the coverage, the hits and their source rows are read inside ONE `repeatable read` transaction, and ordering the reads is not a substitute for it: a rebuild deletes every passage and re-indexes a bounded batch, so it LOWERS the watermark while it runs, and a coverage figure read before the hits can outrun the index it is describing rather than lag it. One snapshot is the only arrangement in which the number a caller is told and the passages it is told about are about the same index (plan consult round 4 F2).
 export async function searchConversationTranscript(
   args: TranscriptSearchArgs,
 ): Promise<TranscriptSearchResult> {
   const dbi = args.db ?? defaultDb;
   await readableConversation(args.conversationId, args.userId);
 
+  return dbi.transaction(
+    (tx) => searchInSnapshot(args, tx as unknown as typeof defaultDb),
+    { isolationLevel: 'repeatable read', accessMode: 'read only' },
+  );
+}
+
+/** The whole read, against one snapshot of the index. */
+async function searchInSnapshot(
+  args: TranscriptSearchArgs,
+  dbi: typeof defaultDb,
+): Promise<TranscriptSearchResult> {
   const coverage = await readCoverage(args.conversationId, dbi);
   const requested = args.limit;
   // cm:guard clamped HERE and never in the tool's schema: a `maximum` in a JSON schema is a request to the model, and a bound the model is asked to keep is not a bound. A number outside the range is read, clamped and REPORTED — an unreported normalization is a guess, and a caller told nothing cannot tell a short answer from a complete one (ISS-1090 rule 6).
@@ -256,7 +267,7 @@ async function shapeHit(
         eq(conversationMessages.conversationId, conversationId),
         gte(conversationMessages.seq, row.firstSeq),
         lte(conversationMessages.seq, row.lastSeq),
-        sql`length(btrim(${conversationMessages.content})) > 0`,
+        hasText(conversationMessages.content),
       ),
     )
     .orderBy(asc(conversationMessages.seq))

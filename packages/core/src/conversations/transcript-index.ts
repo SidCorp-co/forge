@@ -18,7 +18,7 @@
  * speaker, and a pointer back at the range it came from.
  */
 
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { type AnyColumn, and, asc, desc, eq, gte, lte, type SQL, sql } from 'drizzle-orm';
 import { db as defaultDb } from '../db/client.js';
 import type { ConversationMessageRole } from '../db/schema-conversations.js';
 import { conversationMessages, conversations } from '../db/schema-conversations.js';
@@ -69,9 +69,20 @@ const MESSAGE_COLUMNS = {
   createdAt: conversationMessages.createdAt,
 } as const;
 
+/**
+ * The whitespace this index trims, spelled once for both halves.
+ */
+// cm:guard exactly Postgres's `[:space:]` and NOT JavaScript's `trim()`, which also eats U+00A0 and the Unicode space separators: the pass reads its rows through {@link hasText} in SQL and decides eligibility here in TypeScript, and a row the two disagreed about is an open tail that counts eleven messages against a ceiling of ten and throws on every tick for ever, plus a retrieval whose source cap fills with rows no passage was built from (plan consult round 4 F1). A message of nothing but a non-breaking space is therefore indexed, which is a passage of one odd character rather than a room that stops being searchable.
+const TRIM = /^[ \t\n\r\f\v]+|[ \t\n\r\f\v]+$/g;
+
 /** The text a row contributes, which is its content with the surrounding whitespace off and nothing else done to it. */
 export function sourceOf(message: Pick<IndexableMessage, 'content'>): string {
-  return message.content.trim();
+  return message.content.replace(TRIM, '');
+}
+
+/** The SQL half of {@link eligibleForIndex}: this row has something other than whitespace in it. */
+export function hasText(column: AnyColumn): SQL {
+  return sql`${column} ~ '[^[:space:]]'`;
 }
 
 /**
@@ -373,17 +384,20 @@ async function readTailRows(
         eq(conversationMessages.conversationId, conversationId),
         gte(conversationMessages.seq, resume.seq),
         lte(conversationMessages.seq, resume.budgetFloor),
-        sql`length(btrim(${conversationMessages.content})) > 0`,
+        hasText(conversationMessages.content),
       ),
     )
     .orderBy(asc(conversationMessages.seq))
     .limit(PASSAGE_MAX_MESSAGES + 1);
-  if (rows.length > PASSAGE_MAX_MESSAGES) {
+  // cm:guard filtered again by the TypeScript rule before the count is judged: the SQL predicate is the
+  // same class, and this is what makes that a property the code holds rather than one it asserts.
+  const eligible = rows.filter(eligibleForIndex);
+  if (eligible.length > PASSAGE_MAX_MESSAGES) {
     throw new Error(
       `conversation ${conversationId}: the open passage at seq ${resume.seq} covers more than ${PASSAGE_MAX_MESSAGES} messages up to the watermark ${resume.budgetFloor}, so it was not the last accumulator and the index cannot be resumed from it; rebuild this room's index`,
     );
   }
-  return rows;
+  return eligible;
 }
 
 /** The rows above the watermark this pass spends its budget on. */
