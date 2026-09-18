@@ -192,6 +192,27 @@ describe('POST /api/projects/:id/knowledge/search', () => {
 });
 
 describe('PUT /api/projects/:id/knowledge/:slug validates the body against the real schema', () => {
+  // cm:guard `slugSchema` is the REAL one, so this is the rule and not the stand-in answering: the
+  // route matches `:slug{.+}`, so `convention/my-rule` reaches the handler and is refused by name.
+  it('400 on a slash-bearing slug, which the param schema calls not kebab-case', async () => {
+    authVerified();
+    isMember();
+    const res = await buildApp().request(
+      `/api/projects/${PROJECT_ID}/knowledge/convention/my-rule`,
+      {
+        method: 'PUT',
+        headers: {
+          'content-type': 'application/json',
+          authorization: `Bearer ${await signUserToken(USER_ID)}`,
+        },
+        body: JSON.stringify({ title: 'A convention', body: 'The text.' }),
+      },
+    );
+    expect(res.status).toBe(400);
+    expect(await res.json()).toMatchObject({ message: expect.stringContaining('no slash') });
+    expect(upsertKnowledgeEntryMock).not.toHaveBeenCalled();
+  });
+
   it('400 on a kind outside the schema enum', async () => {
     authVerified();
     isMember();
