@@ -243,12 +243,15 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
         },
       };
     }
-    return resolveForgeSpeaker({
-      source: 'rocketchat',
-      namespace,
-      externalId: frame.m.userId,
-      label: frame.m.username ?? null,
-    });
+    return resolveForgeSpeaker(
+      {
+        source: 'rocketchat',
+        namespace,
+        externalId: frame.m.userId,
+        label: frame.m.username ?? null,
+      },
+      frame.projectId,
+    );
   },
 
   // cm:guard routes through `sendFixedReply` like every other reply path — `outbound.ts` is the ONE door to a room and `outbound.test.ts` fails CI on a second one. The screened value's own `problems` become the proof, so the verdict and the exact string that was screened travel together.
