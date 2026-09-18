@@ -114,6 +114,31 @@ describe('applyAutoTitleAsync', () => {
     expect(broadcastSessionSpy).not.toHaveBeenCalled();
   });
 
+  // ISS-962's rule reaches this writer too: the prompt says "in the SAME language as the message"
+  // over the same `callFastModel`, and the result is broadcast into every client's session list.
+  it('refuses a title carrying a script the message never showed it', async () => {
+    mockCompletion('cách duy nhất để обход qua'); // i18n-allow: the ISS-962 defect string itself — Vietnamese carrying a Cyrillic word the message never used
+    await expect(generateSessionTitle('cach duy nhat de vuot qua')).resolves.toBeNull();
+  });
+
+  it("keeps a title in the message's own non-Latin script", async () => {
+    mockCompletion('部署分支是 master');
+    await expect(generateSessionTitle('上线用的分支是 master，请记住 部署分支')).resolves.toBe(
+      '部署分支是 master',
+    );
+  });
+
+  it('leaves the persisted fallback in place when the title is refused', async () => {
+    mockCompletion('обход qua');
+    await applyAutoTitleAsync({
+      sessionId: 'sess-1',
+      userMessage: 'cach duy nhat de vuot qua',
+      fallbackTitle: 'cach duy nhat de vuot qua',
+    });
+    expect(updateSet).not.toHaveBeenCalled();
+    expect(broadcastSessionSpy).not.toHaveBeenCalled();
+  });
+
   it('never throws when the model call fails', async () => {
     fetchMock.mockResolvedValueOnce({ ok: false, status: 500 });
     await expect(

@@ -3,6 +3,7 @@ import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { callFastModel } from '../memory/llm.js';
+import { foreignScriptChars } from '../memory/script-guard.js';
 import { broadcastSession } from './broadcast.js';
 import { isSystemNoise, stripSystemNoise } from './content-filter.js';
 
@@ -41,7 +42,21 @@ export async function generateSessionTitle(userMessage: string): Promise<string 
   if (!sanitized) return null;
   const raw = await callFastModel(TITLE_PROMPT.replace('{message}', sanitized), TITLE_MAX_TOKENS);
   if (!raw) return null;
-  return postProcessTitle(raw);
+  const title = postProcessTitle(raw);
+  if (title === null) return null;
+  // cm:guard this prompt carries the same "in the SAME language as the message" instruction that
+  // ISS-962 identifies as the trigger, over the same `callFastModel`, and the result is written to
+  // `agent_sessions.title` and broadcast — a MORE visible surface than a `memories` row. Returning
+  // null leaves the deterministic title the turn already persisted, which is the whole fallback.
+  const foreign = foreignScriptChars(title, sanitized);
+  if (foreign.length > 0) {
+    logger.warn(
+      { chars: foreign, title: title.slice(0, 60) },
+      'auto-title: refused a title in a script its message never showed it',
+    );
+    return null;
+  }
+  return title;
 }
 
 export interface ApplyAutoTitleArgs {
