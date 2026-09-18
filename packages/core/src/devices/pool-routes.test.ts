@@ -30,12 +30,19 @@ vi.mock('../auth/device-credential.js', () => ({
 const readPool = vi.fn(async (_args: unknown) => [] as unknown[]);
 const readAdmissibleIssues = vi.fn(async (_args: unknown) => [] as unknown[]);
 const openRunSession = vi.fn(async (_args: unknown) => ({}) as unknown);
+const readRunSessionTerminal = vi.fn(async (_args: unknown) => null as boolean | null);
 
 vi.mock('./pool.js', () => ({ readPool: (a: unknown) => readPool(a) }));
 vi.mock('./admissible.js', () => ({
   readAdmissibleIssues: (a: unknown) => readAdmissibleIssues(a),
 }));
-vi.mock('./run-session.js', () => ({ openRunSession: (a: unknown) => openRunSession(a) }));
+vi.mock('./run-session.js', () => ({
+  openRunSession: (a: unknown) => openRunSession(a),
+  closeRunSession: vi.fn(),
+  readRunSessionTerminal: (a: unknown) => readRunSessionTerminal(a),
+  isIssueLeaseHeld: vi.fn(),
+  releaseIssueLease: vi.fn(),
+}));
 vi.mock('./claim.js', () => ({
   claimJobForMaster: vi.fn(),
   releaseAllHeldBySession: vi.fn(),
@@ -70,6 +77,7 @@ beforeEach(() => {
   readPool.mockReset().mockResolvedValue([]);
   readAdmissibleIssues.mockReset().mockResolvedValue([]);
   openRunSession.mockReset();
+  readRunSessionTerminal.mockReset().mockResolvedValue(null);
 });
 
 describe('GET /me/pool', () => {
@@ -328,5 +336,54 @@ describe('the run-session family stays mounted where it was', () => {
       body: '{}',
     });
     expect(res.status).toBe(404);
+  });
+});
+
+// The readback half of ISS-1050 criterion 5, asserted OVER THE API and not against the reader.
+// cm:guard every request here goes through `app.request`, and that is the whole point of the
+// suite: `tests/integration/run-session-readback-e2e.test.ts` was cited as this criterion's
+// evidence while calling the module functions directly — no `app.request`, no path, no status —
+// so "readable back over the device API" was never the thing its green stood for. A rewrite that
+// drops the HTTP hop here puts the criterion back where the verdict at 92e3b9266 found it.
+describe('GET /me/run-sessions/:sessionId — core reads a run session back over the device API', () => {
+  const SESSION = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
+  const path = `/api/devices/me/run-sessions/${SESSION}`;
+
+  it('answers the session core holds for this device', async () => {
+    readRunSessionTerminal.mockResolvedValue(false);
+    const res = await app.request(path, { headers: AUTH });
+    expect(res.status).toBe(200);
+    expect(await res.json()).toEqual({ sessionTerminal: false });
+  });
+
+  it('carries the terminal mark core holds rather than a fixed answer', async () => {
+    readRunSessionTerminal.mockResolvedValue(true);
+    const res = await app.request(path, { headers: AUTH });
+    expect(await res.json()).toEqual({ sessionTerminal: true });
+  });
+
+  // cm:guard the device id is asserted to be the CREDENTIAL's, never the caller's to name: the
+  // reader is what scopes this row to one box, so a route that passed anything else would answer
+  // another device's session with a 200 and read as a pass here.
+  it('scopes the read to the calling device and to the session in the path', async () => {
+    readRunSessionTerminal.mockResolvedValue(false);
+    await app.request(path, { headers: AUTH });
+    expect(readRunSessionTerminal).toHaveBeenCalledWith({ deviceId: 'dev-1', sessionId: SESSION });
+  });
+
+  it('answers 404 for a session this device does not hold', async () => {
+    readRunSessionTerminal.mockResolvedValue(null);
+    const res = await app.request(path, { headers: AUTH });
+    expect(res.status).toBe(404);
+  });
+
+  // cm:guard 401 is asserted and it is NOT interchangeable with 404 here: measured by deleting the
+  // route and re-running, an unmatched path in this app answers 404, so a 401 is the route being
+  // matched and its `requireDevice` running. The deployed service answers 401 for an unmatched
+  // `/api` path too, which is why the criterion-5 verdict read a 401 on the COLLECTION path
+  // `/api/devices/me/run-sessions` — served by nothing — as proof of no readback at all.
+  it('refuses a caller with no device credential', async () => {
+    const res = await app.request(path);
+    expect(res.status).toBe(401);
   });
 });

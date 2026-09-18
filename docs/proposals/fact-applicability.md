@@ -1,8 +1,9 @@
 # A fact declares when it applies, and something checks it is still true
 
-**Status:** proposed, nothing implemented. **Verified against the tree:** 2026-09-16, after ISS-1048
-moved project prose out of `agentConfig.projectFacts` into `knowledge_entries`. The store changed;
-the gap this proposal is about did not, and the names below are the current ones.
+**Status:** proposed, nothing implemented. **Verified against the tree:** 2026-09-17, after ISS-1048
+moved project prose out of `agentConfig.projectFacts` into `knowledge_entries` and ISS-1068 retired
+the UX Contract subsystem. The store changed and this proposal's first worked example was settled
+without it; the gap this proposal is about did not change, and the names below are the current ones.
 
 A knowledge entry is delivered on exactly two settings that reach a prompt — `injection: always`
 (verbatim in every prompt) or `injection: on_demand` (a slug in a fetch-on-demand index); the third,
@@ -11,15 +12,19 @@ their own prose: **when they apply.**
 
 ## Measured
 
-`ux-contract` on forge-dev is 4,116 characters, `injection: always`, and opens with:
+The case that opened this proposal has since been settled the blunt way, and it is worth recording
+what it cost. `ux-contract` on forge-dev was 4,116 characters at `injection: always`, opening with:
 
 > BINDING for any issue that adds/changes UI in `packages/web-v2/`.
 
-9 of the last 40 commits on `main` touch `packages/web-v2/`. So **~78% of prompts carry a 4 KB UI
-checklist that its own first line says does not apply to them.** The fact declares its scope; the
-system cannot read the declaration.
+9 of the last 40 commits on `main` touch `packages/web-v2/`, so **~78% of prompts carried a 4 KB UI
+checklist that its own first line said did not apply to them.** ISS-1068 did not teach the system to
+read that declaration — it moved all 13 `ux-contract` entries to `injection: on_demand` outright, so
+the waste is gone and so is the guarantee. That is this proposal's own trade taken without its
+design, on one entry, by hand.
 
-The same gap in the other direction, same day: ISS-919 merged a change under `packages/runner/**`
+**The gap itself is untouched.** No entry can declare when it applies, and the next entry that needs
+the distinction gets the same two bad choices. The live case is the other direction: ISS-919 merged a change under `packages/runner/**`
 and cut `runner-v0.12.0`. It did so because that issue's own comment happened to say "Ships as
 `runner-v0.12.0`". No skill names `tag`, `runner-v` or `cargo`; no fact covers release artifacts.
 The next runner change with no such sentence merges with no tag and **nothing reports the absence**
@@ -72,9 +77,10 @@ index, carrying the condition verbatim: *"`release-artifacts` — read before yo
 change touches `packages/runner/**`."* The agent holds the diff, so it is the only party that can
 evaluate the condition, and it evaluates data rather than inferring intent from prose.
 
-Cost on forge-dev: `ux-contract` leaves `injection: always`, and 31 of 40 prompts lose 4 KB while the 9
-that need it get a line pointing at it. **The measure of this change is that total injected text
-goes down.** If it does not, the change has failed regardless of what it enabled.
+Cost on forge-dev: **the measure of this change is that total injected text goes down.** If it does
+not, the change has failed regardless of what it enabled. The 4 KB that `ux-contract` used to
+contribute is already off the always tier (ISS-1068), so the baseline this is measured against is
+the one that change left, not the one this proposal was written over.
 
 **2. The condition language is globs on changed paths. Nothing else.**
 
@@ -112,21 +118,26 @@ still beats silence.
 ## Open question, and it is the load-bearing one
 
 **Does a triggered fetch get fetched?** The always-inject tier (ISS-521) exists because the
-on-demand index alone was not enough. This design moves `ux-contract` back onto the index with a condition attached
-and assumes a stated trigger changes that outcome. That assumption is untested.
+on-demand index alone was not enough. This design puts a body back on the index with a condition
+attached and assumes a stated trigger changes that outcome. That assumption is untested — but it
+stopped being hypothetical on 2026-09-17, because ISS-1068 put 13 `ux-contract` entries onto the
+on-demand index with no condition at all.
 
-It must be measured, not argued: for the first N issues after the change, check whether an agent
-whose diff touched `packages/web-v2/` actually read `ux-contract`. If it does not, the answer is
-not to revert to `injection: always` for everything — it is that `applies` needs a fourth value meaning
-"inject the body, but only on the steps where the condition can already be evaluated" (`review`,
-`test`, `fix` all run against an existing branch).
+So measure it on what is already running rather than waiting for this proposal to ship: for the
+first N issues after that change, check whether an agent whose diff touched `packages/web-v2/`
+fetched `ux-contract` by slug. A fetch rate near zero there is evidence about the index itself and
+argues that a bare slug is not enough; a healthy rate is the weaker claim this design needs, since a
+condition line says more than a slug does. If the answer is bad, the answer is not to revert to
+`injection: always` for everything — it is that `applies` needs a fourth value meaning "inject the
+body, but only on the steps where the condition can already be evaluated" (`review`, `test`, `fix`
+all run against an existing branch).
 
 ## Honest costs
 
 | What it costs | Paid by |
 |---|---|
-| **A guarantee becomes a hope.** `injection: always` is unmissable; a trigger line is not. The first thing traded away is `ux-contract`, a binding checklist — it will now reach an agent that chose to read it. If the open question resolves badly the cost is a second round of design, not a revert: reverting everything to `injection: always` restores the 78% waste | every project relying on an injected rule being unmissable |
-| **A silent migration failure.** 13 projects carry a ux-contract and must move to `applies`. Precedent, same surface: `recompileAndPersistUxContract` never SET the always-inject flag, so `qa-project` ran 22 compiled rules dark from 2026-08-11 until somebody noticed. Verification means reading a rendered prompt per project, not trusting the writer | whoever runs the migration, once per project |
+| **A guarantee becomes a hope.** `injection: always` is unmissable; a trigger line is not. Whatever is traded away will now reach an agent that chose to read it. If the open question resolves badly the cost is a second round of design, not a revert: reverting everything to `injection: always` restores the waste | every project relying on an injected rule being unmissable |
+| **A silent migration failure.** Every entry on the always tier must move to `applies`, and an entry that lands on the wrong value fails silently in the direction nobody looks. Precedent, same surface: the UX contract's recompile never SET the always-inject flag, so `qa-project` ran 22 compiled rules dark from 2026-08-11 until somebody noticed. Verification means reading a rendered prompt per project, not trusting the writer | whoever runs the migration, once per project |
 | **A stale glob fails open and nothing catches it.** The atom gate reads commands and paths *inside* a body, never the glob in `applies`. Rename `packages/web-v2/` and the fact silently stops firing, which looks exactly like a project that correctly has no such rule. This proposal opens that hole one level up from the one it closes | the next person to move a directory |
 | **A judgement fact authors did not have.** Writing a fact now means choosing an applicability and keeping it true as the repo moves. One boolean had no way to be subtly wrong | every fact author, on every fact, forever |
 | **A fact may no longer name a command that does not exist yet.** The procedure and the script it calls must land in the same change | whoever wants to write the runbook first |

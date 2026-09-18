@@ -22,6 +22,25 @@ import {
  * query for the dotted spelling that finds none of the underscore rows agents
  * actually send.
  */
+/** What `GET /api/admin/mcp-audit/tools` answers with. */
+interface AuditToolsBody {
+  generatedAt: string;
+  oldestRow: string | null;
+  retention: { days: number | null; why: string };
+  registeredCount: number;
+  rows: Array<{
+    tool: string;
+    registered: boolean;
+    deviceCalls: number;
+    tokenCalls: number;
+    unattributedCalls: number;
+    notFoundCalls: number;
+    totalCalls: number;
+    firstSeen: string | null;
+    lastSeen: string | null;
+  }>;
+}
+
 describe('admin MCP audit tool counts (ISS-946)', () => {
   let harness: TestDatabase;
   let app: Hono<{ Variables: RequestIdVars }>;
@@ -80,22 +99,7 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
   async function asAdmin() {
     const res = await get(await signUserToken(admin.id));
     expect(res.status).toBe(200);
-    return (await res.json()) as {
-      generatedAt: string;
-      oldestRow: string | null;
-      registeredCount: number;
-      rows: Array<{
-        tool: string;
-        registered: boolean;
-        deviceCalls: number;
-        tokenCalls: number;
-        unattributedCalls: number;
-        notFoundCalls: number;
-        totalCalls: number;
-        firstSeen: string | null;
-        lastSeen: string | null;
-      }>;
-    };
+    return (await res.json()) as AuditToolsBody;
   }
 
   const row = (
@@ -239,6 +243,14 @@ describe('admin MCP audit tool counts (ISS-946)', () => {
 
     it('reports oldestRow as null on an empty table rather than inventing a window', async () => {
       expect((await asAdmin()).oldestRow).toBeNull();
+    });
+
+    // cm:guard this payload is the only place the "whole table means lifetime" clause is checkable by a reader of the screen rather than of the source, and `days: null` is the load-bearing value: the day somebody gives this table a window, `agent-surface.md`'s deletion rule stops holding and this assertion is what goes red instead of the prose going quietly stale. It reads the rule out of `pipeline/retention/policy.ts` rather than restating a number, so the two cannot drift.
+    it('carries mcp_audit_log\u2019s stated retention rule, so a zero count reads as a lifetime', async () => {
+      const { retention } = await asAdmin();
+      expect(retention.days).toBeNull();
+      expect(retention.why).toMatch(/not swept/i);
+      expect(retention.why).toContain('agent-surface.md');
     });
   });
 });

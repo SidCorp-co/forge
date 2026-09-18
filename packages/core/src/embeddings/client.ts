@@ -175,8 +175,9 @@ export class EmbeddingsClient {
     // instead of storing the row with a null vector for the backfill to find, and memory would lose
     // the keyword-searchable row it stores for the same reason. Degradation only began once the
     // breaker opened after five consecutive failures, so whether a save survived an outage depended
-    // on how many saves had already failed ahead of it. ISS-1048 reached this from
-    // `recompileAndPersistUxContract`, which an operator drives from a button.
+    // on how many saves had already failed ahead of it. ISS-1048 reached this from the
+    // knowledge write behind `PUT /api/projects/:id/knowledge/:slug`, which an operator drives
+    // from the Knowledge screen.
     if (isRetriable(lastErr)) {
       throw new EmbeddingUnavailableError(
         `embeddings service unavailable after ${RETRY_DELAYS_MS.length + 1} attempts: ${(lastErr as Error).message}`,

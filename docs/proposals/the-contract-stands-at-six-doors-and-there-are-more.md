@@ -39,7 +39,7 @@ re-finding from scratch:
 - `activity_log` payloads read by the issue activity feed: park reasons, dependency-edge reasons,
   and `before`/`after` for every agent-written issue field.
 - The MCP field writes — `forge_issues` (`title`, `description`, `plan`, `acceptanceCriteria`,
-  `releaseNotes`), `forge_knowledge`, `forge_guide`, `forge_feedback`, `forge_ux_findings`.
+  `releaseNotes`), `forge_knowledge`, `forge_guide`, `forge_feedback`.
 
 ## Why this is not simply "wire the rest"
 
