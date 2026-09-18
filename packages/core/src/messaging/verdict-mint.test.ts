@@ -80,6 +80,23 @@ describe('only a screen mints a passing verdict (ISS-978 F5)', () => {
     expect([...MAY_MINT.keys()].filter((rel) => !minting.includes(rel))).toEqual([]);
   });
 
+  // cm:guard the fixture admits EVERYTHING, so it is a screen that passes anything that reaches it.
+  // Listing it above as a permitted mint says nothing about who may call it — and it lives under
+  // `src/`, so it compiles into `dist` and a production file could import it and be screened by
+  // nothing at all. This is the assertion that keeps it to tests.
+  it('no production file imports the fixture screen that admits everything', () => {
+    const importers = listSourceFiles(SRC_ROOT).filter(
+      (rel) =>
+        rel !== 'messaging/screen-passes.fixture.ts' &&
+        /screen-passes\.fixture/.test(readFileSync(`${SRC_ROOT}${rel}`, 'utf8')),
+    );
+    expect(
+      importers,
+      'A file outside the test suites is importing a screen that admits everything, which is the ' +
+        'same as not screening at all. Call the real screen, or move this file into a test.',
+    ).toEqual([]);
+  });
+
   it('the scan detects a planted mint (meta-test)', () => {
     expect(MINT_RE.test(stripComments('const v = { ok: true } as MessageVerdict;'))).toBe(true);
     expect(MINT_RE.test(stripComments('const v = x as unknown as MessageVerdict;'))).toBe(true);
