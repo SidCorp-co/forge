@@ -27,7 +27,7 @@ pub fn now_ms() -> i64 {
 /// One hook event, narrowed to the boundaries a caller can act on.
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum Event {
-    /// A prompt was accepted and a turn began.
+    /// A prompt was submitted and a turn began.
     PromptSubmitted,
     /// The turn ended.
     Stopped,
@@ -130,6 +130,21 @@ pub struct Activity {
     /// Bumped by every accepted event, so a caller can prove a NEW turn began
     /// rather than reading a turn that was already running as its own.
     pub sequence: u64,
+    /// Whether the last turn to END here ended on an error.
+    // cm:guard NOT voided by the conversation change below, unlike the three claims beside it, and
+    // that asymmetry is the point rather than an omission. Those three are claims about something
+    // still running, so a new conversation strands them and they gate the pane for good; this one
+    // is assigned on EVERY way out of a turn, so a stale value cannot be read — the only reader
+    // asks after a prompt this session submitted, and that prompt's own ending overwrites it. A void
+    // was written here first and removing it turned no test red, which is what says it was a second
+    // live path rather than a belt and braces.
+    // cm:guard held APART from `last_event`, which every later frame overwrites. A lead turn that dies on an account limit while a child is still outstanding emits `StopFailure` and then the child's own `SubagentStop`, so a reader asking `last_event == StoppedFailed` sees `SubagentStopped` and calls the pane finished cleanly — and `master.rs` then never retries the nudge, which is the one case the NUDGE_REFRESH ceiling exists for. Found by review on ISS-1100.
+    pub turn_ended_failed: bool,
+    /// How many prompts this session has SUBMITTED, for the life of the session.
+    // cm:guard the word is the event's own — `UserPromptSubmit` — and it is not "accepted", "turns" or "passes". A submitted prompt is EVIDENCE that a turn began; it is not a count of turns, because an agent runs many tool calls inside one turn with no new prompt, and a resume or a compaction submits one nobody's turn asked for. ISS-1096 built this same field as `turns` in the same week and dropped the name for that reason; a third word for one act in this file is how that duplication started.
+    // cm:guard a SECOND reader is coming and no `cm:edge` can hold it yet, because its file is not on `main`: ISS-1096 adds `daemon/turn_evidence.rs`, whose `NeverStarted` verdict fires on this count standing still. That makes the monotonicity below load-bearing twice over — reset it and a pane that worked for an hour and was then `/clear`ed reads as never having been asked anything, and that reader kills a live release. Whoever lands ISS-1096 turns this into the `cm:edge contract` it wants to be.
+    // cm:guard monotonic, and the conversation void below deliberately does not touch it. The void drops stale CLAIMS about a turn — a start with no end, a child that never reported back — because those gate a pane forever; a tally of how many turns began is not a claim about anything still running, and resetting it would make a turn taken after a `/clear` read as no turn at all. `master.rs` reads exactly this to tell a nudge that was never picked up from one that was, and that reading must survive a resume.
+    pub prompts: u64,
 }
 
 impl Activity {
@@ -167,6 +182,8 @@ impl Activities {
             conversation: None,
             awaiting_permission: false,
             sequence: 0,
+            turn_ended_failed: false,
+            prompts: 0,
         });
         // cm:guard a DIFFERENT conversation voids every claim before the event is applied, and this is the backstop for the exits no hook reports: `/clear`, a relaunch and a resume all leave the pane alive with a new `session_id` and emit nothing terminating, so claims from the old conversation would otherwise gate the pane forever. Scoped to claims ABOUT the conversation — this module holds no evidence about OS processes, which is the thing such a void must never take with it.
         if let Some(seen) = r.conversation {
@@ -194,12 +211,14 @@ impl Activities {
             Event::PromptSubmitted => {
                 a.turn_started_at = Some(at);
                 a.awaiting_permission = false;
+                a.prompts += 1;
             }
             // cm:guard a permission wait is cleared by the NEXT boundary and never by a timer: the question stands until the agent moves, and a wait that expired on its own would read as progress nobody made.
             Event::PermissionRequested => a.awaiting_permission = true,
             Event::Stopped | Event::StoppedFailed | Event::Compacted => {
                 a.turn_started_at = None;
                 a.awaiting_permission = false;
+                a.turn_ended_failed = event == Event::StoppedFailed;
             }
             // cm:guard a child event with NO subject changes nothing — it is unattributable, and the rule is void nothing rather than guess. Gating on an id-less child event would let one child's start hold the pane after a different child's stop, and an id-less stop would cancel a claim it cannot name.
             Event::SubagentStarted => {
@@ -584,6 +603,60 @@ mod tests {
         }
         assert_eq!(Event::from_wire("PreCompact"), None);
         assert_eq!(Event::from_wire(""), None);
+    }
+
+    // cm:guard the count is of PROMPTS ACCEPTED and of nothing else. `sequence` moves on every frame, so a child of an earlier pass finishing bumps it while a nudge still sits unsubmitted in the composer — `master.rs` reads this instead precisely because that difference is the wedged pane it has to rescue.
+    #[test]
+    fn a_prompt_is_counted_and_nothing_else_is() {
+        let acts = Activities::new();
+        let say = |event, subject| {
+            acts.record(
+                "s1",
+                Report {
+                    event,
+                    at: 0,
+                    subject,
+                    conversation: Some("c1"),
+                },
+            )
+        };
+        assert_eq!(say(Event::Stopped, None).prompts, 0);
+        assert_eq!(say(Event::SubagentStarted, Some("k1")).prompts, 0);
+        assert_eq!(say(Event::SubagentStopped, Some("k1")).prompts, 0);
+        assert_eq!(say(Event::PromptSubmitted, None).prompts, 1);
+        assert_eq!(say(Event::PermissionRequested, None).prompts, 1);
+        assert_eq!(say(Event::Stopped, None).prompts, 1);
+        assert_eq!(say(Event::PromptSubmitted, None).prompts, 2);
+    }
+
+    // cm:guard the void above clears the CLAIMS a new conversation invalidates and must NOT take this tally with them. A `/clear`, a relaunch and a resume all leave the pane alive under a new `session_id`; reset here, a turn taken after one of those reads as no turn at all, and the caller that judges a nudge by this count re-nudges a master that answered it.
+    #[test]
+    fn a_new_conversation_voids_the_claims_and_leaves_the_count_where_it_stands() {
+        let acts = Activities::new();
+        let say = |event, conversation| {
+            acts.record(
+                "s1",
+                Report {
+                    event,
+                    at: 0,
+                    subject: None,
+                    conversation: Some(conversation),
+                },
+            )
+        };
+        assert_eq!(say(Event::PromptSubmitted, "c1").prompts, 1);
+
+        let after = say(Event::Stopped, "c2");
+        assert_eq!(
+            after.prompts, 1,
+            "the tally survives the conversation it was counted in"
+        );
+        assert_eq!(
+            after.doing(),
+            Doing::Idle,
+            "the claims the old conversation held are still voided"
+        );
+        assert_eq!(say(Event::PromptSubmitted, "c2").prompts, 2);
     }
 
     // cm:guard `PreCompact` must NOT be registered or accepted: it fires before the compact is validated and an aborted compact emits it alone, so mapping it to a boundary strands the pane in exactly the state this module exists to prevent.

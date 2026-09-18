@@ -21,6 +21,9 @@ const select = vi.fn(() => {
 vi.mock('../db/client.js', () => ({ db: { execute, select } }));
 
 const { readAdmissibleIssues, readAdmissions } = await import('./admissible.js');
+const { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } = await import(
+  '../issues/dependency-effects.js'
+);
 
 const DEVICE = 'dddddddd-dddd-4ddd-8ddd-dddddddddddd';
 const PROJECT = 'aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa';
@@ -165,7 +168,7 @@ describe('readAdmissibleIssues', () => {
     expect(row).not.toHaveProperty('satisfied');
   });
 
-  // cm:guard "no work has been opened for this issue" and NOTHING else. A dependency filter, a priority ordering or a cap beyond the project's own `limit` are the master's judgements — a backlog that pre-decides them is the kernel routing again through a second door.
+  // cm:guard "no work has been opened for this issue", PLUS the one blocks clause ISS-1100 added, and nothing else. A priority ordering, a merge-state filter, a pull-request filter or a cap beyond the project's own `limit` are still the master's judgements — a backlog that pre-decides those is the kernel routing again through a second door.
   it('excludes issues that already carry a job or an open run, and nothing more', async () => {
     execute.mockResolvedValueOnce([projectRow({ poolBacklog: { statuses: ['draft'], limit: 3 } })]);
     execute.mockResolvedValueOnce([]);
@@ -176,8 +179,54 @@ describe('readAdmissibleIssues', () => {
     expect(q).toContain('running');
     expect(q).toContain('paused');
     expect(q).toContain('draft');
-    expect(q).not.toContain('issue_dependencies b');
     expect(q).toContain('created_at');
+    expect(q).not.toContain('repo_pull_requests');
+    expect(q).not.toContain('merged_at IS');
+  });
+
+  describe('the blocks clause ISS-1100 added', () => {
+    async function blockedQuery(): Promise<string> {
+      execute.mockResolvedValueOnce([
+        projectRow({ poolBacklog: { statuses: ['draft'], limit: 3 } }),
+      ]);
+      execute.mockResolvedValueOnce([]);
+      await readAdmissibleIssues({ deviceId: DEVICE });
+      return JSON.stringify(execute.mock.calls[1]?.[0]);
+    }
+
+    it('asks the edge table about this issue', async () => {
+      const q = await blockedQuery();
+      expect(q).toContain('issue_dependencies');
+      expect(q).toContain('d.to_issue_id = i.id');
+    });
+
+    // cm:guard the KIND term is what keeps a `relates` or a `decomposes` edge from hiding a row. Drop it and every relation in the project becomes a blocker, which is the loudest possible version of this filter being wrong in the direction it may never be wrong in.
+    it('narrows to the one kind that gates dispatch', async () => {
+      const q = await blockedQuery();
+      expect(q).toContain('d.kind =');
+      expect(q).toContain(DISPATCH_GATING_KIND);
+    });
+
+    // cm:guard the EXPIRY term is what makes retraction work. `forge_issues.update` with `validUntil` in the past is the documented way to retract an edge and `drop-cascade.ts` expires edges when a blocker is dropped; without this the row those two release stays hidden from the master for good.
+    it('ignores an edge whose validity has run out', async () => {
+      const q = await blockedQuery();
+      expect(q).toContain('d.valid_until IS NULL OR d.valid_until > now()');
+    });
+
+    // cm:guard the STATUS term names the mirror set and never a literal list: `BLOCKER_SETTLED_STATUSES` is core's one copy of what `holdsBack` lets through, and a literal here is free to drift from it silently.
+    it('releases the row on exactly the settled statuses', async () => {
+      const q = await blockedQuery();
+      expect(q).toContain('b.status NOT IN');
+      for (const status of BLOCKER_SETTLED_STATUSES) {
+        expect(q).toContain(status);
+      }
+    });
+
+    // cm:guard the PROJECT correlation is the index, not a scope: `issue_dependencies` carries only `(project_id, from_issue_id)` and `(project_id, to_issue_id)`, so without it Postgres reads every edge in the table on a query that runs on every sweep of every box.
+    it('correlates on the admitting project so the composite index stays usable', async () => {
+      const q = await blockedQuery();
+      expect(q).toContain('d.project_id =');
+    });
   });
 
   it('tolerates an issue with no iss_seq', async () => {

@@ -35,7 +35,7 @@ export type PoolEntry = {
   heldBy: string | null;
 };
 
-// cm:guard return the blocker's RAW status and merged_at, never a computed `satisfied` boolean. That boolean is `isBlockerSatisfied` under another name, and a fourth copy of the predicate this design exists to delete. It also destroys information the master needs: `merged_at` set with status `reopen` means landed-then-bounced, `dropped` means abandoned, and both collapse to the same `false`.
+// cm:guard return the blocker's RAW status and merged_at, never a computed `satisfied` boolean. It destroys information the master needs: `merged_at` set with status `reopen` means landed-then-bounced, `dropped` means abandoned, and both collapse to the same `false`. This guard also used to call such a boolean "a fourth copy of the predicate this design exists to delete"; ISS-1100 dropped that half, because core now holds exactly one copy of the predicate (`issues/dependency-effects.ts:BLOCKER_SETTLED_STATUSES`) and gates the ADMISSIBLE query on it. What stands is the payload rule: the pool's rows are the issue-less job kinds, they carry no blocks gate of their own, and nothing here is folded.
 const RELATIONS = sql`
   COALESCE((
     SELECT json_agg(json_build_object(

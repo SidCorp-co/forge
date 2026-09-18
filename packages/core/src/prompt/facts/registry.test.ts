@@ -54,7 +54,7 @@ describe('forge facts registry', () => {
     expect(text).toContain('QUOTE that human');
     expect(text).toContain('NEW `needs_info`');
     const fact = getFact('pipeline-rules');
-    expect(fact?.version).toBe(9);
+    expect(fact?.version).toBe(10);
   });
 
   // cm:guard the prompt and the lifecycle guide must agree about `waiting`, and guides/registry.test.ts asserts the same three things — an agent reads the prompt, a human reads the guide, and the two disagreeing about who may write a status is how ISS-163 became six interventions
@@ -314,10 +314,17 @@ describe('pipeline-rules — merged_at is caller-asserted, both directions', () 
     expect(text).toMatch(/the previous step said so/);
   });
 
-  // cm:why the owner's own case — closing an abandoned issue silently unblocks its dependents
-  it('warns that closing auto-stamps, and names the undo', () => {
-    expect(text).toMatch(/[Cc]losing also auto-stamps/);
+  // cm:why the owner's own case — closing an abandoned issue unblocks its dependents.
+  // cm:guard what this asserts moved on ISS-1100 and the move is the point: the text used to name
+  // `unmark` as the UNDO, and it is not one. `unmark` withdraws the shipped-work claim; the
+  // dependents are held by the issue's STATUS and `closed` releases them whatever `merged_at` says,
+  // so the undo is moving the issue off `closed`. Asserting the old wording again is asserting a
+  // remedy that does nothing.
+  it('warns that closing unblocks dependents, and names an undo that works', () => {
+    expect(text).toMatch(/[Cc]losing an abandoned issue whose code never landed does unblock/);
     expect(text).toContain('forge_issues.unmark');
+    expect(text).toMatch(/does NOT put them back/);
+    expect(text).toMatch(/[Mm]ove the issue back off `closed`/);
   });
 
   // cm:guard the READ side is the half nobody had stated — devbox ISS-4 had to discover by hand that a `closed` blocker's code was never on main.

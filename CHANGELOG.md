@@ -3021,6 +3021,18 @@
 
 - **An agent account is recognised as an agent wherever its name appears.**
 
+- **A project whose work is all waiting no longer wakes its assistant every five minutes.** An
+  issue held behind an unfinished dependency is not available work, so a project where everything
+  is held now costs nothing.
+
+- **Repeating a reminder about unchanged work now needs a reason.** It fires only where the
+  assistant's own record shows the first attempt produced nothing. One that answered, or is still
+  working, is left alone.
+
+- **What the docs say a dependency does now matches what happens.** Four places said a blocked
+  issue is released when its blocker is marked merged. What releases it is the blocker reaching
+  built work.
+
 - **Six background checks that got slower as the tables grew now answer at a steady speed.** Each
   read a whole table to find a handful of rows. Same answers, with the shortcuts to reach them.
 

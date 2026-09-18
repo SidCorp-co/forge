@@ -86,10 +86,14 @@ flowchart LR
   under one parent read differently from two unrelated subtrees. The signal adds no gate and always
   answers 200 — a gate here would be satisfied by declaring edges nobody means. Drawn in
   [`docs/flows/issue-work.html`](../../flows/issue-work.html).
-- **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` means A must reach a
-  terminal status before B may dispatch, and cross-project edges are legal. `relates`, `duplicates`
-  and `parent` are metadata no dispatch path may read. The `cm:guard` is on
-  `schema.ts:issueDependencyKinds`.
+- **Only `kind='blocks'` gates dispatch.** An edge `(from=A, to=B, 'blocks')` holds B out of the
+  admissible set a master reads until A's status is one of `developed`, `testing`,
+  `awaiting_release`, `closed` — the list is `dependency-effects.ts:BLOCKER_SETTLED_STATUSES` and
+  the query that applies it is `devices/admissible.ts:readAdmissibleIssues`. It is A's STATUS and
+  never A's `merged_at`; nothing in Forge reads that stamp to release a dependent (ISS-1100).
+  Both endpoints must be in one project: `dependency-service.ts:writeIssueDependency` is the only
+  insert path and it throws `CROSS_PROJECT` otherwise. `relates`, `duplicates` and `parent` are
+  metadata no dispatch path may read. The `cm:guard` is on `schema.ts:issueDependencyKinds`.
 - **`decomposes` gates no dispatch, but it is not inert.** `work-evidence.ts:hasChildIssues` reads
   this one kind, so a single live outgoing `decomposes` edge waives the ISS-786 work-evidence gate
   for the `from` issue: it can be marked merged and moved to `developed`/`testing` with no branch,

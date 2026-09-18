@@ -11,6 +11,24 @@
 // in the commit that moved the text — which is what the guard below asks for, not
 // an exemption from it.
 //
+// What ISS-1100 changed, and why each digest moved:
+//   · BOTH `pipelineRules` — the driver's own and the shared one — and they moved
+//     for the same claim in two texts: that a `blocks` dependent is released by
+//     its blocker's `merged_at` stamp. Core enforced that nowhere and the master
+//     has never applied it; what holds a dependent is the blocker's STATUS, and
+//     ISS-1100 makes `readAdmissibleIssues` enforce exactly that. A driver told
+//     to stamp in order to unblock its dependents was being told to do the one
+//     thing that does not.
+//     The same commit's review then found the other half of that claim still
+//     standing in both texts: `unmark` (`DELETE .../merge`) was published as the
+//     way to re-block dependents after an abandoned close. It withdraws the
+//     shipped-work claim and re-blocks nothing, because the dependents are held
+//     by the issue's status and `closed` releases them whatever the column says.
+//     Both texts now say what puts them back: move the issue off `closed`.
+//   · NO `toolReference` moved, and that is the evidence the edit was to the
+//     rules rather than to the tool surface beside them.
+//   · NO `facts` digest moved.
+//
 // What ISS-1048 changed, and why each digest moved:
 //   · every `toolReference`, and the non-drive `pipelineRules` — the operating-
 //     affordances table named `projectFacts` as a thing `forge_config` changes. It
@@ -95,27 +113,27 @@ function fixedInputs(): Inputs {
 const AT_ISS_1048: Record<string, { pipelineRules: string; toolReference: string; facts: string }> =
   {
     drive: {
-      pipelineRules: 'fbe5bb53fb025294b46388b8cad8cb86',
+      pipelineRules: 'dd3ea099c1b57c64c7c570241241227a',
       toolReference: 'efbbc2e0fdd496ca0ed2befd268054c8',
       facts: '8085844cb9be59f5c3efbb0af095b632',
     },
     release_batch: {
-      pipelineRules: 'd3ceac3e9a563f5615cb4ce453e13014',
+      pipelineRules: '9b0bbc296a7e1705a58e8cbf32ffd04f',
       toolReference: '5027a7b2dfbde84010bd5429c010d63a',
       facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
     smoke: {
-      pipelineRules: 'd3ceac3e9a563f5615cb4ce453e13014',
+      pipelineRules: '9b0bbc296a7e1705a58e8cbf32ffd04f',
       toolReference: '5027a7b2dfbde84010bd5429c010d63a',
       facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
     reconcile: {
-      pipelineRules: 'd3ceac3e9a563f5615cb4ce453e13014',
+      pipelineRules: '9b0bbc296a7e1705a58e8cbf32ffd04f',
       toolReference: '5027a7b2dfbde84010bd5429c010d63a',
       facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },
     verify_skill: {
-      pipelineRules: 'd3ceac3e9a563f5615cb4ce453e13014',
+      pipelineRules: '9b0bbc296a7e1705a58e8cbf32ffd04f',
       toolReference: '5027a7b2dfbde84010bd5429c010d63a',
       facts: '7fdb7e7706a48d360dc31e7c345b6824',
     },

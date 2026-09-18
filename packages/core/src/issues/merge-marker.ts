@@ -156,7 +156,7 @@ export async function applyMergeMarker(args: {
   // cm:guard and it says so on a LINE OF ITS OWN, because the caller's note is NOT this module's to splice into. A note is a clause list somebody else composed and reads back by clause, and a clause runs to the next `;` or newline — so an advisory joined on with a dash lands inside the caller's LAST clause instead of beside it. Measured 2026-09-14 on ISS-1004: the note's `landing wrote …/proactivity.test.ts` read back as `…/proactivity.test.ts — NOT stamped by this call: merged_at was already …`, and the run was told its change had grown to a path nobody had written. Append after the note, never into it.
   const unchanged =
     args.op === 'mark' && !stampResult.wrote
-      ? `\nNOT stamped by this call: merged_at was already ${stampResult.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction, and it re-blocks dependents`
+      ? `\nNOT stamped by this call: merged_at was already ${stampResult.mergedAt?.toISOString() ?? 'set'} and the first stamp wins; \`unmark\` then \`mark\` is the only correction. It does not re-block dependents: those are held by the issue's STATUS and not by this column (ISS-1100)`
       : '';
   // cm:guard the caller is TOLD its commit did not reach the column, on a line of its own, for the same reason the advisory above exists: a mark that answers `merged` while quietly declining half of what it was given is indistinguishable from one that took it. `merged_commit_sha` is evidence since ISS-1073 and a sha nobody watched land is not evidence, so it is kept where a reader can still find it rather than thrown away.
   const asserted =
