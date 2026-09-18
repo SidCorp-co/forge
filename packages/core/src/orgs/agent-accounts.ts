@@ -167,11 +167,19 @@ export async function createAgentAccount(
     }),
   );
 
-  const minted = await mintPat({
-    userId: created.id,
-    name: `agent:${input.handle}`,
-    scopes: ['read', 'write'],
-    ...fenceFor(wanted),
+  // cm:guard the fence is RE-READ under the agent's lock rather than taken from `wanted`, and
+  // this mint is the third of the three that had to be. The creation transaction has already
+  // committed by now, so the agent is listable and an admin can widen its project set before
+  // this token exists — and `setAgentProjects` re-fences only the tokens it can see. Locking
+  // here makes either order correct, and it does NOT put the mint back inside the creation
+  // transaction: its failure still leaves a tokenless agent the revoke route can remove, which
+  // is the one recoverable partial state (ISS-1093, review finding F2).
+  const minted = await withAgentFenceLock(created.id, async (tx) => {
+    const fence = await agentCredentialFence(created.id, tx);
+    return mintPat(
+      { userId: created.id, name: `agent:${input.handle}`, scopes: ['read', 'write'], ...fence },
+      tx,
+    );
   });
 
   return {

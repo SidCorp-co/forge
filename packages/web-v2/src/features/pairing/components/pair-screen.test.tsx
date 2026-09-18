@@ -154,10 +154,29 @@ describe("choosing the identity a box will carry (ISS-1093)", () => {
     expect(refetch).toHaveBeenCalled();
   });
 
+  // cm:guard the pending state is SAID and approving is refused while it lasts. The fastest path
+  // through this screen is land-and-click, and left enabled it pairs the box as the person before
+  // the choice has rendered — with nothing afterwards to say a choice was missed (finding F5).
   it("does not present a pending agent query as an organization with no agents", () => {
     agents = [];
     queryState = { isLoading: true, isError: false };
     renderScreen();
     expect(screen.queryByText(/no agents yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/Looking for agents/i)).toBeInTheDocument();
+  });
+
+  it("will not approve while the agent list is still loading", () => {
+    queryState = { isLoading: true, isError: false };
+    renderScreen();
+    fireEvent.click(screen.getByRole("button", { name: /Approve device/ }));
+    expect(mutate).not.toHaveBeenCalled();
+  });
+
+  it("still approves while loading for someone who is shown no choice at all", () => {
+    orgRole = "member";
+    queryState = { isLoading: true, isError: false };
+    renderScreen();
+    fireEvent.click(screen.getByRole("button", { name: /Approve device/ }));
+    expect(mutate).toHaveBeenCalledWith({ pairingCode: "ABC-1234", agentUserId: null });
   });
 });

@@ -163,6 +163,12 @@ export function PairScreen() {
                   the data is read as `?? []` — the control disappears, approving stays available,
                   and an admin pairs the box as themselves believing their organization has no
                   agent to choose (ISS-1093, review finding F5). */}
+              {isOrgAdmin && agentsQ.isLoading && (
+                <Banner tone="info">
+                  Looking for agents in this organization — approving waits until the choice is on
+                  screen.
+                </Banner>
+              )}
               {isOrgAdmin && agentsQ.isError && (
                 <Banner
                   tone="danger"
@@ -204,9 +210,15 @@ export function PairScreen() {
                 <Button variant="ghost" icon="x" onClick={() => setDenied(true)}>
                   Deny
                 </Button>
+                {/* cm:guard approving is DISABLED while the agent list is still loading, for an
+                    org admin. Left enabled, the fastest path through this screen — land, click —
+                    pairs the box as the person before the choice this change exists to offer has
+                    even rendered, and nothing afterwards says a choice was missed
+                    (ISS-1093, review finding F5). */}
                 <Button
                   variant="primary"
                   icon="check"
+                  disabled={isOrgAdmin && agentsQ.isLoading}
                   loading={approve.isPending}
                   onClick={() =>
                     approve.mutate({ pairingCode: code, agentUserId: asAgent || null })
