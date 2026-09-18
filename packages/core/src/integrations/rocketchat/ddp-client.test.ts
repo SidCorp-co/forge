@@ -4,6 +4,7 @@ import {
   parseStreamMessage,
   RocketChatDdpClient,
   type RocketChatIncomingMessage,
+  replyTargetOf,
   type WsLike,
 } from './ddp-client.js';
 
@@ -221,5 +222,46 @@ describe('RocketChatDdpClient watchdog', () => {
     // Total silence past the dead threshold → the client closes itself.
     vi.advanceTimersByTime(150_000);
     expect(client.getState()).toBe('closed');
+  });
+});
+
+describe('replyTargetOf (ISS-1087)', () => {
+  it('reads the quoted message id from an attachment’s message_link (criterion 9)', () => {
+    expect(
+      replyTargetOf({
+        msg: 'still wrong',
+        attachments: [{ message_link: 'https://chat.example.co/channel/dev?msg=Q1abc' }],
+      }),
+    ).toBe('Q1abc');
+  });
+
+  it('reads it from the text when only the text carries the link (criterion 9)', () => {
+    expect(replyTargetOf({ msg: '[ ](https://chat.example.co/channel/dev?msg=Q2def) hm' })).toBe(
+      'Q2def',
+    );
+  });
+
+  // cm:guard the quote WINS over the thread parent: a message inside a thread that quotes one specific message is answering that one.
+  it('prefers the quote over the thread parent, and falls back to the thread parent (criterion 10)', () => {
+    expect(replyTargetOf({ msg: 'x?msg=Q3', tmid: 'T1' })).toBe('Q3');
+    expect(replyTargetOf({ msg: 'plain reply in a thread', tmid: 'T1' })).toBe('T1');
+  });
+
+  it('is undefined for a message that replies to nothing (criterion 11)', () => {
+    expect(replyTargetOf({ msg: 'hello' })).toBeUndefined();
+    expect(
+      parseStreamMessage({ _id: 'm', rid: 'r', msg: 'hello', u: { _id: 'u' } })?.replyToId,
+    ).toBeUndefined();
+  });
+
+  it('rides on the parsed stream message', () => {
+    const m = parseStreamMessage({
+      _id: 'm9',
+      rid: 'r1',
+      msg: '',
+      u: { _id: 'u1' },
+      attachments: [{ message_link: 'https://chat.example.co/channel/dev?msg=Q9', text: 'quoted' }],
+    });
+    expect(m?.replyToId).toBe('Q9');
   });
 });

@@ -11,6 +11,7 @@ import {
   answerInGroupModes,
   type PresenceConfig,
 } from '../db/schema-agent-selves.js';
+import type { RoomPresence } from '../db/schema-conversations.js';
 
 /**
  * Today's constants, and what an unset key folds as. `proactivity.ts` reads
@@ -127,7 +128,75 @@ export function foldPresence(selves: readonly PresenceConfig[]): ResolvedPresenc
     backoffAfter: pick('backoffAfter', (v) => Math.min(...v)),
     loopBounceMs: pick('loopBounceMs', (v) => Math.max(...v)),
     loopLimit: pick('loopLimit', (v) => Math.min(...v)),
-    answerInGroup: modes.includes('mention') ? 'mention' : PRESENCE_DEFAULTS.answerInGroup,
+    answerInGroup: foldAnswerInGroup(modes),
+  };
+}
+
+/**
+ * The one mode a room of several handles answers in.
+ */
+// cm:guard `mention` over `tool` over `window`: a handle that asked to be summoned is never spoken for by one that did not, and `tool` is stricter than `window` about what reaches the room while still taking the turn. An unset key is `window`, the default, and folds like one (ISS-1087 criterion 16).
+export function foldAnswerInGroup(
+  modes: readonly (AnswerInGroupMode | undefined)[],
+): AnswerInGroupMode {
+  if (modes.includes('mention')) return 'mention';
+  if (modes.includes('tool')) return 'tool';
+  return PRESENCE_DEFAULTS.answerInGroup;
+}
+
+/** The five keys a ROOM may set for itself. */
+export const ROOM_PRESENCE_KEYS = [
+  'dormantMs',
+  'backoffAfter',
+  'loopBounceMs',
+  'loopLimit',
+  'answerInGroup',
+] as const;
+
+// cm:guard a schema of the room's OWN and not `presenceConfigSchema` reused whole: the difference is `heartbeat`, which is a handle's clock resolved per handle by `heartbeatOf` and never folded — a room that could set it would go on speaking on that clock after an admin quietened the room. The refusal names the key as a handle's and lists what a room takes (ISS-1087 criterion 3).
+export const roomPresenceSchema = z
+  .object({
+    dormantMs: bounded('dormantMs').optional(),
+    backoffAfter: bounded('backoffAfter').optional(),
+    loopBounceMs: bounded('loopBounceMs').optional(),
+    loopLimit: bounded('loopLimit').optional(),
+    answerInGroup: z.enum(answerInGroupModes).optional(),
+  })
+  .strict();
+
+/** The room's shape, or a refusal that says which key or bound was wrong. */
+export function validateRoomPresence(input: unknown): RoomPresence {
+  const parsed = roomPresenceSchema.safeParse(input);
+  if (parsed.success) return parsed.data;
+  const issues = parsed.error.issues.map((i) => {
+    const path = i.path.length ? `presence.${i.path.join('.')}` : 'presence';
+    if (i.code === 'unrecognized_keys') {
+      const own = i.keys.filter((k) => k === 'heartbeat');
+      const lead = own.length
+        ? `${path}: \`heartbeat\` is a handle's own and is not set on a room; `
+        : `${path}: unknown key(s) ${i.keys.map((k) => `\`${k}\``).join(', ')}; `;
+      return `${lead}a room takes only: ${ROOM_PRESENCE_KEYS.join(', ')}`;
+    }
+    return `${path}: ${i.message}`;
+  });
+  throw new PresenceValidationError(issues);
+}
+
+/**
+ * The room's thresholds: what the room set wins, key by key, over the fold.
+ */
+// cm:guard applied AFTER the fold and per KEY, never as a replacement of the whole: an admin who tunes one knob on a room expects the handles' other knobs to stand, and a room row of `{}` or null changes nothing (ISS-1087 criteria 5, 6).
+export function applyRoomPresence(
+  fold: ResolvedPresence,
+  room: RoomPresence | null | undefined,
+): ResolvedPresence {
+  if (!room) return fold;
+  return {
+    dormantMs: room.dormantMs ?? fold.dormantMs,
+    backoffAfter: room.backoffAfter ?? fold.backoffAfter,
+    loopBounceMs: room.loopBounceMs ?? fold.loopBounceMs,
+    loopLimit: room.loopLimit ?? fold.loopLimit,
+    answerInGroup: room.answerInGroup ?? fold.answerInGroup,
   };
 }
 
@@ -155,4 +224,27 @@ export function windowNamesAHandle(
   handles: readonly (string | null)[],
 ): boolean {
   return messages.some((m) => handles.some((h) => namesHandle(m.content, h)));
+}
+
+/**
+ * Whether the window addresses a handle: names one, or replies to something
+ * a handle sent.
+ */
+// cm:guard a reply or a quote is an address as plain as typing the name, and it is judged by IDS the store resolved rather than by text: `sentByHandle` is the set of reply targets that are the handle's own delivered messages, so a reply to a person's message names nobody however it is worded (ISS-1087 criteria 13, 14).
+export function windowAddressesAHandle(
+  messages: readonly { content: string; replyToExternalId: string | null }[],
+  handles: readonly (string | null)[],
+  sentByHandle: ReadonlySet<string>,
+): boolean {
+  if (windowNamesAHandle(messages, handles)) return true;
+  return messages.some(
+    (m) => m.replyToExternalId !== null && sentByHandle.has(m.replyToExternalId),
+  );
+}
+
+/** The reply targets a window carries, deduplicated, for the store to resolve. */
+export function replyTargetsOf(
+  messages: readonly { replyToExternalId: string | null }[],
+): string[] {
+  return [...new Set(messages.flatMap((m) => (m.replyToExternalId ? [m.replyToExternalId] : [])))];
 }

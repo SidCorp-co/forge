@@ -5,11 +5,12 @@
 // knows the pair `(adapter, externalId)` that names it and the handle that
 // gives it its scope.
 
-import { and, asc, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import {
+  type ConversationAdapter,
   type ConversationMessageRole,
   conversationMessages,
   conversations,
@@ -39,6 +40,7 @@ export {
   listConversationsInProject,
   renameConversation,
   setConversationArchived,
+  setConversationPresence,
   settleConversationMode,
 } from './rooms.js';
 
@@ -66,6 +68,8 @@ export interface StoredConversationMessage {
   authorLabel: string | null;
   /** The transport's own id for whoever spoke, where it named one. */
   authorKey: string | null;
+  /** The transport's own id for the message this one replies to or quotes, where it named one (ISS-1087). */
+  replyToExternalId: string | null;
   content: string;
   /** Ordered canonical blocks, or null on a row written through the text-only door. */
   blocks: ContentBlock[] | null;
@@ -168,6 +172,7 @@ export interface AppendMessageArgs {
   authorLabel?: string | null;
   authorKey?: string | null;
   externalId?: string | null;
+  replyToExternalId?: string | null;
   images?: readonly ConversationImage[] | undefined;
   /** Ordered canonical blocks for this row; omit on a caller that has only text. */
   blocks?: readonly ContentBlock[] | null | undefined;
@@ -249,6 +254,7 @@ export async function appendMessagesIn(
           authorKey: m.authorKey ?? null,
           content: m.content,
           externalId: m.externalId ?? null,
+          replyToExternalId: m.replyToExternalId ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
           // cm:guard an EMPTY blocks array is written as null, not as `[]`: `[]` would say "this
           // turn produced nothing", which is a claim, while null says "this row carries its answer
@@ -320,6 +326,38 @@ export async function readMessages(
 }
 
 /**
+ * Which of these transport ids name a message one of THESE handles delivered on this adapter.
+ */
+// cm:guard scoped by the HANDLES' user ids and never by this conversation's rows alone: a Rocket.Chat thread is a conversation of its own, and the message a person quotes from inside it is the root the handle posted in the ROOM's conversation, so the row is found wherever the handle wrote it. Scoped by handle and not adapter-wide, because a quote of a message some OTHER handle posted in another room addresses nobody in this one (ISS-1087 criteria 13, 14; whole-set review F3). The join through `conversations` keeps one transport's ids from being read against another's.
+export async function assistantSentExternalIds(
+  adapter: ConversationAdapter,
+  handleUserIds: readonly string[],
+  ids: readonly string[],
+  venueScope: string | null = null,
+  tx: Executor = defaultDb,
+): Promise<Set<string>> {
+  if (ids.length === 0 || handleUserIds.length === 0) return new Set();
+  // cm:guard `venueScope` is the prefix the transport says every venue on the same SERVER shares, and the rows are read within it: a message id is unique within one installation only, so a handle bound on two servers must not have its message on one answer for an id quoted on the other (whole-set review F2, recheck). Null is one server, and no filter.
+  const withinScope = venueScope
+    ? [like(conversations.externalId, `${venueScope.replace(/[\\%_]/g, '\\$&')}%`)]
+    : [];
+  const rows = await tx
+    .select({ externalId: conversationMessages.externalId })
+    .from(conversationMessages)
+    .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
+    .where(
+      and(
+        eq(conversations.adapter, adapter),
+        ...withinScope,
+        eq(conversationMessages.role, 'assistant'),
+        inArray(conversationMessages.authorUserId, [...handleUserIds]),
+        inArray(conversationMessages.externalId, [...ids]),
+      ),
+    );
+  return new Set(rows.flatMap((r) => (r.externalId ? [r.externalId] : [])));
+}
+
+/**
  * Has this conversation already been shown the reply for this delivery key?
  */
 // cm:guard the key is the AT-MOST-ONCE proof and it is checked against what was DELIVERED, never against what was attempted: a window re-claimed after its holder died is owed an answer only if the room never got one, and the row carrying the key is the only evidence either way (ISS-1004 rule 2).
@@ -386,6 +424,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     authorKey: row.authorKey,
     content: row.content,
     externalId: row.externalId,
+    replyToExternalId: row.replyToExternalId,
     blocks: asBlocks(row.blocks),
     images: asImages(row.images),
     deliveryProof: row.deliveryProof ?? null,

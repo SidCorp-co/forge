@@ -28,6 +28,8 @@ export interface InboundCollection<Frame> {
   speakerKey: string;
   /** The transport's own id for this message, so a later turn can tell the room what it has seen. */
   externalMessageId?: string | null;
+  /** The transport's own id for the message this one replies to or quotes, where it named one (ISS-1087). */
+  replyToExternalId?: string | null;
   /** The name the transport shows for the speaker. */
   speakerLabel?: string | null;
   /** Image references as the transport names them — no bytes, which are fetched at route time. */
@@ -87,6 +89,7 @@ export async function collectInboundMessage<Frame>(
           authorLabel: inbound.speakerLabel ?? inbound.speakerKey,
           authorKey: inbound.speakerKey,
           externalId: inbound.externalMessageId ?? null,
+          replyToExternalId: inbound.replyToExternalId ?? null,
           ...(inbound.images && inbound.images.length > 0 ? { images: inbound.images } : {}),
         },
       ],

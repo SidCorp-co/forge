@@ -20,10 +20,16 @@ import { logger } from '../logger.js';
 import { readSelvesFor } from '../orgs/agent-selves.js';
 import { handleForProject, roomHandles } from './participants.js';
 import { type ConversationVenue, codeAuthored, conversationTransport } from './ports.js';
-import { foldPresence, windowNamesAHandle } from './presence.js';
+import {
+  applyRoomPresence,
+  foldPresence,
+  replyTargetsOf,
+  windowAddressesAHandle,
+} from './presence.js';
 import { decideProactivity } from './proactivity.js';
 import { linkedSpeakerOf } from './speaker.js';
 import {
+  assistantSentExternalIds,
   deliveredDecisionUnderKey,
   effectiveConversationMode,
   getConversation,
@@ -53,6 +59,7 @@ export type WindowTurnInputs = Omit<
   | 'message'
   | 'questionAlreadyRecorded'
   | 'mayDecline'
+  | 'sendMode'
   | 'deliveryKey'
   | 'onBeforeDeliver'
 >;
@@ -325,11 +332,22 @@ async function decide(
   const handles = await roomHandles(window.conversationId);
   const selves = await readSelvesFor(handles.map((h) => h.userId));
   // cm:guard ONE presence per live handle, `{}` for a handle with no self row, so the fold sees every handle in the room: a map of the rows that exist would let a handle that never wrote a self vanish from a fold whose defaults it is owed (codex F4).
-  const presence = foldPresence(handles.map((h) => selves.get(h.userId)?.presence ?? {}));
+  // cm:guard the ROOM's own override is applied after the fold and wins key by key: an admin who tunes a room expects it to hold whatever its handles say, and a room that set nothing takes the fold whole (ISS-1087 criteria 5, 6).
+  const presence = applyRoomPresence(
+    foldPresence(handles.map((h) => selves.get(h.userId)?.presence ?? {})),
+    conversation.presence,
+  );
   // cm:guard `mention` gates GROUP venues only and reads every message the window collected, not just the newest: a direct room is one person talking to one agent and every message is addressed to it, while in a room a person who wrote "@babo can you check" and then "the build, I mean" in two messages has named the handle once and is owed one answer (ISS-1034 criteria 66-68).
+  // cm:guard a REPLY or a QUOTE of something the handle sent addresses it as plainly as its name: the targets the window carries are resolved against the handle's own delivered ids, so a reply to a person names nobody however it reads (ISS-1087 criteria 13, 14).
   if (venue.shape === 'group' && presence.answerInGroup === 'mention') {
     const names = handles.map((h) => h.handle);
-    if (!windowNamesAHandle(messages, names)) {
+    const sent = await assistantSentExternalIds(
+      venue.adapter,
+      handles.map((h) => h.userId),
+      replyTargetsOf(messages),
+      conversationTransport(venue.adapter)?.venueScope?.(venue.externalId) ?? null,
+    );
+    if (!windowAddressesAHandle(messages, names, sent)) {
       return { decision: 'nothing-to-say', detail: { reason: 'not-mentioned', handles: names } };
     }
   }
@@ -364,6 +382,8 @@ async function decide(
     message: messages.map((m) => m.content).join('\n'),
     questionAlreadyRecorded: true,
     mayDecline: true,
+    // cm:guard `tool` is a GROUP mode like `mention`: a direct room is one person asking one agent and is owed its reply, so the mode reads as `reply` there whatever the fold says (ISS-1087 criterion 21).
+    sendMode: venue.shape === 'group' && presence.answerInGroup === 'tool' ? 'tool' : 'reply',
     deliveryKey,
     onBeforeDeliver: () => reserveDelivery(window.id, claim),
   });

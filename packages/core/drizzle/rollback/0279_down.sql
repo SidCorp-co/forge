@@ -1,4 +1,4 @@
--- ISS-1069 — the way back from 0271_environments.sql.
+-- ISS-1069 — the way back from 0279_environments.sql.
 --
 -- NOT run by `db/migrate.js`. This file is applied BY HAND, against the database, BEFORE the
 -- previous image is started — never after. The previous image's boot migrator knows only its
@@ -9,14 +9,14 @@
 --   docker inspect -f '{{range $k,$v := .NetworkSettings.Networks}}{{$k}}{{end}}' <core-container>
 --   docker run --rm --network <that-network> -i postgres:16 \
 --     psql "$DATABASE_URL" -v ON_ERROR_STOP=1 \
---     < packages/core/drizzle/rollback/0271_down.sql
+--     < packages/core/drizzle/rollback/0279_down.sql
 --
--- The file is REDIRECTED INTO the container's stdin. `-f 0271_down.sql` would make psql look
+-- The file is REDIRECTED INTO the container's stdin. `-f 0279_down.sql` would make psql look
 -- for the file INSIDE the disposable container, which has no checkout mounted, so recovery
 -- would stop before executing a single statement.
 --
 -- Then:
---   DELETE FROM drizzle.__drizzle_migrations WHERE hash = '<0271 hash>';
+--   DELETE FROM drizzle.__drizzle_migrations WHERE hash = '<0279 hash>';
 -- and start the previous image.
 --
 -- WHAT THIS RESTORES, AND THE ONE THING IT CANNOT.
