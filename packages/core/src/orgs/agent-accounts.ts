@@ -14,7 +14,7 @@ import { HTTPException } from 'hono/http-exception';
 import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
 import { mintPat } from '../auth/pat.js';
 import { patIsLive } from '../auth/pat-live.js';
-import { existingProjectHandle, handleNameForProject } from '../conversations/handles.js';
+import { handleNameForProject } from '../conversations/handles.js';
 import { db, type Tx } from '../db/client.js';
 import {
   organizationMembers,
@@ -404,6 +404,15 @@ export async function setAgentProjects(
   // admin named `forge-vm` on project `alpha` is also that project's voice today, and widening it
   // is exactly what ISS-1093 is for — `alpha` simply mints `alpha` next time, with nothing in the
   // way. Only the name makes the difference, so only the name is tested (ISS-1093).
+  //
+  // cm:guard and it does NOT also ask whether this agent is the voice `existingProjectHandle`
+  // picks right now, which is the shape this refusal shipped with for one round. That resolver
+  // answers oldest-first, so a project with an older differently-named agent and a younger one
+  // holding the canonical name selects the older: widening the younger then passed the check
+  // while leaving the canonical name occupied by an agent that no longer qualifies, and the next
+  // replacement mint hit exactly the collision this exists to prevent — two legal widenings, no
+  // refusal between them. Who is the voice today is not the question; who holds the name the
+  // replacement would be minted under is (ISS-1093, review finding F1 of the landing round).
   const held = await db
     .select({ projectId: projectMembers.projectId })
     .from(projectMembers)
@@ -420,10 +429,9 @@ export async function setAgentProjects(
       .from(organizationMembers)
       .where(eq(organizationMembers.userId, agentUserId))
       .limit(1);
-    const voice = await existingProjectHandle(db, only);
-    if (p && voice?.userId === agentUserId && me?.handle === handleNameForProject(p.slug, p.id)) {
+    if (p && me?.handle === handleNameForProject(p.slug, p.id)) {
       throw new HTTPException(409, {
-        message: `agent ${agentUserId} is the conversational handle of project ${only} and carries the name that project's handle is minted under (@${me.handle}) — widening it would leave that project unable to mint a replacement, so its rooms would stop opening; create a separate agent for the projects you want covered and leave this one where it is`,
+        message: `agent ${agentUserId} carries the name project ${only}'s conversational handle is minted under (@${me.handle}) — widening it would leave that project unable to mint a replacement, so its rooms would stop opening; create a separate agent for the projects you want covered and leave this one where it is`,
         cause: { code: 'AGENT_IS_A_PROJECT_HANDLE' },
       });
     }
