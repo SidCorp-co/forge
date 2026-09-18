@@ -6,7 +6,7 @@
  * and not a TypeScript restatement of it. A test that inspected the SQL text would pass on a file
  * Postgres refuses.
  *
- * The harness database already has 0260 applied, so each case rebuilds the pre-migration world
+ * The harness database already has 0280 applied, so each case rebuilds the pre-migration world
  * inside a transaction — the two dropped tables recreated from 0141/0187, the backup tables
  * removed — runs the file, asserts, and rolls back. One case per branch that can refuse, plus the
  * happy path, because an abort that cannot fire is a guard that covers nothing.
@@ -35,7 +35,7 @@ const MIGRATION_STATEMENTS = readFileSync(MIGRATION_PATH, 'utf8')
   .map((s) => s.trim())
   .filter((s) => s.length > 0);
 
-// The pre-0260 world, from 0141_ux_contract_tables.sql and 0187_ux_rule_supersedes.sql.
+// The pre-0280 world, from 0141_ux_contract_tables.sql and 0187_ux_rule_supersedes.sql.
 const RECREATE_DROPPED_TABLES = `
   CREATE TABLE "ux_contract_rules" (
     "id" uuid PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
