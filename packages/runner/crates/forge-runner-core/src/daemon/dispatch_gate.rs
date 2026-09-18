@@ -118,10 +118,18 @@ pub fn shipped_roles(config_dir: &Path) -> Option<BTreeSet<String>> {
         // complete one at every reader.
         let clone = clone.ok()?;
         let agents = clone.path().join("plugin").join("agents");
-        if !agents.is_dir() {
-            // A marketplace holding no agents directory ships no roles, which is
-            // knowledge rather than a gap: `codemap` is one of them on this box.
-            continue;
+        // cm:guard `is_dir()` is NOT enough here and was the first version of this fix. It answers
+        // false for a directory that is absent AND for one this process may not stat — a clone
+        // whose ancestor is unreadable — so the second was skipped as though it shipped no roles,
+        // and a partial inventory went back looking complete. Absence is knowledge; a failed stat
+        // is not (ISS-1094, review F3).
+        match std::fs::metadata(&agents) {
+            // No agents directory: that marketplace ships no roles. `codemap` is
+            // one of them on this box.
+            Err(e) if e.kind() == std::io::ErrorKind::NotFound => continue,
+            Err(_) => return None,
+            Ok(m) if !m.is_dir() => continue,
+            Ok(_) => {}
         }
         for agent in std::fs::read_dir(agents).ok()? {
             let path = agent.ok()?.path();
@@ -303,9 +311,12 @@ mod tests {
         std::fs::create_dir_all(&good).expect("tree");
         std::fs::write(good.join("runner.md"), "---\n").expect("agent");
 
-        // A second clone whose agents directory exists and cannot be read.
-        let bad = dir.path().join("marketplaces/b__plugin/plugin/agents");
-        std::fs::create_dir_all(&bad).expect("tree");
+        // A second clone whose agents directory cannot even be STATTED, because
+        // an ancestor of it is closed. This is the shape `is_dir()` alone reads
+        // as "no agents directory here".
+        std::fs::create_dir_all(dir.path().join("marketplaces/b__plugin/plugin/agents"))
+            .expect("tree");
+        let bad = dir.path().join("marketplaces/b__plugin/plugin");
         let mut perms = std::fs::metadata(&bad).expect("meta").permissions();
         #[cfg(unix)]
         {

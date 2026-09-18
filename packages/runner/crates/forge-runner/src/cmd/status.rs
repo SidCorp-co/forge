@@ -102,11 +102,13 @@ fn gate_lines(degraded: &Tally, undeclared: &Tally) -> Vec<String> {
 
 /// The window a count covers, and whether it is a floor rather than a total.
 // cm:guard the word "kept" is load-bearing. The marks file is capped, so past the cap the number goes DOWN while the failures continue, and an operator reading a lifetime total would read that as the box recovering (ISS-1094, review F7).
+// cm:guard BOTH ends of the window are printed. An oldest stamp alone cannot tell an incident that ended last week from degradation still happening now, and those are the two readings an operator acts on differently (ISS-1094, review F7).
 fn since(t: &Tally) -> String {
-    let when = t
-        .first_at
-        .map(|ms| format!(" since {}", stamp(ms)))
-        .unwrap_or_default();
+    let when = match (t.first_at, t.last_at) {
+        (Some(a), Some(b)) => format!(" between {} and {}", stamp(a), stamp(b)),
+        (Some(a), None) | (None, Some(a)) => format!(" at {}", stamp(a)),
+        (None, None) => String::new(),
+    };
     if t.trimmed {
         format!(" kept{when}, older ones dropped")
     } else {
@@ -157,6 +159,25 @@ mod tests {
         assert!(
             out.contains("kept") && out.contains("older ones dropped"),
             "a trimmed count read as a lifetime total says the box is recovering: {out}"
+        );
+    }
+
+    /// Review F7. The window, not just when it began.
+    // cm:guard an oldest stamp alone leaves an incident that ended last week reading exactly like degradation happening right now.
+    #[test]
+    fn the_line_says_when_the_kept_marks_run_from_and_to() {
+        let t = Tally {
+            count: 4,
+            last: Some("the daemon did not answer".into()),
+            first_at: Some(1_000),
+            last_at: Some(9_000),
+            trimmed: false,
+        };
+        let out = gate_lines(&t, &Tally::default()).join("\n");
+        assert!(out.contains("epoch+1s"), "{out}");
+        assert!(
+            out.contains("epoch+9s"),
+            "without the latest stamp, an old incident and a live one read the same: {out}"
         );
     }
 
