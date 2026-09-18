@@ -265,3 +265,61 @@ describe('replyTargetOf (ISS-1087)', () => {
     expect(m?.replyToId).toBe('Q9');
   });
 });
+
+describe('notifyUserActivity (ISS-1088 criterion 24)', () => {
+  async function liveClient() {
+    const fake = new FakeWs();
+    const client = new RocketChatDdpClient({
+      serverUrl: 'https://rc.test',
+      authToken: 'tok',
+      userId: 'bot',
+      onMessage: () => undefined,
+      wsFactory: () => fake,
+    });
+    const connected = client.connect();
+    fake.emitOpen();
+    fake.emit({ msg: 'connected', session: 's' });
+    const loginFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.method === 'login');
+    fake.emit({ msg: 'result', id: loginFrame.id });
+    const subFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.msg === 'sub');
+    fake.emit({ msg: 'ready', subs: [subFrame.id] });
+    await connected;
+    return { fake, client };
+  }
+  const activityFrame = (fake: FakeWs) =>
+    fake.sent.map((s) => JSON.parse(s)).find((f) => f.method === 'stream-notify-room');
+
+  it('writes <rid>/user-activity with the shown name and user-typing to start, resolving on the ack', async () => {
+    const { fake, client } = await liveClient();
+    const done = client.notifyUserActivity('ROOM1', 'babo', true);
+    const frame = activityFrame(fake);
+    expect(frame.msg).toBe('method');
+    expect(frame.params).toEqual(['ROOM1/user-activity', 'babo', ['user-typing'], {}]);
+    fake.emit({ msg: 'result', id: frame.id });
+    await expect(done).resolves.toBeUndefined();
+    client.close();
+  });
+
+  it('writes an empty activity list to stop', async () => {
+    const { fake, client } = await liveClient();
+    const done = client.notifyUserActivity('ROOM1', 'babo', false);
+    const frame = activityFrame(fake);
+    expect(frame.params).toEqual(['ROOM1/user-activity', 'babo', [], {}]);
+    fake.emit({ msg: 'result', id: frame.id });
+    await done;
+    client.close();
+  });
+
+  it('rejects on the server’s error frame, naming it', async () => {
+    const { fake, client } = await liveClient();
+    const done = client.notifyUserActivity('ROOM1', 'Babo Bot', true);
+    const frame = activityFrame(fake);
+    fake.emit({
+      msg: 'result',
+      id: frame.id,
+      error: { error: 'error-invalid-user', reason: 'Invalid user' },
+    });
+    await expect(done).rejects.toThrow(/error-invalid-user/);
+    client.close();
+  });
+});

@@ -126,6 +126,7 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
     expect(deliver).toHaveBeenCalledWith(
       VENUE,
       expect.objectContaining({ text: 'posted by the tool' }),
+      { addressee: null },
     );
     expect(screenReplyAtDoor.mock.calls[0]?.[1]).toMatchObject({
       segments: ['posted by the tool'],
@@ -191,6 +192,7 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
     expect(deliver).toHaveBeenCalledWith(
       VENUE,
       expect.objectContaining({ text: 'the fix is in review' }),
+      { addressee: null },
     );
   });
 
@@ -278,7 +280,9 @@ describe('tool mode: the room hears only what room_send captured (ISS-1087)', ()
       await tools?.execute('room_send', JSON.stringify({ text: 'second' }));
     });
     await runConversationTurn(request({ sendMode: 'tool', mayDecline: true }));
-    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: 'first' }));
+    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: 'first' }), {
+      addressee: null,
+    });
   });
 });
 
