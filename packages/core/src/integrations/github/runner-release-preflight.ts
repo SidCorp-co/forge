@@ -46,6 +46,9 @@ export const RUNNER_RELEASE_TARGETS = ['x86_64-unknown-linux-gnu', 'aarch64-appl
 /** The prefix `install/fetch-release.ts` filters a release's assets by. */
 export const RUNNER_ASSET_PREFIX = 'forge-runner-';
 
+// cm:edge lockstep -> the message every hand-cut `runner-v*` tag carries. `runner-v0.14.0`, cut on 2026-09-18, reads `forge-runner 0.14.0`, and so does the release body `runner-release.yml` writes. One wording for the artefact however it was produced.
+export const tagMessageForVersion = (version: string) => `forge-runner ${version}`;
+
 export const RUNNER_CARGO_TOML_PATH = 'packages/runner/Cargo.toml';
 export const RUNNER_CARGO_LOCK_PATH = 'packages/runner/Cargo.lock';
 

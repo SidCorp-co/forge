@@ -179,7 +179,13 @@ describe('the whole sequence when nothing is wrong', () => {
   it('cuts the tag and hands the release to the build', async () => {
     const outcome = await start();
     expect(outcome.started).toBe(true);
-    expect(repo.createTagRef).toHaveBeenCalledWith(expect.anything(), 'runner-v0.13.3', 'abc1234');
+    // cm:guard the MESSAGE travels with the create, because the artefact is an annotated tag and `forge-runner 0.13.3` is the wording every hand-cut `runner-v*` tag on this repository carries.
+    expect(repo.createTagRef).toHaveBeenCalledWith(
+      expect.anything(),
+      'runner-v0.13.3',
+      'abc1234',
+      'forge-runner 0.13.3',
+    );
     expect(row()?.status).toBe('building');
     expect(row()?.step).toBe('await_build');
     expect(row()?.tagState).toBe('present');
@@ -195,7 +201,7 @@ describe('the whole sequence when nothing is wrong', () => {
       'check_tag_absent: SidCorp-co/forge holds no runner-v0.13.3',
       'check_crate_version: Cargo.toml declares 0.13.3',
       'check_lockfile_version: Cargo.lock records 0.13.3',
-      'cut_tag: refs/tags/runner-v0.13.3 created at abc1234 by the App on SidCorp-co/forge',
+      'cut_tag: refs/tags/runner-v0.13.3 created as an annotated tag at abc1234 by the App on SidCorp-co/forge',
     ]);
   });
 
@@ -203,7 +209,12 @@ describe('the whole sequence when nothing is wrong', () => {
     repo.readCommitSha.mockResolvedValue('feedbee');
     await start({ commit: 'feedbee' });
     expect(repo.readDefaultBranch).not.toHaveBeenCalled();
-    expect(repo.createTagRef).toHaveBeenCalledWith(expect.anything(), 'runner-v0.13.3', 'feedbee');
+    expect(repo.createTagRef).toHaveBeenCalledWith(
+      expect.anything(),
+      'runner-v0.13.3',
+      'feedbee',
+      'forge-runner 0.13.3',
+    );
   });
 });
 

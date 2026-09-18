@@ -39,7 +39,7 @@ export type OpenOutcome =
 
 // cm:guard the re-arm's WHERE is the whole of the retry rule, and it is in the STATEMENT rather than in a branch above it: a read-then-insert would let two calls both read the row and both cut. Both halves are load-bearing. `settled_at IS NOT NULL` is what stops a second start seizing an attempt still running — without it two overlapping calls share one row, and one of them settles `absent` while the other has a create request in flight. `tag_state IN ('unread','absent')` is what stops a second attempt at a tag that exists or whose create went unanswered: that would either fail on GitHub's own 422 or, worse, succeed against a tag somebody else cut.
 export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
-  const rows = await db.execute<{ id: string }>(sql`
+  const rows = await db.execute<{ id: string; attempt: number }>(sql`
     INSERT INTO runner_releases
       (project_id, binding_id, repository, version, tag, requested_by_id, deadline_at)
     VALUES (${args.projectId}, ${args.bindingId}, ${args.repository}, ${args.version},
@@ -69,17 +69,17 @@ export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
       updated_at = now()
     WHERE runner_releases.settled_at IS NOT NULL
       AND runner_releases.tag_state IN ('unread', 'absent')
-    RETURNING id
+    RETURNING id, attempt
   `);
   // cm:guard the statement returns the ID and the ROW is read back through drizzle, because
   // `db.execute` hands back the driver's own snake_case object: a `RETURNING *` typed as
   // `RunnerReleaseRow` compiles, and every camelCase field a caller reads off it — `tagState`,
   // `commitSha`, `step` — is `undefined` at runtime. That shape passed the whole unit suite, which
   // mocks this module, and was caught by the first integration case that read a column back.
-  const openedId = rows[0]?.id;
-  if (openedId) {
-    const opened = await findById(openedId);
-    if (opened) return { opened, held: null };
+  const granted = rows[0];
+  if (granted) {
+    const owner = ownerOfGrant(granted, await findById(granted.id));
+    if (owner) return owner;
   }
   const held = await findByProjectAndTag(args.projectId, args.tag);
   if (!held) {
@@ -88,6 +88,25 @@ export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
     );
   }
   return { opened: null, held };
+}
+
+/**
+ * What the opener owns, given the attempt the INSERT granted it and the row it
+ * read back a statement later.
+ *
+ * A seam rather than an inline comparison because the window it decides cannot
+ * be reached from outside: the deadline can settle this attempt and another
+ * start re-arm it between those two statements, and there is no point in the
+ * public API where a test can stand in that gap.
+ */
+// cm:guard the grant and never the reading. A caller that takes whatever attempt the read-back happens to hold owns the attempt that REPLACED its own, and then passes every fence on this table, because the fences compare against the number it adopted. `null` is the row vanishing between the two statements, which is the caller's own upsert to retry rather than a grant to trust.
+export function ownerOfGrant(
+  granted: { id: string; attempt: number },
+  read: RunnerReleaseRow | null,
+): OpenOutcome | null {
+  if (!read) return null;
+  if (Number(read.attempt) !== Number(granted.attempt)) return { opened: null, held: read };
+  return { opened: read, held: null };
 }
 
 export async function findByProjectAndTag(

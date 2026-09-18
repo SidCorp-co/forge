@@ -58,8 +58,14 @@ function stubFetch(sent: Sent[]) {
         { status: 201, headers: { 'content-type': 'application/json' } },
       );
     }
+    if (String(url).endsWith('/git/tags')) {
+      return new Response(JSON.stringify({ sha: 'tagobj1', tag: 'runner-v0.13.3' }), {
+        status: 201,
+        headers: { 'content-type': 'application/json' },
+      });
+    }
     return new Response(
-      JSON.stringify({ ref: 'refs/tags/runner-v0.13.3', object: { sha: 'abc1234' } }),
+      JSON.stringify({ ref: 'refs/tags/runner-v0.13.3', object: { sha: 'tagobj1' } }),
       {
         status: 201,
         headers: { 'content-type': 'application/json' },
@@ -94,11 +100,12 @@ describe('the credential the tag is cut with', () => {
   it('is an installation token the App minted for itself, and nothing else', async () => {
     const sent: Sent[] = [];
     vi.stubGlobal('fetch', stubFetch(sent));
-    await createTagRef(client(), 'runner-v0.13.3', 'abc1234');
+    await createTagRef(client(), 'runner-v0.13.3', 'abc1234', 'forge-runner 0.13.3');
     vi.unstubAllGlobals();
 
-    expect(sent).toHaveLength(2);
-    const [mint, cut] = sent;
+    // cm:guard the mint happens per CALL, so the annotated tag's two writes are three requests and every one of them carries the installation token. A test asserting only the first write would pass over a second call that fell back to something else.
+    expect(sent).toHaveLength(3);
+    const [mint, object, cut] = sent;
     expect(mint?.url).toBe('https://api.github.com/app/installations/42/access_tokens');
     expect(mint?.method).toBe('POST');
 
@@ -109,10 +116,19 @@ describe('the credential the tag is cut with', () => {
     expect(jwt.payload.iss).toBe('1075');
     expect(jwt.payload.exp - jwt.payload.iat).toBeLessThanOrEqual(600);
 
+    expect(object?.url).toBe('https://api.github.com/repos/SidCorp-co/forge/git/tags');
+    expect(object?.authorization).toBe('Bearer ghs_installation_token');
+    expect(object?.body).toEqual({
+      tag: 'runner-v0.13.3',
+      message: 'forge-runner 0.13.3',
+      object: 'abc1234',
+      type: 'commit',
+    });
+
     expect(cut?.url).toBe('https://api.github.com/repos/SidCorp-co/forge/git/refs');
     expect(cut?.method).toBe('POST');
     expect(cut?.authorization).toBe('Bearer ghs_installation_token');
-    expect(cut?.body).toEqual({ ref: 'refs/tags/runner-v0.13.3', sha: 'abc1234' });
+    expect(cut?.body).toEqual({ ref: 'refs/tags/runner-v0.13.3', sha: 'tagobj1' });
   });
 
   it('sends no request at all when the connection holds no App key', async () => {

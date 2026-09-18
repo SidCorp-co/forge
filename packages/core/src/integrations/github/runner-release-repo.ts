@@ -155,30 +155,57 @@ export async function readTagRef(
 }
 
 /**
- * Create the tag. The one irreversible act on this path.
+ * Create the tag. The one irreversible act on this path, in two calls.
  *
- * A caller records the intent — `tag_state = 'unknown'` — before calling, and
- * moves it to `present` only on the answer. A 422 saying the reference already
- * exists is the one refusal that also moves it to `present`: the tag is there,
- * Forge just did not make it.
+ * ANNOTATED, because that is the artefact the hand-cut releases are: every
+ * `runner-v*` tag on this repository carries a tagger and the message
+ * `forge-runner <version>` — `runner-v0.14.0`, cut by hand on 2026-09-18 while
+ * this issue was being built, is the latest. A lightweight ref would trigger
+ * the same workflow and serve the same release, and it would still be a
+ * different object from the one every other release on the repository is: the
+ * point of this operation is that Forge does what was done by hand, not
+ * something that comes out equivalent.
+ *
+ * The tag OBJECT is written first and is invisible until a ref points at it —
+ * unreferenced, collectable, naming nothing — so the irreversible act is still
+ * exactly one call, the second. A caller records the intent (`tag_state =
+ * 'unknown'`) before either, and moves it to `present` only on the ref's
+ * answer. A 422 saying the reference already exists is the one refusal that
+ * also moves it to `present`: the tag is there, Forge just did not make it.
  */
 export async function createTagRef(
   client: GitHubRepoClient,
   tag: string,
   sha: string,
+  message: string,
 ): Promise<{ sha: string }> {
   const subject = runnerReleaseSubject({
     lookup: `looking the tag ${tag} up`,
     write: `creating the tag ${tag}`,
   });
+  let object: string;
+  try {
+    const created = await client.publish<{ sha?: string }>({
+      op: 'create',
+      method: 'POST',
+      path: `${repoPath(client)}/git/tags`,
+      body: { tag, message, object: sha, type: 'commit' },
+    });
+    if (!created.sha) throw new Error(`GitHub named no object for the tag ${tag}`);
+    object = created.sha;
+  } catch (err) {
+    // cm:guard a failure HERE leaves no tag on the repository however it failed, including a timeout: the object this call writes names nothing until the ref below points at it, and no ref request has been sent. That is why it refuses as `beforeWrite` rather than leaving the tag's existence unknown — the precision is the whole reason the write is split.
+    const refusal = describePublishThrown(err, 'create', subject);
+    throw new RunnerReleaseRepoError(refusal, true);
+  }
   try {
     const created = await client.publish<{ object?: { sha?: string } }>({
       op: 'create',
       method: 'POST',
       path: `${repoPath(client)}/git/refs`,
-      body: { ref: `refs/tags/${tag}`, sha },
+      body: { ref: `refs/tags/${tag}`, sha: object },
     });
-    return { sha: created.object?.sha ?? sha };
+    return { sha: created.object?.sha ?? object };
   } catch (err) {
     refuse(err, 'create', subject);
   }

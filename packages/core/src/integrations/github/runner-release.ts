@@ -27,6 +27,7 @@ import {
   RUNNER_RELEASE_DEADLINE_MS,
   repositoryTruth,
   tagForVersion,
+  tagMessageForVersion,
 } from './runner-release-preflight.js';
 import {
   createTagRef,
@@ -113,7 +114,12 @@ async function cutTheTag(
   // cm:guard the ANSWER to that write decides whether the request goes out at all. `advance` is conditional on the row being non-terminal, so a `false` here means the deadline pass or a delivery settled this release a moment ago — and creating the tag anyway puts a ref on GitHub that no row will ever be able to record, because every later write is conditional too. The irreversible act may not outrun the record of the intent.
   if (!armed) return lostTheRow(row);
   try {
-    const created = await createTagRef(client, row.tag, commitSha);
+    const created = await createTagRef(
+      client,
+      row.tag,
+      commitSha,
+      tagMessageForVersion(row.version),
+    );
     await advance(row.id, row.attempt, {
       step: 'await_build',
       status: 'building',
@@ -123,7 +129,7 @@ async function cutTheTag(
     await appendReading(
       row.id,
       row.attempt,
-      `cut_tag: ${tagRefName(row.tag)} created at ${created.sha} by the App on ${client.fullName}`,
+      `cut_tag: ${tagRefName(row.tag)} created as an annotated tag at ${created.sha} by the App on ${client.fullName}`,
     );
     return { started: true, release: await asPersisted(row.id, row) };
   } catch (err) {

@@ -130,40 +130,104 @@ describe('the reads', () => {
 });
 
 describe('the one write', () => {
-  it('creates the tag ref as the App, at the commit it was given', async () => {
-    const { client, calls } = stubClient(() => ({ object: { sha: 'abc1234' } }));
-    expect(await createTagRef(client, 'runner-v0.13.3', 'abc1234')).toEqual({ sha: 'abc1234' });
-    expect(calls).toHaveLength(1);
+  /** The tag object answers, so a stub decides only what the REF create does. */
+  const onRefCreate = (answer: (call: Call) => unknown) =>
+    stubClient((call) => (call.path.endsWith('/git/tags') ? { sha: 'tagobj1' } : answer(call)));
+
+  // cm:guard ANNOTATED, in two calls, because that is what every hand-cut `runner-v*` tag on this repository is — `runner-v0.14.0`, cut on 2026-09-18, carries a tagger and the message `forge-runner 0.14.0`. A single ref create would trigger the same workflow and serve the same release while leaving an object of a different kind from every other release's, and the point of this operation is that Forge does what was done by hand.
+  it('creates an annotated tag as the App, then the ref pointing at it', async () => {
+    const { client, calls } = onRefCreate(() => ({ object: { sha: 'tagobj1' } }));
+    expect(await createTagRef(client, 'runner-v0.13.3', 'abc1234', 'forge-runner 0.13.3')).toEqual({
+      sha: 'tagobj1',
+    });
+    expect(calls).toHaveLength(2);
     expect(calls[0]).toEqual({
       op: 'create',
       method: 'POST',
+      path: '/repos/SidCorp-co/forge/git/tags',
+      body: {
+        tag: 'runner-v0.13.3',
+        message: 'forge-runner 0.13.3',
+        object: 'abc1234',
+        type: 'commit',
+      },
+    });
+    // cm:guard the ref points at the TAG OBJECT and not at the commit: pointed at the commit it is a lightweight tag again, with an unreferenced object beside it naming nothing.
+    expect(calls[1]).toEqual({
+      op: 'create',
+      method: 'POST',
       path: '/repos/SidCorp-co/forge/git/refs',
-      body: { ref: 'refs/tags/runner-v0.13.3', sha: 'abc1234' },
+      body: { ref: 'refs/tags/runner-v0.13.3', sha: 'tagobj1' },
     });
     expect(tagRefName('runner-v0.13.3')).toBe('refs/tags/runner-v0.13.3');
   });
 
   // cm:guard a create that GitHub ANSWERED wrote nothing; a create that timed out may have. These two assertions are the whole basis of `tag_state` in `runner-release.ts`, and folding them is how a second attempt cuts over a tag that already exists.
   it('says an answered refusal wrote nothing and a timeout may have', async () => {
-    const answered = stubClient(
+    const answered = onRefCreate(
       () => new GitHubPublishError({ op: 'create', status: 403, message: 'forbidden' }),
     );
-    const a = await createTagRef(answered.client, 'runner-v0.13.3', 'abc1234').catch((e) => e);
+    const a = await createTagRef(
+      answered.client,
+      'runner-v0.13.3',
+      'abc1234',
+      'forge-runner 0.13.3',
+    ).catch((e) => e);
     expect(a).toBeInstanceOf(RunnerReleaseRepoError);
     expect(a.beforeWrite).toBe(false);
     expect(a.refusal.status).toBe(403);
 
-    const timedOut = stubClient(
+    const timedOut = onRefCreate(
       () => new GitHubPublishError({ op: 'create', timedOut: true, message: 'timed out' }),
     );
-    const t = await createTagRef(timedOut.client, 'runner-v0.13.3', 'abc1234').catch((e) => e);
+    const t = await createTagRef(
+      timedOut.client,
+      'runner-v0.13.3',
+      'abc1234',
+      'forge-runner 0.13.3',
+    ).catch((e) => e);
     expect(t.beforeWrite).toBe(false);
     expect(t.refusal.cause).toBe('timed-out-mid-write');
     expect(t.refusal.status).toBeNull();
   });
 
+  // cm:guard the object write names nothing until a ref points at it, so its failure — timeout included — leaves no tag on the repository at all, and no ref request was ever sent. That precision is what the split buys; folding it into the ref's classification would leave `unknown` for a release nothing was written for, and `unknown` is the one state that refuses the version for ever.
+  it('says a failure at the tag object wrote no tag, whatever the failure was', async () => {
+    const answered = stubClient(
+      () => new GitHubPublishError({ op: 'create', status: 403, message: 'forbidden' }),
+    );
+    const a = await createTagRef(
+      answered.client,
+      'runner-v0.13.3',
+      'abc1234',
+      'forge-runner 0.13.3',
+    ).catch((e) => e);
+    expect(a).toBeInstanceOf(RunnerReleaseRepoError);
+    expect(a.beforeWrite).toBe(true);
+    expect(answered.calls).toHaveLength(1);
+
+    const timedOut = stubClient(
+      () => new GitHubPublishError({ op: 'create', timedOut: true, message: 'timed out' }),
+    );
+    const t = await createTagRef(
+      timedOut.client,
+      'runner-v0.13.3',
+      'abc1234',
+      'forge-runner 0.13.3',
+    ).catch((e) => e);
+    expect(t.beforeWrite).toBe(true);
+    expect(timedOut.calls).toHaveLength(1);
+  });
+
+  it('refuses a tag object GitHub answered with no sha', async () => {
+    const { client } = stubClient(() => ({}));
+    await expect(
+      createTagRef(client, 'runner-v0.13.3', 'abc1234', 'forge-runner 0.13.3'),
+    ).rejects.toThrow(/named no object/);
+  });
+
   it('knows a 422 that says the ref is already there', async () => {
-    const { client } = stubClient(
+    const { client } = onRefCreate(
       () =>
         new GitHubPublishError({
           op: 'create',
@@ -172,13 +236,18 @@ describe('the one write', () => {
           message: 'POST /git/refs returned HTTP 422',
         }),
     );
-    const err = await createTagRef(client, 'runner-v0.13.3', 'abc1234').catch((e) => e);
+    const err = await createTagRef(
+      client,
+      'runner-v0.13.3',
+      'abc1234',
+      'forge-runner 0.13.3',
+    ).catch((e) => e);
     expect(saysRefExists(err.refusal)).toBe(true);
   });
 
   // cm:guard the refusal this case builds is the REAL one, through `describePublishRefusal`, and that is the whole point: Forge's own 422 sentence ends "usually a ref that already exists, or a commit this repository does not hold", so a test matching a hand-written message passes over a function that matches every 422 alike. Here GitHub says the commit is missing, and reading that as a tag already on the repository records `present` for a tag nobody cut and refuses the version for ever.
   it('does NOT read a 422 about a missing commit as a ref that already exists', async () => {
-    const { client } = stubClient(
+    const { client } = onRefCreate(
       () =>
         new GitHubPublishError({
           op: 'create',
@@ -187,7 +256,12 @@ describe('the one write', () => {
           message: 'POST /git/refs returned HTTP 422',
         }),
     );
-    const err = await createTagRef(client, 'runner-v0.13.3', 'deadbee').catch((e) => e);
+    const err = await createTagRef(
+      client,
+      'runner-v0.13.3',
+      'deadbee',
+      'forge-runner 0.13.3',
+    ).catch((e) => e);
     expect(err.refusal.status).toBe(422);
     expect(err.refusal.message).toContain('already exists');
     expect(err.refusal.detail).toContain('Object does not exist');
