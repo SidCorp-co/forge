@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Banner,
@@ -41,7 +41,14 @@ export function PairScreen() {
   const code = params.get("code")?.trim() ?? "";
   const approve = useApproveDevice();
   const [denied, setDenied] = useState(false);
-  const [asAgent, setAsAgent] = useState<string>(AS_MYSELF);
+  // cm:guard the choice is stored WITH the organization it was made in, and read as unselected
+  // the moment those differ. `ActiveOrgProvider` switches organization without remounting, so a
+  // bare id outlives the list it was chosen from. Derived rather than cleared by an effect,
+  // because an effect runs after the render that already used the stale value (ISS-1093).
+  const [picked, setPicked] = useState<{ orgId: string | null; agentUserId: string }>({
+    orgId: null,
+    agentUserId: AS_MYSELF,
+  });
 
   const { user } = useAuth();
   const { activeOrg } = useActiveOrg();
@@ -55,6 +62,8 @@ export function PairScreen() {
   const agents = agentsQ.data ?? [];
 
   const approved = approve.data?.approved === true;
+  const activeOrgId = activeOrg?.id ?? null;
+  const asAgent = picked.orgId === activeOrgId ? picked.agentUserId : AS_MYSELF;
   const chosen = agents.find((a) => a.userId === asAgent);
   // cm:guard the identity SUBMITTED is read off `chosen`, the very object the sentence below is
   // written from — not off `asAgent`. The two are the same value only while the agent list is the
@@ -63,11 +72,6 @@ export function PairScreen() {
   // box the other organization's agent. One value, one answer, by construction rather than by two
   // call sites agreeing (ISS-1093, second review round).
   const identity = chosen?.userId ?? null;
-
-  // cm:guard and the stale selection is cleared as well, so the picker does not go on displaying
-  // an agent this organization does not have. `ActiveOrgProvider` switches org without remounting.
-  const activeOrgId = activeOrg?.id ?? null;
-  useEffect(() => setAsAgent(AS_MYSELF), [activeOrgId]);
 
   // cm:guard approval waits for the active org to resolve. Until it does, `activeOrg` is null,
   // `isOrgAdmin` is false and every guard below reads this admin as somebody with no choice to
@@ -165,7 +169,7 @@ export function PairScreen() {
                 >
                   <Select
                     value={asAgent}
-                    onChange={setAsAgent}
+                    onChange={(v) => setPicked({ orgId: activeOrgId, agentUserId: v })}
                     disabled={agentsQ.isLoading}
                     options={[
                       { value: AS_MYSELF, label: `Me — ${user?.email ?? "this account"}` },

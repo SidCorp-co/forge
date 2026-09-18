@@ -209,6 +209,14 @@ describe("the identity submitted is the identity shown", () => {
     expect(screen.getByText(/will act as you/)).toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: /Approve device/ }));
     expect(mutate).toHaveBeenCalledWith({ pairingCode: "ABC-1234", agentUserId: null });
+
+    // cm:guard the PICKER reads as unselected too, and not as an empty box. A choice kept without
+    // the organization it was made in matches no option in the new list, so the trigger falls back
+    // to its placeholder — an admin reading "Select…" over a box that is in fact about to pair as
+    // them. The stored pair is what makes the control and the sentence say one thing.
+    expect(screen.getByLabelText("Pair this device as")).toHaveTextContent(
+      "Me — admin@acme.test",
+    );
   });
 
   // cm:guard approving is refused while the ACTIVE ORG itself is still resolving. Until it does,
