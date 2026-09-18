@@ -3717,6 +3717,24 @@ mod unplaced_tests {
             .expect("say_unplaced must be findable")
     }
 
+    /// The body of `say_unplaced`'s change gate, on its own.
+    ///
+    /// Scoped to the inside of the `if`, because a warning that merely sits
+    /// somewhere in the same function is one that can be moved out of the gate
+    /// while every assertion over the function still passes — which is the
+    /// containment the once-ness depends on (ISS-1092 F1 on the follow-up).
+    fn say_unplaced_gate() -> &'static str {
+        let body = say_unplaced_body();
+        let start = body
+            .find("if masters.note_unplaced(")
+            .expect("the report must be gated on the reason having changed");
+        let rest = &body[start..];
+        let end = rest
+            .find("\n    }\n")
+            .expect("the change gate must close");
+        &rest[..end]
+    }
+
     /// The `session.created` report inside `ensure_master`'s adopt branch, on
     /// its own.
     ///
@@ -4080,17 +4098,23 @@ mod unplaced_tests {
             body.contains("tracing::warn!"),
             "a reason nothing writes down is a reason no operator ever reads: {body}"
         );
+        let gate = say_unplaced_gate();
         assert!(
-            body.contains("if masters.note_unplaced("),
-            "the log is gated on the reason having CHANGED, or a box sweeping every thirty seconds writes thousands of identical lines a day: {body}"
+            gate.contains("tracing::warn!"),
+            "the warning sits INSIDE the change gate and not merely in the same function: moved out of it, every reason is reported on every sweep and the once-ness is gone while the function still reads as if it had it: {gate}"
+        );
+        assert_eq!(
+            body.matches("tracing::warn!").count(),
+            1,
+            "one warning, so a second copy outside the gate cannot report every sweep alongside the gated one: {body}"
         );
         assert!(
-            body.contains("{slug}"),
-            "the warning names the project, or a box serving 28 of them says only that something is unplaced: {body}"
+            gate.contains("{slug}"),
+            "the warning names the project, or a box serving 28 of them says only that something is unplaced: {gate}"
         );
         assert!(
-            body.contains("{why}"),
-            "the warning carries the reason, which is the whole of what an operator acts on: {body}"
+            gate.contains("{why}"),
+            "the warning carries the reason, which is the whole of what an operator acts on: {gate}"
         );
     }
 }
