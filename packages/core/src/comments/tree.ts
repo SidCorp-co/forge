@@ -1,5 +1,6 @@
 import type { BodyNode } from '../body/parse.js';
 import { bodyNodes } from '../body/prepare.js';
+import type { ActorAgency } from '../issues/actor-agency.js';
 import { actorKey, type ResolvedActor } from '../issues/actor-identity.js';
 import { type ForgeRecord, parseForgeRecord } from '../messaging/forge-record.js';
 import type { RecordLens } from '../messaging/record-screen.js';
@@ -11,11 +12,15 @@ export interface CommentRow {
   id: string;
   issueId: string;
   authorId: string;
-  // ISS-519 — non-null when the comment was posted by an agent/device. The
-  // authoritative "this is an agent action" marker (authorId always points at
-  // the device's human owner). Optional so flat-list/REST builders that don't
-  // select it still satisfy the type.
+  // ISS-519, narrowed by ISS-932 wave 4 — non-null names the BOX a credential was
+  // issued to, which answers *where* and not *who*. It is NOT the agent test; see
+  // `authorAgency` below. Optional so flat-list/REST builders that don't select it
+  // still satisfy the type.
   authorDeviceId?: string | null;
+  // ISS-969 — who was at the keyboard, taken from the credential at write time.
+  // NULL is "written before this column existed", never 'human'. Optional for the
+  // same reason as `authorDeviceId`.
+  authorAgency?: ActorAgency | null;
   body: string;
   /** ISS-898 renderer the body was stored for; absent reads as `markdown`. */
   format?: string | null;
@@ -106,7 +111,8 @@ export function walkCommentTree<R extends CommentRow>(
   }
 }
 
-// cm:guard authorship is the TOKEN's — a device token resolves to that device (agent), any other credential resolves to the person who owns it, and nothing per-comment overrides that. Do not reintroduce a stored "written by a bot" flag on the row: `comments.is_ai` was exactly that, and because an agent holding the owner's PAT wrote `true` on the owner's own identity, the column disagreed with the token on 3,172 of 23,414 rows (measured 2026-09-04) while claiming to be the durable human test.
+// cm:guard authorship is the TOKEN's — the IDENTITY is resolved from the credential's device or its owner, and nothing per-comment overrides who the author is. `author_agency` is not such an override and reintroduces nothing: it is what the credential established at write time, stored because a comment is read long after its request is gone, and `comments/service.ts:updateCommentBody` already re-reads it rather than the editor's. What must not come back is `comments.is_ai` — a flag a WRITER asserted about itself, which disagreed with the token on 3,172 of 23,414 rows (measured 2026-09-04) because an agent holding the owner's PAT wrote `true` on the owner's own identity.
+// cm:guard the `||` mirrors `issues/activity-routes.ts:isAgentForRow` and is an OR for that reader's reason, NOT for `issues/creator.ts:creatorIsAgent`'s: `comments.author_agency` is nullable with no backfill, so NULL is no evidence and the resolver's principal floor must still answer. Reading the column ALONE would un-mark every comment written before ISS-969, and `attachAuthors` reading neither is how a comment an agent wrote on a person's PAT rendered with no marker at all while the truthful column sat on the wire (ISS-1093).
 export function attachAuthors(
   nodes: CommentNode<CommentRow>[],
   resolved: Map<string, ResolvedActor>,
@@ -117,6 +123,8 @@ export function attachAuthors(
         ? actorKey('device', node.authorDeviceId)
         : actorKey('user', node.authorId),
     );
-    node.author = actor ? { ...actor } : null;
+    node.author = actor
+      ? { ...actor, isAgent: node.authorAgency === 'agent' || actor.isAgent }
+      : null;
   });
 }

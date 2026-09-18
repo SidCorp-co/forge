@@ -1099,6 +1099,9 @@ export const issues = pgTable(
     reportedBy: text('reported_by'),
     // cm:guard never expose as client-settable on issueCreateSchema or the MCP create input
     createdVia: text('created_via', { enum: issueCreationChannels }),
+    // cm:guard ISS-1093 — whether a person or an agent filed this issue, answered by the request's CREDENTIAL and NOT by `created_via` one line up: that column names the transport, and every door stamps it as a constant (`web` from REST, `mcp` from MCP), so a master holding a person's PAT filed 20 rows the list showed as typed by the org owner. NULL is "no evidence" and is NOT 'human' — there is deliberately no DEFAULT, which is the whole difference from `activity_log.actor_agency` (migration 0193 DEFAULTed 'human' over all history and its reader must OR to survive that). Because NULL here means only what it says, a stored 'human' is believed, and `issues/creator.ts:creatorIsAgent` reads the column first and the channel only as the pre-column floor.
+    // cm:edge contract -> packages/core/src/issues/create-service.ts — written from `writer.actor.agency`, the SAME object the `issue.created` activity row is written from, so the two surfaces cannot disagree about one event.
+    creatorAgency: text('creator_agency', { enum: actorAgencies }),
     // cm:guard at most one non-closed issue may carry a given detector key per project — enforced by partial unique index `issues_detector_key_live_uq` (migration 0158); claimDetectorKey() is the graceful path, the index is the backstop, do not drop it
     detectorKey: text('detector_key'),
     assigneeId: uuid('assignee_id').references(() => users.id, { onDelete: 'set null' }),

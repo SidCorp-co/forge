@@ -4,8 +4,11 @@
 //! `release`, `run_open`, `ask`, `decide` — a job pool reached through a unix
 //! socket so the claim and the spawn happened in one process. None of that
 //! exists now. A run is a subagent the master dispatches inside its own
-//! session, and the lease `forge claim` takes on the issue is the whole record
-//! of it, so there is nothing on this box left to claim, hold or hand back.
+//! session, so there is nothing on this box left to claim, hold or hand back.
+//! This paragraph used to end "and the lease `forge claim` takes on the issue
+//! is the whole record of it". That stopped being true on 2026-09-13, when a
+//! declaration became the record of what was handed out; the sentence stood
+//! here unread until ISS-1094.
 //!
 //! What survived that removal was the one verb that never acted: a session
 //! telling the daemon what its own hooks just reported.
@@ -18,7 +21,7 @@
 //! says what it was carrying. The old `run_open` took a job from a pool and
 //! then started it; these take nothing and start nothing.
 
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::sync::Arc;
 
 use serde::{Deserialize, Serialize};
@@ -58,6 +61,10 @@ enum Request {
         /// Claude Code's own `session_id` — which conversation these claims belong to.
         #[serde(default)]
         conversation_id: Option<String>,
+        /// `agent_type` on a child event: the role the child was dispatched through.
+        // cm:guard OPTIONAL and read only to tell a hand-off from a helper. It is not a second way to name a run and nothing routes on it — a child whose role this box ships but has no declaration is REPORTED, never bound, because binding on a label would give a row to work nobody declared (ISS-1094).
+        #[serde(default)]
+        agent_type: Option<String>,
     },
     /// "I am about to hand these issues to a subagent."
     // cm:guard `project_id` is on the frame AND checked against the one this token's session is master of, rather than simply derived from the token. Derived, a master that named the wrong project would be served silently under the right one, and the mistake would surface as a run recorded against issues nobody meant; named and checked, it is refused saying which project the pane actually serves (ISS-1050 criterion 7).
@@ -82,6 +89,19 @@ enum Request {
         /// Why, in the master's own words. Stored and printed, never parsed.
         why: String,
     },
+    /// "I am about to hand work to this subagent — has it been declared?"
+    // cm:guard this frame ASKS and the answer it gets back is advice to the pane's own hook, which is what turns the declaration from advice into a condition without putting a second actor on this socket. It writes one thing — the promise binding a declaration to the tool call it authorised — and that write is what stops two dispatches riding one row (ISS-1094 invariant 1).
+    // cm:edge contract -> packages/runner/crates/forge-runner/src/cmd/gate.rs — the only sender, and the shape of `Dispatch` is what a `PreToolUse` payload from claude actually carries, measured rather than composed.
+    #[serde(rename_all = "camelCase")]
+    DispatchGate {
+        token: String,
+        #[serde(default)]
+        agent_id: Option<String>,
+        #[serde(default)]
+        subagent_type: Option<String>,
+        #[serde(default)]
+        tool_use_id: Option<String>,
+    },
     /// "That run is finished" — or "the subagent I declared never started".
     #[serde(rename_all = "camelCase")]
     RunClose {
@@ -98,6 +118,7 @@ impl Request {
             Request::AgentEvent { token, .. }
             | Request::RunDeclare { token, .. }
             | Request::RunChoice { token, .. }
+            | Request::DispatchGate { token, .. }
             | Request::RunClose { token, .. } => token,
         }
     }
@@ -143,6 +164,23 @@ pub struct Control {
     pub ledger: Arc<std::sync::Mutex<Option<crate::runner::ledger::Ledger>>>,
     /// The boot this daemon is in, which scopes every row it writes.
     pub boot_id: String,
+    /// Where this box's marks and its plugin clones live.
+    // cm:guard resolved ONCE, at construction, and carried — the same rule `mcp/config.rs` states for the credential and for the same reason: a second resolution is how one path on a box starts reading a different directory from another. It is also the seam the tests need, since a handler resolving it itself would write this daemon's marks into the operator's real config directory during `cargo test`.
+    pub config_dir: Option<PathBuf>,
+    /// What the gate has decided this daemon lifetime, promises and answers both.
+    // cm:guard in MEMORY, so it lasts exactly as long as this daemon process and no longer. That is NOT the same scope the ledger has: `unbound_run_for_master` is keyed on `boot_identity()`, which is the OS boot and survives a daemon restart, so a declaration outlives this map. The consequence is stated on ISS-1094 as criteria 41 and 42 rather than engineered around: after a restart the declaration is still the master's and the next dispatch is ALLOWED, because refusing would force a second row for work already declared and leave an orphan core reaps in ten minutes. Single-use across a restart is held by `ledger::bind_agent`'s `agent_id IS NULL` and by the denunciation, not by this map.
+    pub promises: std::sync::Mutex<GateMemory>,
+}
+
+/// What the declaration gate remembers for as long as this daemon runs.
+// cm:guard the two maps are under ONE lock, and that is what makes single-use hold. Reading the promise and writing it under separate locks is a check followed by a create: two dispatches racing on one declaration both read no promise and both are allowed, which is the invariant this was built to defend arriving through the back door (ISS-1094, review F2).
+#[derive(Default)]
+pub struct GateMemory {
+    /// Which tool call each pending declaration has been promised to.
+    promised: std::collections::HashMap<String, String>,
+    /// Tool calls this daemon has already allowed.
+    // cm:guard OUTLIVES the promise on purpose. The promise is released when the subagent binds, but the hook that asked may be replayed after that — the harness promises nothing about delivering once — and a replay finding its promise gone would either be refused or would eat the master's NEXT declaration. Criterion 6's guarantee is for the whole daemon lifetime, not until the bind (ISS-1094, review F4).
+    allowed: std::collections::HashSet<String>,
 }
 
 /// Serve until `cancel` flips.
@@ -227,6 +265,7 @@ fn agent_event(
     at_ms: Option<i64>,
     agent_id: Option<&str>,
     conversation_id: Option<&str>,
+    agent_type: Option<&str>,
     session_id: &str,
 ) -> ClaimReply {
     let Some(parsed) = crate::daemon::agent_activity::Event::from_wire(event) else {
@@ -241,7 +280,7 @@ fn agent_event(
             conversation: conversation_id,
         },
     );
-    bind_or_release(ctl, parsed, agent_id, session_id);
+    bind_or_release(ctl, parsed, agent_id, agent_type, session_id);
     note_master_pane(ctl, session_id, conversation_id);
     // cm:guard a permission wait is the ONE state that leaves this box at WARN, because it is the only one nothing on the box can clear: a turn that runs ends, a turn that fails ends, and a question put to a human ends when a human answers it. Measured forge-vm 2026-09-10: one run pane sat on a dangerous-command prompt for hours while every liveness reader called it healthy, because the pane emitted no boundary anything here could hear.
     match after.doing() {
@@ -481,6 +520,125 @@ fn run_close(
     }
 }
 
+/// The directory this box's marks and its plugin clones sit in.
+pub fn config_dir() -> Option<PathBuf> {
+    crate::config::Config::path()
+        .ok()
+        .and_then(|p| p.parent().map(Path::to_path_buf))
+}
+
+/// Answer one pane's question: may it hand this work out?
+// cm:guard the REFUSAL is the deliverable of this whole issue, so it travels whole from `dispatch_gate::REFUSAL` and is never summarised here. A master told "refused" with no verb to run is a master that stops, which is worse than the advice it replaces.
+// cm:guard an `Unknown` verdict answers OK and marks. Refusing on a box whose plugin clone is missing would wedge every master on it, and the dispatch this lets through is still named twice: once in the mark here, and again by `bind_or_release` when the subagent starts.
+#[cfg(unix)]
+fn dispatch_gate_reply(
+    ctl: &Arc<Control>,
+    d: crate::daemon::dispatch_gate::Dispatch,
+    session_id: &str,
+) -> ClaimReply {
+    use crate::daemon::dispatch_gate::{decide, Facts, Verdict, REFUSAL};
+
+    let dir = ctl.config_dir.clone();
+    let roles = dir.as_deref().and_then(dispatch_gate_roles);
+
+    // cm:guard the ledger lock is taken BEFORE the gate memory and never the other way round, the
+    // same order `bind_or_release` takes them in. Two orders on two locks is a deadlock that only
+    // appears under the concurrency this critical section exists to survive.
+    let mut held = ctl.ledger.lock().expect("ledger poisoned");
+    let pending = match held.as_mut() {
+        // cm:guard a ledger ERROR is not "nothing is declared". Collapsing the two refuses a
+        // master because this box could not read its own registry, which is an uncertain state
+        // answered with a certain denial — the shape this whole issue is about, inverted
+        // (ISS-1094, review F5).
+        Some(led) => match led.unbound_run_for_master(session_id, &ctl.boot_id) {
+            Ok(run) => run.map(|r| r.run_id),
+            Err(e) => {
+                let why = "this box's own registry of declared runs could not be read";
+                tracing::error!("[control] the dispatch gate could not decide: {why}: {e}");
+                if let Some(dir) = dir.as_deref() {
+                    crate::daemon::degraded::mark(
+                        dir,
+                        crate::daemon::degraded::Kind::Degraded,
+                        why,
+                    );
+                }
+                return gate_allows(Some(why));
+            }
+        },
+        None => {
+            let why = "this box holds no registry of declared runs";
+            if let Some(dir) = dir.as_deref() {
+                crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Degraded, why);
+            }
+            return gate_allows(Some(why));
+        }
+    };
+    let mut memory = ctl.promises.lock().expect("promises poisoned");
+
+    // A tool call this daemon has already answered gets that answer again, whether
+    // or not its declaration has since been bound.
+    if let Some(tool_use) = d.tool_use_id.as_deref() {
+        if memory.allowed.contains(tool_use) {
+            return gate_allows(None);
+        }
+    }
+
+    let promised = pending
+        .as_deref()
+        .and_then(|run| memory.promised.get(run).cloned());
+    let verdict = decide(
+        &d,
+        &Facts {
+            roles: roles.as_ref(),
+            pending_run: pending.as_deref(),
+            promised_to: promised.as_deref(),
+        },
+    );
+    match verdict {
+        Verdict::NotOurs => gate_allows(None),
+        Verdict::Replay { .. } => gate_allows(None),
+        Verdict::Covered { run_id } => {
+            if let Some(tool_use) = d.tool_use_id.clone() {
+                memory.promised.insert(run_id.clone(), tool_use.clone());
+                memory.allowed.insert(tool_use);
+            }
+            tracing::info!("[control] run {run_id} is promised to this dispatch");
+            let mut reply = gate_allows(None);
+            reply.job_id = Some(run_id);
+            reply
+        }
+        Verdict::Undeclared => {
+            tracing::warn!(
+                "[control] refusing an undeclared hand-off from master session {session_id}"
+            );
+            ClaimReply::refused(REFUSAL)
+        }
+        Verdict::Unknown(why) => {
+            if let Some(dir) = dir.as_deref() {
+                crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Degraded, why);
+            }
+            tracing::error!("[control] the dispatch gate could not decide: {why}");
+            gate_allows(Some(why))
+        }
+    }
+}
+
+/// The gate's "go ahead", with an optional reason it could not do better.
+fn gate_allows(why: Option<&str>) -> ClaimReply {
+    ClaimReply {
+        ok: true,
+        job_id: None,
+        agent_session_id: None,
+        issue_key: None,
+        reason: why.map(str::to_string),
+    }
+}
+
+#[cfg(unix)]
+fn dispatch_gate_roles(dir: &Path) -> Option<std::collections::BTreeSet<String>> {
+    crate::daemon::dispatch_gate::shipped_roles(dir)
+}
+
 /// Tie a subagent's life to the run its master declared for it.
 ///
 /// `SubagentStart` binds the one row this master has declared and nothing has
@@ -494,6 +652,7 @@ fn bind_or_release(
     ctl: &Arc<Control>,
     event: crate::daemon::agent_activity::Event,
     agent_id: Option<&str>,
+    agent_type: Option<&str>,
     session_id: &str,
 ) {
     use crate::daemon::agent_activity::Event;
@@ -507,20 +666,61 @@ fn bind_or_release(
         Event::SubagentStarted => {
             match led.unbound_run_for_master(session_id, &ctl.boot_id) {
                 Ok(Some(run)) => match led.bind_agent(&run.run_id, child) {
-                    Ok(true) => tracing::info!("[control] run {} is subagent {child}", run.run_id),
+                    Ok(true) => {
+                        // cm:guard the promise is released HERE, at the bind, and by the same
+                        // event that consumes the declaration. Released anywhere later, the next
+                        // dispatch is refused although its row is free; released anywhere earlier,
+                        // two dispatches ride one row again.
+                        ctl.promises
+                            .lock()
+                            .expect("promises poisoned")
+                            .promised
+                            .remove(&run.run_id);
+                        tracing::info!("[control] run {} is subagent {child}", run.run_id)
+                    }
                     Ok(false) => tracing::debug!(
                         "[control] run {} was already bound when {child} started",
                         run.run_id
                     ),
                     Err(e) => tracing::warn!("[control] cannot bind {child}: {e}"),
                 },
-                // cm:guard NOT a warning. A master runs subagents this box knows nothing about — a
-                // search, a review, anything it dispatches without declaring — and every one of
-                // them arrives here. Only a declared run has a row, and a child with none is the
-                // ordinary case rather than a fault.
-                Ok(None) => {
-                    tracing::debug!("[control] subagent {child} answers to no declared run")
-                }
+                // cm:limit a child is correlated to a declaration by MASTER SESSION and by nothing
+                // else, which is ISS-1050's model and not this change's to replace: measured
+                // against claude 2.1.276, a `SubagentStart` payload carries `agent_id`,
+                // `agent_type`, `session_id`, `cwd`, `prompt_id` and `transcript_path` — and
+                // `prompt_id` is per TURN, so two dispatches in one turn share it. There is no key
+                // in what the harness gives that names the tool call a child came from. The
+                // consequence has one narrow shape: where a daemon restart let two dispatches
+                // through on one declaration (ISS-1094 criteria 41, 42) AND the master declares
+                // again between the first child binding and the second starting, the second binds
+                // the new row instead of being named here. Closing it needs a correlation key the
+                // payloads do not carry; it is bounded on the issue rather than papered over.
+                // cm:guard the two cases here are NOT one, and reading them as one is what left
+                // sid-desk with four issues nobody was working. A master runs subagents this box
+                // knows nothing about — a search, a review — and those are the ordinary case and
+                // stay silent. A child started under a role this box's plugin SHIPS is a unit of
+                // work the master was required to declare and did not: the gate should have
+                // refused that dispatch, so each one here got past it. That is kernel input — a
+                // run with no row — and it breaks loudly and countably rather than into a
+                // `debug!` nobody reads (ISS-1094).
+                // cm:guard a child that ALREADY has a run is not undeclared, and asking the
+                // ledger is the only way to tell: `unbound_run_for_master` answers `None` both
+                // when nothing was declared and when this child's own declaration has already
+                // been bound and nothing new is pending. The harness makes no promise that a
+                // `SubagentStart` arrives once, so a replay would otherwise raise a false alarm
+                // on the one counter whose whole value is that it moves only when something is
+                // wrong (ISS-1094, review F3).
+                Ok(None) => match classify_start(
+                    led.run_for_agent(child)
+                        .map(|r| r.map(|run| run.run_id))
+                        .map_err(|e| e.to_string()),
+                ) {
+                    StartKind::Replay(run_id) => tracing::debug!(
+                        "[control] subagent {child} is already run {run_id}, so its start is a replay"
+                    ),
+                    StartKind::Undeclared => undeclared_child(ctl, child, agent_type),
+                    StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
+                },
                 Err(e) => tracing::warn!("[control] cannot read declared runs: {e}"),
             }
         }
@@ -533,6 +733,73 @@ fn bind_or_release(
             Err(e) => tracing::warn!("[control] cannot read the run for {child}: {e}"),
         },
         _ => {}
+    }
+}
+
+/// What a `SubagentStart` with no pending declaration turned out to be.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum StartKind {
+    /// This child already holds an open run, so its start is a repeat of one already handled.
+    Replay(String),
+    /// This box holds no row for this child's work.
+    Undeclared,
+    /// This box could not read its own ledger, so it knows neither of the above.
+    Unreadable(String),
+}
+
+// cm:guard the third case is NOT the second. A failed read of this box's own ledger establishes
+// nothing, and answering it with `UNDECLARED HAND-OFF: ... this box holds no row for that work`
+// asserts a fact nobody measured, on the one counter whose entire value is that it moves only when
+// something is wrong. `dispatch_gate_reply` already carries this rule for the other ledger read in
+// this file — a ledger ERROR is not "nothing is declared" — and the two reads answer it the same
+// way or the file contradicts itself (ISS-1094, review F3 recheck).
+pub(crate) fn classify_start(read: Result<Option<String>, String>) -> StartKind {
+    match read {
+        Ok(Some(run_id)) => StartKind::Replay(run_id),
+        Ok(None) => StartKind::Undeclared,
+        Err(e) => StartKind::Unreadable(e),
+    }
+}
+
+// cm:guard `#[cfg(unix)]` binds to the NEXT item, so anything inserted between one and the function
+// it was written for silently re-gates the wrong thing. That is how this file shipped `StartKind`
+// as unix-only and `undeclared_child` as unconditional in one edit: every local gate was green,
+// because `cfg(unix)` is true on the box, and only ci.yml's windows leg could see it. Add an item
+// here by writing its own attribute, never by landing above someone else's (ISS-1094).
+#[cfg(unix)]
+fn unreadable_ledger(ctl: &Arc<Control>, child: &str, e: &str) {
+    let detail = format!("could not read the declared runs when subagent {child} started: {e}");
+    tracing::warn!("[control] {detail} — this box knows neither that the work was declared nor that it was not");
+    if let Some(dir) = ctl.config_dir.as_deref() {
+        crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Degraded, &detail);
+    }
+}
+
+/// A subagent that started under a shipped role with nothing declared for it.
+// cm:guard the role set is read here again rather than passed in from the gate: this path runs when the gate did not, which is precisely when a value carried from it would be missing.
+#[cfg(unix)]
+fn undeclared_child(ctl: &Arc<Control>, child: &str, agent_type: Option<&str>) {
+    let Some(role) = agent_type else {
+        tracing::debug!("[control] subagent {child} answers to no declared run");
+        return;
+    };
+    let dir = ctl.config_dir.clone();
+    let ships_it = dir
+        .as_deref()
+        .and_then(crate::daemon::dispatch_gate::shipped_roles)
+        .is_some_and(|roles| roles.contains(role));
+    if !ships_it {
+        tracing::debug!("[control] subagent {child} ({role}) answers to no declared run");
+        return;
+    }
+    let detail = format!("subagent {child} started as `{role}` with nothing declared for it");
+    tracing::error!(
+        "[control] UNDECLARED HAND-OFF: {detail} — this box holds no row for that work, so nothing \
+         will reap it, the load count is short, and those issues will never be offered again. The \
+         master was required to run `forge-runner run declare` first."
+    );
+    if let Some(dir) = dir.as_deref() {
+        crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Undeclared, &detail);
     }
 }
 
@@ -574,6 +841,7 @@ fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimRep
             at_ms,
             agent_id,
             conversation_id,
+            agent_type,
             ..
         } => agent_event(
             ctl,
@@ -581,6 +849,7 @@ fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimRep
             at_ms,
             agent_id.as_deref(),
             conversation_id.as_deref(),
+            agent_type.as_deref(),
             session_id,
         ),
         Request::RunDeclare {
@@ -595,6 +864,20 @@ fn serve_request(ctl: &Arc<Control>, req: Request, session_id: &str) -> ClaimRep
             why,
             ..
         } => run_choice(ctl, &run_id, &choice, &why, session_id),
+        Request::DispatchGate {
+            agent_id,
+            subagent_type,
+            tool_use_id,
+            ..
+        } => dispatch_gate_reply(
+            ctl,
+            crate::daemon::dispatch_gate::Dispatch {
+                agent_id,
+                subagent_type,
+                tool_use_id,
+            },
+            session_id,
+        ),
         Request::RunClose { run_id, reason, .. } => {
             run_close(ctl, &run_id, reason.as_deref(), session_id)
         }
@@ -698,6 +981,16 @@ pub async fn request_agent_event(
     _event: &str,
     _agent_id: Option<&str>,
     _conversation_id: Option<&str>,
+    _agent_type: Option<&str>,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
+#[cfg(not(unix))]
+pub async fn request_dispatch_gate(
+    _path: &std::path::Path,
+    _token: &str,
+    _d: &crate::daemon::dispatch_gate::Dispatch,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }
@@ -717,12 +1010,32 @@ pub async fn request_agent_event(
     event: &str,
     agent_id: Option<&str>,
     conversation_id: Option<&str>,
+    agent_type: Option<&str>,
 ) -> std::io::Result<ClaimReply> {
     ask(
         path,
         serde_json::json!({
             "op": "agent_event", "token": token, "event": event,
-            "agentId": agent_id, "conversationId": conversation_id
+            "agentId": agent_id, "conversationId": conversation_id,
+            "agentType": agent_type
+        }),
+    )
+    .await
+}
+
+/// Ask whether the work about to be handed out has been declared.
+#[cfg(unix)]
+pub async fn request_dispatch_gate(
+    path: &std::path::Path,
+    token: &str,
+    d: &crate::daemon::dispatch_gate::Dispatch,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({
+            "op": "dispatch_gate", "token": token,
+            "agentId": d.agent_id, "subagentType": d.subagent_type,
+            "toolUseId": d.tool_use_id
         }),
     )
     .await
@@ -808,8 +1121,10 @@ mod tests {
     /// The `Request` enum's body, as source text.
     // cm:guard normalise CRLF and use `split_once`, because BOTH halves were silent failures. `str::split(..).next()` never answers `None`, so a delimiter that did not match returned the whole rest of the file and the scan below passed over `fn agent_event(.., session_id: &str)` instead of over the enum — a test that cannot fail. It only surfaced when a runner change made ci.yml's windows leg run at all; the path filter had been skipping it, and skipped is a pass to `ci-passed`.
     /// A `Control` whose ledger is in memory, so a declaration writes nowhere real.
+    // cm:guard `config_dir` points INTO that scratch directory and never at this machine's own. Without it every one of these tests writes a mark into the operator's real `~/.config/forge-runner`, and `forge-runner status` on a developer box starts reporting undeclared hand-offs that were `cargo test`.
     fn declaring_control(session_id: &str, project_id: &str) -> (Arc<Control>, String) {
         let dir = std::env::temp_dir().join(format!("ct-decl-{}", uuid::Uuid::new_v4()));
+        std::fs::create_dir_all(&dir).unwrap();
         let tokens = SessionTokens::at(dir.join("control-tokens.json"));
         let token = tokens.mint(session_id).unwrap();
         let masters = Arc::new(crate::daemon::master::Masters::new());
@@ -823,9 +1138,440 @@ mod tests {
                     crate::runner::ledger::Ledger::open_in_memory().unwrap(),
                 ))),
                 boot_id: "boot-a".into(),
+                config_dir: Some(dir),
+                promises: std::sync::Mutex::new(GateMemory::default()),
             }),
             token,
         )
+    }
+
+    /// A scratch directory holding a plugin clone that ships one role, so the
+    /// gate's role set is a fact of the box rather than of the test's wishes.
+    fn box_with_roles(roles: &[&str]) -> std::path::PathBuf {
+        let dir = std::env::temp_dir().join(format!("ct-gate-{}", uuid::Uuid::new_v4()));
+        let agents = dir.join("marketplaces/sidcorp-co__forge-plugin/plugin/agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        for r in roles {
+            std::fs::write(agents.join(format!("{r}.md")), "---\n").unwrap();
+        }
+        dir
+    }
+
+    fn asking(role: &str, tool_use: &str) -> crate::daemon::dispatch_gate::Dispatch {
+        crate::daemon::dispatch_gate::Dispatch {
+            agent_id: None,
+            subagent_type: Some(role.into()),
+            tool_use_id: Some(tool_use.into()),
+        }
+    }
+
+    /// The facts the handler would assemble, with the role set named rather
+    /// than read off whatever this machine happens to hold.
+    fn gate_on(
+        ctl: &Arc<Control>,
+        dir: &std::path::Path,
+        d: &crate::daemon::dispatch_gate::Dispatch,
+        session_id: &str,
+    ) -> crate::daemon::dispatch_gate::Verdict {
+        use crate::daemon::dispatch_gate::{decide, shipped_roles, Facts};
+        let roles = shipped_roles(dir);
+        let pending = {
+            let mut held = ctl.ledger.lock().unwrap();
+            held.as_mut()
+                .unwrap()
+                .unbound_run_for_master(session_id, &ctl.boot_id)
+                .unwrap()
+                .map(|r| r.run_id)
+        };
+        let promised = pending
+            .as_deref()
+            .and_then(|run| ctl.promises.lock().unwrap().promised.get(run).cloned());
+        let v = decide(
+            d,
+            &Facts {
+                roles: roles.as_ref(),
+                pending_run: pending.as_deref(),
+                promised_to: promised.as_deref(),
+            },
+        );
+        if let crate::daemon::dispatch_gate::Verdict::Covered { run_id } = &v {
+            if let Some(t) = d.tool_use_id.clone() {
+                ctl.promises
+                    .lock()
+                    .unwrap()
+                    .promised
+                    .insert(run_id.clone(), t);
+            }
+        }
+        v
+    }
+
+    /// Criteria 1, 4, 5, 6, 7 — the whole life of one declaration, in order.
+    // cm:guard the sequence is the test. Each assertion alone is satisfiable by a wrong implementation: "refuse with nothing declared" passes a gate that always refuses, "allow with one declared" passes one that always allows, and only running them against one ledger in this order pins the behaviour to the declaration.
+    // cm:guard gated `unix` because the functions under test are: `dispatch_gate_reply`,
+    // `bind_or_release` and `run_declare` all carry `#[cfg(unix)]`, and a test that names them
+    // without the same attribute does not fail on this box -- `cfg(unix)` is true here -- it fails
+    // the windows leg with `cannot find function` and takes the whole crate's build with it. What
+    // windows actually does is not skipped with them: `classify_start` is pure and its test runs
+    // everywhere (ISS-1094).
+    #[cfg(unix)]
+    #[test]
+    fn one_declaration_authorises_one_dispatch_and_is_freed_when_its_subagent_starts() {
+        use crate::daemon::dispatch_gate::Verdict;
+        let dir = box_with_roles(&["runner", "reviewer"]);
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+
+        // 1. Nothing declared: refused.
+        assert_eq!(
+            gate_on(&ctl, &dir, &asking("runner", "toolu_1"), "sess-a"),
+            Verdict::Undeclared
+        );
+
+        // 4. Declared: the next dispatch goes through.
+        let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
+            .job_id
+            .expect("declared");
+        assert_eq!(
+            gate_on(&ctl, &dir, &asking("runner", "toolu_1"), "sess-a"),
+            Verdict::Covered {
+                run_id: run_id.clone()
+            }
+        );
+
+        // 6. The same tool call again is the same answer, and consumes nothing.
+        assert_eq!(
+            gate_on(&ctl, &dir, &asking("runner", "toolu_1"), "sess-a"),
+            Verdict::Replay {
+                run_id: run_id.clone()
+            }
+        );
+
+        // 5. A DIFFERENT dispatch cannot ride the same declaration.
+        assert_eq!(
+            gate_on(&ctl, &dir, &asking("reviewer", "toolu_2"), "sess-a"),
+            Verdict::Undeclared,
+            "two subagents under one declared row is two units of work with one record"
+        );
+
+        // 7. The subagent starts: the row is bound, the promise is released, and
+        // the master is back to needing a fresh declaration.
+        bind_or_release(
+            &ctl,
+            crate::daemon::agent_activity::Event::SubagentStarted,
+            Some("child-1"),
+            Some("runner"),
+            "sess-a",
+        );
+        assert!(
+            !ctl.promises.lock().unwrap().promised.contains_key(&run_id),
+            "a bound run must not stay promised, or the next declaration is refused on a free row"
+        );
+        assert_eq!(
+            gate_on(&ctl, &dir, &asking("runner", "toolu_3"), "sess-a"),
+            Verdict::Undeclared
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    /// Criteria 41, 42, corrected. What a daemon restart with the pane still
+    /// alive actually does, measured rather than assumed.
+    // cm:guard this test used to mint a different `boot_id` and call that a restart. It is not one: `runner::inflight::boot_identity` reads the OS boot identity (`/proc/sys/kernel/random/boot_id` on linux), which a daemon restart does NOT change — only rebooting the machine does. So a declaration made before the restart is still pending afterwards, and that is right: the master declared it, nothing consumed it, and refusing would force a second row for work already declared. The criteria were written against a wrong model of that function and are corrected on the issue rather than the behaviour being bent to match them (ISS-1094, review F1).
+    // cm:guard what single-use actually rests on is the BIND, not the gate. `ledger::bind_agent` updates only where `agent_id IS NULL`, so two dispatches allowed across a restart still produce exactly one bound row — and the second child is denounced by `undeclared_child`, loudly and countably. The gate is the early refusal; the ledger is the invariant.
+    #[cfg(unix)]
+    #[test]
+    fn a_daemon_restart_leaves_the_declaration_standing_and_the_second_child_is_named() {
+        use crate::daemon::dispatch_gate::Verdict;
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
+            .job_id
+            .expect("declared");
+        assert!(matches!(
+            gate_on(&ctl, &dir, &asking("runner", "toolu_1"), "sess-a"),
+            Verdict::Covered { .. }
+        ));
+
+        // A daemon restart: a new process, the same OS boot, the same ledger
+        // file, the same pane. Only what was held in memory is gone.
+        let restarted = Arc::new(Control {
+            tokens: SessionTokens::at(
+                std::env::temp_dir().join(format!("ct-restart-{}.json", uuid::Uuid::new_v4())),
+            ),
+            activity: ctl.activity.clone(),
+            masters: ctl.masters.clone(),
+            ledger: ctl.ledger.clone(),
+            boot_id: ctl.boot_id.clone(),
+            config_dir: ctl.config_dir.clone(),
+            promises: std::sync::Mutex::new(GateMemory::default()),
+        });
+
+        // The declaration is still the master's, so the dispatch is allowed.
+        assert_eq!(
+            gate_on(&restarted, &dir, &asking("runner", "toolu_2"), "sess-a"),
+            Verdict::Covered {
+                run_id: run_id.clone()
+            },
+            "a declaration nothing consumed is still pending after a daemon restart"
+        );
+
+        // Both dispatches were allowed, so two children may start. Exactly one
+        // binds, and the other is named rather than quietly losing its work.
+        for child in ["child-1", "child-2"] {
+            bind_or_release(
+                &restarted,
+                crate::daemon::agent_activity::Event::SubagentStarted,
+                Some(child),
+                Some("runner"),
+                "sess-a",
+            );
+        }
+        let held = restarted.ledger.lock().unwrap();
+        let bound = held.as_ref().unwrap().run_for_agent("child-1").unwrap();
+        drop(held);
+        assert!(
+            bound.is_some(),
+            "the first child binds the one declared row"
+        );
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
+        assert_eq!(
+            undeclared.count, 1,
+            "the child with no row left to bind is the one that must break loudly: {undeclared:?}"
+        );
+        assert!(undeclared.last.unwrap_or_default().contains("child-2"));
+    }
+
+    /// Criterion 6, across the bind, which is where it was broken.
+    // cm:guard the replay is asked AFTER the subagent has started, because that is the case the promise map cannot answer: it is released at the bind, and a hook replayed a moment later would have found nothing and either been refused or eaten the master's next declaration (ISS-1094, review F4).
+    #[cfg(unix)]
+    #[test]
+    fn a_replayed_hook_gets_its_answer_back_even_after_its_subagent_started() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
+            .job_id
+            .expect("declared");
+        let ask = crate::daemon::dispatch_gate::Dispatch {
+            agent_id: None,
+            subagent_type: Some("runner".into()),
+            tool_use_id: Some("toolu_1".into()),
+        };
+        assert!(dispatch_gate_reply(&ctl, ask.clone(), "sess-a").ok);
+
+        bind_or_release(
+            &ctl,
+            crate::daemon::agent_activity::Event::SubagentStarted,
+            Some("child-1"),
+            Some("runner"),
+            "sess-a",
+        );
+
+        assert!(
+            dispatch_gate_reply(&ctl, ask.clone(), "sess-a").ok,
+            "the same tool call must get the same answer for this daemon's whole life"
+        );
+
+        // and it must not have eaten the next declaration.
+        let next = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a")
+            .job_id
+            .expect("declared");
+        let mem = ctl.promises.lock().unwrap();
+        assert!(
+            !mem.promised.contains_key(&next),
+            "a replay must reserve nothing: {:?}",
+            mem.promised
+        );
+    }
+
+    /// Criterion 14. An uncertain box does not deny.
+    // cm:guard the ledger being absent is not "nothing is declared". This is the inversion that would have turned a box with an unreadable registry into a box that refuses every master on it, which is a certain answer given to an uncertain question (ISS-1094, review F5).
+    #[cfg(unix)]
+    #[test]
+    fn a_box_that_cannot_read_its_own_registry_allows_and_marks() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        *ctl.ledger.lock().unwrap() = None;
+
+        let reply = dispatch_gate_reply(
+            &ctl,
+            crate::daemon::dispatch_gate::Dispatch {
+                agent_id: None,
+                subagent_type: Some("runner".into()),
+                tool_use_id: Some("toolu_1".into()),
+            },
+            "sess-a",
+        );
+        assert!(reply.ok, "an uncertain box must not refuse: {reply:?}");
+        assert_eq!(crate::daemon::degraded::tally(&dir).0.count, 1);
+    }
+
+    /// Put a plugin clone shipping these roles inside this Control's own config
+    /// directory, which is where both the gate and the denunciation read it.
+    #[cfg(unix)]
+    fn ship_roles(ctl: &Arc<Control>, roles: &[&str]) -> std::path::PathBuf {
+        let dir = ctl.config_dir.clone().expect("a scratch config dir");
+        let agents = dir.join("marketplaces/sidcorp-co__forge-plugin/plugin/agents");
+        std::fs::create_dir_all(&agents).unwrap();
+        for r in roles {
+            std::fs::write(agents.join(format!("{r}.md")), "---\n").unwrap();
+        }
+        dir
+    }
+
+    /// Criteria 24, 25. A hand-off that got past the gate breaks loudly and
+    /// countably, because the gate fails OPEN and this is what says it did.
+    // cm:guard this is kernel input — a run with no row — so the bar is zero tolerance. Before ISS-1094 this path was a `tracing::debug!` under a guard declaring it the ordinary case, and four issues on sid-desk stood in-progress with nobody on them because of it.
+    #[cfg(unix)]
+    #[test]
+    fn a_subagent_started_under_a_shipped_role_with_nothing_declared_is_named_and_counted() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner", "reviewer"]);
+
+        bind_or_release(
+            &ctl,
+            crate::daemon::agent_activity::Event::SubagentStarted,
+            Some("child-nobody-declared"),
+            Some("runner"),
+            "sess-a",
+        );
+
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
+        assert_eq!(undeclared.count, 1, "the count an operator reads must move");
+        let said = undeclared.last.unwrap_or_default();
+        assert!(said.contains("child-nobody-declared"), "{said}");
+        assert!(
+            said.contains("runner"),
+            "which role it was dispatched through is half of what makes it actionable: {said}"
+        );
+    }
+
+    /// Criterion 27. A search helper is still the ordinary case and stays quiet.
+    // cm:guard the silence here is as load-bearing as the noise above. A master runs subagents this box knows nothing about on every pass, and a line for each one is a count nobody can read and an alert nobody keeps.
+    #[cfg(unix)]
+    #[test]
+    fn a_subagent_that_is_not_a_shipped_role_stays_silent() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner", "reviewer"]);
+
+        for role in [Some("general-purpose"), Some("Explore"), None] {
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStarted,
+                Some("a-search"),
+                role,
+                "sess-a",
+            );
+        }
+
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
+        assert_eq!(
+            undeclared.count, 0,
+            "a helper is not a hand-off: {undeclared:?}"
+        );
+    }
+
+    /// Review F3. A repeated start for a child that already has its run.
+    // cm:guard no second declaration is made here, which is what separates this from the tests above it: with one pending, a replay binds that instead and the alarm is silent for the wrong reason. With nothing pending, the old code called the child undeclared and moved the operator's counter for a run that was recorded correctly.
+    #[test]
+    fn a_ledger_this_box_cannot_read_is_not_an_undeclared_hand_off() {
+        // The shape: a child that IS correctly bound, whose start arrives while the ledger read
+        // fails (SQLITE_BUSY outlasting `PRAGMA busy_timeout`, a corrupt page, a revoked file).
+        // The read establishes nothing, so it may not assert the one thing the undeclared alarm
+        // asserts. It is the same false alarm the replay check removed, coming back through the
+        // error channel.
+        assert_eq!(
+            classify_start(Err("database is locked".to_string())),
+            StartKind::Unreadable("database is locked".to_string()),
+            "a failed read of our own ledger is not evidence that nothing was declared"
+        );
+        assert_eq!(
+            classify_start(Ok(None)),
+            StartKind::Undeclared,
+            "a read that answered `no row` IS the evidence, and it stays loud"
+        );
+        assert_eq!(
+            classify_start(Ok(Some("run-9".to_string()))),
+            StartKind::Replay("run-9".to_string()),
+            "a child that already holds a run is a replay"
+        );
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn a_replayed_start_for_an_already_bound_child_raises_no_alarm() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
+            .job_id
+            .expect("declared");
+
+        for _ in 0..3 {
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStarted,
+                Some("child-1"),
+                Some("runner"),
+                "sess-a",
+            );
+        }
+
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
+        assert_eq!(
+            undeclared.count, 0,
+            "a replayed start for a child that already has its run is not an undeclared hand-off: {undeclared:?}"
+        );
+    }
+
+    /// A child that DOES answer to a declaration is bound, not denounced.
+    #[cfg(unix)]
+    #[test]
+    fn a_declared_hand_off_is_bound_and_nothing_is_counted_against_it() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
+            .job_id
+            .expect("declared");
+
+        bind_or_release(
+            &ctl,
+            crate::daemon::agent_activity::Event::SubagentStarted,
+            Some("child-1"),
+            Some("runner"),
+            "sess-a",
+        );
+
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
+        assert_eq!(undeclared.count, 0, "{undeclared:?}");
+        let held = ctl.ledger.lock().unwrap();
+        assert!(
+            held.as_ref()
+                .unwrap()
+                .run_for_agent("child-1")
+                .unwrap()
+                .is_some(),
+            "the declared row must be bound to the child that started"
+        );
+    }
+
+    // cm:guard the frame the gate sends is round-tripped through the daemon's OWN `Request`, in the
+    // one file that holds both, so a field renamed on either side fails here rather than as a gate
+    // that silently answers `ok` to everything. The end-to-end door test asserts the same names off
+    // the wire; this is what makes the two agree without a literal copied between them.
+    #[test]
+    fn the_frame_the_gate_sends_decodes_as_the_daemon_reads_it() {
+        let frame = r#"{"op":"dispatch_gate","token":"t1","agentId":null,"subagentType":"runner","toolUseId":"toolu_1"}"#;
+        let req: Request = serde_json::from_str(frame).expect("the gate frame must decode");
+        let Request::DispatchGate {
+            agent_id,
+            subagent_type,
+            tool_use_id,
+            ..
+        } = &req
+        else {
+            panic!("a frame whose op is `dispatch_gate` must decode as one");
+        };
+        assert!(agent_id.is_none());
+        assert_eq!(subagent_type.as_deref(), Some("runner"));
+        assert_eq!(tool_use_id.as_deref(), Some("toolu_1"));
     }
 
     // cm:guard the frame is the one `request_run_choice` builds, byte for byte. Everything behind
@@ -1348,6 +2094,7 @@ mod tests {
                 &ctl,
                 crate::daemon::agent_activity::Event::SubagentStarted,
                 Some("child-1"),
+                None,
                 "sess-a",
             );
 
@@ -1366,6 +2113,7 @@ mod tests {
                 &ctl,
                 crate::daemon::agent_activity::Event::SubagentStarted,
                 Some("child-1"),
+                None,
                 "sess-a",
             );
 
@@ -1382,7 +2130,7 @@ mod tests {
         fn a_master_pane_event_puts_that_pane_and_its_conversation_in_the_ledger() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
 
-            agent_event(&ctl, "Stop", None, None, Some("conv-abc"), "sess-a");
+            agent_event(&ctl, "Stop", None, None, Some("conv-abc"), None, "sess-a");
 
             let held = ctl.ledger.lock().unwrap();
             let row = held
@@ -1401,8 +2149,8 @@ mod tests {
         fn an_event_without_a_conversation_leaves_the_stored_one_alone() {
             let (ctl, _t) = declaring_control("sess-a", "proj-1");
 
-            agent_event(&ctl, "Stop", None, None, Some("conv-abc"), "sess-a");
-            agent_event(&ctl, "Stop", None, None, None, "sess-a");
+            agent_event(&ctl, "Stop", None, None, Some("conv-abc"), None, "sess-a");
+            agent_event(&ctl, "Stop", None, None, None, None, "sess-a");
 
             let held = ctl.ledger.lock().unwrap();
             let row = held
@@ -1430,6 +2178,7 @@ mod tests {
                 None,
                 None,
                 Some("conv-zzz"),
+                None,
                 "some-other-session",
             );
 
@@ -1450,6 +2199,7 @@ mod tests {
                 &ctl,
                 crate::daemon::agent_activity::Event::SubagentStarted,
                 Some("child-1"),
+                None,
                 "sess-a",
             );
             assert_eq!(
@@ -1469,6 +2219,7 @@ mod tests {
                 &ctl,
                 crate::daemon::agent_activity::Event::SubagentStopped,
                 Some("child-1"),
+                None,
                 "sess-a",
             );
             let run = ctl
@@ -1497,11 +2248,11 @@ mod tests {
                 .job_id
                 .unwrap();
             let start = crate::daemon::agent_activity::Event::SubagentStarted;
-            bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+            bind_or_release(&ctl, start, Some("child-a"), None, "sess-a");
             let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
                 .job_id
                 .unwrap();
-            bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+            bind_or_release(&ctl, start, Some("child-a"), None, "sess-a");
             let held = ctl.ledger.lock().unwrap();
             let led = held.as_ref().unwrap();
             assert_eq!(
@@ -1523,17 +2274,18 @@ mod tests {
                 .job_id
                 .unwrap();
             let start = crate::daemon::agent_activity::Event::SubagentStarted;
-            bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+            bind_or_release(&ctl, start, Some("child-a"), None, "sess-a");
             bind_or_release(
                 &ctl,
                 crate::daemon::agent_activity::Event::SubagentStopped,
                 Some("child-a"),
+                None,
                 "sess-a",
             );
             let run_b = run_declare(&ctl, "proj-1", &["ISS-2".into()], "/w/two", "sess-a")
                 .job_id
                 .unwrap();
-            bind_or_release(&ctl, start, Some("child-a"), "sess-a");
+            bind_or_release(&ctl, start, Some("child-a"), None, "sess-a");
             let held = ctl.ledger.lock().unwrap();
             assert!(
                 held.as_ref()
@@ -1554,12 +2306,14 @@ mod tests {
                 &ctl,
                 crate::daemon::agent_activity::Event::SubagentStarted,
                 Some("stranger"),
+                None,
                 "sess-a",
             );
             bind_or_release(
                 &ctl,
                 crate::daemon::agent_activity::Event::SubagentStopped,
                 Some("stranger"),
+                None,
                 "sess-a",
             );
             assert!(ctl

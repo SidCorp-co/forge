@@ -197,6 +197,11 @@ export async function createIssue(
         assigneeId: input.assigneeId ?? null,
         createdById: writer.createdById,
         createdVia: writer.createdVia,
+        // cm:guard ISS-1093 — the SAME object the `issue.created` activity row takes its
+        // `actor_agency` from, never a second derivation. That identity is what makes the issue
+        // list and the activity feed unable to disagree about one event; re-deriving it here from
+        // `createdVia`, or from anything else, reintroduces the split this issue was filed for.
+        creatorAgency: writer.actor.agency,
         detectorKey,
         plan: input.plan ?? null,
         acceptanceCriteria: input.acceptanceCriteria ?? null,

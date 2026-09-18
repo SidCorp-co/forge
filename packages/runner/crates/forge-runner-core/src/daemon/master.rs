@@ -63,6 +63,8 @@ pub(crate) const LIMITED_POLL_INTERVAL: Duration = Duration::from_secs(5 * 60);
 
 /// The first thing a resident master is told, once, when its session starts.
 // cm:guard name the skill and STOP. Restating its RULES here creates a second copy of the master's process, and the copies drift in silence because nothing compares them — the skill file is where a reader looks and this string is what a master is actually told. The two ship together (see the include_str edge below), so there is no version where inlining the rules here is even the safer half. The owner policy block below is the one thing that is not a copy: the skill holds the defaults and defers to it by name, and it exists nowhere in the binary.
+// cm:guard that rule is now ENFORCED and was not before, which is why it failed. This string used to carry "There is no job pool and no second terminal: the lease `forge claim` takes on the issue is the whole record of a run" — true on 2026-09-13, false from ISS-1080 on 2026-09-17, which updated the skill file a person would naturally edit and missed this literal. A master then held two texts contradicting each other on exactly the two points ISS-1094 is about, with this one in context every turn and the skill only read when the model chose to; the masters that resolved it toward this string did not declare. `the_standing_brief_is_only_what_a_wave_cannot_know` is the golden text that makes reintroducing any of it fail, paraphrase included.
+// cm:edge lockstep -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the division is the contract: every rule about how a run works belongs to that file and nothing about it may be restated here. The two ship in one binary and are the pair ISS-1080 broke.
 // cm:guard this is the STANDING brief and the pass prompt is the wave, and the split is what makes residency worth anything. Folding the two back together sends the whole brief every 30 seconds — the cold start this change removed, arriving as tokens instead of as a process.
 // cm:guard the policy is spliced VERBATIM and is never summarised, reordered or merged into the sentences around it. It is the project owner speaking, this box is a courier, and a courier that paraphrases is how an instruction that was typed correctly arrives wrong. The heading is what lets the skill defer to it by name.
 // cm:edge contract -> packages/core/src/devices/me-runners.ts — the text arrives as `masterPolicy` on `/me/runners`, from the `master-policy` projectFact. `None` means the project set none, and the skill's own defaults stand; it never means "brief nothing".
@@ -76,26 +78,13 @@ fn standing_prompt(
 ) -> String {
     let mut out = format!(
         "Use the `forge-master` skill. You are the resident master for project `{project}` on \
-this box. You will be woken repeatedly, in this same session: each waking is one wave — hand it to \
-the `forge:dispatch` skill, and end the pass by saying what you dispatched and what you did not.\n"
+this box, and you will be woken again in this same session rather than started fresh.\n"
     );
     if let Some(base) = base_branch {
         out.push_str(&format!(
-            "\nYou are standing in this project's checkout, on its base branch `{base}`. Every \
-run you dispatch works in a worktree of its own cut from `origin/{base}`, never in this tree.\n"
+            "\nYou are standing in this project's checkout, on its base branch `{base}`.\n"
         ));
     }
-    out.push_str(
-        "\nA run is a subagent dispatched through a shipped role — `runner`, `reviewer`, `qa`, \
-`triage`, `evaluator` — and the role decides its model, its effort and its tools. `forge doctor` \
-prints which roles the loaded copy ships. There is no job pool and no second terminal: the lease \
-`forge claim` takes on the issue is the whole record of a run.\n",
-    );
-    out.push_str(
-        "\nBetween passes you stay open. Keep what you concluded — what you grouped, what you \
-deliberately did not dispatch and why — where the next pass can read it, and say it out loud rather \
-than only thinking it: this pane is the record.\n",
-    );
     // cm:guard the UNREADABLE case gets its own sentence and never borrows the dropped-names one. "This project declares nothing" and "this box could not find out what it declares" lead a master to opposite acts — the first says build here, the second says do not trust the tool inventory — and a master told the first while the second is true dispatches runs into an empty pane and reads the emptiness as the project's own shape.
     if servers_unreadable {
         out.push_str(
@@ -108,9 +97,9 @@ master starts on a pane that could read them.\n",
     // cm:guard say it ONCE, here, and never let it become a park three hours later. A declared server that resolved to nothing is the shape this project was unbuildable in for days: the panel says `Connected`, the agent has no tools, and the only reader who can act on it is the master about to spend money dispatching runs into it.
     if !dropped.is_empty() {
         out.push_str(&format!(
-            "\nThis project declares MCP server(s) this box could NOT supply: {}. Runs you \
-dispatch will not have their tools. An issue whose work needs one of them cannot be built here — \
-say so on the issue rather than parking it as a run that failed.\n",
+            "\nThis project declares MCP server(s) this box could NOT supply: {}. Work you hand \
+out will not have their tools. An issue whose work needs one of them cannot be built here — say so \
+on the issue rather than parking it as a run that failed.\n",
             dropped.join(", ")
         ));
     }
@@ -2438,6 +2427,58 @@ mod tests {
         );
     }
 
+    /// Criterion 34. The skill quotes the refusal a master will actually meet,
+    /// and the quote is taken from the refusal itself so the two cannot drift.
+    // cm:guard the substring is DERIVED from `dispatch_gate::REFUSAL` rather than written out here. A quoted sentence typed into this test is a third copy of the same text, and this whole issue is about what happens when one copy of something moves and another does not.
+    #[test]
+    fn the_skill_quotes_the_refusal_it_will_meet() {
+        let first_sentence = crate::daemon::dispatch_gate::REFUSAL
+            .split_once(". ")
+            .map(|(head, _)| format!("{head}."))
+            .expect("the refusal opens with a sentence");
+        assert!(
+            MASTER_SKILL.contains(&first_sentence),
+            "a master reading the skill must recognise the refusal when it arrives; \
+             the skill does not carry `{first_sentence}`"
+        );
+    }
+
+    /// Criterion 33. The skill says the declaration is enforced, not advised.
+    #[test]
+    fn the_skill_says_the_declaration_is_a_condition_and_not_a_suggestion() {
+        assert!(
+            MASTER_SKILL.contains("no longer advice"),
+            "the skill described a rule nothing enforced for four days; it must now say which it is"
+        );
+        assert!(MASTER_SKILL.contains("forge-runner run declare"));
+        assert!(
+            MASTER_SKILL.contains("forge-runner run close"),
+            "a master holding a spent declaration needs the way out named where it reads"
+        );
+    }
+
+    /// Criteria 35, 36. No flag list in a file released on another clock.
+    // cm:guard the check is for the FLAG SYNTAX and not for the verb names, which a master must know exist. `--project`, `--issue` and `--worktree` were spelled out in this file while the CLI that serves them ships separately; that is the drift the issue names, and `-h` is the surface that cannot have it.
+    #[test]
+    fn the_skill_carries_no_flags_and_points_at_the_surface_that_cannot_go_stale() {
+        for flag in [
+            "--project",
+            "--issue",
+            "--worktree",
+            "--reason",
+            "--decision",
+        ] {
+            assert!(
+                !MASTER_SKILL.contains(flag),
+                "`{flag}` is the CLI's to describe: it ships on a different clock from this file"
+            );
+        }
+        assert!(
+            MASTER_SKILL.contains("-h"),
+            "the skill must send a master to the self-describing surface instead"
+        );
+    }
+
     #[test]
     fn the_owner_policy_reaches_the_brief_verbatim() {
         let policy = "Budget: 5 sessions.\nDrafts are eligible work.\nGroup related issues.";
@@ -2452,22 +2493,79 @@ mod tests {
         );
     }
 
-    // cm:guard a project that set no policy must be briefed EXACTLY as it was before ISS-929. The absent case is every project on the fleet but one, so a stray heading or blank section here is a change to every master this repo starts.
+    /// The whole of the standing brief for a project that has set nothing.
+    ///
+    /// Everything a master needs to know that is NOT in the skill file, and
+    /// nothing else. A sentence added here — however true, however well meant —
+    /// fails this test, which is the point: ISS-1080 added its sentence to the
+    /// skill and left this string saying the opposite, and nothing compared them.
+    // cm:guard a GOLDEN TEXT and not a vocabulary check, because the failure it has to catch is a paraphrase. "There is no second terminal" and "the pool on this box is not a thing you use" carry the same wrong claim and share no word; only asserting the whole string catches both. The vocabulary check below is a second layer over the same text, never the first.
+    const STANDING_BRIEF: &str = "Use the `forge-master` skill. You are the resident master for project `forge-dev` on this box, and you will be woken again in this same session rather than started fresh.\n\nYou are standing in this project's checkout, on its base branch `main`.\n";
+
     #[test]
-    fn no_policy_leaves_the_brief_untouched() {
+    fn the_standing_brief_is_only_what_a_wave_cannot_know() {
         let brief = standing_prompt("forge-dev", Some("main"), None, &[], false);
-        assert!(!brief.contains("standing policy"), "{brief}");
-        assert!(
-            brief.trim_end().ends_with("this pane is the record."),
-            "{brief}"
+        assert_eq!(
+            brief, STANDING_BRIEF,
+            "the standing brief may say only what the skill cannot: which project, which box, \
+             which branch. Every rule about how a run works belongs in forge-master-skill.md, and \
+             a copy here is the pair ISS-1080 broke"
         );
     }
 
-    // cm:guard the SILENT case is the one that matters: a project whose every declared server resolved must read exactly as it did before ISS-1043, because that is every project on this fleet but a handful. A reassuring "all servers present" line here would be a sentence every master pays for and none can act on.
+    /// Criteria 29, 30. The two claims that were false on every box, named.
+    // cm:guard these two are asserted BY NAME on top of the golden text, because they are the specific damage: a master reading either did not declare, and a reader six months from now needs the sentences spelled out to know what this test is defending.
     #[test]
-    fn a_project_whose_servers_all_resolved_is_told_nothing_about_them() {
+    fn the_brief_no_longer_carries_the_two_claims_that_stopped_masters_declaring() {
         let brief = standing_prompt("forge-dev", Some("main"), None, &[], false);
-        assert!(!brief.contains("MCP server"), "{brief}");
+        assert!(
+            !brief.contains("no job pool") && !brief.contains("second terminal"),
+            "the job pool and its second terminal came back with ISS-1080 and are on every box: {brief}"
+        );
+        assert!(
+            !brief.contains("whole record of a run"),
+            "the lease stopped being the whole record on 2026-09-13; a master told otherwise does not declare: {brief}"
+        );
+    }
+
+    /// Criterion 31. The mechanism the skill owns is named in the skill and nowhere else.
+    // cm:guard PHRASES and not bare words, which is the difference between a check and a nuisance: the brief legitimately says a project "declares MCP server(s)", a different sense of the same verb, and a list holding `declare` would refuse that true sentence while catching nothing a paraphrase could not slip past anyway. The golden text above is the defence; this layer names the specific vocabulary whose appearance here has already cost the fleet once.
+    // cm:guard run over the brief WITHOUT the owner's policy, and that exclusion is not a loophole: the policy is the project owner speaking and is spliced verbatim by contract, so a check over it would refuse an owner who wrote "declare every run" in their own instruction.
+    #[test]
+    fn the_brief_states_no_rule_the_skill_file_owns() {
+        let brief = standing_prompt(
+            "forge-dev",
+            Some("main"),
+            None,
+            &["playwright".into()],
+            true,
+        )
+        .to_lowercase();
+        for owned in [
+            "job pool",
+            "second terminal",
+            "run declare",
+            "the lease",
+            "worktree",
+            "subagent",
+            "shipped role",
+        ] {
+            assert!(
+                !brief.contains(owned),
+                "`{owned}` names how a run works, which forge-master-skill.md owns: {brief}"
+            );
+        }
+    }
+
+    /// Criterion 32. The owner is spliced whole, banned vocabulary and all.
+    #[test]
+    fn the_owner_policy_survives_words_the_brief_itself_may_not_use() {
+        let policy = "Declare every run. Two subagents at a time, each in its own worktree.";
+        let brief = standing_prompt("forge-dev", Some("main"), Some(policy), &[], false);
+        assert!(
+            brief.contains(policy),
+            "the owner is a courier's cargo, not this box's prose to police: {brief}"
+        );
     }
 
     /// F1. The one launch state that refuses, and the two that must not.

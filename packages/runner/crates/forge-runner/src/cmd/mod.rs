@@ -2,6 +2,7 @@ pub mod api;
 pub mod bind;
 pub mod config;
 pub mod doctor;
+pub mod gate;
 pub mod git_credential;
 pub mod hook;
 pub mod login;
