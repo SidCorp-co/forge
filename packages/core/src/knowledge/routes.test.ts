@@ -31,16 +31,20 @@ vi.mock('./unified-search.js', () => ({
 }));
 
 const getKnowledgeEntryMock = vi.fn(async (..._args: unknown[]) => null);
-// cm:why the REAL `slugSchema` is spread in rather than stubbed. The routes validate the `:slug`
-// param with it, and one of the tests below asserts the 400 a slash-bearing slug earns; a stub
-// permissive enough to be convenient would make that assertion pass without the rule existing.
+const upsertKnowledgeEntryMock = vi.fn(async (..._args: unknown[]) => ({
+  id: 'k-1',
+  slug: 'a-convention',
+  degraded: false,
+  truncated: false,
+}));
+// cm:guard NO schema of this module is stubbed, only its functions — `slugSchema` and the schema
+// routes.ts omits the PUT body from decide the very answers the tests below assert (ISS-1095).
 vi.mock('./service.js', async (importOriginal) => ({
   ...(await importOriginal<typeof import('./service.js')>()),
   deleteKnowledgeEntry: vi.fn(),
   getKnowledgeEntry: (...args: unknown[]) => getKnowledgeEntryMock(...args),
   listKnowledgeEntries: vi.fn(async () => []),
-  upsertKnowledgeEntry: vi.fn(),
-  upsertKnowledgeInputSchema: (await import('zod')).z.object({}).passthrough(),
+  upsertKnowledgeEntry: (...args: unknown[]) => upsertKnowledgeEntryMock(...args),
 }));
 
 const { knowledgeRoutes } = await import('./routes.js');
@@ -52,7 +56,10 @@ const { EmbeddingUnavailableError } = await import('../embeddings/index.js');
 
 const PROJECT_ID = '11111111-1111-4111-8111-111111111111';
 const USER_ID = '22222222-2222-4222-8222-222222222222';
+const OTHER_PROJECT_ID = '33333333-3333-4333-8333-333333333333';
 const SEARCH_PATH = `/api/projects/${PROJECT_ID}/knowledge/search`;
+const ENTRY_SLUG = 'a-convention';
+const ENTRY_PATH = `/api/projects/${PROJECT_ID}/knowledge/${ENTRY_SLUG}`;
 
 function buildApp() {
   const app = new Hono<{ Variables: import('../middleware/request-id.js').RequestIdVars }>();
@@ -83,6 +90,17 @@ async function post(body: unknown, token?: string) {
     headers: {
       'content-type': 'application/json',
       ...(token ? { authorization: `Bearer ${token}` } : {}),
+    },
+    body: JSON.stringify(body),
+  });
+}
+
+async function put(body: unknown) {
+  return buildApp().request(ENTRY_PATH, {
+    method: 'PUT',
+    headers: {
+      'content-type': 'application/json',
+      authorization: `Bearer ${await signUserToken(USER_ID)}`,
     },
     body: JSON.stringify(body),
   });
@@ -170,5 +188,68 @@ describe('POST /api/projects/:id/knowledge/search', () => {
     });
     expect(res.status).toBe(404);
     expect(getKnowledgeEntryMock).toHaveBeenCalledWith(PROJECT_ID, 'search');
+  });
+});
+
+describe('PUT /api/projects/:id/knowledge/:slug validates the body against the real schema', () => {
+  it('400 on a kind outside the schema enum', async () => {
+    authVerified();
+    isMember();
+    const res = await put({ title: 'A convention', body: 'The text.', kind: 'not-a-kind' });
+    expect(res.status).toBe(400);
+    expect(upsertKnowledgeEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('400 on a whitespace-only title', async () => {
+    authVerified();
+    isMember();
+    const res = await put({ title: '   ', body: 'The text.' });
+    expect(res.status).toBe(400);
+    expect(upsertKnowledgeEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('200 on a body of every field the schema accepts, each one reaching the service', async () => {
+    authVerified();
+    isMember();
+    const res = await put({
+      title: 'A convention',
+      body: 'The text.',
+      kind: 'rule',
+      injection: 'always',
+      confidence: 'verified',
+      authoredBy: 'human',
+      orderIndex: 3,
+      metadata: { source: 'handbook' },
+    });
+    expect(res.status).toBe(200);
+    expect(upsertKnowledgeEntryMock).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      slug: ENTRY_SLUG,
+      title: 'A convention',
+      body: 'The text.',
+      kind: 'rule',
+      injection: 'always',
+      confidence: 'verified',
+      authoredBy: 'human',
+      orderIndex: 3,
+      metadata: { source: 'handbook' },
+    });
+  });
+
+  // cm:guard this is what `.omit({ projectId: true, slug: true })` in routes.ts buys: the handler
+  // spreads the body AFTER the path's ids, so a body carrying either would write another project's.
+  it('writes under the path projectId and slug when the body carries different ones', async () => {
+    authVerified();
+    isMember();
+    const res = await put({
+      title: 'A convention',
+      body: 'The text.',
+      projectId: OTHER_PROJECT_ID,
+      slug: 'another-slug',
+    });
+    expect(res.status).toBe(200);
+    expect(upsertKnowledgeEntryMock).toHaveBeenCalledWith(
+      expect.objectContaining({ projectId: PROJECT_ID, slug: ENTRY_SLUG }),
+    );
   });
 });
