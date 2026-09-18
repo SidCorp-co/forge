@@ -29,12 +29,11 @@ describe('unlinkedMessage — written for the person who will read it', () => {
     expect(message).toMatch(/same/i);
   });
 
-  it('says why an account is needed at all, rather than only that one is missing', () => {
-    expect(message).toMatch(/permission/i);
-  });
-
-  it('says the person confirms it themselves and an administrator cannot', () => {
-    expect(message).toMatch(/administrator/i);
+  // The rewrite that removed the REST paths replaced them with six sentences, which is the same
+  // defect in better clothes. Three is the budget: cause, condition, route.
+  it('stays short enough to read in a chat client', () => {
+    expect(message.split('. ').length).toBeLessThanOrEqual(3);
+    expect(message.length).toBeLessThan(330);
   });
 
   it('does not open with a REST path', () => {
