@@ -61,6 +61,7 @@ export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
       failure = NULL,
       readings = '[]'::jsonb,
       tag_state = 'unread',
+      attempt = runner_releases.attempt + 1,
       started_at = now(),
       tag_cut_at = NULL,
       build_reported_at = NULL,
@@ -128,12 +129,12 @@ export async function listForProject(projectId: string, limit = 50): Promise<Run
     .limit(limit);
 }
 
-/** One line onto the row's readings, whatever the outcome of the step it describes. */
-export async function appendReading(id: string, line: string): Promise<void> {
+// cm:guard fenced on the attempt like every other write here: a caller still running inside an attempt the deadline ended would otherwise write its readings into the attempt that replaced it, and a readings list is the one field a person reads to reconstruct what happened.
+export async function appendReading(id: string, attempt: number, line: string): Promise<void> {
   await db.execute(sql`
     UPDATE runner_releases
        SET readings = readings || ${JSON.stringify([line])}::jsonb, updated_at = now()
-     WHERE id = ${id}
+     WHERE id = ${id} AND attempt = ${attempt}
   `);
 }
 
@@ -147,8 +148,8 @@ export interface AdvanceArgs {
   workflowUrl?: string;
 }
 
-// cm:guard non-terminal only, and it answers `false` rather than throwing on a terminal row: the deadline pass can settle a release between two steps of a sequence still running, and that sequence finding its row already failed is an ordinary race, not an error.
-export async function advance(id: string, args: AdvanceArgs): Promise<boolean> {
+// cm:guard non-terminal AND this attempt only, and it answers `false` rather than throwing: the deadline pass can settle a release between two steps of a sequence still running, and a start can then re-arm the row under that same sequence. Both are ordinary races rather than errors, and `attempt` is what tells the second one from the row simply carrying on — `settled_at IS NULL` is true again after a re-arm.
+export async function advance(id: string, attempt: number, args: AdvanceArgs): Promise<boolean> {
   const sets = [sql`updated_at = now()`];
   if (args.step) sets.push(sql`step = ${args.step}`);
   if (args.status) sets.push(sql`status = ${args.status}`);
@@ -159,7 +160,7 @@ export async function advance(id: string, args: AdvanceArgs): Promise<boolean> {
   if (args.workflowUrl) sets.push(sql`workflow_url = ${args.workflowUrl}`);
   const rows = await db.execute<{ id: string }>(sql`
     UPDATE runner_releases SET ${sql.join(sets, sql`, `)}
-     WHERE id = ${id} AND settled_at IS NULL
+     WHERE id = ${id} AND attempt = ${attempt} AND settled_at IS NULL
      RETURNING id
   `);
   return rows.length > 0;
@@ -181,7 +182,11 @@ export interface SettleFailedArgs {
 }
 
 /** Fail the release, naming the step and what is true on the repository. Once. */
-export async function settleFailed(id: string, args: SettleFailedArgs): Promise<boolean> {
+export async function settleFailed(
+  id: string,
+  attempt: number,
+  args: SettleFailedArgs,
+): Promise<boolean> {
   const sets = [
     sql`status = 'failed'`,
     sql`step = ${args.step}`,
@@ -198,13 +203,13 @@ export async function settleFailed(id: string, args: SettleFailedArgs): Promise<
   if (args.releaseUrl) sets.push(sql`release_url = ${args.releaseUrl}`);
   if (args.buildReportedAt)
     sets.push(sql`build_reported_at = ${args.buildReportedAt.toISOString()}`);
-  // cm:guard `ifUnchanged` is what the deadline pass settles under, and it is a condition rather than a re-read because the row it selected can move between the SELECT and this UPDATE: the sequence it is racing advances `cut_tag`/`unknown` over a `resolve_commit`/`unread` reading, and a settle without this clause writes the OLD step back over the new one together with a failure sentence saying the tag does not exist — a terminal row describing a snapshot that is no longer true.
+  // cm:guard `ifUnchanged` is what the deadline pass settles under, and it is a condition rather than a re-read because the row it selected can move between the SELECT and this UPDATE: the sequence it is racing advances `cut_tag`/`unknown` over a `resolve_commit`/`unread` reading, and a settle without this clause writes the OLD step back over the new one together with a failure sentence saying the tag does not exist — a terminal row describing a snapshot that is no longer true. It is the WITHIN-attempt half of that defence; `attempt` above is the other half, for the row that went round through a re-arm to the same step and tag state.
   const guard = args.ifUnchanged
     ? sql` AND step = ${args.ifUnchanged.step} AND tag_state = ${args.ifUnchanged.tagState}`
     : sql``;
   const rows = await db.execute<{ id: string }>(sql`
     UPDATE runner_releases SET ${sql.join(sets, sql`, `)}
-     WHERE id = ${id} AND settled_at IS NULL${guard}
+     WHERE id = ${id} AND attempt = ${attempt} AND settled_at IS NULL${guard}
      RETURNING id
   `);
   return rows.length > 0;
@@ -220,7 +225,11 @@ export interface SettlePublishedArgs {
 }
 
 // cm:guard `tag_state = 'present'` is written HERE and not assumed: `runner_releases_published_chk` refuses the row otherwise, and that refusal is the point — a release cannot read published over a tag nothing confirmed.
-export async function settlePublished(id: string, args: SettlePublishedArgs): Promise<boolean> {
+export async function settlePublished(
+  id: string,
+  attempt: number,
+  args: SettlePublishedArgs,
+): Promise<boolean> {
   const rows = await db.execute<{ id: string }>(sql`
     UPDATE runner_releases
        SET status = 'published',
@@ -235,7 +244,7 @@ export async function settlePublished(id: string, args: SettlePublishedArgs): Pr
            build_reported_at = ${args.buildReportedAt.toISOString()},
            settled_at = now(),
            updated_at = now()
-     WHERE id = ${id} AND settled_at IS NULL
+     WHERE id = ${id} AND attempt = ${attempt} AND settled_at IS NULL
      RETURNING id
   `);
   return rows.length > 0;

@@ -28,9 +28,11 @@ let overdue: Row[];
 const settled = new Map<string, Record<string, unknown>>();
 /** The row as the database holds it, which is what `ifUnchanged` is compared against. */
 let stored = new Map<string, { step: string; tagState: string }>();
-const settleFailed = vi.fn(async (id: string, patch: Record<string, unknown>) => {
+const settleFailed = vi.fn(async (id: string, attempt: number, patch: Record<string, unknown>) => {
   if (settled.has(id)) return false;
   if (id === 'explodes') throw new Error('write refused');
+  // cm:guard the double carries the attempt fence too, so a pass that stopped passing the row's own attempt through would fail these cases rather than pass them by accident.
+  if (attempt !== 1) return false;
   const guard = patch.ifUnchanged as { step: string; tagState: string } | undefined;
   const now = stored.get(id);
   if (guard && now && (now.step !== guard.step || now.tagState !== guard.tagState)) return false;
@@ -39,7 +41,8 @@ const settleFailed = vi.fn(async (id: string, patch: Record<string, unknown>) =>
 });
 vi.mock('../integrations/github/runner-release-store.js', () => ({
   overdueReleases: async () => overdue,
-  settleFailed: (...a: unknown[]) => settleFailed(...(a as [string, Record<string, unknown>])),
+  settleFailed: (...a: unknown[]) =>
+    settleFailed(...(a as [string, number, Record<string, unknown>])),
 }));
 
 const { nameOverdueRunnerReleases, RUNNER_RELEASE_DEADLINE_MS } = await import(
@@ -49,6 +52,7 @@ const { nameOverdueRunnerReleases, RUNNER_RELEASE_DEADLINE_MS } = await import(
 const NOW = new Date('2026-09-18T12:00:00.000Z');
 const release = (over: Partial<Row> = {}): Row => ({
   id: 'rel-1',
+  attempt: 1,
   tag: 'runner-v0.13.3',
   commitSha: 'abc1234',
   step: 'await_build',
@@ -171,6 +175,7 @@ describe('a row that moved under the pass', () => {
     expect(settled.has('rel-moved')).toBe(false);
     expect(settleFailed).toHaveBeenCalledWith(
       'rel-moved',
+      1,
       expect.objectContaining({ ifUnchanged: { step: 'resolve_commit', tagState: 'unread' } }),
     );
   });

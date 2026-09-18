@@ -72,8 +72,9 @@ export async function nameOverdueRunnerReleases(
     })}`;
     try {
       // cm:guard the row's OWN `tag_state` is carried through untouched. This pass knows nothing new about the repository — it only knows that nobody said anything — so deciding a tag state here would be inventing the very reading the row is honest about not having.
+      // cm:guard the attempt pins the settle to the ATTEMPT this row was read in, and `ifUnchanged` to the reading within it. Both are needed and neither subsumes the other: a re-arm brings `settled_at IS NULL` back and can bring the step and tag state round to the same pair, so a sweep holding an older reading would otherwise fail somebody else's live attempt before its own deadline.
       // cm:guard `ifUnchanged` pins the settle to the reading this sentence was written from. The sequence this pass is racing moves a row on between the SELECT and the UPDATE — `resolve_commit`/`unread` becomes `cut_tag`/`unknown` the moment a create request goes out — and a settle without it writes the older step back over the newer one together with prose saying nothing was written, over a row that has a tag request in flight. A candidate that moved is left for the next tick, which reads it as it now stands.
-      const settled = await settleFailed(row.id, {
+      const settled = await settleFailed(row.id, row.attempt, {
         step: row.step,
         failure,
         ifUnchanged: { step: row.step, tagState: row.tagState },

@@ -105,12 +105,16 @@ async function cutTheTag(
   commitSha: string,
 ): Promise<StartRunnerReleaseOutcome> {
   // cm:guard the intent is written BEFORE the request and `tag_state` goes to `unknown` here, not after. Between this statement and the next answer, a killed process is the one case ISS-1075 point 3 is about: the row then says the tag may exist, which is what stops a retry cutting over it and what the deadline pass reports.
-  const armed = await advance(row.id, { step: 'cut_tag', status: 'cutting', tagState: 'unknown' });
+  const armed = await advance(row.id, row.attempt, {
+    step: 'cut_tag',
+    status: 'cutting',
+    tagState: 'unknown',
+  });
   // cm:guard the ANSWER to that write decides whether the request goes out at all. `advance` is conditional on the row being non-terminal, so a `false` here means the deadline pass or a delivery settled this release a moment ago — and creating the tag anyway puts a ref on GitHub that no row will ever be able to record, because every later write is conditional too. The irreversible act may not outrun the record of the intent.
   if (!armed) return lostTheRow(row);
   try {
     const created = await createTagRef(client, row.tag, commitSha);
-    await advance(row.id, {
+    await advance(row.id, row.attempt, {
       step: 'await_build',
       status: 'building',
       tagState: 'present',
@@ -118,6 +122,7 @@ async function cutTheTag(
     });
     await appendReading(
       row.id,
+      row.attempt,
       `cut_tag: ${tagRefName(row.tag)} created at ${created.sha} by the App on ${client.fullName}`,
     );
     return { started: true, release: await asPersisted(row.id, row) };
@@ -132,8 +137,8 @@ async function cutTheTag(
         ? ('absent' as const)
         : ('unknown' as const);
     const failure = `${refusal.message} ${truthOf({ ...row, commitSha, tagState }, tagState)}`;
-    await settleFailed(row.id, { step: 'cut_tag', failure, tagState });
-    await appendReading(row.id, `cut_tag: refused — ${refusal.cause}`);
+    await settleFailed(row.id, row.attempt, { step: 'cut_tag', failure, tagState });
+    await appendReading(row.id, row.attempt, `cut_tag: refused — ${refusal.cause}`);
     logger.warn(
       { releaseId: row.id, tag: row.tag, cause: refusal.cause, tagState },
       'runner-release: the tag was not cut',
@@ -162,7 +167,7 @@ async function runPreflight(
   ): Promise<StartRunnerReleaseOutcome> => {
     const tagState = tagRead ? ('absent' as const) : ('unread' as const);
     const failure = `${message} ${truthOf({ ...row, commitSha, tagState }, tagState)}`;
-    const settled = await settleFailed(row.id, { step, failure, tagState });
+    const settled = await settleFailed(row.id, row.attempt, { step, failure, tagState });
     if (!settled) return lostTheRow(row);
     return {
       started: false,
@@ -176,21 +181,25 @@ async function runPreflight(
   let commitSha: string | null = null;
   try {
     // cm:guard every `advance` on this path is answered, because it is conditional on the row being non-terminal: the deadline pass can settle this release between two steps, and a sequence that carries on past that point writes its readings into a row somebody else already ended — and then cuts a tag for it.
-    if (!(await advance(row.id, { step }))) return lostTheRow(row);
+    if (!(await advance(row.id, row.attempt, { step }))) return lostTheRow(row);
     const ref = args.commit ?? (await readDefaultBranch(client));
     commitSha = await readCommitSha(client, ref);
-    if (!(await advance(row.id, { commitSha }))) return lostTheRow(row);
-    await appendReading(row.id, `resolve_commit: ${commitSha} (${ref})`);
+    if (!(await advance(row.id, row.attempt, { commitSha }))) return lostTheRow(row);
+    await appendReading(row.id, row.attempt, `resolve_commit: ${commitSha} (${ref})`);
 
     step = 'check_tag_absent';
-    if (!(await advance(row.id, { step }))) return lostTheRow(row);
+    if (!(await advance(row.id, row.attempt, { step }))) return lostTheRow(row);
     const existing = await readTagRef(client, row.tag);
     tagRead = true;
     if (existing) {
       const failure =
         `\`${row.tag}\` already exists on ${client.fullName}, pointing at ${existing.sha}. ` +
         `${truthOf({ ...row, commitSha, tagState: 'present' as const }, 'present')}`;
-      const settled = await settleFailed(row.id, { step, failure, tagState: 'present' });
+      const settled = await settleFailed(row.id, row.attempt, {
+        step,
+        failure,
+        tagState: 'present',
+      });
       if (!settled) return lostTheRow(row);
       return {
         started: false,
@@ -199,11 +208,15 @@ async function runPreflight(
         release: await asPersisted(row.id, { ...row, commitSha, tagState: 'present' as const }),
       };
     }
-    if (!(await advance(row.id, { tagState: 'absent' }))) return lostTheRow(row);
-    await appendReading(row.id, `check_tag_absent: ${client.fullName} holds no ${row.tag}`);
+    if (!(await advance(row.id, row.attempt, { tagState: 'absent' }))) return lostTheRow(row);
+    await appendReading(
+      row.id,
+      row.attempt,
+      `check_tag_absent: ${client.fullName} holds no ${row.tag}`,
+    );
 
     step = 'check_crate_version';
-    if (!(await advance(row.id, { step }))) return lostTheRow(row);
+    if (!(await advance(row.id, row.attempt, { step }))) return lostTheRow(row);
     const cargoToml = await readFileAtRef(client, RUNNER_CARGO_TOML_PATH, commitSha);
     const crate: PreflightRefusal | null = judgeCrateVersion({
       version: row.version,
@@ -211,14 +224,22 @@ async function runPreflight(
       cargoToml,
     });
     if (crate) return stop(crate.step, crate.message, commitSha);
-    await appendReading(row.id, `check_crate_version: Cargo.toml declares ${row.version}`);
+    await appendReading(
+      row.id,
+      row.attempt,
+      `check_crate_version: Cargo.toml declares ${row.version}`,
+    );
 
     step = 'check_lockfile_version';
-    if (!(await advance(row.id, { step }))) return lostTheRow(row);
+    if (!(await advance(row.id, row.attempt, { step }))) return lostTheRow(row);
     const cargoLock = await readFileAtRef(client, RUNNER_CARGO_LOCK_PATH, commitSha);
     const locked = judgeLockfileVersion({ version: row.version, commitSha, cargoLock });
     if (locked) return stop(locked.step, locked.message, commitSha);
-    await appendReading(row.id, `check_lockfile_version: Cargo.lock records ${row.version}`);
+    await appendReading(
+      row.id,
+      row.attempt,
+      `check_lockfile_version: Cargo.lock records ${row.version}`,
+    );
 
     return { commitSha };
   } catch (err) {
@@ -278,6 +299,7 @@ export async function startRunnerRelease(
   const row = open.opened;
   await appendReading(
     row.id,
+    row.attempt,
     `resolve_repository: ${client.fullName} via binding ${client.bindingId}`,
   );
   const preflight = await runPreflight(client, row, args);

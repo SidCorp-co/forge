@@ -24,6 +24,7 @@ import { relations, sql } from 'drizzle-orm';
 import {
   check,
   index,
+  integer,
   jsonb,
   pgTable,
   text,
@@ -83,6 +84,7 @@ const TAG_STATE_CHK = sql`tag_state IN ('unread', 'absent', 'unknown', 'present'
 const SETTLED_CHK = sql`(status IN ('published', 'failed')) = (settled_at IS NOT NULL)`;
 // cm:guard `published` is the one status that asserts something about the world, so it may only be written over a tag that exists and a release that was READ and found whole — without this the status could say published over a `tag_state` of `unknown`, which is a release nobody can prove was cut.
 const PUBLISHED_CHK = sql`status <> 'published' OR (tag_state = 'present' AND publication = 'published')`;
+const ATTEMPT_CHK = sql`attempt >= 1`;
 
 export const runnerReleases = pgTable(
   'runner_releases',
@@ -101,6 +103,8 @@ export const runnerReleases = pgTable(
     version: text('version').notNull(),
     /** `runner-v` + the version. Unique per project, because a tag is immutable. */
     tag: text('tag').notNull(),
+    // cm:guard the re-arm reuses the ROW, so without a number on it the attempt it replaced is indistinguishable from the one that replaced it: a caller still running inside the old attempt, or a sweep that selected the old one, writes into the new one over a `settled_at IS NULL` that is true again and a step and tag state that came back round to the same pair. Every conditional write on this table carries the attempt it was issued for and matches it, which is what makes that ABA lose in Postgres rather than in a branch.
+    attempt: integer('attempt').notNull().default(1),
     /** The commit the tag points at. NULL until `resolve_commit` answered. */
     commitSha: text('commit_sha'),
     status: text('status', { enum: RUNNER_RELEASE_STATUSES }).notNull().default('preflight'),
@@ -145,6 +149,7 @@ export const runnerReleases = pgTable(
     tagStateChk: check('runner_releases_tag_state_chk', TAG_STATE_CHK),
     settledChk: check('runner_releases_settled_chk', SETTLED_CHK),
     publishedChk: check('runner_releases_published_chk', PUBLISHED_CHK),
+    attemptChk: check('runner_releases_attempt_chk', ATTEMPT_CHK),
   }),
 );
 

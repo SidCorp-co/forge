@@ -5,6 +5,7 @@ CREATE TABLE "runner_releases" (
 	"repository" text NOT NULL,
 	"version" text NOT NULL,
 	"tag" text NOT NULL,
+	"attempt" integer DEFAULT 1 NOT NULL,
 	"commit_sha" text,
 	"status" text DEFAULT 'preflight' NOT NULL,
 	"step" text DEFAULT 'resolve_repository' NOT NULL,
@@ -28,7 +29,8 @@ CREATE TABLE "runner_releases" (
 	CONSTRAINT "runner_releases_status_chk" CHECK (status IN ('preflight', 'cutting', 'building', 'published', 'failed')),
 	CONSTRAINT "runner_releases_tag_state_chk" CHECK (tag_state IN ('unread', 'absent', 'unknown', 'present')),
 	CONSTRAINT "runner_releases_settled_chk" CHECK ((status IN ('published', 'failed')) = (settled_at IS NOT NULL)),
-	CONSTRAINT "runner_releases_published_chk" CHECK (status <> 'published' OR (tag_state = 'present' AND publication = 'published'))
+	CONSTRAINT "runner_releases_published_chk" CHECK (status <> 'published' OR (tag_state = 'present' AND publication = 'published')),
+	CONSTRAINT "runner_releases_attempt_chk" CHECK (attempt >= 1)
 );
 --> statement-breakpoint
 ALTER TABLE "runner_releases" ADD CONSTRAINT "runner_releases_project_id_projects_id_fk" FOREIGN KEY ("project_id") REFERENCES "public"."projects"("id") ON DELETE cascade ON UPDATE no action;--> statement-breakpoint

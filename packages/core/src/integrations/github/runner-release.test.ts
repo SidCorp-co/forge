@@ -69,7 +69,12 @@ vi.mock('./runner-release-repo.js', () => ({
   tagRefName: (tag: string) => `refs/tags/${tag}`,
 }));
 
-type Row = Record<string, unknown> & { id: string; tag: string; tagState: string };
+type Row = Record<string, unknown> & {
+  id: string;
+  tag: string;
+  tagState: string;
+  attempt: number;
+};
 const rows = new Map<string, Row>();
 vi.mock('./runner-release-store.js', () => ({
   openRunnerRelease: async (args: Record<string, unknown>) => {
@@ -78,6 +83,18 @@ vi.mock('./runner-release-store.js', () => ({
     // cm:guard the double of the real statement's WHERE, both halves: a row still in flight is HELD whatever its tag state, and a settled one re-arms only from `unread` or `absent`.
     if (held && !(held.settledAt && ['unread', 'absent'].includes(held.tagState))) {
       return { opened: null, held };
+    }
+    if (held) {
+      Object.assign(held, {
+        status: 'preflight',
+        step: 'resolve_repository',
+        tagState: 'unread',
+        failure: null,
+        readings: [],
+        settledAt: null,
+        attempt: (held.attempt as number) + 1,
+      });
+      return { opened: held, held: null };
     }
     const row: Row = {
       id: key,
@@ -95,24 +112,28 @@ vi.mock('./runner-release-store.js', () => ({
       failure: null,
       readings: [],
       settledAt: null,
+      attempt: 1,
       startedAt: new Date('2026-09-18T00:00:00.000Z'),
     };
     rows.set(key, row);
     return { opened: row, held: null };
   },
-  appendReading: async (id: string, line: string) => {
+  // cm:guard each double carries the same `attempt` fence the statement does, so a case that
+  // re-arms a row proves the sequence is passing the attempt through rather than the double being
+  // forgiving about it.
+  appendReading: async (id: string, attempt: number, line: string) => {
     const row = rows.get(id);
-    if (row) (row.readings as string[]).push(line);
+    if (row && row.attempt === attempt) (row.readings as string[]).push(line);
   },
-  advance: async (id: string, patch: Record<string, unknown>) => {
+  advance: async (id: string, attempt: number, patch: Record<string, unknown>) => {
     const row = rows.get(id);
-    if (!row || row.settledAt) return false;
+    if (!row || row.settledAt || row.attempt !== attempt) return false;
     Object.assign(row, patch);
     return true;
   },
-  settleFailed: async (id: string, patch: Record<string, unknown>) => {
+  settleFailed: async (id: string, attempt: number, patch: Record<string, unknown>) => {
     const row = rows.get(id);
-    if (!row || row.settledAt) return false;
+    if (!row || row.settledAt || row.attempt !== attempt) return false;
     const guard = patch.ifUnchanged as { step: string; tagState: string } | undefined;
     if (guard && (row.step !== guard.step || row.tagState !== guard.tagState)) return false;
     const { ifUnchanged: _guard, ...sets } = patch;

@@ -98,8 +98,8 @@ describe('runner_releases — opening one', () => {
   // or the second run inherits the first one's failure sentence.
   it('re-arms a row whose tag never reached the repository', async () => {
     const first = await open();
-    await store.appendReading(String(first.opened?.id), 'check_crate_version: refused');
-    await store.settleFailed(String(first.opened?.id), {
+    await store.appendReading(String(first.opened?.id), 1, 'check_crate_version: refused');
+    await store.settleFailed(String(first.opened?.id), 1, {
       step: 'check_crate_version',
       failure: 'Cargo.toml declares 0.13.2',
       tagState: 'absent',
@@ -120,7 +120,7 @@ describe('runner_releases — opening one', () => {
   // `absent` while the other caller still has a create request to send.
   it('refuses a second start while the first is still running', async () => {
     const first = await open();
-    await store.advance(String(first.opened?.id), { step: 'check_tag_absent' });
+    await store.advance(String(first.opened?.id), 1, { step: 'check_tag_absent' });
 
     const second = await open();
     expect(second.opened).toBeNull();
@@ -134,7 +134,7 @@ describe('runner_releases — opening one', () => {
   // one lose inside Postgres.
   it('refuses a second attempt once the tag exists', async () => {
     const first = await open();
-    await store.advance(String(first.opened?.id), { tagState: 'present', status: 'building' });
+    await store.advance(String(first.opened?.id), 1, { tagState: 'present', status: 'building' });
 
     const second = await open();
     expect(second.opened).toBeNull();
@@ -144,7 +144,7 @@ describe('runner_releases — opening one', () => {
 
   it('refuses a second attempt while the tag is of unknown existence', async () => {
     const first = await open();
-    await store.settleFailed(String(first.opened?.id), {
+    await store.settleFailed(String(first.opened?.id), 1, {
       step: 'cut_tag',
       failure: 'Forge never heard the answer',
       tagState: 'unknown',
@@ -159,7 +159,7 @@ describe('runner_releases — opening one', () => {
   // process, so the same version is still free to cut.
   it('re-arms a settled row whose tag was never read', async () => {
     const first = await open();
-    await store.settleFailed(String(first.opened?.id), {
+    await store.settleFailed(String(first.opened?.id), 1, {
       step: 'resolve_commit',
       failure: 'GitHub answered 403 reading the commit',
       tagState: 'unread',
@@ -184,9 +184,9 @@ describe('runner_releases — settling one, exactly once', () => {
   it('lets the first settle win and the second write nothing', async () => {
     const opened = (await open()).opened;
     const id = String(opened?.id);
-    await store.advance(id, { tagState: 'present', status: 'building', step: 'await_build' });
+    await store.advance(id, 1, { tagState: 'present', status: 'building', step: 'await_build' });
 
-    const first = await store.settlePublished(id, {
+    const first = await store.settlePublished(id, 1, {
       publicationDetail: 'GitHub holds a published release carrying both assets.',
       buildConclusion: 'success',
       workflowRunId: '111',
@@ -194,7 +194,7 @@ describe('runner_releases — settling one, exactly once', () => {
       releaseUrl: 'https://github.com/o/r/releases/tag/runner-v0.13.3',
       buildReportedAt: new Date(),
     });
-    const second = await store.settlePublished(id, {
+    const second = await store.settlePublished(id, 1, {
       publicationDetail: 'a second delivery',
       buildConclusion: 'success',
       workflowRunId: '222',
@@ -213,9 +213,9 @@ describe('runner_releases — settling one, exactly once', () => {
 
   it('lets a failure settle once and refuses a later one over it', async () => {
     const id = String((await open()).opened?.id);
-    await store.advance(id, { tagState: 'present', status: 'building', step: 'await_build' });
+    await store.advance(id, 1, { tagState: 'present', status: 'building', step: 'await_build' });
     expect(
-      await store.settleFailed(id, {
+      await store.settleFailed(id, 1, {
         step: 'await_build',
         failure: 'the build concluded failure',
         tagState: 'present',
@@ -223,7 +223,7 @@ describe('runner_releases — settling one, exactly once', () => {
       }),
     ).toBe(true);
     expect(
-      await store.settleFailed(id, { step: 'confirm_release', failure: 'a second verdict' }),
+      await store.settleFailed(id, 1, { step: 'confirm_release', failure: 'a second verdict' }),
     ).toBe(false);
     const row = await store.findById(id);
     expect(row?.failure).toBe('the build concluded failure');
@@ -235,8 +235,8 @@ describe('runner_releases — settling one, exactly once', () => {
   // move a row somebody already closed.
   it('refuses an advance over a settled row', async () => {
     const id = String((await open()).opened?.id);
-    await store.settleFailed(id, { step: 'resolve_commit', failure: 'stopped' });
-    expect(await store.advance(id, { status: 'building', step: 'await_build' })).toBe(false);
+    await store.settleFailed(id, 1, { step: 'resolve_commit', failure: 'stopped' });
+    expect(await store.advance(id, 1, { status: 'building', step: 'await_build' })).toBe(false);
     expect((await store.findById(id))?.status).toBe('failed');
   });
 });
@@ -258,7 +258,7 @@ describe('runner_releases — what the database itself refuses', () => {
   // refused by Postgres rather than by a code path somebody can forget to call.
   it('refuses `published` over a tag of unknown existence', async () => {
     const id = String((await open()).opened?.id);
-    await store.advance(id, { tagState: 'unknown' });
+    await store.advance(id, 1, { tagState: 'unknown' });
     await violates(
       'runner_releases_published_chk',
       harness.db.execute(sql`
@@ -271,7 +271,7 @@ describe('runner_releases — what the database itself refuses', () => {
 
   it('refuses `published` over a release nobody read', async () => {
     const id = String((await open()).opened?.id);
-    await store.advance(id, { tagState: 'present' });
+    await store.advance(id, 1, { tagState: 'present' });
     await violates(
       'runner_releases_published_chk',
       harness.db.execute(sql`
@@ -316,9 +316,9 @@ describe('runner_releases — the reads the rest of the path makes', () => {
 
   it('finds only the releases still in flight at a commit', async () => {
     const id = String((await open()).opened?.id);
-    await store.advance(id, { commitSha: 'abc1234', step: 'await_build', status: 'building' });
+    await store.advance(id, 1, { commitSha: 'abc1234', step: 'await_build', status: 'building' });
     expect((await store.inFlightAtCommit(bindingId, 'abc1234')).map((r) => r.id)).toEqual([id]);
-    await store.settleFailed(id, { step: 'await_build', failure: 'stopped' });
+    await store.settleFailed(id, 1, { step: 'await_build', failure: 'stopped' });
     expect(await store.inFlightAtCommit(bindingId, 'abc1234')).toEqual([]);
   });
 
@@ -332,15 +332,15 @@ describe('runner_releases — the reads the rest of the path makes', () => {
     const fresh = String((await open('runner-v0.13.4')).opened?.id);
 
     expect((await store.overdueReleases(new Date())).map((r) => r.id)).toEqual([overdue]);
-    await store.settleFailed(overdue, { step: 'await_build', failure: 'named' });
+    await store.settleFailed(overdue, 1, { step: 'await_build', failure: 'named' });
     expect(await store.overdueReleases(new Date())).toEqual([]);
     expect(fresh).not.toBe(overdue);
   });
 
   it('appends one reading per step, in order', async () => {
     const id = String((await open()).opened?.id);
-    await store.appendReading(id, 'resolve_commit: abc1234');
-    await store.appendReading(id, 'check_tag_absent: none');
+    await store.appendReading(id, 1, 'resolve_commit: abc1234');
+    await store.appendReading(id, 1, 'check_tag_absent: none');
     expect((await store.findById(id))?.readings).toEqual([
       'resolve_commit: abc1234',
       'check_tag_absent: none',
@@ -355,9 +355,9 @@ describe('runner_releases — settling under the reading it was selected on', ()
   // written land on a row that has a create request in flight.
   it('refuses a settle whose reading the row has already left', async () => {
     const id = String((await open()).opened?.id);
-    await store.advance(id, { step: 'cut_tag', status: 'cutting', tagState: 'unknown' });
+    await store.advance(id, 1, { step: 'cut_tag', status: 'cutting', tagState: 'unknown' });
 
-    const stale = await store.settleFailed(id, {
+    const stale = await store.settleFailed(id, 1, {
       step: 'resolve_commit',
       failure: 'the deadline read this row two steps ago',
       ifUnchanged: { step: 'resolve_commit', tagState: 'unread' },
@@ -368,12 +368,70 @@ describe('runner_releases — settling under the reading it was selected on', ()
     expect(still?.step).toBe('cut_tag');
     expect(still?.tagState).toBe('unknown');
 
-    const current = await store.settleFailed(id, {
+    const current = await store.settleFailed(id, 1, {
       step: 'cut_tag',
       failure: 'Forge never heard the answer',
       ifUnchanged: { step: 'cut_tag', tagState: 'unknown' },
     });
     expect(current).toBe(true);
     expect((await store.findById(id))?.tagState).toBe('unknown');
+  });
+});
+
+describe('runner_releases — the attempt a write was issued for', () => {
+  // cm:guard the re-arm reuses the ROW, so `settled_at IS NULL` becomes true again and the step and
+  // tag state can come back round to the pair an older reader is holding. Without a number on the
+  // attempt those two writers are indistinguishable in SQL: a caller still inside the attempt the
+  // deadline ended, or a sweep that selected it, then advances, settles and appends readings into
+  // somebody else's live release. This is the ABA the recheck named, and the fence is a column
+  // rather than a branch because both writers are ordinary and neither is wrong to try.
+  it('refuses every write from the attempt a re-arm replaced', async () => {
+    const first = await open();
+    const id = String(first.opened?.id);
+    expect(first.opened?.attempt).toBe(1);
+    await store.settleFailed(id, 1, {
+      step: 'check_crate_version',
+      failure: 'Cargo.toml declares 0.13.2',
+      tagState: 'absent',
+    });
+
+    const second = await open();
+    expect(second.opened?.id).toBe(id);
+    expect(second.opened?.attempt).toBe(2);
+
+    expect(await store.advance(id, 1, { step: 'cut_tag', tagState: 'unknown' })).toBe(false);
+    expect(
+      await store.settleFailed(id, 1, { step: 'cut_tag', failure: 'a superseded caller' }),
+    ).toBe(false);
+    await store.appendReading(id, 1, 'cut_tag: a superseded caller');
+
+    const now = await store.findById(id);
+    expect(now?.attempt).toBe(2);
+    expect(now?.step).toBe('resolve_repository');
+    expect(now?.settledAt).toBeNull();
+    expect(now?.readings).toEqual([]);
+
+    // cm:guard the same writes under the CURRENT attempt land, so the fence is about identity and
+    // not about refusing everything after a re-arm.
+    expect(await store.advance(id, 2, { step: 'cut_tag', tagState: 'unknown' })).toBe(true);
+  });
+
+  it('refuses a deadline settle from a sweep that selected the replaced attempt', async () => {
+    const id = String((await open()).opened?.id);
+    await store.settleFailed(id, 1, {
+      step: 'resolve_commit',
+      failure: 'read refused',
+      tagState: 'unread',
+    });
+    await open();
+
+    // The sweep is holding attempt 1's reading, and attempt 2 happens to be at the same pair.
+    const stale = await store.settleFailed(id, 1, {
+      step: 'resolve_repository',
+      failure: 'the deadline named a release that is running again',
+      ifUnchanged: { step: 'resolve_repository', tagState: 'unread' },
+    });
+    expect(stale).toBe(false);
+    expect((await store.findById(id))?.settledAt).toBeNull();
   });
 });

@@ -1,5 +1,5 @@
 {
-  "id": "74c03287-eda2-44c7-841d-ebeca8c6b676",
+  "id": "6833e56e-b08f-4c0e-8e35-365d7048b2d3",
   "prevId": "1fba434d-d03a-4780-a157-32c9b1d9c702",
   "version": "7",
   "dialect": "postgresql",
@@ -16457,6 +16457,13 @@
           "primaryKey": false,
           "notNull": true
         },
+        "attempt": {
+          "name": "attempt",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 1
+        },
         "commit_sha": {
           "name": "commit_sha",
           "type": "text",
@@ -16727,6 +16734,10 @@
         "runner_releases_published_chk": {
           "name": "runner_releases_published_chk",
           "value": "status <> 'published' OR (tag_state = 'present' AND publication = 'published')"
+        },
+        "runner_releases_attempt_chk": {
+          "name": "runner_releases_attempt_chk",
+          "value": "attempt >= 1"
         }
       },
       "isRLSEnabled": false

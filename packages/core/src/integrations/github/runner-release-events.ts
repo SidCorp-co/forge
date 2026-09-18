@@ -93,6 +93,7 @@ async function attribute(
     for (const row of stranded) {
       await appendReading(
         row.id,
+        row.attempt,
         `await_build: a ${RUNNER_RELEASE_WORKFLOW_PATH} run completed at ${run.head_sha} (${run.html_url ?? 'no url'}) naming no runner-v* tag, so it was not attributed to this release`,
       );
     }
@@ -134,7 +135,7 @@ async function settle(
   const read = await readPublication(ctx, row.tag);
 
   if (conclusion === 'success' && read.publication === 'published') {
-    const moved = await settlePublished(row.id, {
+    const moved = await settlePublished(row.id, row.attempt, {
       publicationDetail: read.detail,
       buildConclusion: conclusion,
       workflowRunId,
@@ -142,7 +143,7 @@ async function settle(
       releaseUrl: read.releaseUrl,
       buildReportedAt: at,
     });
-    if (moved) await appendReading(row.id, `confirm_release: ${read.detail}`);
+    if (moved) await appendReading(row.id, row.attempt, `confirm_release: ${read.detail}`);
     return moved ? 1 : 0;
   }
 
@@ -158,7 +159,7 @@ async function settle(
     publication: read.publication,
     publicationDetail: read.detail,
   })}`;
-  const moved = await settleFailed(row.id, {
+  const moved = await settleFailed(row.id, row.attempt, {
     step: conclusion === 'success' ? 'confirm_release' : 'await_build',
     failure,
     tagState: 'present',
@@ -170,7 +171,8 @@ async function settle(
     ...(read.releaseUrl ? { releaseUrl: read.releaseUrl } : {}),
     buildReportedAt: at,
   });
-  if (moved) await appendReading(row.id, `await_build: ${conclusion} — ${read.detail}`);
+  if (moved)
+    await appendReading(row.id, row.attempt, `await_build: ${conclusion} — ${read.detail}`);
   return moved ? 1 : 0;
 }
 

@@ -48,31 +48,35 @@ vi.mock('./runner-release-repo.js', () => ({
   RunnerReleaseRepoError: FakeRepoError,
 }));
 
-type Row = Record<string, unknown> & { id: string; settledAt: Date | null };
+type Row = Record<string, unknown> & { id: string; settledAt: Date | null; attempt: number };
 let row: Row;
 let inFlight: Row[];
-const settlePublished = vi.fn(async (id: string, patch: Record<string, unknown>) => {
-  if (row.id !== id || row.settledAt) return false;
-  Object.assign(row, patch, { status: 'published', settledAt: new Date() });
-  return true;
-});
-const settleFailed = vi.fn(async (id: string, patch: Record<string, unknown>) => {
-  if (row.id !== id || row.settledAt) return false;
+// cm:guard each double carries the `attempt` fence the statement does, so a delivery settling a release proves the arm is passing the row's own attempt through rather than the double ignoring it.
+const settlePublished = vi.fn(
+  async (id: string, attempt: number, patch: Record<string, unknown>) => {
+    if (row.id !== id || row.settledAt || row.attempt !== attempt) return false;
+    Object.assign(row, patch, { status: 'published', settledAt: new Date() });
+    return true;
+  },
+);
+const settleFailed = vi.fn(async (id: string, attempt: number, patch: Record<string, unknown>) => {
+  if (row.id !== id || row.settledAt || row.attempt !== attempt) return false;
   Object.assign(row, patch, { status: 'failed', settledAt: new Date() });
   return true;
 });
-const appendReading = vi.fn(async (id: string, line: string) => {
+const appendReading = vi.fn(async (id: string, attempt: number, line: string) => {
   const target = row.id === id ? row : inFlight.find((r) => r.id === id);
-  if (target) (target.readings as string[]).push(line);
+  if (target && target.attempt === attempt) (target.readings as string[]).push(line);
 });
 vi.mock('./runner-release-store.js', () => ({
   findByBindingAndTag: async (bindingId: string, tag: string) =>
     bindingId === row.bindingId && tag === row.tag ? row : null,
   inFlightAtCommit: async () => inFlight,
-  appendReading: (...a: unknown[]) => appendReading(...(a as [string, string])),
-  settleFailed: (...a: unknown[]) => settleFailed(...(a as [string, Record<string, unknown>])),
+  appendReading: (...a: unknown[]) => appendReading(...(a as [string, number, string])),
+  settleFailed: (...a: unknown[]) =>
+    settleFailed(...(a as [string, number, Record<string, unknown>])),
   settlePublished: (...a: unknown[]) =>
-    settlePublished(...(a as [string, Record<string, unknown>])),
+    settlePublished(...(a as [string, number, Record<string, unknown>])),
 }));
 
 const { applyWorkflowRunEvent } = await import('./runner-release-events.js');
@@ -125,6 +129,7 @@ beforeEach(() => {
     publicationDetail: null,
     readings: [],
     settledAt: null,
+    attempt: 1,
   };
   inFlight = [];
 });
