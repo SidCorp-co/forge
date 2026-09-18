@@ -115,7 +115,8 @@
 - **Work handed to a subagent must be declared, and a box now refuses the hand-off rather than
   advising against it.** Skipping it left that work invisible and its issues never offered again.
   `forge-runner status` counts what still got through.
-
+- **A machine can be given an identity of its own.** Make an agent in Settings → Agents, name its
+  projects, and pick it when you approve a pairing. What that box does is then filed as the agent.
 
 - **Cutting a runner release is one thing Forge does, not eight by hand.** Name a version; Forge
   checks the commit agrees, tags it as itself, hears how the build went, and names what is on the
@@ -3008,6 +3009,17 @@
   carries only what the guide cannot know.
 
 
+
+- **Work an agent does now shows as the agent's on the issue list, not as yours.** A box filing on
+  your token was credited to you, while the activity log said an agent. Issues already filed are
+  repaired on deploy.
+
+- **Filtering by your own issues no longer returns work a machine did on your credential.**
+
+- **A comment an agent wrote now says so.** The marker depended on which box issued the credential,
+  so an agent writing on a person's token showed as that person.
+
+- **An agent account is recognised as an agent wherever its name appears.**
 
 - **Six background checks that got slower as the tables grew now answer at a steady speed.** Each
   read a whole table to find a handful of rows. Same answers, with the shortcuts to reach them.

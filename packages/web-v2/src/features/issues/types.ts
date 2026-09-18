@@ -392,8 +392,12 @@ export interface CommentNode {
   nodes: BodyNode[] | null;
   /** ISS-1089 — the `forge-record` block core parsed, with the project's lens. */
   record: (ForgeRecordView & { lens: RecordLens }) | null;
-  /** Non-null when posted by an agent/device (ISS-519). */
+  /** ISS-932 wave 4 — the BOX a credential was issued to. Answers *where*, never *who*. */
   authorDeviceId?: string | null;
+  /** ISS-969 — who was at the keyboard, from the credential. NULL is "no evidence", not 'human'.
+   *  The rendered marker is `author.isAgent`, which the server has already OR'd this into
+   *  (ISS-1093); this field is here so a reader can tell an un-evidenced row from a human one. */
+  authorAgency?: "human" | "agent" | null;
   body: string;
   /** `markdown` (the default and every pre-existing row) or `html` (ISS-898). */
   format: string;

@@ -155,6 +155,18 @@ export type Issue = typeof schema.issues.$inferSelect & {
    *  attributions, primary first, `[]` when it has none. */
   modules?: ModuleAttribution[];
   pipelineHealth: PipelineHealth;
+} & IssueCreatorFields;
+
+/**
+ * Who filed the issue, as every REST issue payload has answered since ISS-756 —
+ * declared here at last (ISS-1093). No database row carries these three: they are
+ * derived per response by `issues/creator.ts:hydrateCreatorsForIssues`.
+ */
+// cm:edge contract -> packages/core/src/issues/creator.ts — `creatorIsAgent` decides the pair, reading `issues.creator_agency` first and `created_via` only as the pre-column floor. `creatorLabel` is the ONE string a screen prints: when the filer is an agent it is the agent label and `creatorEmail` is deliberately not shown, so a client that prints the email itself puts a person's address on a machine's work.
+export type IssueCreatorFields = {
+  creatorEmail: string | null;
+  creatorIsAgent: boolean;
+  creatorLabel: string;
 };
 
 // cm:edge lockstep -> packages/core/src/issues/list-projection.ts — `REST_ISSUE_LIST_OMITTED` names

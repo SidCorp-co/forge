@@ -10,8 +10,12 @@ export interface AgentAccountRow {
   displayName: string | null;
   /** Synthesized at a reserved-invalid domain. Shown as provenance, never as a name. */
   email: string;
-  projectId: string;
-  projectRole: string;
+  /**
+   * Every project this agent is a member of, and the role it holds on each.
+   * Empty for an agent that reaches none — the row an admin has to fix.
+   */
+  // cm:guard an ARRAY, and never the `projectId`/`projectRole` pair this used to be. An agent covers several projects since ISS-1093 and `listAgentAccounts` folds its memberships into one row; a reader still asking for the singular field reads `undefined`, which `reachOf` cannot tell from "belongs to no project" — the whole list would say every agent reaches nothing while the server said otherwise.
+  projects: { id: string; role: string }[];
   createdAt: string;
   activeTokens: number;
   /**
@@ -23,8 +27,28 @@ export interface AgentAccountRow {
   canAct: boolean;
 }
 
+/**
+ * The fence a credential carries: one project binds, several allowlist. The two
+ * shapes are `orgs/agent-accounts.ts:fenceFor`'s and are never both populated.
+ */
+export interface AgentCredentialFence {
+  boundProjectId: string | null;
+  projectIds: string[] | null;
+}
+
 /** `POST /api/orgs/:orgId/agents/:agentUserId/tokens`. Shown once and never read back. */
 export interface AgentCredentialMinted {
   plaintext: string;
-  boundProjectId: string;
+  fence: AgentCredentialFence;
+}
+
+/** `POST /api/orgs/:orgId/agents` — the new account, and its one credential. */
+export interface AgentCreated extends AgentAccountRow {
+  plaintext: string;
+}
+
+/** The body `POST /api/orgs/:orgId/agents` takes. `projectIds` is plural and required. */
+export interface CreateAgentInput {
+  handle: string;
+  projectIds: string[];
 }

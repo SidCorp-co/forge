@@ -79,7 +79,7 @@ describe('the handle is a column, and the database is what keeps it unique', () 
   it('records the handle on the membership rather than leaving it in the address', async () => {
     const { agent } = await accounts.createAgentAccount({
       orgId: orgA,
-      projectId: projectA,
+      projectIds: [projectA],
       handle: 'forge-dev',
     });
     const [row] = await harness.db.execute<{ handle: string }>(
@@ -93,7 +93,7 @@ describe('the handle is a column, and the database is what keeps it unique', () 
   it('refuses a second agent of the same name in one org, by constraint, whoever writes it', async () => {
     const { agent } = await accounts.createAgentAccount({
       orgId: orgA,
-      projectId: projectA,
+      projectIds: [projectA],
       handle: 'forge-dev',
     });
     const other = await createTestUser(harness.db);
@@ -115,7 +115,7 @@ describe('the handle is a column, and the database is what keeps it unique', () 
   it('aborts a room’s own handle mint on the collision instead of committing a nameless agent', async () => {
     const slug = `gamma-${randomUUID().slice(0, 8)}`;
     const project = await createTestProject(harness.db, ownerId, { slug, orgId: orgA });
-    await accounts.createAgentAccount({ orgId: orgA, projectId: projectA, handle: slug });
+    await accounts.createAgentAccount({ orgId: orgA, projectIds: [projectA], handle: slug });
 
     const before = await harness.db.execute<{ n: number }>(
       sql`SELECT count(*)::int AS n FROM users`,
@@ -141,14 +141,14 @@ describe('the handle is a column, and the database is what keeps it unique', () 
 
   // cm:guard the constraint refuses, and the CALLER is told which field to change. Walked live on forge-beta at 74c3e4ec and it answered a bare 500 `INTERNAL_ERROR`: the index did its job and the person on the other end learned nothing, on the one route whose whole input is the handle. Before the column two agents of one name both succeeded, so the 500 is new with this change and is this change's to answer for.
   it('names the handle and the org when it refuses, rather than answering 500', async () => {
-    await accounts.createAgentAccount({ orgId: orgA, projectId: projectA, handle: 'forge-dev' });
+    await accounts.createAgentAccount({ orgId: orgA, projectIds: [projectA], handle: 'forge-dev' });
     const res = await app.request(`/api/orgs/${orgA}/agents`, {
       method: 'POST',
       headers: {
         authorization: `Bearer ${await (await import('../../src/auth/jwt.js')).signUserToken(ownerId)}`,
         'content-type': 'application/json',
       },
-      body: JSON.stringify({ handle: 'forge-dev', projectId: projectA }),
+      body: JSON.stringify({ handle: 'forge-dev', projectIds: [projectA] }),
     });
     expect(res.status).toBe(409);
     const body = (await res.json()) as { code?: string; message?: string };
@@ -166,8 +166,8 @@ describe('the handle is a column, and the database is what keeps it unique', () 
 
   // cm:guard the other direction, and it is why the unique index is on `(org_id, handle)` rather than on `handle`: two organizations each holding a `@forge-dev` is the case the synthesized address's random suffix exists to make possible under `users.email`'s system-wide unique index.
   it('admits the same name in a different org', async () => {
-    await accounts.createAgentAccount({ orgId: orgA, projectId: projectA, handle: 'forge-dev' });
-    await accounts.createAgentAccount({ orgId: orgB, projectId: projectB, handle: 'forge-dev' });
+    await accounts.createAgentAccount({ orgId: orgA, projectIds: [projectA], handle: 'forge-dev' });
+    await accounts.createAgentAccount({ orgId: orgB, projectIds: [projectB], handle: 'forge-dev' });
     expect((await accounts.listAgentAccounts(orgA))[0]?.handle).toBe('forge-dev');
     expect((await accounts.listAgentAccounts(orgB))[0]?.handle).toBe('forge-dev');
   });
@@ -269,7 +269,7 @@ describe('a credential for an agent that already exists', () => {
   it('mints one that the door actually accepts, bound to the agent’s project', async () => {
     const agentId = await tokenlessAgent('room-handle');
     const minted = await accounts.mintAgentCredential(orgA, agentId);
-    expect(minted?.boundProjectId).toBe(projectA);
+    expect(minted?.fence).toEqual({ boundProjectId: projectA, projectIds: null });
 
     const verified = await pat.verifyPat(minted?.plaintext);
     expect(verified?.row.userId).toBe(agentId);
@@ -297,7 +297,7 @@ describe('a credential for an agent that already exists', () => {
 
     const [listed] = await accounts.listAgentAccounts(orgA);
     expect(listed?.activeTokens).toBe(1);
-    expect(listed?.projectId).toBe('');
+    expect(listed?.projects).toEqual([]);
     expect(listed?.canAct).toBe(false);
   });
 
@@ -338,7 +338,7 @@ describe('a credential for an agent that already exists', () => {
     expect(listed?.canAct).toBe(false);
     // cm:guard the account is still THERE, with its memberships: this verb removes what the agent may act with, and `revokeAgentAccount` is the one that removes what it may act on. Collapse the two and an admin who meant "stop it for now" has retired the handle out of every room.
     expect(listed?.userId).toBe(agentId);
-    expect(listed?.projectId).toBe(projectA);
+    expect(listed?.projects).toEqual([{ id: projectA, role: 'member' }]);
   });
 
   it('sets a display name a person reads, and leaves the handle alone', async () => {
@@ -402,7 +402,7 @@ describe('a name a person reads, over HTTP', () => {
     const jwt = await session();
     const { agent } = await accounts.createAgentAccount({
       orgId: orgA,
-      projectId: projectA,
+      projectIds: [projectA],
       handle: 'forge-dev',
     });
     await patch(`/api/orgs/${orgA}/agents/${agent.userId}`, jwt, { displayName: 'Trợ lý Forge' });
@@ -420,7 +420,7 @@ describe('a name a person reads, over HTTP', () => {
     const jwt = await session();
     const { agent } = await accounts.createAgentAccount({
       orgId: orgA,
-      projectId: projectA,
+      projectIds: [projectA],
       handle: 'forge-dev',
     });
     await accounts.revokeAgentCredentials(orgA, agent.userId);
@@ -450,7 +450,7 @@ describe('a name a person reads, over HTTP', () => {
     const jwt = await signUserToken(outsider.id);
     const { agent } = await accounts.createAgentAccount({
       orgId: orgA,
-      projectId: projectA,
+      projectIds: [projectA],
       handle: 'forge-dev',
     });
 

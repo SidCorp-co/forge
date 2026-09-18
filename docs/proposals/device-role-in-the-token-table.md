@@ -22,11 +22,16 @@ scope.
 
 Give the box an agent account and let it hold an Agent Access Token. Then:
 
-1. **An agent belongs to exactly one project; a box serves many.** That is not incidental — it is
-   the rule the whole agent-account design rests on, and ISS-1003 names widening it as out of scope
-   except where this step forces it. Forcing it here would make a box-shaped agent the one agent
-   with N project memberships, and every reader that assumes one would be wrong about exactly the
-   population that authenticates most often.
+1. ~~**An agent belongs to exactly one project; a box serves many.**~~ **Taken, in ISS-1093.** An
+   agent now holds N project memberships and one credential fenced to exactly those projects, so
+   this objection no longer stands. The readers that assumed one were re-priced there:
+   `listAgentAccounts` folds its rows per agent, `fenceFor`/`agentCredentialFence` became the one
+   place a fence shape is chosen, and `conversations/handles.ts:existingProjectHandle` now requires
+   a candidate to be a member of this project and no other — see point 3, which was right.
+   The half that reading leaves open is closed at the writer rather than at the reader:
+   `setAgentProjects` refuses `AGENT_IS_A_PROJECT_HANDLE` when the agent being widened is the one
+   carrying a project's own slug-derived name, because that project could not then mint a
+   replacement and its rooms would stop opening.
 2. **A box is not org-scoped either.** An agent holds one organization membership and its address is
    unique within that organization. A runner box paired to projects in two organizations cannot be
    represented as one agent at all, in any number of projects.
@@ -80,11 +85,11 @@ Choosing "not now" is not free, and these are the bills it leaves:
 
 One of these, and not a smaller version of either:
 
-- A decision that an agent account may hold more than one project membership, taken as its own
-  change with the handle resolver, the conversation scope reader and the org-uniqueness of an
-  address all re-priced against it. ISS-1003 made the scope half of that safe — a room now records
-  the project it was joined for, so a second membership no longer widens it — so this is nearer than
-  it was, but it is still a change to the rule the design rests on rather than a consequence of one.
+- ~~A decision that an agent account may hold more than one project membership~~ — **made in
+  ISS-1093**, as its own change, with the handle resolver re-priced against it exactly as this
+  document asked. What it did NOT settle is objection 2: an agent still holds one organization
+  membership, so a box paired to projects in two organizations still cannot be one agent. That is
+  what remains between here and taking this up again.
 - Or a designed third principal for a machine, with its own answer to what it is a member of, what
   it may reach, how it is revoked, and what it is called in an audit row. That is a redesign of the
   device plane, not a column.
