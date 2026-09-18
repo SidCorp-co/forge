@@ -129,7 +129,8 @@ const CHECKS = [
     cmd: ['./.forge/archmap/archmap', 'check'],
     exclusive: 'archmap',
     scanned: /archmap · (\d+) files/,
-    needs: ['deps', 'observability-build'],
+    needs: ['deps', 'archmap-resolver', 'observability-build'],
+    // cm:guard `archmap-resolver` is NOT covered by `deps`: an installed dependency-cruiser whose CLI entry point archmap cannot find dies as `scope matched no files (.)`, a sentence about this repo's SCOPE rather than about the tool. Measured 2026-09-18 on dependency-cruiser 18.3.1 — all three `deps` directories present, archmap exit 2 in 0.117s, the real reason discarded inside the vendored copy (ISS-1098).
     // cm:guard `observability-build` belongs here for the same reason `core typecheck` declares it: archmap resolves TypeScript module edges, so an unbuilt `@forge/observability` makes every edge through it unresolvable. Measured 2026-09-14 in a fresh worktree — 205 unresolvable against a 200 ceiling where a built tree reports 171, and conformance-audit R7 then declared the REPO does not meet `hardened`. That is a false claim about the code, which is the exact bug `lib/prerequisite.mjs` exists to stop.
   },
   {
@@ -290,6 +291,8 @@ const CI_COVERAGE = {
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',
+  'node scripts/check-archmap-ready.mjs':
+    'verify, as the `archmap-resolver` prerequisite the archmap check declares in `needs`',
   './.forge/archmap/archmap check': 'verify',
   'node scripts/check-test-reachability.mjs': 'verify',
   'pnpm exec biome check scripts': 'verify',

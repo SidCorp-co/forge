@@ -234,6 +234,24 @@ Preflight happens **before** the spawn. A checker run without its tool produces 
 own subject — `biome output in packages/core was not JSON`, `archmap: scope matched no files` — and
 once that sentence exists nothing downstream can unsay it.
 
+**A prerequisite is only as good as the thing it resolves.** Measured 2026-09-18: `deps` resolves
+three `node_modules` directories, all three were present, and `archmap` still printed `scope matched
+no files (.)` and exited 2 in 0.117s. dependency-cruiser 18.3.0 had renamed the CLI entry point
+`bin/dependency-cruise.mjs` to `bin/dependency-cruiser.mjs`, and the vendored archmap walks
+`node_modules` for the old name alone — so the package was installed, complete and runnable, and the
+resolver was missing. `^18` in `packages/core/package.json` admits 18.3.x, so every npm
+dependency-group PR met it: #369, #394, #425 and #448 closed unmerged and #509 failed twice, each
+told only that this repo's scope matched nothing. The `archmap-resolver` prerequisite resolves the
+entry point archmap actually spawns, and `check-archmap-ready.mjs` runs the same table in the CI job,
+which runs the vendored binary directly rather than through `verify`. A directory is not a tool; name
+the file the gate executes (ISS-1098).
+
+That covers the class "archmap has no resolver to spawn". It does **not** cover "the resolver ran and
+failed" — an unparseable report, a crash, a timeout, a missing tsConfig — because archmap discards
+the provider's reason whenever another provider returns an empty-but-ok graph, which in a repo with
+no `go.mod` is always. That half is archmap's, filed on that project, and no path on disk can stand
+in for it.
+
 Measured 2026-09-07 in a worktree with no `node_modules`: `pnpm verify` reported `FAIL R7 the
 relations gate can resolve the graph it claims to cover` and `conformance: claims "hardened" and
 does not meet it`. Both accuse the repo; both were false; `archmap` and `tsc` were not on disk.
