@@ -24,7 +24,28 @@ export interface ConversationVenue {
 export interface DeliveryReceipt {
   /** The transport's own id for the posted message, or null when it named none. */
   messageId: string | null;
+  /**
+   * The text as the transport posted it, where that differs from the text it was handed.
+   */
+  // cm:guard set ONLY by a transport that changed the text on the way out — the `@label` address a Rocket.Chat reply into a room of several people gets — so the transcript row holds what the room was shown and not what the screen admitted. Absent: the two are the same string (ISS-1088 criteria 21, 22).
+  deliveredText?: string | undefined;
 }
+
+/** What a delivery may carry beside the text: who it answers, and what it hangs under. */
+export interface DeliveryOptions {
+  /** The person this reply answers, by the label the transport shows for them; the transport decides how to address them, or ignores it. */
+  addressee?: string | null | undefined;
+  /** The transport's id for the message this delivery answers, where it wants to attach it — a Rocket.Chat thread; ignored by a transport with no such thing. */
+  anchor?: string | null | undefined;
+}
+
+/**
+ * What a transport is asked to show for a request it is working on.
+ */
+// cm:guard the KERNEL decides when and the transport decides with what: `received` names a message and `working` names the venue, and neither says "reaction" or "typing" — a transport with no way to show one makes it a no-op, and one whose instrument notifies nobody is the only kind allowed here (ISS-1088 criterion 1).
+export type RequestAck =
+  | { kind: 'received'; messageId: string; on: boolean }
+  | { kind: 'working'; on: boolean };
 
 export interface ConversationHistoryMessage {
   role: 'user' | 'assistant';
@@ -58,8 +79,17 @@ export function screened(
 /** The neutral half: reachable with a venue alone, which is what the registry holds. */
 export interface ConversationTransport {
   readonly adapter: ConversationAdapter;
-  deliver(venue: ConversationVenue, message: ScreenedMessage): Promise<DeliveryReceipt>;
+  deliver(
+    venue: ConversationVenue,
+    message: ScreenedMessage,
+    opts?: DeliveryOptions,
+  ): Promise<DeliveryReceipt>;
   fetchHistory(venue: ConversationVenue, limit: number): Promise<ConversationHistoryMessage[]>;
+  /**
+   * Show the venue that a request was received, or that work on it is under way.
+   */
+  // cm:guard OPTIONAL and a no-op where absent, never a fallback message: a transport that cannot signal without posting has nothing here, because a post is the one thing an acknowledgement must not be — it notifies, and the person asked for an answer, not a notification about one (ISS-1088 criterion 1). Failures are the caller's to log; this rejects and never posts in its place.
+  acknowledge?(venue: ConversationVenue, ack: RequestAck): Promise<void>;
   /**
    * Whether this venue is still reachable, asked BEFORE expensive work rather than instead of `deliver`.
    */

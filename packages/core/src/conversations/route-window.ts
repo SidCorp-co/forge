@@ -18,8 +18,10 @@ import type {
 } from '../db/schema-conversations.js';
 import { logger } from '../logger.js';
 import { readSelvesFor } from '../orgs/agent-selves.js';
-import { handleForProject, roomHandles } from './participants.js';
-import { type ConversationVenue, codeAuthored, conversationTransport } from './ports.js';
+import { acknowledgeRequest } from './acknowledgement.js';
+import { refuseAuthority } from './authority-refusal.js';
+import { handleForProject, personCount, roomHandles } from './participants.js';
+import { type ConversationVenue, conversationTransport } from './ports.js';
 import {
   applyRoomPresence,
   foldPresence,
@@ -27,6 +29,13 @@ import {
   windowAddressesAHandle,
 } from './presence.js';
 import { decideProactivity } from './proactivity.js';
+import {
+  explicitAnchor,
+  newRequestTrack,
+  type RequestTrack,
+  statusAfterThrow,
+  withTerminalStatus,
+} from './request-status.js';
 import { linkedSpeakerOf } from './speaker.js';
 import {
   assistantSentExternalIds,
@@ -36,8 +45,11 @@ import {
   readMessagesInRange,
   type StoredConversationMessage,
 } from './store.js';
-import { recordDeliveredReply } from './transcript.js';
-import { type ConversationTurnRequest, runConversationTurn } from './turn-runner.js';
+import {
+  type ConversationTurnRequest,
+  runConversationTurn,
+  type TurnOutcome,
+} from './turn-runner.js';
 import {
   type ConversationWindowRow,
   claimOf,
@@ -60,6 +72,8 @@ export type WindowTurnInputs = Omit<
   | 'questionAlreadyRecorded'
   | 'mayDecline'
   | 'sendMode'
+  | 'fallbacks'
+  | 'addressee'
   | 'deliveryKey'
   | 'onBeforeDeliver'
 >;
@@ -166,8 +180,9 @@ export async function routeWindow(args: RouteWindowArgs): Promise<RoutedWindow> 
       snapshotAt: claim.claimedAt,
     },
   };
+  const track = newRequestTrack();
   try {
-    const result = await decide(args, key, claim, cut);
+    const result = await decide(args, key, claim, cut, track);
     if (result.superseded) return result;
     await closeWindow({
       windowId: window.id,
@@ -182,11 +197,13 @@ export async function routeWindow(args: RouteWindowArgs): Promise<RoutedWindow> 
       { err, windowId: window.id, conversationId: window.conversationId },
       'conversations: routing a window failed',
     );
+    const status = await statusAfterThrow(window, key, claim, track);
     await closeWindow({
       windowId: window.id,
       decision: 'unreachable',
       detail: closeDetail(window, cut.current, {
         error: err instanceof Error ? err.message : String(err),
+        ...(status ? { status } : {}),
       }),
       claim,
     });
@@ -221,6 +238,7 @@ async function decide(
   deliveryKey: string,
   claim: WindowClaim,
   cut: { current: WindowCut },
+  track: RequestTrack,
 ): Promise<RoutedWindow> {
   const { window } = args;
 
@@ -339,14 +357,19 @@ async function decide(
   );
   // cm:guard `mention` gates GROUP venues only and reads every message the window collected, not just the newest: a direct room is one person talking to one agent and every message is addressed to it, while in a room a person who wrote "@babo can you check" and then "the build, I mean" in two messages has named the handle once and is owed one answer (ISS-1034 criteria 66-68).
   // cm:guard a REPLY or a QUOTE of something the handle sent addresses it as plainly as its name: the targets the window carries are resolved against the handle's own delivered ids, so a reply to a person names nobody however it reads (ISS-1087 criteria 13, 14).
+  // cm:guard resolved for EVERY group window and not only under `mention`, because the same reading decides whether the window is an explicit request owed a receipt and a status; a window carrying no reply target asks the store nothing (ISS-1088 criterion 2).
+  const names = handles.map((h) => h.handle);
+  const targets = venue.shape === 'group' ? replyTargetsOf(messages) : [];
+  const sent =
+    targets.length > 0
+      ? await assistantSentExternalIds(
+          venue.adapter,
+          handles.map((h) => h.userId),
+          targets,
+          conversationTransport(venue.adapter)?.venueScope?.(venue.externalId) ?? null,
+        )
+      : new Set<string>();
   if (venue.shape === 'group' && presence.answerInGroup === 'mention') {
-    const names = handles.map((h) => h.handle);
-    const sent = await assistantSentExternalIds(
-      venue.adapter,
-      handles.map((h) => h.userId),
-      replyTargetsOf(messages),
-      conversationTransport(venue.adapter)?.venueScope?.(venue.externalId) ?? null,
-    );
     if (!windowAddressesAHandle(messages, names, sent)) {
       return { decision: 'nothing-to-say', detail: { reason: 'not-mentioned', handles: names } };
     }
@@ -372,22 +395,50 @@ async function decide(
     cut: cut.current,
     reserve: () => reserveDelivery(window.id, claim),
   });
-  const outcome = await runConversationTurn({
-    ...inputs,
-    venue,
-    principalUserId,
-    speakerUserId,
-    handleUserId,
-    speakerKey: speaker?.authorLabel ?? speaker?.authorUserId ?? 'unknown',
-    message: messages.map((m) => m.content).join('\n'),
-    questionAlreadyRecorded: true,
-    mayDecline: true,
-    // cm:guard `tool` is a GROUP mode like `mention`: a direct room is one person asking one agent and is owed its reply, so the mode reads as `reply` there whatever the fold says (ISS-1087 criterion 21).
-    sendMode: venue.shape === 'group' && presence.answerInGroup === 'tool' ? 'tool' : 'reply',
-    deliveryKey,
-    onBeforeDeliver: () => reserveDelivery(window.id, claim),
-  });
+  // cm:guard the anchor is resolved AFTER the gate and the guards and BEFORE the turn: a window they closed is owed nothing, and the acknowledgement it starts must be running while the turn is, not after (ISS-1088 criteria 3, 5).
+  const anchor = explicitAnchor(venue, messages, names, sent);
+  const transport = conversationTransport(venue.adapter);
+  track.anchor = anchor;
+  track.venue = venue;
+  track.handleName = inputs.handleName;
+  // cm:guard the ASKER is addressed, read off the anchor and never off the newest speaker: a second person chattering after the question would otherwise have the answer addressed to them (ISS-1088 criterion 20; plan consult F7). One person in the room, or a direct room, needs no address.
+  const addressee =
+    anchor && venue.shape === 'group' && (await personCount(window.conversationId)) > 1
+      ? anchor.authorLabel
+      : null;
+  const ack = anchor
+    ? acknowledgeRequest({ transport, venue, anchor, log: { windowId: window.id } })
+    : null;
+  let outcome: TurnOutcome;
+  try {
+    outcome = await runConversationTurn({
+      ...inputs,
+      venue,
+      principalUserId,
+      speakerUserId,
+      handleUserId,
+      speakerKey: speaker?.authorLabel ?? speaker?.authorUserId ?? 'unknown',
+      message: messages.map((m) => m.content).join('\n'),
+      questionAlreadyRecorded: true,
+      mayDecline: true,
+      // cm:guard `tool` is a GROUP mode like `mention`: a direct room is one person asking one agent and is owed its reply, so the mode reads as `reply` there whatever the fold says (ISS-1087 criterion 21).
+      sendMode: venue.shape === 'group' && presence.answerInGroup === 'tool' ? 'tool' : 'reply',
+      // cm:guard a GROUP venue silences the apologies and a DIRECT one posts them (ISS-1088 criterion 19).
+      fallbacks: venue.shape === 'group' ? 'silence' : 'post',
+      addressee,
+      deliveryKey,
+      onBeforeDeliver: () => reserveDelivery(window.id, claim),
+    });
+  } finally {
+    // cm:guard settled on EVERY way out of the turn, a throw included: an indicator left on is a promise of an answer that is not coming (ISS-1088 criteria 6, 7, 10).
+    await ack?.settle();
+  }
 
+  return withTerminalStatus(routedOutcome(outcome), { window, deliveryKey, claim, track });
+}
+
+/** The decision a turn's outcome closes the window under. */
+function routedOutcome(outcome: TurnOutcome): RoutedWindow {
   switch (outcome.kind) {
     case 'delivered':
       return { decision: 'answered', detail: { messageId: outcome.messageId } };
@@ -402,56 +453,5 @@ async function decide(
     // cm:guard an `undeliverable` transport error is `undetermined` and NOT `unreachable`, because the transport does not know either: a POST that timed out may have been accepted before the socket went. `unreachable` is reserved for what this module knows BEFORE anything was sent — no conversation, no readable message, no registered transport — which is the split ISS-1004 rule 4 draws between a failure and an outcome nobody knows yet (review F3).
     default:
       return { decision: 'undetermined', detail: { reason: outcome.reason, attempted: true } };
-  }
-}
-
-/**
- * What a one-to-one room is told when nobody can be answered as.
- */
-// cm:guard the FALLBACK, used only when `RouteWindowArgs.refusalFor` names nothing — an adapter that supplies none, or a speaker the row kept no transport key for. It names the generic remedy — link the account — and deliberately not the endpoints that do it, because those are the speaker port's to name and a copy here would drift the day they move; this module asks for that wording rather than holding one (ISS-987, ISS-1004).
-export const AUTHORITY_REFUSED_REPLY =
-  'I cannot answer in this room: the account speaking here is not linked to a Forge user, so there is nobody for me to act as. Link your chat account to your Forge account and ask again.';
-
-/**
- * Refuse a one-to-one room by name, durably and at most once.
- */
-// cm:guard the refusal is DELIVERED and not merely decided, and it goes out under the window's own delivery key with the reservation before it: `authority-refused` used to be a decision nobody outside the database could read, so a person whose synchronous refusal failed to send was left with silence and nothing retryable behind it (ISS-1004, review pass 1 F3).
-async function refuseAuthority(
-  args: RouteWindowArgs,
-  venue: ConversationVenue,
-  window: ConversationWindowRow,
-  deliveryKey: string,
-  claim: WindowClaim,
-  speaker?: { authorKey: string | null; authorLabel: string | null },
-): Promise<RoutedWindow> {
-  const detail = { reason: 'the speaker in this one-to-one room is linked to no Forge user' };
-  const transport = conversationTransport(venue.adapter);
-  if (!transport) return { decision: 'authority-refused', detail: { ...detail, told: false } };
-  // cm:guard the wording is settled BEFORE the reservation and the reservation immediately before the send: `refusalFor` asks a directory, so it can fail or hang, and a reservation burned by a lookup that sent nothing leaves the window `undetermined` for good with the person never told (ISS-1004, review of the plan F1).
-  const text =
-    (await args.refusalFor?.(speaker ?? { authorKey: null, authorLabel: null })) ??
-    AUTHORITY_REFUSED_REPLY;
-  if (!(await reserveDelivery(window.id, claim))) {
-    return { decision: 'undetermined', detail: { ...detail, superseded: true } };
-  }
-  try {
-    const receipt = await transport.deliver(venue, codeAuthored(text));
-    // cm:guard the proof says WHICH decision sent it, so a crash before the close cannot be read as an ordinary answer: without it the next claimant saw a delivery, knew nothing of what it was, and wrote `answered` over a room that had been refused (ISS-1004 rule 4).
-    await recordDeliveredReply({
-      conversationId: window.conversationId,
-      projectId: window.projectId,
-      text,
-      receipt,
-      deliveryKey,
-      decision: 'authority-refused',
-    });
-    return { decision: 'authority-refused', detail: { ...detail, told: true } };
-  } catch (err) {
-    // cm:guard a refusal the door would not take is `undetermined` and NOT `authority-refused`: the window stays a record that nobody was told, and the reservation above is what stops the next claim saying it twice (ISS-1004 rule 4).
-    logger.error(
-      { err, windowId: window.id, adapter: venue.adapter, externalId: venue.externalId },
-      'conversations: the authority refusal could not be delivered',
-    );
-    return { decision: 'undetermined', detail: { ...detail, told: false, attempted: true } };
   }
 }

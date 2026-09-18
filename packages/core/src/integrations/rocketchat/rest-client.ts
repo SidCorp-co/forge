@@ -336,9 +336,54 @@ export async function buildMessagePermalink(
 /** The bot account's own username (api/v1/me) — lets the bot speak about
  *  itself by name instead of as "the system". Null on failure. */
 export async function fetchOwnUsername(auth: RocketChatRestAuth): Promise<string | null> {
-  const body = await rcGet(auth, 'me', {});
-  const username = (body as { username?: string } | null)?.username;
-  return typeof username === 'string' && username.length > 0 ? username : null;
+  return (await fetchOwnIdentity(auth)).username;
+}
+
+/** The two names Rocket.Chat may show for the bot: its username, and the display name `UI_Use_Real_Name` swaps in. */
+export interface RocketChatOwnIdentity {
+  username: string | null;
+  displayName: string | null;
+}
+
+// cm:guard BOTH names and not the username alone: the user-activity stream validates the name a write carries against the one the server currently SHOWS for the account, which is the display name under `UI_Use_Real_Name`, so a port holding only the username is refused on every such server (ISS-1088 criteria 24, 26).
+export async function fetchOwnIdentity(auth: RocketChatRestAuth): Promise<RocketChatOwnIdentity> {
+  const body = (await rcGet(auth, 'me', {})) as { username?: unknown; name?: unknown } | null;
+  const text = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+  return { username: text(body?.username), displayName: text(body?.name) };
+}
+
+/**
+ * Set or clear one reaction on a message, as the bot.
+ */
+// cm:guard a SETTER and not a toggle: `chat.react` without `shouldReact` flips whatever is there, and a receipt set twice by two attempts would come off again. False on any refusal rather than a throw, because a reaction is decoration on a turn and the caller logs it (ISS-1088 criterion 23).
+export async function reactToMessage(
+  auth: RocketChatRestAuth,
+  messageId: string,
+  emoji: string,
+  on: boolean,
+): Promise<boolean> {
+  const base = auth.serverUrl.replace(/\/+$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${base}/api/v1/chat.react`, {
+      method: 'POST',
+      headers: {
+        'X-Auth-Token': auth.authToken,
+        'X-User-Id': auth.userId,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messageId, emoji, shouldReact: on }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return false;
+    const body = (await res.json().catch(() => null)) as { success?: unknown } | null;
+    return body?.success !== false;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** One Rocket.Chat account as the server's own directory reports it. */
