@@ -131,6 +131,7 @@ export const webConversationPorts: ConversationAdapterPorts<WebConversationFrame
   },
 
   // cm:guard the push goes to each PERSON's own user room and never to the project room: a `direct` web conversation is one person's chat, `user:` is the one room prefix `ws/server.ts:canSubscribe` grants to that user alone, and a project-room fan-out would hand every member of the project the text of a room they are not in.
+  // cm:guard takes no delivery options and reads none: a browser room shows who asked beside every message and a reply needs no `@label`, and it has no thread for a status to hang under, so the kernel's `addressee` and `anchor` are ignored here by design (ISS-1088 criterion 29).
   // cm:guard zero open sockets is NOT an undelivered reply and must never be reported as one: the durable row `recordDeliveredReply` writes immediately after this is what the person reads when they next open the room, and the push is only how they see it without reloading. A transport whose delivery can fail is one whose window closes `undetermined`; this one's cannot, and that is a property of the browser being the venue rather than a shortfall being hidden.
   async deliver(venue: ConversationVenue, message: ScreenedMessage): Promise<DeliveryReceipt> {
     const conversation = await findConversation('web', venue.externalId);

@@ -21,6 +21,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { projects, users } from './schema.js';
+import type { PresenceConfig } from './schema-agent-selves.js';
 
 // cm:guard the transports a conversation can belong to, and the same list `assistant_speaker_links.source` is an authority over — a speaker linked under a source is linked for that transport alone. Renamed from `chatSessionSources` when the table it was named after was replaced (ISS-1001); adding a member here without an adapter registered in `conversations/ports.ts` gives a venue nothing can deliver to.
 export const conversationAdapters = ['web', 'widget', 'rocketchat', 'telegram'] as const;
@@ -59,6 +60,15 @@ export interface ConversationOrigin {
 }
 
 // cm:guard NO project column, ever: a room's projects are the union of its handle participants' memberships, read at the moment of the read, and a column here is a second copy of that which a revoked role does not reach. The column is what made `chat_sessions` a project's thing rather than a conversation (ISS-1001).
+/**
+ * What a room may set for itself: the five routing keys and nothing else.
+ */
+// cm:guard `Pick` and not the whole `PresenceConfig`, so the type itself cannot carry `heartbeat`; the schema in `presence.ts` refuses it at the edge and this is what refuses it in the code.
+export type RoomPresence = Pick<
+  PresenceConfig,
+  'dormantMs' | 'backoffAfter' | 'loopBounceMs' | 'loopLimit' | 'answerInGroup'
+>;
+
 export const conversations = pgTable(
   'conversations',
   {
@@ -76,6 +86,12 @@ export const conversations = pgTable(
     // out of its count, and every message it holds is still readable by id. A list that hid a room
     // with no way back would be the delete this column exists to avoid (ISS-1028).
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /**
+     * This room's own routing thresholds, winning per key over the fold of
+     * its handles' selves (ISS-1087).
+     */
+    // cm:guard NULLABLE and holding only the five ROUTING keys, never `heartbeat`: null is a room that said nothing and takes the fold whole, and a heartbeat is a handle's own clock that `heartbeatOf` resolves per handle — a room that could set one would go on speaking on it after an admin quietened the room. `conversations/presence.ts:roomPresenceSchema` is the one reader and refuses the key by name.
+    presence: jsonb('presence').$type<RoomPresence | null>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -161,7 +177,8 @@ export const conversationMessages = pgTable(
     /**
      * The transport's own id for an inbound message, where it named one.
      */
-    // cm:guard the one thing a collected row loses otherwise: the window routes long after the message arrived, so without this there is no way to tell the room's own history reader which lines it has already been given, and the model is shown the same messages twice — once as seed context and once as its own transcript. Null for anything this codebase wrote (ISS-1004).
+    // cm:guard the one thing a collected row loses otherwise: the window routes long after the message arrived, so without this there is no way to tell the room's own history reader which lines it has already been given, and the model is shown the same messages twice — once as seed context and once as its own transcript (ISS-1004).
+    // cm:guard since ISS-1087 a DELIVERED reply carries the transport's receipt id here too (it used to be null for anything this codebase wrote): a person who quotes or replies to the bot names that id, and the address check needs it indexed. The seed's exclusion reads user rows only, so nothing it protected moved. Null still means the transport named nothing.
     externalId: text('external_id'),
     /**
      * The transport's own id for whoever spoke, where it named one.
@@ -186,10 +203,20 @@ export const conversationMessages = pgTable(
     deliveryProof: jsonb('delivery_proof'),
     // cm:guard why a turn said nothing, written INSTEAD of the text — a silence with no row is indistinguishable from a turn that never ran, which is the state invariant 7 exists to remove.
     silenceReason: text('silence_reason'),
+    /**
+     * The transport's own id for the message this one replies to or quotes,
+     * where it named one (ISS-1087).
+     */
+    // cm:guard a COLUMN and not a predicate over the text: Rocket.Chat hides a quote inside `?msg=` links in the body and its attachments, and a transport whose replies are frame metadata has no text to scan. Null is a message that replied to nothing, which is a fact and not a gap.
+    replyToExternalId: text('reply_to_external_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     seqUnique: uniqueIndex('conversation_messages_seq_unique').on(t.conversationId, t.seq),
+    // cm:guard partial, over the rows that carry an id at all: the reply-address check asks "did a handle send the message this replies to" by the transport's id, adapter-wide, and without this every such window scans the transcript table (ISS-1087 criteria 12, 13).
+    externalIdx: index('conversation_messages_external_idx')
+      .on(t.externalId)
+      .where(sql`external_id IS NOT NULL`),
     roleKnown: check(
       'conversation_messages_role_known',
       sql`${t.role} IN ('user','assistant','system')`,

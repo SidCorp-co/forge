@@ -1,6 +1,6 @@
 {
-  "id": "a02f7065-5f18-4f06-a535-6572f99a47a3",
-  "prevId": "7a27600d-c6df-42ad-bd1a-70774ed02e15",
+  "id": "7a27600d-c6df-42ad-bd1a-70774ed02e15",
+  "prevId": "09a9ff74-4e0a-45be-938e-977475248f43",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -13381,12 +13381,6 @@
           "primaryKey": false,
           "notNull": false
         },
-        "origin": {
-          "name": "origin",
-          "type": "jsonb",
-          "primaryKey": false,
-          "notNull": false
-        },
         "void_reason": {
           "name": "void_reason",
           "type": "text",
@@ -13544,12 +13538,7 @@
       "compositePrimaryKeys": {},
       "uniqueConstraints": {},
       "policies": {},
-      "checkConstraints": {
-        "agent_questions_origin_shape_chk": {
-          "name": "agent_questions_origin_shape_chk",
-          "value": "\"agent_questions\".\"origin\" is null or (\n        (\"agent_questions\".\"origin\" ->> 'kind' = 'unresolved' and \"agent_questions\".\"origin\" ? 'reason')\n        or (\n          \"agent_questions\".\"origin\" ->> 'kind' = 'conversation'\n          and \"agent_questions\".\"origin\" ? 'adapter'\n          and \"agent_questions\".\"origin\" ? 'venueId'\n          and \"agent_questions\".\"origin\" ? 'conversationId'\n          and \"agent_questions\".\"origin\" ? 'windowId'\n        )\n      )"
-        }
-      },
+      "checkConstraints": {},
       "isRLSEnabled": false
     },
     "public.question_waiters": {

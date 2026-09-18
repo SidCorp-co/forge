@@ -112,6 +112,10 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **The database can now say which queries cost it the most, and its sizing settings live with
+  the deployment.** Per-statement timing starts at the next database restart. Sizing keeps
+  today's values until someone reads the machine.
+
 - **A clarifying question reaches you in the room you asked in.** It is posted as a reply on the
   message it is about, and names whose question it came from. A question raised outside a
   conversation is unchanged.

@@ -55,6 +55,7 @@ vi.mock('../../assistant/tools/external-mcp.js', () => ({
 vi.mock('./context.js', () => ({
   buildConversationContext: async () => '',
   buildRocketChatHistoryToolset: () => ({ tools: [], execute: async () => ({ content: [] }) }),
+  buildRocketChatQuoteContextToolset: () => ({ tools: [], execute: async () => ({ content: [] }) }),
 }));
 
 const startEscalation = vi.fn();
@@ -159,6 +160,7 @@ vi.mock('../../conversations/store.js', () => ({
     row.mode ?? 'assistant',
   readMessages: async () => collected,
   readMessagesInRange: async () => collected,
+  assistantSentExternalIds: async () => new Set<string>(),
   deliveredDecisionUnderKey: async () => null,
   appendMessagesIn: async (_tx: unknown, args: { messages: Array<Record<string, unknown>> }) => {
     const rows = args.messages.map((msg, i) => ({
