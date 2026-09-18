@@ -9,6 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenAtDoor } from '../../messaging/screen.js';
 
 const fetchRoomShape = vi.fn();
 vi.mock('./room-shape.js', async (importOriginal) => {
@@ -217,13 +218,25 @@ describe('deliver', () => {
     );
   });
 
-  it('carries a screened text with its own problems as the proof', async () => {
-    const message = screened('answer', { ok: true, problems: ['tone'] });
+  // cm:guard the proof the door is handed is the one the SCREEN minted for that exact string, not a
+  // shape the port assembled: before ISS-978 this assertion read `{ ok: true, problems: ['tone'] }`,
+  // which any literal satisfied and which named no string at all.
+  it('posts under the proof the screen minted for that exact string', async () => {
+    const message = screened('answer', 'chat-sync', screenAtDoor('chat-sync', ['answer']));
     expect(message).not.toBeNull();
     await rocketChatConversationPorts.deliver(venue, message as never);
-    expect((sendFixedReply.mock.calls[0] as unknown[])[2]).toEqual({
-      ok: true,
-      problems: ['tone'],
+    expect((sendFixedReply.mock.calls[0] as unknown[])[2]).toEqual(message?.proof);
+  });
+
+  // cm:guard the addressee prefix re-frames the proof and does NOT discard it: the proof that goes to
+  // the door names the addressed string, so `sendFixedReply`'s own comparison passes over what is
+  // actually posted rather than over the answer without its address (ISS-978 F5).
+  it('re-frames the proof over the addressed text it actually posts', async () => {
+    const message = screened('answer', 'chat-sync', screenAtDoor('chat-sync', ['answer']));
+    await rocketChatConversationPorts.deliver(venue, message as never, { addressee: 'alice' });
+    expect((sendFixedReply.mock.calls[0] as unknown[])[1]).toBe('@alice answer');
+    expect((sendFixedReply.mock.calls[0] as unknown[])[2]).toMatchObject({
+      text: '@alice answer',
     });
   });
 

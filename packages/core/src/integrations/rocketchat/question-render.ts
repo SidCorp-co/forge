@@ -5,6 +5,8 @@
 // agent text are fixed constants and say so at their call site.
 
 import { isChoiceStep, type QuestionOption, type QuestionStep } from '../../db/schema-questions.js';
+import type { RoomMessage } from '../../messaging/proven.js';
+import { agentAuthoredSegments } from '../../questions/screen.js';
 
 // cm:edge contract -> packages/core/src/messaging/option-line.ts — the renderer and the rule that refuses a label colliding with it read ONE constant. Declaring a second here is how a label starts rendering as an option the rule already let through.
 export { OPTION_LINE_RE } from '../../messaging/option-line.js';
@@ -46,9 +48,14 @@ function optionSuffix(option: QuestionOption, recommended: boolean): string {
 }
 
 // cm:edge contract -> packages/core/src/questions/screen.ts — re-exported, not restated. The ask door and the delivery door screen the SAME strings of the same round; two lists drifting apart is how a round passes at the ask and is refused at delivery, owed to a person and never posted.
-export { agentAuthoredSegments } from '../../questions/screen.js';
+export { agentAuthoredSegments };
 
 // cm:guard the asker is named in the HEAD and never as a Rocket.Chat mention: a round is posted as a thread reply under that person's own message, so they are already notified, and an `@` here would ping them a second time for the same line. Naming them is for everyone ELSE in the room — it says whose question this came out of, which is what makes a colleague who knows the answer able to give it (ISS-1091 criterion 3).
+// cm:guard it returns the rendered text AND the segments to screen as ONE value, so no caller can pair
+// this round's message with another round's screen. That pairing was ISS-978 F5: the delivery lane
+// screened `agentAuthoredSegments(step)` and posted `renderRound(...)`, two expressions with nothing
+// between them but a programmer's intent. Whoever renders a round is now the only thing that says what
+// screening it means.
 export function renderRound(args: {
   issueKey: string | null;
   step: QuestionStep;
@@ -56,7 +63,7 @@ export function renderRound(args: {
   parkDeadlineAt: Date | null;
   /** Whoever the asking turn was answering, where the question remembers; null where it does not. */
   askedBy?: string | null;
-}): string {
+}): RoomMessage {
   const { step, rounds } = args;
   const about = args.askedBy ? ` on ${args.askedBy}'s question` : '';
   const head = args.issueKey
@@ -80,18 +87,24 @@ export function renderRound(args: {
       ? `Unanswered by ${args.parkDeadlineAt.toISOString()}, this question expires and the run stays parked.`
       : 'Until somebody answers, the run stays parked — nothing else resolves it.',
   );
-  return lines.join('\n');
+  return { text: lines.join('\n'), screened: agentAuthoredSegments(step) };
 }
 
 /** The options again, when a reply named none of them. */
-export function renderOptionsAgain(step: QuestionStep, rounds: number): string {
+// cm:guard the same pairing rule as `renderRound`, and the segment list is this round's WHOLE agent text
+// rather than only the labels it prints: over-screening a re-post costs nothing, and narrowing the list
+// to what a given render happens to interpolate is how the two doors' lists start to drift — which is
+// the failure the `cm:edge` above exists to prevent (ISS-978).
+export function renderOptionsAgain(step: QuestionStep, rounds: number): RoomMessage {
   const lines = ['That reply named no option on this round. The options are:', ''];
-  if (!isChoiceStep(step)) return lines.join('\n');
+  if (!isChoiceStep(step)) {
+    return { text: lines.join('\n'), screened: agentAuthoredSegments(step) };
+  }
   step.options.forEach((o, i) => {
     lines.push(`${optionToken(step.round, i, rounds)}. ${o.label}`);
   });
   lines.push('', 'Reply with one of those, and nothing else.');
-  return lines.join('\n');
+  return { text: lines.join('\n'), screened: agentAuthoredSegments(step) };
 }
 
 export const AMBIGUOUS_ROUND_REPLY =

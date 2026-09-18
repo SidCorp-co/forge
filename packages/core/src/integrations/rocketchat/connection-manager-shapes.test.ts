@@ -6,6 +6,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 import { claimedWindowFor } from './claimed-window.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
@@ -313,7 +314,7 @@ describe('connection-manager conversation identity', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
     resolveRoomShape.mockResolvedValue('group');
   });
 

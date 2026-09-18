@@ -9,6 +9,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 
 // cm:guard this stub stays, and stays ABOVE the subject's import: `config/env.js` validates eagerly
 // at import time, so without it the whole file is a collection error rather than a failing test
@@ -131,7 +132,7 @@ describe(`the room transcript after an escalated answer`, () => {
       reply: 'the synthesized answer',
       toolCalls: [],
     });
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
   });
 
   const escalated = () =>

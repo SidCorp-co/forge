@@ -20,6 +20,7 @@ import {
 } from '../../db/schema.js';
 import { logger } from '../../logger.js';
 import { type MessageVerdict, problemsOf } from '../../messaging/contract.js';
+import { proven, wholeAgentText } from '../../messaging/proven.js';
 import { withRepairs } from '../../messaging/repairs.js';
 import { screenReplyAtDoor } from '../../messaging/reply-screen.js';
 import { webBaseUrl } from './connection-manager.js';
@@ -212,7 +213,20 @@ async function synthesizeViaBao(
     );
     return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
   }
-  return { text: result.reply.trim(), proof: { ok: true, problems: [] } };
+  // cm:guard the proof is minted from the verdict `withRepairs` PASSED — the repair loop may have
+  // screened a rewritten attempt, and what has to be admitted is the text about to be posted. Until
+  // ISS-978 this line hand-built `{ ok: true, problems: [] }`, which asserted a screen had run over a
+  // string it never named and would have compiled just as well with no screen in the file at all.
+  const text = result.reply.trim();
+  const admitted = proven('escalation-synthesis', wholeAgentText(text), outcome.verdict);
+  if (!admitted) {
+    logger.error(
+      { sessionId: session.id, rid: meta.rid },
+      'rocketchat.escalation: the synthesis passed its screen and could not be admitted; honest fallback',
+    );
+    return { text: ESCALATION_FALLBACK_REPLY(meta.botName), proof: FIXED_REPLY_CONSTANT };
+  }
+  return { text: admitted.text, proof: admitted };
 }
 
 export async function deliverEscalationReplyOnce(session: SessionRow): Promise<void> {

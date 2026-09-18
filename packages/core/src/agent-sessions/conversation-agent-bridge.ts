@@ -16,7 +16,7 @@ import { recordDeliveredReply } from '../conversations/transcript.js';
 import { db } from '../db/client.js';
 import { agentSessions } from '../db/schema.js';
 import { logger } from '../logger.js';
-import { problemsOf } from '../messaging/contract.js';
+import { type MessageVerdict, problemsOf } from '../messaging/contract.js';
 import type { ProgressFacts } from '../messaging/facts.js';
 import { withRepairs } from '../messaging/repairs.js';
 import { screenReplyAtDoor } from '../messaging/reply-screen.js';
@@ -35,7 +35,15 @@ type SessionRow = typeof agentSessions.$inferSelect;
  * What the venue is told, and what the screen recorded about it.
  */
 // cm:guard `failure` is what the SCREEN outcome was, not how the process exited: a session that ended `completed` and wrote nothing a person can be shown is a failure to whoever asked, and a session that ended `failed` after its answer was already delivered is not. The four states a screen reads are derived from this stamp and never from `agentSessions.status` alone (ISS-1039).
-type Outcome = { text: string; problems: readonly string[]; failure: string | null };
+// cm:guard `passed` carries the verdict that admitted `text`, and it is the only thing that can mint the
+// proof this reply is posted under (ISS-978 F5). A fallback this codebase wrote carries null and goes out
+// as code-authored, which is what it is.
+type Outcome = {
+  text: string;
+  problems: readonly string[];
+  failure: string | null;
+  passed: MessageVerdict | null;
+};
 
 // cm:guard three distinct meanings, do not collapse them: a snapshot screens against itself; `null` means the key IS present but its computation failed, which fails CLOSED; `'legacy-session'` (key absent entirely) is the only case that self-computes, and is named rather than `undefined` so a caller who merely forgot the argument cannot reach it (ISS-818).
 function readProgressFacts(metadata: unknown): ProgressFacts | null | 'legacy-session' {
@@ -156,6 +164,7 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
     return {
       text: meta.replies.failed,
       problems: [],
+      passed: null,
       failure:
         session.status === 'completed'
           ? 'the session finished without writing a reply'
@@ -175,7 +184,8 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
       throw new Error(`${meta.door} declares no repair; nothing can ask that session again`);
     },
   });
-  if (verdict.kind === 'passed') return { text, problems: [], failure: null };
+  if (verdict.kind === 'passed')
+    return { text, problems: [], failure: null, passed: verdict.verdict };
   logger.warn(
     {
       sessionId: session.id,
@@ -187,6 +197,7 @@ async function composeOutcome(session: SessionRow, meta: ConversationAgentMeta):
   return {
     text: meta.replies.failed,
     problems: [],
+    passed: null,
     failure: 'the reply this session wrote could not be shown here',
   };
 }
@@ -241,10 +252,10 @@ export async function deliverConversationAgentReplyOnce(session: SessionRow): Pr
   }
 
   const outcome = await composeOutcome(session, meta);
-  const message = outcome.failure
-    ? codeAuthored(outcome.text)
-    : (screened(outcome.text, { ok: true, problems: [...outcome.problems] }) ??
-      codeAuthored(meta.replies.failed));
+  const message =
+    outcome.failure || !outcome.passed
+      ? codeAuthored(outcome.text)
+      : (screened(outcome.text, meta.door, outcome.passed) ?? codeAuthored(meta.replies.failed));
 
   try {
     const receipt = await transport.deliver(meta.venue, message);
