@@ -12,9 +12,10 @@ describe('FORGE_MCP_INSTRUCTIONS', () => {
     expect(FORGE_MCP_INSTRUCTIONS).not.toContain('get_knowledge');
     expect(FORGE_MCP_INSTRUCTIONS).not.toContain('.forge/knowledge.json');
     expect(FORGE_MCP_INSTRUCTIONS).toContain('forge_knowledge');
-    // cm:guard test creds and preview URLs live on `forge_projects.get` → previewDeploy and NOT on `forge_config`, which returns neither; the instructions must keep saying so, because agents kept looking in `forge_config` and concluding the project had none (feedback cd8ad9f9)
+    // cm:guard test creds, preview URLs and the live address live on `forge_projects.get` → `environments` and NOT on `forge_config`, which returns neither; the instructions must keep saying so, because agents kept looking in `forge_config` and concluding the project had none (feedback cd8ad9f9). The column was `previewDeploy` until ISS-1069, and an instruction still naming it would send an agent to a key no response carries.
     expect(FORGE_MCP_INSTRUCTIONS).toContain('forge_projects.get');
-    expect(FORGE_MCP_INSTRUCTIONS).toContain('previewDeploy');
+    expect(FORGE_MCP_INSTRUCTIONS).toContain('environments');
+    expect(FORGE_MCP_INSTRUCTIONS).not.toContain('previewDeploy');
     expect(FORGE_MCP_INSTRUCTIONS).toContain('forge_config');
     expect(FORGE_MCP_INSTRUCTIONS).toContain('forge_issues');
     expect(FORGE_MCP_INSTRUCTIONS).toContain('forge-skills');

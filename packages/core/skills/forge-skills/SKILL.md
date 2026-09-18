@@ -23,7 +23,7 @@ Since ISS-895 there is **no status → skill ladder**. One job type is dispatche
 ```
 Need different pipeline behaviour for THIS project?
 ├─ A value that changes per project (branch, test URL, creds, a domain fact)?
-│     → DON'T edit the skill. Put it in forge_knowledge / previewDeploy / branchConfig.
+│     → DON'T edit the skill. Put it in forge_knowledge / environments / branchConfig.
 ├─ The global skill is basically right, tweak the policy/heuristics?
 │     → SHADOW it: create a same-name project skill (forge_skills_create) and edit it.
 ├─ A whole new capability this project needs?
@@ -36,7 +36,7 @@ Need different pipeline behaviour for THIS project?
 
 1. **Write WHAT, not HOW.** Intent altitude: *"build & test the affected packages, push only if green."* The agent infers the actual commands from the repo (package.json / Makefile / Cargo / lockfile). **Bad:** hardcode `npm run build`. **Good:** "build the affected package (infer the command from the repo)."
 2. **Don't restate the preamble.** Status ladder, enums, "status LAST", handoff schema, worktree rules are already injected every job. Restating them = drift when they change.
-3. **Don't hardcode project config.** `repoPath`, base/live branch literals, test URLs, 🔒 credentials → come from the check-in bundle / `forge_config` / `previewDeploy` / `forge_knowledge`. **Never inline a secret** (it syncs to disk).
+3. **Don't hardcode project config.** `repoPath`, base/live branch literals, test URLs, 🔒 credentials → come from the check-in bundle / `forge_config` / `environments` / `forge_knowledge`. **Never inline a secret** (it syncs to disk).
 4. **Only write non-inferable POLICY** the agent can't derive from the repo: gitflow/merge model, deploy gate, domain heuristics, conventions.
 5. **Token economy — put the right thing in the right place:**
    - **Inline (always-paid):** decision logic the agent must always see — gates, exit rules, "when to X vs Y".
