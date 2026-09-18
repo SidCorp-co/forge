@@ -1208,6 +1208,13 @@ mod tests {
 
     /// Criteria 1, 4, 5, 6, 7 — the whole life of one declaration, in order.
     // cm:guard the sequence is the test. Each assertion alone is satisfiable by a wrong implementation: "refuse with nothing declared" passes a gate that always refuses, "allow with one declared" passes one that always allows, and only running them against one ledger in this order pins the behaviour to the declaration.
+    // cm:guard gated `unix` because the functions under test are: `dispatch_gate_reply`,
+    // `bind_or_release` and `run_declare` all carry `#[cfg(unix)]`, and a test that names them
+    // without the same attribute does not fail on this box -- `cfg(unix)` is true here -- it fails
+    // the windows leg with `cannot find function` and takes the whole crate's build with it. What
+    // windows actually does is not skipped with them: `classify_start` is pure and its test runs
+    // everywhere (ISS-1094).
+    #[cfg(unix)]
     #[test]
     fn one_declaration_authorises_one_dispatch_and_is_freed_when_its_subagent_starts() {
         use crate::daemon::dispatch_gate::Verdict;
@@ -1270,6 +1277,7 @@ mod tests {
     /// alive actually does, measured rather than assumed.
     // cm:guard this test used to mint a different `boot_id` and call that a restart. It is not one: `runner::inflight::boot_identity` reads the OS boot identity (`/proc/sys/kernel/random/boot_id` on linux), which a daemon restart does NOT change — only rebooting the machine does. So a declaration made before the restart is still pending afterwards, and that is right: the master declared it, nothing consumed it, and refusing would force a second row for work already declared. The criteria were written against a wrong model of that function and are corrected on the issue rather than the behaviour being bent to match them (ISS-1094, review F1).
     // cm:guard what single-use actually rests on is the BIND, not the gate. `ledger::bind_agent` updates only where `agent_id IS NULL`, so two dispatches allowed across a restart still produce exactly one bound row — and the second child is denounced by `undeclared_child`, loudly and countably. The gate is the early refusal; the ledger is the invariant.
+    #[cfg(unix)]
     #[test]
     fn a_daemon_restart_leaves_the_declaration_standing_and_the_second_child_is_named() {
         use crate::daemon::dispatch_gate::Verdict;
@@ -1334,6 +1342,7 @@ mod tests {
 
     /// Criterion 6, across the bind, which is where it was broken.
     // cm:guard the replay is asked AFTER the subagent has started, because that is the case the promise map cannot answer: it is released at the bind, and a hook replayed a moment later would have found nothing and either been refused or eaten the master's next declaration (ISS-1094, review F4).
+    #[cfg(unix)]
     #[test]
     fn a_replayed_hook_gets_its_answer_back_even_after_its_subagent_started() {
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1375,6 +1384,7 @@ mod tests {
 
     /// Criterion 14. An uncertain box does not deny.
     // cm:guard the ledger being absent is not "nothing is declared". This is the inversion that would have turned a box with an unreadable registry into a box that refuses every master on it, which is a certain answer given to an uncertain question (ISS-1094, review F5).
+    #[cfg(unix)]
     #[test]
     fn a_box_that_cannot_read_its_own_registry_allows_and_marks() {
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1396,6 +1406,7 @@ mod tests {
 
     /// Put a plugin clone shipping these roles inside this Control's own config
     /// directory, which is where both the gate and the denunciation read it.
+    #[cfg(unix)]
     fn ship_roles(ctl: &Arc<Control>, roles: &[&str]) -> std::path::PathBuf {
         let dir = ctl.config_dir.clone().expect("a scratch config dir");
         let agents = dir.join("marketplaces/sidcorp-co__forge-plugin/plugin/agents");
@@ -1409,6 +1420,7 @@ mod tests {
     /// Criteria 24, 25. A hand-off that got past the gate breaks loudly and
     /// countably, because the gate fails OPEN and this is what says it did.
     // cm:guard this is kernel input — a run with no row — so the bar is zero tolerance. Before ISS-1094 this path was a `tracing::debug!` under a guard declaring it the ordinary case, and four issues on sid-desk stood in-progress with nobody on them because of it.
+    #[cfg(unix)]
     #[test]
     fn a_subagent_started_under_a_shipped_role_with_nothing_declared_is_named_and_counted() {
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1434,6 +1446,7 @@ mod tests {
 
     /// Criterion 27. A search helper is still the ordinary case and stays quiet.
     // cm:guard the silence here is as load-bearing as the noise above. A master runs subagents this box knows nothing about on every pass, and a line for each one is a count nobody can read and an alert nobody keeps.
+    #[cfg(unix)]
     #[test]
     fn a_subagent_that_is_not_a_shipped_role_stays_silent() {
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1482,6 +1495,7 @@ mod tests {
         );
     }
 
+    #[cfg(unix)]
     #[test]
     fn a_replayed_start_for_an_already_bound_child_raises_no_alarm() {
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
@@ -1508,6 +1522,7 @@ mod tests {
     }
 
     /// A child that DOES answer to a declaration is bound, not denounced.
+    #[cfg(unix)]
     #[test]
     fn a_declared_hand_off_is_bound_and_nothing_is_counted_against_it() {
         let (ctl, _t) = declaring_control("sess-a", "proj-1");

@@ -78,15 +78,10 @@ impl Scratch {
         } else {
             std::env::temp_dir()
         };
+        // The budget is asserted in `config_dir_at`, against the path a socket is ACTUALLY bound
+        // at — this root plus whatever the platform's config layout adds to it. Checking it here,
+        // against the root alone, would pass while the real path was 28 bytes longer on macos.
         let p = base.join(format!("fgd-{}-{h:x}", std::process::id()));
-        let sock = p.join("control.sock");
-        assert!(
-            sock.as_os_str().len() < SUN_LEN,
-            "this test's socket path is {} bytes and must be under {SUN_LEN}, or `bind` refuses it \
-             with InvalidInput before any assertion here runs: {}",
-            sock.as_os_str().len(),
-            sock.display()
-        );
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).expect("scratch");
         Self(p)
@@ -138,12 +133,50 @@ fn daemon_that_refuses(dir: &Path) -> std::sync::mpsc::Receiver<String> {
     rx
 }
 
+/// The environment that steers a child process's config directory at `root`, and the directory the
+/// child will then derive from it.
+///
+// cm:guard `XDG_CONFIG_HOME` is a LINUX-only lever and setting it alone is how this file passed on
+// ubuntu while testing nothing at all on macos. `Config::path()` goes through
+// `dirs_next::config_dir()`, which reads `$XDG_CONFIG_HOME` on linux, `$HOME/Library/Application
+// Support` on macos and `%APPDATA%` on windows. With only the linux variable set, the macos child
+// wrote its marks into the CI runner's REAL home and looked for its socket there: every mark count
+// read 0 and the stub socket was never spoken to, so one test sat on `recv_timeout` for ten
+// seconds. The platform difference is named here once rather than relaxed out of the assertions
+// (ISS-1094).
+fn config_home_at(root: &Path) -> (&'static str, PathBuf) {
+    if cfg!(target_os = "macos") {
+        (
+            "HOME",
+            root.join("Library/Application Support/forge-runner"),
+        )
+    } else {
+        ("XDG_CONFIG_HOME", root.join("forge-runner"))
+    }
+}
+
+/// The config directory a child spawned with `config_home_at(root)` will use, created and checked
+/// against the socket budget.
+fn config_dir_at(root: &Path) -> PathBuf {
+    let (_, dir) = config_home_at(root);
+    std::fs::create_dir_all(&dir).expect("config dir");
+    let sock = dir.join("control.sock");
+    assert!(
+        sock.as_os_str().len() < SUN_LEN,
+        "this test's socket path is {} bytes and must be under {SUN_LEN}, or `bind` refuses it \
+         with InvalidInput before any assertion here runs: {}",
+        sock.as_os_str().len(),
+        sock.display()
+    );
+    dir
+}
+
 fn run_gate(command: &str, config_home: &Path, payload: &str) -> String {
     let mut parts = command.split_whitespace();
     let exe = parts.next().expect("the exe");
     let mut child = Command::new(exe)
         .args(parts)
-        .env("XDG_CONFIG_HOME", config_home)
+        .env(config_home_at(config_home).0, config_home)
         .env("FORGE_CONTROL_TOKEN", "a-token-the-daemon-minted")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
@@ -170,10 +203,8 @@ fn run_gate(command: &str, config_home: &Path, payload: &str) -> String {
 #[test]
 fn the_registered_command_refuses_an_undeclared_dispatch() {
     let scratch = Scratch::new("refuse");
-    // `Config::path()` is `<XDG_CONFIG_HOME>/forge-runner/config.toml`, so this
-    // is the directory the gate derives its socket and its marks from.
-    let config_dir = scratch.path().join("forge-runner");
-    std::fs::create_dir_all(&config_dir).expect("config dir");
+    // The directory the gate derives its socket and its marks from, per platform.
+    let config_dir = config_dir_at(scratch.path());
     let frame = daemon_that_refuses(&config_dir);
 
     let command = registered_gate_command(env!("CARGO_BIN_EXE_forge-runner"));
@@ -212,8 +243,7 @@ fn the_registered_command_refuses_an_undeclared_dispatch() {
 #[test]
 fn the_registered_command_opens_the_gate_when_no_daemon_answers() {
     let scratch = Scratch::new("open");
-    let config_dir = scratch.path().join("forge-runner");
-    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let config_dir = config_dir_at(scratch.path());
 
     let command = registered_gate_command(env!("CARGO_BIN_EXE_forge-runner"));
     let printed = run_gate(&command, scratch.path(), DISPATCH_PAYLOAD);
@@ -230,8 +260,7 @@ fn the_registered_command_opens_the_gate_when_no_daemon_answers() {
 #[test]
 fn an_ordinary_tool_call_costs_the_master_no_round_trip() {
     let scratch = Scratch::new("ordinary");
-    let config_dir = scratch.path().join("forge-runner");
-    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let config_dir = config_dir_at(scratch.path());
     // A socket that would refuse if it were ever asked.
     let frame = daemon_that_refuses(&config_dir);
 
@@ -261,8 +290,7 @@ fn an_ordinary_tool_call_costs_the_master_no_round_trip() {
 #[test]
 fn status_prints_what_the_gate_could_not_do() {
     let scratch = Scratch::new("status");
-    let config_dir = scratch.path().join("forge-runner");
-    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let config_dir = config_dir_at(scratch.path());
     forge_runner_core::daemon::degraded::mark(
         &config_dir,
         forge_runner_core::daemon::degraded::Kind::Undeclared,
@@ -276,7 +304,7 @@ fn status_prints_what_the_gate_could_not_do() {
 
     let out = Command::new(env!("CARGO_BIN_EXE_forge-runner"))
         .arg("status")
-        .env("XDG_CONFIG_HOME", scratch.path())
+        .env(config_home_at(scratch.path()).0, scratch.path())
         .output()
         .expect("status runs");
     let printed = String::from_utf8_lossy(&out.stdout);
@@ -297,8 +325,7 @@ fn status_prints_what_the_gate_could_not_do() {
 #[test]
 fn a_payload_this_box_cannot_read_is_allowed_and_marked() {
     let scratch = Scratch::new("malformed");
-    let config_dir = scratch.path().join("forge-runner");
-    std::fs::create_dir_all(&config_dir).expect("config dir");
+    let config_dir = config_dir_at(scratch.path());
 
     let command = registered_gate_command(env!("CARGO_BIN_EXE_forge-runner"));
     assert_eq!(
