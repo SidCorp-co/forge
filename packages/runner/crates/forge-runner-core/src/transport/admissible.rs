@@ -11,6 +11,10 @@ use super::CoreClient;
 use crate::error::{Error, Result};
 use serde::{Deserialize, Serialize};
 
+/// The one relation kind any dispatch decision reads.
+// cm:guard CROSS-REPO and CROSS-LANGUAGE, so no `cm:edge` can hold it: core's own copy is `DISPATCH_GATING_KIND` in `packages/core/src/issues/dependency-effects.ts`, and the master's is `gatesDispatch` in forge-plugin's `src/flow/earned.mjs`. All three must name the same string. `RELATIONS` sends every kind on purpose — the master is shown the whole relation set — so a reader that forgets this filter treats a grouping label as an ordering (ISS-1100).
+pub const DISPATCH_GATING_KIND: &str = "blocks";
+
 #[derive(Debug, Clone, Deserialize, Serialize)]
 #[serde(rename_all = "camelCase")]
 pub struct Relation {

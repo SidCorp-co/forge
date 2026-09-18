@@ -40,7 +40,7 @@ use crate::daemon::terminal;
 use crate::runner::close_loop;
 use crate::runner::ledger::{Ledger, Run};
 use crate::runner::terminate;
-use crate::transport::admissible::{self, AdmissibleIssue};
+use crate::transport::admissible::{self, AdmissibleIssue, DISPATCH_GATING_KIND};
 use crate::transport::{master as master_api, mcp_servers, runners, CoreClient};
 use tokio::sync::mpsc;
 
@@ -304,6 +304,8 @@ fn retry_owed(since: SinceNudge) -> bool {
 /// edit an operator makes in the UI.
 // cm:guard ORDER-INDEPENDENT by construction (the lines are sorted before hashing) because the route promises no stable order: `readAdmissibleIssues` runs one query per project, so hashing the sequence would report new work every time two rows swapped. The blocker facts of ONE issue are sorted for the same reason — `json_agg` fixes no order either.
 // cm:guard this was identity ALONE until ISS-1100, and widening it is that issue's other half rather than a nicety. Core offers rows the master then refuses — forge-dev admits `developed`, `testing`, `tested` and `awaiting_release`, none of which `TAKEABLE` contains — and it offers a row whose `blocks` edge has expired, which the master's own reading still refuses. In every one of those the refusal LIFTS without the id set moving: the row reaches `reopen`, or the blocker reaches `developed`. Under the clock that was covered by the next refresh; under `retry_owed` it is not, so an identity-only digest strands the work silently and for good. What the master decides on has to be what the digest is taken over.
+// cm:guard exactly the fields the master's own reading takes and NOT everything the route happens to send. `RELATIONS` in `devices/admissible.ts` returns every incoming edge of every kind with its merge stamp and expiry, and `holdsBack` reads none of that but the kind and the blocker's status: a `relates` edge appearing, a blocker's `merged_at` being stamped, an expiry being moved are all changes the master would answer identically, and hashing them buys back the spend this issue exists to remove — at once, because a changed digest skips the ceiling. An expiry that MATTERS moves the row in or out of the set instead, which the id half already carries.
+// cm:edge contract -> packages/core/src/devices/admissible.ts — `RELATIONS` is where these fields come from, and a field added there is not automatically one to hash here
 // cm:guard and it is still not a `takeable` boolean computed here. The digest says WHETHER the inputs moved, never what they mean — deciding that is the master's, and a box that pre-answered it would be the second opinion `devices/admissible.ts` spent ISS-1100 collapsing into one.
 fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
     use std::hash::{Hash, Hasher};
@@ -312,14 +314,12 @@ fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
         let mut rels: Vec<String> = a
             .relations
             .iter()
+            .filter(|r| r.kind == DISPATCH_GATING_KIND)
             .map(|r| {
                 format!(
-                    "{}|{}|{}|{}|{}",
-                    r.kind,
+                    "{}|{}",
                     r.depends_on_key.as_deref().unwrap_or(""),
                     r.blocker_status.as_deref().unwrap_or(""),
-                    r.blocker_merged_at.as_deref().unwrap_or(""),
-                    r.edge_valid_until.as_deref().unwrap_or(""),
                 )
             })
             .collect();
@@ -3944,6 +3944,68 @@ mod give_back_tests {
             }),
         );
         assert_ne!(work_digest(&[blocked]), work_digest(&[freed]));
+    }
+
+    // cm:guard the widening is bounded by what `holdsBack` reads, and these three are the boundary.
+    // A `relates` edge is not an ordering; a blocker's merge stamp gates nothing anywhere; and an
+    // expiry the master never consults either moves the row in or out of the set or means nothing.
+    // Hashing any of them re-nudges immediately — a changed digest skips the ceiling entirely — and
+    // buys back the spend this issue exists to remove.
+    #[test]
+    fn the_digest_ignores_a_relation_that_orders_nothing() {
+        let bare: AdmissibleIssue =
+            serde_json::from_value(serde_json::json!({ "issueId": "i1", "status": "confirmed" }))
+                .unwrap();
+        for kind in ["relates", "decomposes", "duplicates", "parent"] {
+            let related = with_blocker(
+                "i1",
+                "confirmed",
+                serde_json::json!({
+                    "kind": kind, "dependsOnKey": "ISS-900", "blockerStatus": "needs_info"
+                }),
+            );
+            assert_eq!(
+                work_digest(std::slice::from_ref(&bare)),
+                work_digest(&[related]),
+                "a `{kind}` edge orders nothing, so it is not news"
+            );
+        }
+    }
+
+    #[test]
+    fn the_digest_ignores_a_blockers_merge_stamp() {
+        let edge = |merged: serde_json::Value| {
+            with_blocker(
+                "i1",
+                "confirmed",
+                serde_json::json!({
+                    "kind": "blocks", "dependsOnKey": "ISS-900",
+                    "blockerStatus": "needs_info", "blockerMergedAt": merged
+                }),
+            )
+        };
+        assert_eq!(
+            work_digest(&[edge(serde_json::Value::Null)]),
+            work_digest(&[edge(serde_json::json!("2026-09-18T00:00:00.000Z"))])
+        );
+    }
+
+    #[test]
+    fn the_digest_ignores_an_edges_expiry() {
+        let edge = |until: serde_json::Value| {
+            with_blocker(
+                "i1",
+                "confirmed",
+                serde_json::json!({
+                    "kind": "blocks", "dependsOnKey": "ISS-900",
+                    "blockerStatus": "needs_info", "edgeValidUntil": until
+                }),
+            )
+        };
+        assert_eq!(
+            work_digest(&[edge(serde_json::Value::Null)]),
+            work_digest(&[edge(serde_json::json!("2020-01-01T00:00:00.000Z"))])
+        );
     }
 
     // cm:guard order-independence has to survive the widening: `json_agg` promises no order for the
