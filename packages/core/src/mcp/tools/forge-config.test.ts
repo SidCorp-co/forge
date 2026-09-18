@@ -20,10 +20,13 @@ const updateWhere = vi.fn(async () => undefined);
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 
+const dbExecute = vi.fn(async (_statement: unknown): Promise<unknown[]> => []);
+
 vi.mock('../../db/client.js', () => ({
   db: {
     select: vi.fn(() => ({ from: selectFrom })),
     update: dbUpdate,
+    execute: dbExecute,
   },
 }));
 
@@ -247,20 +250,17 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       projectSlug: null,
     });
 
-    selectLimit
-      .mockResolvedValueOnce([adminAccessRow])
-      .mockResolvedValueOnce([{ agentConfig: { plugins: {} } }])
-      .mockResolvedValueOnce([
-        {
-          id: PROJECT_ID,
-          slug: 'my-proj',
-          name: 'My Project',
-          baseBranch: 'develop',
-          liveBranch: 'release',
-          releaseModel: 'promote',
-          agentConfig: {},
-        },
-      ]);
+    selectLimit.mockResolvedValueOnce([adminAccessRow]).mockResolvedValueOnce([
+      {
+        id: PROJECT_ID,
+        slug: 'my-proj',
+        name: 'My Project',
+        baseBranch: 'develop',
+        liveBranch: 'release',
+        releaseModel: 'promote',
+        agentConfig: {},
+      },
+    ]);
 
     await tool.handler({
       action: 'update',
@@ -268,7 +268,9 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       plugins: [{ marketplace: 'sidcorp-co/forge-plugin', name: 'forge' }],
     });
 
-    expect(updateSet).toHaveBeenCalled();
+    // cm:guard ISS-1070 — the write is one statement against the `plugins` key and no longer a read of the whole blob followed by a write of the whole blob, so this asserts `execute` rather than `update().set()`. The read that used to precede it is gone with it, which is why the mock queue above lost an entry.
+    expect(dbExecute).toHaveBeenCalledTimes(1);
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
   it('action=update refuses a stateContext argument by name, and writes nothing', async () => {
@@ -285,6 +287,7 @@ describe('forge_config tool (ISS-135 PR-A)', () => {
       }),
     ).rejects.toThrow(/pipelineConfig\.states\[\*\]\.model/);
     expect(updateSet).not.toHaveBeenCalled();
+    expect(dbExecute).not.toHaveBeenCalled();
   });
 
   it('throws NOT_FOUND when issueId refers to an issue outside the project', async () => {

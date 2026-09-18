@@ -64,7 +64,10 @@ const POLL_MAX_INTERVAL_MS = 8_000;
 const BATCH_LIMIT = 50;
 const CLAIM_LEASE_MS = 120_000;
 // cm:why counts REdeliveries (see module header) — the filter `attempts < MAX_REDELIVERIES` therefore allows 1 initial delivery + MAX_REDELIVERIES retries before dead-lettering
-const MAX_REDELIVERIES = 3;
+// Exported for the integration test that holds this to the `idx_outbox_unprocessed` predicate
+// migration 0281 wrote: the bound lives twice, once here and once in a SQL file, and nothing but
+// that test can see the two disagree.
+export const MAX_REDELIVERIES = 3;
 
 // Index signature lets this satisfy postgres-js's `Record<string, unknown>`
 // constraint on `db.execute<T>` without per-property TS noise.

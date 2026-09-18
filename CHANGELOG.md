@@ -116,6 +116,10 @@
   checks the commit agrees, tags it as itself, hears how the build went, and names what is on the
   repository if it stops.
 
+- **A room can be asked about its own past by topic.** The assistant searches everything the room
+  kept, not only what it answered, replying with the words said and links to them. Anyone who
+  cannot open the room is refused.
+
 - **The database can now say which queries cost it the most, and its sizing settings live with
   the deployment.** Per-statement timing starts at the next database restart. Sizing keeps
   today's values until someone reads the machine.
@@ -2371,6 +2375,10 @@
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
 ### Removed
+- **The dead second copy of four project settings is gone** — checkout path, base branch,
+  production branch and default device. Nothing you set changes. A save naming a dead copy is now
+  refused, saying which setting owns that value.
+
 - **The second, unused chat endpoint is gone.** The product had two ways to hold a conversation
   with the assistant, and nothing ever called the older one. It has been removed with the switch
   that turned it on; nothing else changed.
@@ -2979,6 +2987,16 @@
   set is now 59.
 
 ### Fixed
+
+- **Six background checks that got slower as the tables grew now answer at a steady speed.** Each
+  read a whole table to find a handful of rows. Same answers, with the shortcuts to reach them.
+
+- **A permanently failed delivery is no longer stepped over every second.** A status change that
+  runs out of retries is kept for a person to read. It is now out of the queue the reader polls.
+
+- **Stored notes are being tidied up again.** The nightly pass that files away notes nobody has
+  read, and clears long-filed ones, had failed on its first step every night since it was written.
+  It never removed anything.
 
 - **A master that comes back after a crash can now say what became of the work it was holding, and
   must.** There was no command for it, and ending the work counted as an answer.
@@ -5516,6 +5534,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **Two project settings saved at once no longer overwrite each other.** Each setting is written on
+  its own now, instead of rewriting the whole configuration; and a save that fails part-way leaves
+  every setting in it untouched.
+
 
 - **Background checks for stuck work handle a fixed amount per pass, and say when there was more.**
   Nothing is skipped: each pass resumes where the last stopped, so a busy minute costs a short

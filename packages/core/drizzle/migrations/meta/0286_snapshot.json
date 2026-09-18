@@ -1,6 +1,6 @@
 {
-  "id": "32a9a66e-5354-48cf-8a58-77c018d3973b",
-  "prevId": "1fba434d-d03a-4780-a157-32c9b1d9c702",
+  "id": "3cc30642-fe8d-4845-af40-3ec4a4945164",
+  "prevId": "cd167023-f026-4f8e-97b4-d8fac23d4111",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -5976,6 +5976,22 @@
           "concurrently": false,
           "method": "gin",
           "with": {}
+        },
+        "knowledge_entries_embedding_backfill_idx": {
+          "name": "knowledge_entries_embedding_backfill_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "embedding IS NULL AND archived_at IS NULL",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -6652,6 +6668,22 @@
           "isUnique": false,
           "concurrently": false,
           "method": "gin",
+          "with": {}
+        },
+        "memories_embedding_backfill_idx": {
+          "name": "memories_embedding_backfill_idx",
+          "columns": [
+            {
+              "expression": "updated_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "embedding IS NULL",
+          "concurrently": false,
+          "method": "btree",
           "with": {}
         }
       },
@@ -12917,6 +12949,28 @@
           "concurrently": false,
           "method": "btree",
           "with": {}
+        },
+        "phase_journal_runner_verdicts_idx": {
+          "name": "phase_journal_runner_verdicts_idx",
+          "columns": [
+            {
+              "expression": "run_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "started_at",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "source = 'runner' AND artifact ->> 'kind' = 'verdict'",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
         }
       },
       "foreignKeys": {
@@ -15810,6 +15864,295 @@
         "conversations_mode_known": {
           "name": "conversations_mode_known",
           "value": "\"conversations\".\"mode\" IS NULL OR \"conversations\".\"mode\" IN ('assistant','agent')"
+        }
+      },
+      "isRLSEnabled": false
+    },
+    "public.conversation_index_state": {
+      "name": "conversation_index_state",
+      "schema": "",
+      "columns": {
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "indexed_through_seq": {
+          "name": "indexed_through_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "indexed_through_at": {
+          "name": "indexed_through_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "builder_revision": {
+          "name": "builder_revision",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "indexed_at": {
+          "name": "indexed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {
+        "conversation_index_state_conversation_id_conversations_id_fk": {
+          "name": "conversation_index_state_conversation_id_conversations_id_fk",
+          "tableFrom": "conversation_index_state",
+          "tableTo": "conversations",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
+    "public.conversation_passages": {
+      "name": "conversation_passages",
+      "schema": "",
+      "columns": {
+        "id": {
+          "name": "id",
+          "type": "uuid",
+          "primaryKey": true,
+          "notNull": true,
+          "default": "gen_random_uuid()"
+        },
+        "conversation_id": {
+          "name": "conversation_id",
+          "type": "uuid",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_seq": {
+          "name": "first_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "first_offset": {
+          "name": "first_offset",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true,
+          "default": 0
+        },
+        "last_seq": {
+          "name": "last_seq",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "last_offset": {
+          "name": "last_offset",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "message_count": {
+          "name": "message_count",
+          "type": "integer",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "started_at": {
+          "name": "started_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "ended_at": {
+          "name": "ended_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "text": {
+          "name": "text",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": true
+        },
+        "is_open": {
+          "name": "is_open",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
+        },
+        "text_search": {
+          "name": "text_search",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "to_tsvector('english', left(\"conversation_passages\".\"text\", 100000))",
+            "type": "stored"
+          }
+        },
+        "ident_search": {
+          "name": "ident_search",
+          "type": "tsvector",
+          "primaryKey": false,
+          "notNull": false,
+          "generated": {
+            "as": "to_tsvector('simple', forge_identifier_words(left(\"conversation_passages\".\"text\", 100000)))",
+            "type": "stored"
+          }
+        },
+        "created_at": {
+          "name": "created_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {
+        "conversation_passages_start_unique": {
+          "name": "conversation_passages_start_unique",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "first_seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "first_offset",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "conversation_passages_conversation_idx": {
+          "name": "conversation_passages_conversation_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            },
+            {
+              "expression": "first_seq",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "conversation_passages_open_idx": {
+          "name": "conversation_passages_open_idx",
+          "columns": [
+            {
+              "expression": "conversation_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "is_open",
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "conversation_passages_text_search_idx": {
+          "name": "conversation_passages_text_search_idx",
+          "columns": [
+            {
+              "expression": "text_search",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        },
+        "conversation_passages_ident_search_idx": {
+          "name": "conversation_passages_ident_search_idx",
+          "columns": [
+            {
+              "expression": "ident_search",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "concurrently": false,
+          "method": "gin",
+          "with": {}
+        }
+      },
+      "foreignKeys": {
+        "conversation_passages_conversation_id_conversations_id_fk": {
+          "name": "conversation_passages_conversation_id_conversations_id_fk",
+          "tableFrom": "conversation_passages",
+          "tableTo": "conversations",
+          "columnsFrom": [
+            "conversation_id"
+          ],
+          "columnsTo": [
+            "id"
+          ],
+          "onDelete": "cascade",
+          "onUpdate": "no action"
+        }
+      },
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {
+        "conversation_passages_seq_order": {
+          "name": "conversation_passages_seq_order",
+          "value": "\"conversation_passages\".\"last_seq\" >= \"conversation_passages\".\"first_seq\""
+        },
+        "conversation_passages_count_positive": {
+          "name": "conversation_passages_count_positive",
+          "value": "\"conversation_passages\".\"message_count\" > 0"
+        },
+        "conversation_passages_offsets_sane": {
+          "name": "conversation_passages_offsets_sane",
+          "value": "\"conversation_passages\".\"first_offset\" >= 0 AND \"conversation_passages\".\"last_offset\" > 0 AND (\"conversation_passages\".\"last_seq\" > \"conversation_passages\".\"first_seq\" OR \"conversation_passages\".\"last_offset\" > \"conversation_passages\".\"first_offset\")"
         }
       },
       "isRLSEnabled": false

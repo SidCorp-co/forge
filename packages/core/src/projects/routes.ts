@@ -35,23 +35,20 @@ import {
   type PipelineConfig,
   pipelineConfigPatchSchema,
   pipelineConfigSchema,
-  refuseRetiredStageKeys,
 } from '../pipeline/pipeline-config-schema.js';
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
-import { RETIRED_STATE_CONTEXT_MESSAGE, readAgentConfig } from './agent-config.js';
+import { type AgentConfigKeyPatch, patchAgentConfigKeys, readAgentConfig } from './agent-config.js';
+import { PERSONA_STYLE_MAX, SYSTEM_PROMPT_MAX } from './agent-config-schema.js';
 import { announceContractInput } from './contract-input-announce.js';
-import { environmentsPatchSchema, RETIRED_PREVIEW_DEPLOY_MESSAGE } from './environments.js';
+import { environmentsPatchSchema } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
-import {
-  RETIRED_PROJECT_FACTS_CONFIG_MESSAGE,
-  RETIRED_PROJECT_FACTS_MESSAGE,
-} from './project-facts.js';
 import { projectFactsRoutes } from './project-facts-routes.js';
 import { PATCHED_PROJECT, PROJECT_DETAIL } from './projections.js';
 import { readableLiveBranch, releaseModelGap, releaseModelPatchFields } from './release-model.js';
+import { refuseRetiredProjectKeys } from './retired-project-keys.js';
 import { projectRunnerRoutes } from './runners-routes.js';
 import { createProject, generateApiKey, ProjectSlugTakenError } from './service.js';
 
@@ -88,12 +85,15 @@ export const updateProjectSchema = z
     // cm:guard ISS-992 — the shape is checked in the handler, not here, because three of the four refusals need the database (the reserved name, the prefix another project holds, and whether the caller may be told which one). A zod regex here would answer the first and let the other three reach Postgres as a 500 on an ordinary conflict.
     issuePrefix: z.string().trim().max(16).nullable().optional(),
     defaultDeviceId: z.uuid().nullable().optional(),
-    agentConfig: z.record(z.string(), z.unknown()).nullable().optional(),
     // cm:why ISS-609 follow-up — a scoped write for the chat/RC-bot reply-style knob, so the UI never round-trips the whole `agentConfig` jsonb to change one string; `null` and `''` both clear it
     // cm:guard the cap leaves room for what migration 0245 PREPENDED — 82 characters plus a newline — because a project already at the old 4,000 came out of that migration longer than its own settings form would accept, and the field the person edits is Bot personality under Settings → Integrations → Rocket.Chat. `Dockerfile` runs the migrator before the server serves, so the widened cap and the rows it has to accept arrive together and are never observed half-applied (ISS-1007).
-    personaStyle: z.string().trim().max(4100).nullable().optional(),
+    personaStyle: z.string().trim().max(PERSONA_STYLE_MAX).nullable().optional(),
     // cm:why ISS-727 — the two values name two different ANSWERERS rather than two speeds: `fast` is the provider-chat turn this process runs, `agent` diverts the whole turn to a Claude session on a paired box. null clears it back to `fast`.
     rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
+    // cm:why ISS-1070 — `agentConfig.systemPrompt` is read by `assistant/system-prompt.ts:buildSystemPrompt` and had no door of its own: the only way to set it was the wholesale `agentConfig` record this schema no longer takes. `null` and `''` both clear it.
+    systemPrompt: z.string().trim().max(SYSTEM_PROMPT_MAX).nullable().optional(),
+    // cm:why ISS-1070 — `agentConfig.categories` is served by MCP `forge_config` and had no door of its own, for the same reason `systemPrompt` did not. `null` clears the list; an empty array stores an empty list, which is a different document.
+    categories: z.array(z.string().trim().min(1).max(100)).max(50).nullable().optional(),
     environments: environmentsPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
     // Move the project to another org. Requires org owner/admin on BOTH the
@@ -101,45 +101,6 @@ export const updateProjectSchema = z
     orgId: z.uuid().optional(),
   })
   .refine((o) => Object.keys(o).length > 0, { message: 'no fields to update' });
-
-/**
- * ISS-1000 — the retired keys, refused on the RAW body before the object above
- * strips them.
- *
- * `updateProjectSchema` drops an unknown key silently, so deleting
- * `stateContext` from it would answer the operator's save with a 200 and no
- * write, which is the same defect the retirement removes. And `agentConfig` on
- * this route is an untyped record assigned straight onto the column, so it is a
- * door past every refusal `pipelineConfigPatchSchema` makes — checked here for
- * the two retired stage keys and for nothing else, because typing the whole
- * blob is a different change.
- */
-// cm:guard the walk refuses ONLY what has been retired. Widening it to validate `agentConfig` generally closes an escape hatch four other settings surfaces write through, and none of them is declared on this schema.
-function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): void {
-  if (!raw || typeof raw !== 'object') return;
-  const retired = (path: (string | number)[], message: string) =>
-    ctx.addIssue({ code: 'custom', path, message });
-  const body = raw as { stateContext?: unknown; agentConfig?: unknown };
-  if ('stateContext' in body) retired(['stateContext'], RETIRED_STATE_CONTEXT_MESSAGE);
-  // ISS-1069 — `previewDeploy` became `environments`. Refused here by name for the reason
-  // `stateContext` is: the object below strips an undeclared key silently, which answers an
-  // operator's save with a 200 and no write.
-  if ('previewDeploy' in body) retired(['previewDeploy'], RETIRED_PREVIEW_DEPLOY_MESSAGE);
-  const ac = body.agentConfig as { pipelineConfig?: unknown } | null | undefined;
-  if (!ac || typeof ac !== 'object') return;
-  if ('stateContext' in ac) retired(['agentConfig', 'stateContext'], RETIRED_STATE_CONTEXT_MESSAGE);
-  // ISS-1048 — the raw record is still assigned straight onto the column, so a
-  // write carrying either retired prose key would land it back in the blob the
-  // migration emptied and the prompt no longer reads. Refused here by name for
-  // the same reason `stateContext` is: the object below strips an undeclared key
-  // silently, which answers the operator with a 200 and no write.
-  if ('projectFacts' in ac) retired(['agentConfig', 'projectFacts'], RETIRED_PROJECT_FACTS_MESSAGE);
-  if ('projectFactsConfig' in ac) {
-    retired(['agentConfig', 'projectFactsConfig'], RETIRED_PROJECT_FACTS_CONFIG_MESSAGE);
-  }
-  const states = (ac.pipelineConfig as { states?: unknown } | null | undefined)?.states;
-  refuseRetiredStageKeys(states, ctx, ['agentConfig', 'pipelineConfig', 'states']);
-}
 
 export const updateProjectPatchSchema = z
   .unknown()
@@ -465,36 +426,22 @@ projectRoutes.patch(
     const gap = await releaseModelGap(id, updates);
     if (gap) throw new HTTPException(400, { message: gap.message, cause: { code: gap.code } });
     if (patch.defaultDeviceId !== undefined) updates.defaultDeviceId = patch.defaultDeviceId;
-    if (patch.agentConfig !== undefined) {
-      updates.agentConfig = patch.agentConfig;
-    }
+
+    // cm:guard ISS-1070 — the four scoped `agentConfig` values are collected as a per-KEY patch and written by one statement inside the transaction below. What this replaced read the whole blob and wrote the whole blob back, so a sibling key another request set between the read and the write was restored to its old value — the `wholesale-config-clobber` shape, which no care at this call site can remove. `null` here means DELETE the key, never store `key: null`.
+    const agentConfigPatch: AgentConfigKeyPatch = {};
     if (patch.personaStyle !== undefined) {
-      // cm:why read-modify-write rather than Postgres's `jsonb || jsonb`, whose shallow merge would let a style-only patch wipe the sibling keys of the blob (`pipelineConfig`, `repoPath`, `categories`, …)
-      let baseAc = updates.agentConfig as Record<string, unknown> | undefined;
-      if (baseAc === undefined) {
-        baseAc = { ...((await readAgentConfig(id)) ?? {}) };
-      }
-      if (patch.personaStyle === null || patch.personaStyle.length === 0) {
-        baseAc.personaStyle = undefined;
-      } else {
-        baseAc.personaStyle = patch.personaStyle;
-      }
-      updates.agentConfig = baseAc;
+      agentConfigPatch.personaStyle =
+        patch.personaStyle === null || patch.personaStyle.length === 0 ? null : patch.personaStyle;
     }
     if (patch.rocketChatAnswerMode !== undefined) {
-      // Scoped agentConfig.rocketChatAnswerMode write — read-modify-write
-      // (like personaStyle above) so a mode-only patch can't wipe sibling keys.
-      let baseAc = updates.agentConfig as Record<string, unknown> | undefined;
-      if (baseAc === undefined) {
-        baseAc = { ...((await readAgentConfig(id)) ?? {}) };
-      }
-      if (patch.rocketChatAnswerMode === null) {
-        baseAc.rocketChatAnswerMode = undefined;
-      } else {
-        baseAc.rocketChatAnswerMode = patch.rocketChatAnswerMode;
-      }
-      updates.agentConfig = baseAc;
+      agentConfigPatch.rocketChatAnswerMode = patch.rocketChatAnswerMode;
     }
+    if (patch.systemPrompt !== undefined) {
+      agentConfigPatch.systemPrompt =
+        patch.systemPrompt === null || patch.systemPrompt.length === 0 ? null : patch.systemPrompt;
+    }
+    // cm:why an EMPTY array is stored and only `null` clears, because "this project offers no categories" and "this project has not said" are different documents; `forge_config` answers `[]` for both, and a door that could not express the difference would make one of them unreachable
+    if (patch.categories !== undefined) agentConfigPatch.categories = patch.categories;
     // cm:guard WHOLESALE replacement and not a merge, at any depth — the semantics `previewDeploy`
     // already had and every client is written against: web-v2's Testing tab spreads the stored blob
     // before it sends, and a merge would leave no caller able to clear a field. It is the
@@ -506,6 +453,9 @@ projectRoutes.patch(
 
     // cm:guard the prefix moves in the SAME transaction as the rest of the patch — it is written through a second table and its own savepoint, so applying it outside this block would leave a project renamed by a request that then failed on a sibling field and answered the caller with an error (codex review of ISS-992)
     const [updated] = await db.transaction(async (tx) => {
+      // cm:guard the scoped `agentConfig` keys are written INSIDE this transaction, beside the prefix, for the reason the prefix is: a request that fails on a sibling field must not leave the configuration changed. Written outside it, a `{systemPrompt, issuePrefix}` patch whose prefix conflicts would answer the operator 409 with the prompt already saved.
+      // cm:why BEFORE the prefix and not after, so the rollback is the thing under test rather than an ordering that never reaches the write — the prefix refusal is the failure this pairs with
+      await patchAgentConfigKeys(id, agentConfigPatch, tx);
       if (patch.issuePrefix !== undefined) {
         await applyIssuePrefixPatch(id, patch.issuePrefix, userId, tx);
       }
@@ -708,14 +658,9 @@ projectRoutes.patch(
     const access = await loadProjectAccess(id, c.get('userId'));
     assertOrgRoleOnProject(access, 'admin', 'org admin required');
 
-    const current = await readAgentConfig(id);
-    if (current === null) throw notFound();
-
-    const next: Record<string, unknown> = { ...current };
-    if (plugins === null) delete next.plugins;
-    else next.plugins = plugins;
-
-    await db.update(projects).set({ agentConfig: next }).where(eq(projects.id, id));
+    // cm:guard the read is the 404 and NOT the basis of the write: `patchAgentConfigKeys` touches the one key in one statement, so a `personaStyle` saved between this read and that write survives. Reading the blob and writing it back whole is what this route used to do, and is the `wholesale-config-clobber` shape (ISS-1070).
+    if ((await readAgentConfig(id)) === null) throw notFound();
+    await patchAgentConfigKeys(id, { plugins });
 
     return c.json({ plugins: plugins ?? [] });
   },

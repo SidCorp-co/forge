@@ -1,0 +1,14 @@
+-- Undo 0286_runner_releases (ISS-1075).
+--
+-- The table is a RECORD of an operation and never the release itself: the
+-- release is the GitHub Release the `runner-v*` tag produces, and
+-- `install/fetch-release.ts` still reads that and nothing here. Dropping this
+-- loses the history of which releases Forge cut, how far each got and what it
+-- found on the repository — it takes no tag down with it, and it makes no tag
+-- that was cut any less cut.
+--
+-- Anything still in flight when this runs is lost mid-operation. A `tag_state`
+-- of `unknown` is the row worth reading before dropping it: it names a tag
+-- whose create Forge sent and never heard the answer to, and nothing else on
+-- the system remembers that.
+DROP TABLE IF EXISTS "runner_releases";
