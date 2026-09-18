@@ -251,6 +251,13 @@ export function repositoryTruth(args: {
   publicationDetail: string | null;
 }): string {
   const at = args.commitSha ? ` at ${args.commitSha}` : '';
+  // cm:guard `unread` and `absent` are ONE fact about Forge — no create request left this process — and TWO different facts about the repository, so they get two sentences. Saying "the tag does not exist" off a lookup that never answered is a claim about a repository Forge did not read, and it is the sentence an operator acts on before cutting anything else.
+  if (args.tagState === 'unread') {
+    return (
+      `Nothing was written to the repository. Forge did not read whether the tag ` +
+      `\`${args.tag}\` exists, so its existence is unread rather than ruled out.`
+    );
+  }
   if (args.tagState === 'absent') {
     return `Nothing was written to the repository: the tag \`${args.tag}\` does not exist.`;
   }

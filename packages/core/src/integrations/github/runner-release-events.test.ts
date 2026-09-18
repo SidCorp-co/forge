@@ -283,6 +283,14 @@ describe('the deliveries that settle nothing', () => {
     expect(row.settledAt).toBeNull();
   });
 
+  // cm:guard the repository is one of the four terms, so a delivery that does not carry it FAILS that term rather than skipping it. A comparison written as "compare it if it is there" settles a release on three terms whenever GitHub omits or renames the field, and the shape of a delivery is GitHub's to change.
+  it('settles nothing when the delivery names no repository at all', async () => {
+    const { repository: _dropped, ...withoutRepo } = delivery();
+    expect(await applyWorkflowRunEvent(ctx, withoutRepo)).toBe(0);
+    expect(row.settledAt).toBeNull();
+    expect(readReleaseForTag).not.toHaveBeenCalled();
+  });
+
   it('settles nothing for a delivery carrying no workflow run at all', async () => {
     expect(await applyWorkflowRunEvent(ctx, { action: 'completed' })).toBe(0);
   });

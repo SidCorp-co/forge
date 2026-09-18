@@ -72,10 +72,18 @@ export async function nameOverdueRunnerReleases(
     })}`;
     try {
       // cm:guard the row's OWN `tag_state` is carried through untouched. This pass knows nothing new about the repository — it only knows that nobody said anything — so deciding a tag state here would be inventing the very reading the row is honest about not having.
-      if (await settleFailed(row.id, { step: row.step, failure })) named += 1;
+      // cm:guard `ifUnchanged` pins the settle to the reading this sentence was written from. The sequence this pass is racing moves a row on between the SELECT and the UPDATE — `resolve_commit`/`unread` becomes `cut_tag`/`unknown` the moment a create request goes out — and a settle without it writes the older step back over the newer one together with prose saying nothing was written, over a row that has a tag request in flight. A candidate that moved is left for the next tick, which reads it as it now stands.
+      const settled = await settleFailed(row.id, {
+        step: row.step,
+        failure,
+        ifUnchanged: { step: row.step, tagState: row.tagState },
+      });
+      if (settled) named += 1;
       logger.warn(
-        { releaseId: row.id, tag: row.tag, step: row.step, tagState: row.tagState },
-        'runner-release: deadline reached with nothing reported',
+        { releaseId: row.id, tag: row.tag, step: row.step, tagState: row.tagState, settled },
+        settled
+          ? 'runner-release: deadline reached with nothing reported'
+          : 'runner-release: the overdue release moved under the pass, so the next tick reads it afresh',
       );
     } catch (err) {
       logger.error(

@@ -10,8 +10,9 @@
  *
  * One row per tag, because a tag is immutable: a release that failed is not
  * retried under the same name, it is cut again under the next one. The single
- * exception is a row whose `tag_state` is still `absent`, which is a row
- * nothing was written to the repository for — that one re-arms in place.
+ * exception is a SETTLED row whose `tag_state` is `unread` or `absent`, which
+ * is a row no create request left this process for — that one re-arms in
+ * place.
  *
  * Split out of `schema.ts` for the reason `schema-release-ledger.ts` states:
  * that file is frozen far over the file budget, so a new table cannot land
@@ -62,8 +63,8 @@ export const RUNNER_RELEASE_STATUSES = [
 ] as const;
 export type RunnerReleaseStatus = (typeof RUNNER_RELEASE_STATUSES)[number];
 
-// cm:guard `unknown` is a REAL state and never a placeholder for `absent`: it is what a process that died between asking GitHub for the tag and hearing the answer leaves behind, and it is the difference between "cut it again" and "read the repository first". Collapsing it into `absent` is how a second attempt cuts a tag that already exists; collapsing it into `present` is how a release nobody cut is reported as one that was.
-export const RUNNER_RELEASE_TAG_STATES = ['absent', 'unknown', 'present'] as const;
+// cm:guard every value here is an OBSERVATION of the repository, never a summary of what Forge did. `unread` is nobody looked; `absent` is GitHub answered that the tag is not there AND no create request has left this process since; `unknown` is a create request went out and its answer never came; `present` is GitHub answered that the tag is there. Writing `absent` from a read that FAILED is the collapse this vocabulary exists to stop — it reads afterwards as a repository Forge inspected, and it is what the four-value set buys over the three-value one it replaced.
+export const RUNNER_RELEASE_TAG_STATES = ['unread', 'absent', 'unknown', 'present'] as const;
 export type RunnerReleaseTagState = (typeof RUNNER_RELEASE_TAG_STATES)[number];
 
 // cm:guard this is a READING and never an inference from the build's conclusion: a build that failed may still have published a release, and one that succeeded may have published a draft the channel never ingests, because `install/fetch-release.ts` skips `draft` and `prerelease` outright. `unread` means nobody has looked; `unknown` means somebody looked and could not see.
@@ -77,7 +78,7 @@ export const RUNNER_RELEASE_PUBLICATIONS = [
 export type RunnerReleasePublication = (typeof RUNNER_RELEASE_PUBLICATIONS)[number];
 
 const STATUS_CHK = sql`status IN ('preflight', 'cutting', 'building', 'published', 'failed')`;
-const TAG_STATE_CHK = sql`tag_state IN ('absent', 'unknown', 'present')`;
+const TAG_STATE_CHK = sql`tag_state IN ('unread', 'absent', 'unknown', 'present')`;
 // cm:guard the terminal pair and `settled_at` are ONE fact, so the database refuses a row that says it ended and carries no clock, and one that carries a clock while claiming to be in flight. `release_attempts` holds the other half of the same rule: a NULL `settled_at` there is a real state meaning "declared and never reported back", and it is a state only because nothing else on that row claims to be terminal.
 const SETTLED_CHK = sql`(status IN ('published', 'failed')) = (settled_at IS NOT NULL)`;
 // cm:guard `published` is the one status that asserts something about the world, so it may only be written over a tag that exists and a release that was READ and found whole — without this the status could say published over a `tag_state` of `unknown`, which is a release nobody can prove was cut.
@@ -105,7 +106,7 @@ export const runnerReleases = pgTable(
     status: text('status', { enum: RUNNER_RELEASE_STATUSES }).notNull().default('preflight'),
     /** The step the operation is at, or the step it stopped at. */
     step: text('step', { enum: RUNNER_RELEASE_STEPS }).notNull().default('resolve_repository'),
-    tagState: text('tag_state', { enum: RUNNER_RELEASE_TAG_STATES }).notNull().default('absent'),
+    tagState: text('tag_state', { enum: RUNNER_RELEASE_TAG_STATES }).notNull().default('unread'),
     publication: text('publication', { enum: RUNNER_RELEASE_PUBLICATIONS })
       .notNull()
       .default('unread'),

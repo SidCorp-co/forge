@@ -79,6 +79,8 @@ export interface PublishRefusal {
   status: number | null;
   /** What an operator is told. One sentence naming the cause and the way out. */
   message: string;
+  // cm:guard GitHub's OWN body, carried separately from `message` because `message` is Forge's prose with the subject's sentences folded into it. A caller deciding anything from GitHub's words — `saysRefExists` in `runner-release-repo.ts` is the one that does — reads this; matching on `message` instead matched the advice Forge appended, so every 422 read as "the ref already exists" including the ones that say the commit does not.
+  detail: string | null;
 }
 
 const header = (err: GitHubPublishError, name: string): string | null =>
@@ -110,6 +112,7 @@ function forbidden(err: GitHubPublishError, subject: PublishSubject): PublishRef
       cause: 'permission-missing',
       op: err.op,
       status: 403,
+      detail: err.detail ?? null,
       message:
         `GitHub refused Forge while ${subject.where[err.op]} because ${subject.permission}` +
         (quota ? ` The same answer also reports a rate limit — ${quota} — so both may apply.` : ''),
@@ -120,6 +123,7 @@ function forbidden(err: GitHubPublishError, subject: PublishSubject): PublishRef
       cause: 'rate-limited',
       op: err.op,
       status: 403,
+      detail: err.detail ?? null,
       message: `GitHub rate-limited Forge while ${subject.where[err.op]} — ${quota}. GitHub sent nothing saying a permission was refused.`,
     };
   }
@@ -127,6 +131,7 @@ function forbidden(err: GitHubPublishError, subject: PublishSubject): PublishRef
     cause: 'access-refused',
     op: err.op,
     status: 403,
+    detail: err.detail ?? null,
     message:
       `GitHub answered 403 while ${subject.where[err.op]} and sent nothing saying which of the two it ` +
       `was: ${subject.ambiguous}`,
@@ -140,6 +145,7 @@ function notFound(err: GitHubPublishError, subject: PublishSubject): PublishRefu
       cause: 'installation-missing',
       op: 'mint',
       status: 404,
+      detail: err.detail ?? null,
       message: err.message,
     };
   }
@@ -147,6 +153,7 @@ function notFound(err: GitHubPublishError, subject: PublishSubject): PublishRefu
     cause: 'repository-unreachable',
     op: err.op,
     status: 404,
+    detail: err.detail ?? null,
     message:
       `GitHub answered 404 while ${subject.where[err.op]}, so this App no longer reaches that ` +
       'repository — it was removed from the installation, or the repository was renamed or ' +
@@ -164,6 +171,7 @@ export function describePublishRefusal(
       cause: beforeWrite ? 'timed-out-before-write' : 'timed-out-mid-write',
       op: err.op,
       status: null,
+      detail: err.detail ?? null,
       message: beforeWrite
         ? `Forge timed out ${subject.where[err.op]}, ${subject.nothingWritten}`
         : `Forge timed out ${subject.where[err.op]}. GitHub may or may not have taken that write — this is an unknown outcome, not a confirmed failure to write.`,
@@ -175,6 +183,7 @@ export function describePublishRefusal(
       cause: 'rate-limited',
       op: err.op,
       status: 429,
+      detail: err.detail ?? null,
       message: `GitHub rate-limited Forge while ${subject.where[err.op]} — ${quota}.`,
     };
   }
@@ -185,6 +194,7 @@ export function describePublishRefusal(
       cause: 'credential-rejected',
       op: err.op,
       status: 401,
+      detail: err.detail ?? null,
       message: `GitHub did not recognise Forge's credential while ${subject.where[err.op]}: ${err.message}`,
     };
   }
@@ -193,6 +203,7 @@ export function describePublishRefusal(
       cause: 'rejected-payload',
       op: err.op,
       status: 422,
+      detail: err.detail ?? null,
       message:
         `GitHub refused the request while ${subject.where[err.op]} as unprocessable` +
         (err.detail ? `: ${err.detail}` : '') +
@@ -203,6 +214,7 @@ export function describePublishRefusal(
     cause: 'unknown',
     op: err.op,
     status: err.status,
+    detail: err.detail ?? null,
     message: `Forge failed while ${subject.where[err.op]}: ${err.message}`,
   };
 }
@@ -218,6 +230,7 @@ export function describePublishThrown(
     cause: 'unknown',
     op,
     status: null,
+    detail: null,
     message: `Forge failed while ${subject.where[op]}: ${err instanceof Error ? err.message : String(err)}`,
   };
 }

@@ -37,7 +37,13 @@ const agreeingFiles = async (_c: unknown, path: string): Promise<string> =>
 
 class FakeRepoError extends Error {
   constructor(
-    readonly refusal: { cause: string; op: string; status: number | null; message: string },
+    readonly refusal: {
+      cause: string;
+      op: string;
+      status: number | null;
+      message: string;
+      detail?: string | null;
+    },
     readonly beforeWrite: boolean,
   ) {
     super(refusal.message);
@@ -57,8 +63,9 @@ vi.mock('./runner-release-repo.js', () => ({
   readFileAtRef: (...a: unknown[]) => repo.readFileAtRef(...(a as [unknown, string])),
   createTagRef: (...a: unknown[]) => repo.createTagRef(...(a as [])),
   RunnerReleaseRepoError: FakeRepoError,
-  saysRefExists: (r: { status: number | null; message: string }) =>
-    r.status === 422 && /already exists/i.test(r.message),
+  // cm:guard the double reads GitHub's own body, exactly as `runner-release-repo.ts` does. Matching `message` here instead would make every 422 in this file read as a tag that already exists, which is the defect the real function was carrying.
+  saysRefExists: (r: { status: number | null; detail?: string | null }) =>
+    r.status === 422 && /already exists/i.test(r.detail ?? ''),
   tagRefName: (tag: string) => `refs/tags/${tag}`,
 }));
 
@@ -68,7 +75,10 @@ vi.mock('./runner-release-store.js', () => ({
   openRunnerRelease: async (args: Record<string, unknown>) => {
     const key = `${args.projectId}:${args.tag}`;
     const held = rows.get(key);
-    if (held && held.tagState !== 'absent') return { opened: null, held };
+    // cm:guard the double of the real statement's WHERE, both halves: a row still in flight is HELD whatever its tag state, and a settled one re-arms only from `unread` or `absent`.
+    if (held && !(held.settledAt && ['unread', 'absent'].includes(held.tagState))) {
+      return { opened: null, held };
+    }
     const row: Row = {
       id: key,
       projectId: args.projectId,
@@ -79,7 +89,7 @@ vi.mock('./runner-release-store.js', () => ({
       commitSha: null,
       status: 'preflight',
       step: 'resolve_repository',
-      tagState: 'absent',
+      tagState: 'unread',
       publication: 'unread',
       publicationDetail: null,
       failure: null,
@@ -103,9 +113,13 @@ vi.mock('./runner-release-store.js', () => ({
   settleFailed: async (id: string, patch: Record<string, unknown>) => {
     const row = rows.get(id);
     if (!row || row.settledAt) return false;
-    Object.assign(row, patch, { status: 'failed', settledAt: new Date() });
+    const guard = patch.ifUnchanged as { step: string; tagState: string } | undefined;
+    if (guard && (row.step !== guard.step || row.tagState !== guard.tagState)) return false;
+    const { ifUnchanged: _guard, ...sets } = patch;
+    Object.assign(row, sets, { status: 'failed', settledAt: new Date() });
     return true;
   },
+  findById: async (id: string) => rows.get(id) ?? null,
 }));
 
 const { startRunnerRelease } = await import('./runner-release.js');
@@ -116,10 +130,16 @@ const start = (over: Record<string, unknown> = {}) =>
 const row = () => rows.get('p1:runner-v0.13.3');
 
 const publishError = (
-  over: Partial<{ cause: string; op: string; status: number | null; message: string }>,
+  over: Partial<{
+    cause: string;
+    op: string;
+    status: number | null;
+    message: string;
+    detail: string | null;
+  }>,
 ) =>
   new FakeRepoError(
-    { cause: 'unknown', op: 'create', status: null, message: 'refused', ...over },
+    { cause: 'unknown', op: 'create', status: null, message: 'refused', detail: null, ...over },
     over.op === 'lookup',
   );
 
@@ -224,15 +244,36 @@ describe('the preflights, each naming the step and that nothing was written', ()
     expect(repo.createTagRef).not.toHaveBeenCalled();
   });
 
-  // cm:guard every act before `cut_tag` is a read, so a refusal there is EVIDENCE that nothing was written — which is what makes the same version runnable again afterwards.
-  it('leaves the tag absent when a read itself is refused', async () => {
+  // cm:guard every act before `cut_tag` is a read, so a refusal there is EVIDENCE that nothing was written — which is what makes the same version runnable again afterwards. What it is NOT evidence of is the tag's absence: the lookup that would have said so is the one that failed.
+  it('leaves the tag UNREAD when the lookup itself is refused, not absent', async () => {
     repo.readTagRef.mockRejectedValue(
       publishError({ op: 'lookup', status: 403, message: 'forbidden' }),
     );
     await start();
-    expect(row()?.tagState).toBe('absent');
+    expect(row()?.tagState).toBe('unread');
     expect(row()?.step).toBe('check_tag_absent');
     expect(String(row()?.failure)).toContain('Nothing was written to the repository');
+    expect(String(row()?.failure)).toContain('did not read whether the tag');
+    expect(String(row()?.failure)).not.toContain('does not exist');
+  });
+
+  it('leaves the tag UNREAD when the commit cannot be resolved at all', async () => {
+    repo.readCommitSha.mockRejectedValue(
+      publishError({ op: 'lookup', status: 404, message: 'no such commit' }),
+    );
+    await start();
+    expect(row()?.tagState).toBe('unread');
+    expect(row()?.step).toBe('resolve_commit');
+    expect(repo.readTagRef).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the other side of the same line: here the lookup ANSWERED and said the tag is not there, so `absent` is a reading and the sentence may say the tag does not exist.
+  it('leaves the tag absent when the lookup answered before a later step stopped it', async () => {
+    repo.readFileAtRef.mockImplementation(async () => '[workspace.package]\nversion = "0.13.2"\n');
+    await start();
+    expect(row()?.tagState).toBe('absent');
+    expect(row()?.step).toBe('check_crate_version');
+    expect(String(row()?.failure)).toContain('the tag `runner-v0.13.3` does not exist');
   });
 });
 
@@ -266,11 +307,40 @@ describe('the three things that can be true after a cut that did not answer', ()
 
   it('leaves the tag present when GitHub says the ref is already there', async () => {
     repo.createTagRef.mockRejectedValue(
-      publishError({ op: 'create', status: 422, message: 'Reference already exists' }),
+      publishError({
+        op: 'create',
+        status: 422,
+        message: 'GitHub refused the request as unprocessable: usually a ref that already exists',
+        detail: '{"message":"Reference already exists"}',
+      }),
     );
     await start();
     expect(row()?.tagState).toBe('present');
     expect(String(row()?.failure)).toContain('`runner-v0.13.3` exists at abc1234');
+  });
+
+  // cm:guard a 5xx is NOT a refusal that proves nothing was written: GitHub can commit the ref and then fall over answering, and `absent` here is what lets the next attempt cut over a tag that is already on the repository.
+  it('leaves the tag UNKNOWN when the create answered 502', async () => {
+    repo.createTagRef.mockRejectedValue(
+      publishError({ op: 'create', status: 502, message: 'bad gateway' }),
+    );
+    await start();
+    expect(row()?.tagState).toBe('unknown');
+    expect(String(row()?.failure)).toContain('may or may not exist');
+  });
+
+  // cm:guard the create SUCCEEDED here — GitHub answered 201 — and only reading the body failed, which `client.ts` reports as a `GitHubPublishError` carrying status 201. Any rule that reads "a status arrived" as "nothing was written" records the tag absent over a tag that exists.
+  it('leaves the tag UNKNOWN when the create answered 201 and its body could not be read', async () => {
+    repo.createTagRef.mockRejectedValue(
+      publishError({
+        op: 'create',
+        status: 201,
+        message: 'POST /git/refs answered HTTP 201 and its body could not be read',
+      }),
+    );
+    await start();
+    expect(row()?.tagState).toBe('unknown');
+    expect(String(row()?.failure)).toContain('may or may not exist');
   });
 
   it('records the intent before the request, so a death mid-write is visible', async () => {
@@ -281,6 +351,48 @@ describe('the three things that can be true after a cut that did not answer', ()
     });
     await start();
     expect(seen).toBe('unknown');
+  });
+});
+
+describe('a row that went terminal under the sequence', () => {
+  // cm:guard the irreversible act may not outrun the record of the intent. `advance` is conditional on the row being non-terminal, so its `false` is the deadline pass or a delivery having settled this release a moment ago — and a tag created after that point is a ref on GitHub no row can ever record, because every write left is conditional too.
+  it('sends no create request when the intent write was refused', async () => {
+    repo.readFileAtRef.mockImplementation(async (_c: unknown, path: string) => {
+      if (path.endsWith('Cargo.lock')) {
+        const settling = rows.get('p1:runner-v0.13.3');
+        if (settling) {
+          settling.settledAt = new Date();
+          settling.status = 'failed';
+          settling.failure = 'the deadline named this release while the sequence was running';
+        }
+      }
+      return agreeingFiles(_c, path);
+    });
+    const outcome = await start();
+    expect(repo.createTagRef).not.toHaveBeenCalled();
+    expect(outcome).toMatchObject({ started: false, kind: 'stopped' });
+    expect('message' in outcome && outcome.message).toContain('the deadline named this release');
+    expect(row()?.tagState).toBe('absent');
+  });
+
+  // cm:guard the caller is handed the STORED row and never a synthesis over the opening snapshot: the POST's answer and an immediate GET of the same release are two reads of one fact, and a synthesized one reports a step and a readings list the row does not carry.
+  it('answers with the persisted row rather than the opening snapshot', async () => {
+    const outcome = await start();
+    expect(outcome.started).toBe(true);
+    expect(outcome.started && outcome.release).toBe(row());
+    expect(outcome.started && outcome.release.step).toBe('await_build');
+    expect(outcome.started && outcome.release.readings).toHaveLength(6);
+  });
+
+  it('answers a refusal with the persisted row too', async () => {
+    repo.createTagRef.mockRejectedValue(
+      publishError({ op: 'create', status: 403, message: 'GitHub refused Forge' }),
+    );
+    const outcome = await start();
+    expect(outcome.started).toBe(false);
+    expect(!outcome.started && outcome.release).toBe(row());
+    expect(!outcome.started && outcome.release?.status).toBe('failed');
+    expect(!outcome.started && outcome.release?.settledAt).not.toBeNull();
   });
 });
 

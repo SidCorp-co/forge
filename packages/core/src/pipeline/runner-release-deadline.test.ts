@@ -26,9 +26,14 @@ vi.mock('../logger.js', () => ({
 type Row = Record<string, unknown> & { id: string };
 let overdue: Row[];
 const settled = new Map<string, Record<string, unknown>>();
+/** The row as the database holds it, which is what `ifUnchanged` is compared against. */
+let stored = new Map<string, { step: string; tagState: string }>();
 const settleFailed = vi.fn(async (id: string, patch: Record<string, unknown>) => {
   if (settled.has(id)) return false;
   if (id === 'explodes') throw new Error('write refused');
+  const guard = patch.ifUnchanged as { step: string; tagState: string } | undefined;
+  const now = stored.get(id);
+  if (guard && now && (now.step !== guard.step || now.tagState !== guard.tagState)) return false;
   settled.set(id, patch);
   return true;
 });
@@ -57,6 +62,7 @@ const release = (over: Partial<Row> = {}): Row => ({
 beforeEach(() => {
   vi.clearAllMocks();
   settled.clear();
+  stored = new Map();
   logged.length = 0;
   overdue = [];
 });
@@ -153,5 +159,29 @@ describe('the window itself', () => {
     overdue = [release({ startedAt: new Date(NOW.getTime() - 20_000) })];
     await nameOverdueRunnerReleases(NOW);
     expect(String(settled.get('rel-1')?.failure)).toContain('1 minutes ago');
+  });
+});
+
+describe('a row that moved under the pass', () => {
+  // cm:guard the SELECT and the UPDATE are two statements with a gap between them, and the sequence this pass races closes that gap by moving the row on: a release read here at `resolve_commit`/`unread` is at `cut_tag`/`unknown` the moment a create request goes out. Settling on the older reading writes the wrong step back AND a sentence saying nothing was written, over a row with a tag request in flight — a terminal record of a snapshot that is no longer true. The next tick reads the row as it now stands.
+  it('settles nothing when the row is no longer what the pass read', async () => {
+    overdue = [release({ id: 'rel-moved', step: 'resolve_commit', tagState: 'unread' })];
+    stored.set('rel-moved', { step: 'cut_tag', tagState: 'unknown' });
+    expect(await nameOverdueRunnerReleases(NOW)).toEqual({ named: 0 });
+    expect(settled.has('rel-moved')).toBe(false);
+    expect(settleFailed).toHaveBeenCalledWith(
+      'rel-moved',
+      expect.objectContaining({ ifUnchanged: { step: 'resolve_commit', tagState: 'unread' } }),
+    );
+  });
+
+  it('settles the row that did not move, under the reading it was selected on', async () => {
+    overdue = [release({ id: 'rel-still', step: 'cut_tag', tagState: 'unknown' })];
+    stored.set('rel-still', { step: 'cut_tag', tagState: 'unknown' });
+    expect(await nameOverdueRunnerReleases(NOW)).toEqual({ named: 1 });
+    expect(settled.get('rel-still')?.ifUnchanged).toEqual({
+      step: 'cut_tag',
+      tagState: 'unknown',
+    });
   });
 });

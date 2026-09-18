@@ -110,10 +110,11 @@ async function attribute(
     );
     return null;
   }
-  if (repository && row.repository !== repository) {
+  // cm:guard the repository is one of the four terms and it is compared UNCONDITIONALLY, so a delivery that carries no `repository.full_name` fails the term rather than skipping it. Making the comparison conditional on the field being present is how a payload with the field missing settles a release on three terms — and the shape of a delivery is GitHub's to change, not ours to assume.
+  if (row.repository !== repository) {
     logger.error(
       { releaseId: row.id, tag, delivered: repository, held: row.repository },
-      'runner-release: the delivery names a different repository from the release, so nothing was settled',
+      "runner-release: the delivery does not name this release's repository, so nothing was settled",
     );
     return null;
   }

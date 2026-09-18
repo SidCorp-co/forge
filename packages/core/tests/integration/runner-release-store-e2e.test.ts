@@ -87,7 +87,7 @@ describe('runner_releases — opening one', () => {
     expect(outcome.opened).not.toBeNull();
     expect(outcome.opened?.status).toBe('preflight');
     expect(outcome.opened?.step).toBe('resolve_repository');
-    expect(outcome.opened?.tagState).toBe('absent');
+    expect(outcome.opened?.tagState).toBe('unread');
     expect(outcome.opened?.publication).toBe('unread');
     expect(outcome.opened?.settledAt).toBeNull();
     expect(outcome.opened?.readings).toEqual([]);
@@ -113,6 +113,22 @@ describe('runner_releases — opening one', () => {
     expect(second.opened?.readings).toEqual([]);
   });
 
+  // cm:guard the other half of the same WHERE, and the one a three-value tag state hid: a row
+  // still IN FLIGHT is not a row to re-arm, whatever its tag state reads. Without
+  // `settled_at IS NOT NULL` two overlapping starts share one row — the second resets the first's
+  // step, readings and deadline under it — and whichever refusal lands first settles the row
+  // `absent` while the other caller still has a create request to send.
+  it('refuses a second start while the first is still running', async () => {
+    const first = await open();
+    await store.advance(String(first.opened?.id), { step: 'check_tag_absent' });
+
+    const second = await open();
+    expect(second.opened).toBeNull();
+    expect(second.held?.id).toBe(first.opened?.id);
+    expect(second.held?.step).toBe('check_tag_absent');
+    expect(second.held?.settledAt).toBeNull();
+  });
+
   // cm:guard criterion 22, and the reason it is a statement and not a branch: two callers that
   // both read `absent` and then both insert would both cut. The `WHERE` is what makes the second
   // one lose inside Postgres.
@@ -128,10 +144,30 @@ describe('runner_releases — opening one', () => {
 
   it('refuses a second attempt while the tag is of unknown existence', async () => {
     const first = await open();
-    await store.advance(String(first.opened?.id), { tagState: 'unknown', status: 'cutting' });
+    await store.settleFailed(String(first.opened?.id), {
+      step: 'cut_tag',
+      failure: 'Forge never heard the answer',
+      tagState: 'unknown',
+    });
     const second = await open();
     expect(second.opened).toBeNull();
     expect(second.held?.tagState).toBe('unknown');
+  });
+
+  // cm:guard the settled-and-unread row is the shape a preflight that could not even READ the tag
+  // leaves, and it re-arms for the same reason the `absent` one does: no create request left this
+  // process, so the same version is still free to cut.
+  it('re-arms a settled row whose tag was never read', async () => {
+    const first = await open();
+    await store.settleFailed(String(first.opened?.id), {
+      step: 'resolve_commit',
+      failure: 'GitHub answered 403 reading the commit',
+      tagState: 'unread',
+    });
+    const second = await open();
+    expect(second.opened?.id).toBe(first.opened?.id);
+    expect(second.opened?.tagState).toBe('unread');
+    expect(second.opened?.settledAt).toBeNull();
   });
 
   it('keeps one row per tag and separates two tags', async () => {
@@ -309,5 +345,35 @@ describe('runner_releases — the reads the rest of the path makes', () => {
       'resolve_commit: abc1234',
       'check_tag_absent: none',
     ]);
+  });
+});
+
+describe('runner_releases — settling under the reading it was selected on', () => {
+  // cm:guard the deadline pass reads a row and settles it in two statements, and the sequence it
+  // races moves the row between them. `ifUnchanged` is what makes the settle lose that race in
+  // Postgres rather than in a branch: without it the older step and a sentence saying nothing was
+  // written land on a row that has a create request in flight.
+  it('refuses a settle whose reading the row has already left', async () => {
+    const id = String((await open()).opened?.id);
+    await store.advance(id, { step: 'cut_tag', status: 'cutting', tagState: 'unknown' });
+
+    const stale = await store.settleFailed(id, {
+      step: 'resolve_commit',
+      failure: 'the deadline read this row two steps ago',
+      ifUnchanged: { step: 'resolve_commit', tagState: 'unread' },
+    });
+    expect(stale).toBe(false);
+    const still = await store.findById(id);
+    expect(still?.settledAt).toBeNull();
+    expect(still?.step).toBe('cut_tag');
+    expect(still?.tagState).toBe('unknown');
+
+    const current = await store.settleFailed(id, {
+      step: 'cut_tag',
+      failure: 'Forge never heard the answer',
+      ifUnchanged: { step: 'cut_tag', tagState: 'unknown' },
+    });
+    expect(current).toBe(true);
+    expect((await store.findById(id))?.tagState).toBe('unknown');
   });
 });

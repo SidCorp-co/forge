@@ -72,9 +72,9 @@ function refuse(err: unknown, op: 'lookup' | 'create', subject: PublishSubject):
   throw new RunnerReleaseRepoError(refusal, beforeWrite);
 }
 
-/** A 404 that a caller reads as absence rather than as a failure. */
+// cm:guard the OP is half of this test and not decoration: `client.publish` mints an installation token first and raises its failure as a `GitHubPublishError` too, so a 404 from the mint — an installation that no longer exists — arrives here looking exactly like a tag that is not there. Reading that as absence tells a caller the tag does not exist on a repository Forge could not reach at all, which is how a cut goes out over a tag nobody looked for and how a completed build is recorded with publication `absent`.
 function isAbsent(err: unknown): boolean {
-  return err instanceof GitHubPublishError && err.status === 404;
+  return err instanceof GitHubPublishError && err.status === 404 && err.op === 'lookup';
 }
 
 /** The repository's own default branch name, read as the App. */
@@ -184,9 +184,9 @@ export async function createTagRef(
   }
 }
 
-/** Whether a 422 from `createTagRef` says the tag was already there. */
+// cm:guard GitHub's own body and NEVER `refusal.message`. The message is Forge's prose with the subject's `unprocessable` sentence folded in, and that sentence itself says "usually a ref that already exists" — so matching it there made every 422 read as a tag that is already on the repository, including the 422 for a commit this repository does not hold. That records `present` for a tag nobody cut and refuses every later attempt at the version.
 export function saysRefExists(refusal: PublishRefusal): boolean {
-  return refusal.status === 422 && /already exists/i.test(refusal.message);
+  return refusal.status === 422 && /already exists/i.test(refusal.detail ?? '');
 }
 
 /** What GitHub holds for a tag, or `null` where it holds nothing. */

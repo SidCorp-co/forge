@@ -225,7 +225,17 @@ describe('what is now true on the repository', () => {
   it('says nothing was written when the tag is absent', () => {
     const said = repositoryTruth({ ...base, tagState: 'absent', publication: 'unread' });
     expect(said).toContain('Nothing was written to the repository');
+    expect(said).toContain('does not exist');
     expect(said).not.toContain('immutable');
+  });
+
+  // cm:guard `unread` and `absent` are one fact about Forge and two about the repository. Both say nothing was written; only `absent` may say the tag is not there, because only `absent` came from a lookup GitHub answered. Saying "does not exist" off a lookup that failed is a claim about a repository Forge did not read, and it is the sentence an operator acts on before cutting anything else.
+  it('separates a tag nobody read from one read and found missing', () => {
+    const said = repositoryTruth({ ...base, tagState: 'unread', publication: 'unread' });
+    expect(said).toContain('Nothing was written to the repository');
+    expect(said).toContain('did not read whether the tag');
+    expect(said).toContain('unread rather than ruled out');
+    expect(said).not.toContain('does not exist');
   });
 
   // cm:guard this sentence is the whole of ISS-1075 point 3 for the shape nobody else reports: a process that died between asking for the tag and hearing the answer. It has to say the tag MAY exist, and it has to say Forge will not tidy it away.

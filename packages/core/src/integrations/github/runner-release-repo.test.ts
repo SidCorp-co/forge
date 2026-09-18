@@ -174,8 +174,55 @@ describe('the one write', () => {
     );
     const err = await createTagRef(client, 'runner-v0.13.3', 'abc1234').catch((e) => e);
     expect(saysRefExists(err.refusal)).toBe(true);
-    expect(saysRefExists({ cause: 'unknown', op: 'create', status: 422, message: 'nope' })).toBe(
-      false,
+  });
+
+  // cm:guard the refusal this case builds is the REAL one, through `describePublishRefusal`, and that is the whole point: Forge's own 422 sentence ends "usually a ref that already exists, or a commit this repository does not hold", so a test matching a hand-written message passes over a function that matches every 422 alike. Here GitHub says the commit is missing, and reading that as a tag already on the repository records `present` for a tag nobody cut and refuses the version for ever.
+  it('does NOT read a 422 about a missing commit as a ref that already exists', async () => {
+    const { client } = stubClient(
+      () =>
+        new GitHubPublishError({
+          op: 'create',
+          status: 422,
+          detail: '{"message":"Object does not exist"}',
+          message: 'POST /git/refs returned HTTP 422',
+        }),
+    );
+    const err = await createTagRef(client, 'runner-v0.13.3', 'deadbee').catch((e) => e);
+    expect(err.refusal.status).toBe(422);
+    expect(err.refusal.message).toContain('already exists');
+    expect(err.refusal.detail).toContain('Object does not exist');
+    expect(saysRefExists(err.refusal)).toBe(false);
+  });
+});
+
+describe('a 404 that is not the thing being absent', () => {
+  // cm:guard `client.publish` mints an installation token before every call and raises the mint's own failure as a `GitHubPublishError` too, so a 404 from the mint — an installation that no longer exists — is byte-identical in status to a tag that is not there. Reading it as absence tells the sequence the tag is missing on a repository Forge could not reach at all, and tells a completed build's publication reading that GitHub holds no release.
+  it('refuses a mint 404 rather than reading it as a missing tag', async () => {
+    const { client } = stubClient(
+      () =>
+        new GitHubPublishError({
+          op: 'mint',
+          status: 404,
+          message: 'this App has no installation on SidCorp-co/forge',
+        }),
+    );
+    const err = await readTagRef(client, 'runner-v0.13.3').catch((e) => e);
+    expect(err).toBeInstanceOf(RunnerReleaseRepoError);
+    expect(err.refusal.cause).toBe('installation-missing');
+    expect(err.beforeWrite).toBe(true);
+  });
+
+  it('refuses a mint 404 rather than reading it as a missing release', async () => {
+    const { client } = stubClient(
+      () =>
+        new GitHubPublishError({
+          op: 'mint',
+          status: 404,
+          message: 'this App has no installation on SidCorp-co/forge',
+        }),
+    );
+    await expect(readReleaseForTag(client, 'runner-v0.13.3')).rejects.toBeInstanceOf(
+      RunnerReleaseRepoError,
     );
   });
 });

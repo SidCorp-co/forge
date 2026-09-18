@@ -1,5 +1,5 @@
 {
-  "id": "b46bcff6-1808-4f80-b226-6e155385cd02",
+  "id": "74c03287-eda2-44c7-841d-ebeca8c6b676",
   "prevId": "1fba434d-d03a-4780-a157-32c9b1d9c702",
   "version": "7",
   "dialect": "postgresql",
@@ -16482,7 +16482,7 @@
           "type": "text",
           "primaryKey": false,
           "notNull": true,
-          "default": "'absent'"
+          "default": "'unread'"
         },
         "publication": {
           "name": "publication",
@@ -16718,7 +16718,7 @@
         },
         "runner_releases_tag_state_chk": {
           "name": "runner_releases_tag_state_chk",
-          "value": "tag_state IN ('absent', 'unknown', 'present')"
+          "value": "tag_state IN ('unread', 'absent', 'unknown', 'present')"
         },
         "runner_releases_settled_chk": {
           "name": "runner_releases_settled_chk",

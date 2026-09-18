@@ -8,7 +8,7 @@ CREATE TABLE "runner_releases" (
 	"commit_sha" text,
 	"status" text DEFAULT 'preflight' NOT NULL,
 	"step" text DEFAULT 'resolve_repository' NOT NULL,
-	"tag_state" text DEFAULT 'absent' NOT NULL,
+	"tag_state" text DEFAULT 'unread' NOT NULL,
 	"publication" text DEFAULT 'unread' NOT NULL,
 	"publication_detail" text,
 	"workflow_run_id" text,
@@ -26,7 +26,7 @@ CREATE TABLE "runner_releases" (
 	"created_at" timestamp with time zone DEFAULT now() NOT NULL,
 	"updated_at" timestamp with time zone DEFAULT now() NOT NULL,
 	CONSTRAINT "runner_releases_status_chk" CHECK (status IN ('preflight', 'cutting', 'building', 'published', 'failed')),
-	CONSTRAINT "runner_releases_tag_state_chk" CHECK (tag_state IN ('absent', 'unknown', 'present')),
+	CONSTRAINT "runner_releases_tag_state_chk" CHECK (tag_state IN ('unread', 'absent', 'unknown', 'present')),
 	CONSTRAINT "runner_releases_settled_chk" CHECK ((status IN ('published', 'failed')) = (settled_at IS NOT NULL)),
 	CONSTRAINT "runner_releases_published_chk" CHECK (status <> 'published' OR (tag_state = 'present' AND publication = 'published'))
 );

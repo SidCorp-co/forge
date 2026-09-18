@@ -37,7 +37,7 @@ export type OpenOutcome =
   | { opened: RunnerReleaseRow; held: null }
   | { opened: null; held: RunnerReleaseRow };
 
-// cm:guard the re-arm's `WHERE runner_releases.tag_state = 'absent'` is the whole of the retry rule, and it is in the STATEMENT rather than in a branch above it: a row whose tag is present or of unknown existence describes something already on the repository, and a second attempt under the same name would either fail on GitHub's own 422 or, worse, succeed against a tag somebody else cut. A read-then-insert would let two calls both read `absent` and both cut.
+// cm:guard the re-arm's WHERE is the whole of the retry rule, and it is in the STATEMENT rather than in a branch above it: a read-then-insert would let two calls both read the row and both cut. Both halves are load-bearing. `settled_at IS NOT NULL` is what stops a second start seizing an attempt still running — without it two overlapping calls share one row, and one of them settles `absent` while the other has a create request in flight. `tag_state IN ('unread','absent')` is what stops a second attempt at a tag that exists or whose create went unanswered: that would either fail on GitHub's own 422 or, worse, succeed against a tag somebody else cut.
 export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
   const rows = await db.execute<{ id: string }>(sql`
     INSERT INTO runner_releases
@@ -60,12 +60,14 @@ export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
       release_url = NULL,
       failure = NULL,
       readings = '[]'::jsonb,
+      tag_state = 'unread',
       started_at = now(),
       tag_cut_at = NULL,
       build_reported_at = NULL,
       settled_at = NULL,
       updated_at = now()
-    WHERE runner_releases.tag_state = 'absent'
+    WHERE runner_releases.settled_at IS NOT NULL
+      AND runner_releases.tag_state IN ('unread', 'absent')
     RETURNING id
   `);
   // cm:guard the statement returns the ID and the ROW is read back through drizzle, because
@@ -166,6 +168,8 @@ export async function advance(id: string, args: AdvanceArgs): Promise<boolean> {
 export interface SettleFailedArgs {
   step: RunnerReleaseStep;
   failure: string;
+  /** Settle only while the row still reads as it did when the caller read it. */
+  ifUnchanged?: { step: RunnerReleaseStep; tagState: RunnerReleaseTagState };
   tagState?: RunnerReleaseTagState;
   publication?: RunnerReleasePublication;
   publicationDetail?: string;
@@ -194,9 +198,13 @@ export async function settleFailed(id: string, args: SettleFailedArgs): Promise<
   if (args.releaseUrl) sets.push(sql`release_url = ${args.releaseUrl}`);
   if (args.buildReportedAt)
     sets.push(sql`build_reported_at = ${args.buildReportedAt.toISOString()}`);
+  // cm:guard `ifUnchanged` is what the deadline pass settles under, and it is a condition rather than a re-read because the row it selected can move between the SELECT and this UPDATE: the sequence it is racing advances `cut_tag`/`unknown` over a `resolve_commit`/`unread` reading, and a settle without this clause writes the OLD step back over the new one together with a failure sentence saying the tag does not exist — a terminal row describing a snapshot that is no longer true.
+  const guard = args.ifUnchanged
+    ? sql` AND step = ${args.ifUnchanged.step} AND tag_state = ${args.ifUnchanged.tagState}`
+    : sql``;
   const rows = await db.execute<{ id: string }>(sql`
     UPDATE runner_releases SET ${sql.join(sets, sql`, `)}
-     WHERE id = ${id} AND settled_at IS NULL
+     WHERE id = ${id} AND settled_at IS NULL${guard}
      RETURNING id
   `);
   return rows.length > 0;
