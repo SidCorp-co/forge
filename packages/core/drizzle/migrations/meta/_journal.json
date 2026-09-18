@@ -1870,6 +1870,13 @@
       "when": 1802131200000,
       "tag": "0279_environments",
       "breakpoints": true
+    },
+    {
+      "idx": 282,
+      "version": "7",
+      "when": 1803427200000,
+      "tag": "0282_room_transcript_index",
+      "breakpoints": true
     }
   ]
 }

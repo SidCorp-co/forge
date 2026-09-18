@@ -23,6 +23,7 @@ import { agentRoutes } from './agents/routes.js';
 import { memoryModelRoutes } from './app-config/memory-model-routes.js';
 import { appConfigRoutes } from './app-config/routes.js';
 import { registerWebConversationAdapter } from './assistant/conversation-drain.js';
+import { registerTranscriptIndexSweeper } from './assistant/conversation-index-drain.js';
 import { conversationRoutes } from './assistant/conversation-routes.js';
 import { speakerLinkMeRoutes, speakerLinkProjectRoutes } from './assistant/identity/routes.js';
 import { bootstrapChatProviders } from './assistant/providers/bootstrap.js';
@@ -503,6 +504,7 @@ if (isMain) {
   await registerPmCadenceTicker();
   await registerAgentCronTicker();
   await registerPmQueuePressureSweeper();
+  await registerTranscriptIndexSweeper();
   await registerPmEscalationSweeper();
   registerWebhookSubscribers(hooks);
   registerPipelineOrchestrator(hooks);

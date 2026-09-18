@@ -26,10 +26,12 @@ function storeFiles(): string[] {
  * a CALLER of.
  */
 // cm:guard `inbound-turn.js` left this list because the module left the tree: ISS-1004 split the turn-per-message into a collect and a later route, and `collect-inbound.js` + `route-window.js` + `windows.js` are what an adapter now calls in its place. What has NOT widened is the rule — no store function is on this list, and `store.js` appearing here would mean an adapter reading rows directly again, which is the coupling this file exists to fail CI on.
+// cm:guard `transcript-search-tool.js` is on this list for the reason the list exists rather than as an exception: it is neutral machinery an adapter is a CALLER of, not a store function re-exported. It names no transport, holds no adapter's knowledge, and takes what is transport-specific — the permalink a message id resolves to, and what this venue does not cover — as arguments the caller supplies. It reaches the store through `transcript-search.js`, which is not on this list and which an adapter therefore still cannot import (ISS-1090).
 const ADAPTER_FACING = [
   'ports.js',
   'turn-runner.js',
   'transcript.js',
+  'transcript-search-tool.js',
   'collect-inbound.js',
   'route-window.js',
   'windows.js',
