@@ -54,8 +54,21 @@ provider's failure reported as an empty scope) is what made this cost a week ins
 it is not on the critical path for the red, and is worth having before the next resolver change.
 
 At that point `^18` in `packages/core/package.json` resolves to a dependency-cruiser archmap can
-spawn, and the `archmap-resolver` prerequisite stops firing on its own. Nothing here needs
-retracting — the prerequisite is correct at every version and silent at the good ones.
+spawn.
+
+**The `archmap-resolver` prerequisite does NOT stop firing on its own, and it must move in the same
+change that re-vendors archmap.** It resolves `node_modules/dependency-cruiser/bin/dependency-cruise.mjs`
+— the entry point *today's* vendored archmap 0.1.4 spawns. A fixed archmap will spawn
+`bin/dependency-cruiser.mjs`, and the tree will then carry that file and not the old one, so a
+re-vendor alone leaves the prerequisite absent on every run and the gate refusing forever. The
+`cm:edge lockstep` on that entry in `scripts/lib/prerequisite.mjs` names the coupling and is the
+only record of it; the re-vendoring change is where both halves move together.
+
+It fails closed and loudly rather than quietly: the refusal names dependency-cruiser and the file it
+looked for, so the wrong state is one edit from correct and can never read as a pass. That is the
+reason this is a note here rather than a reason to weaken the prerequisite into accepting either
+filename — accepting either would make it green under today's archmap at 18.3.x, which is precisely
+the blindness it was added to remove.
 
 ## Honest costs
 
