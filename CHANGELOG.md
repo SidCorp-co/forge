@@ -112,6 +112,10 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **The database can now say which queries cost it the most, and its sizing settings live with
+  the deployment.** Per-statement timing starts at the next database restart. Sizing keeps
+  today's values until someone reads the machine.
+
 - **Sentry errors can become Forge issues on a schedule.** Forge files the ones clearing an
   admission bar you set on the Ops Console, as drafts. Everything it turns away is named in the
   run's record, and a repeat sighting comments.
