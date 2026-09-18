@@ -150,23 +150,30 @@ export async function readTagRef(
   tag: string,
 ): Promise<{ sha: string } | null> {
   const subject = runnerReleaseSubject({ lookup: `looking the tag ${tag} up` });
+  // cm:guard the 404-as-absence belongs to the REF lookup and to nothing else. Sharing it with the peel below means a `/git/tags/<sha>` that answers 404 — the object collected, the sha mistyped, a permission that covers refs and not objects — reads as "this repository holds no such tag" for a ref GitHub just handed back, and the sequence then walks on and cuts over a tag it has seen.
+  let object: { sha?: string; type?: string } | undefined;
   try {
     const ref = await client.publish<{ object?: { sha?: string; type?: string } }>({
       op: 'lookup',
       method: 'GET',
       path: `${repoPath(client)}/git/ref/tags/${encodeURIComponent(tag)}`,
     });
-    const object = ref.object;
-    if (!object?.sha) return { sha: '(unknown commit)' };
-    if (object.type !== 'tag') return { sha: object.sha };
+    object = ref.object;
+  } catch (err) {
+    if (isAbsent(err)) return null;
+    refuse(err, 'lookup', subject);
+  }
+  if (!object?.sha) return { sha: '(unknown commit)' };
+  if (object.type !== 'tag') return { sha: object.sha };
+  const objectSha = object.sha;
+  try {
     const peeled = await client.publish<{ object?: { sha?: string } }>({
       op: 'lookup',
       method: 'GET',
-      path: `${repoPath(client)}/git/tags/${encodeURIComponent(object.sha)}`,
+      path: `${repoPath(client)}/git/tags/${encodeURIComponent(objectSha)}`,
     });
-    return { sha: peeled.object?.sha ?? object.sha };
+    return { sha: peeled.object?.sha ?? objectSha };
   } catch (err) {
-    if (isAbsent(err)) return null;
     refuse(err, 'lookup', subject);
   }
 }

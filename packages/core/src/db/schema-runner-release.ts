@@ -105,8 +105,10 @@ export const runnerReleases = pgTable(
     tag: text('tag').notNull(),
     // cm:guard the re-arm reuses the ROW, so without a number on it the attempt it replaced is indistinguishable from the one that replaced it: a caller still running inside the old attempt, or a sweep that selected the old one, writes into the new one over a `settled_at IS NULL` that is true again and a step and tag state that came back round to the same pair. Every conditional write on this table carries the attempt it was issued for and matches it, which is what makes that ABA lose in Postgres rather than in a branch.
     attempt: integer('attempt').notNull().default(1),
-    /** The commit the tag points at. NULL until `resolve_commit` answered. */
+    /** The commit this release resolved and would cut at. NULL until `resolve_commit` answered. */
     commitSha: text('commit_sha'),
+    // cm:guard the commit the TAG points at, read off the repository, and a different fact from `commit_sha` above — which is the commit this release ASKED for. They are equal on a tag Forge cut and they differ on every tag it found already there, which is exactly the case the row is refusing. Rendering the repository's truth from the requested commit tells an operator the tag is at a commit nobody observed it at, and the refusal is the one thing they act on. NULL means unread, and nothing substitutes for it.
+    tagCommitSha: text('tag_commit_sha'),
     status: text('status', { enum: RUNNER_RELEASE_STATUSES }).notNull().default('preflight'),
     /** The step the operation is at, or the step it stopped at. */
     step: text('step', { enum: RUNNER_RELEASE_STEPS }).notNull().default('resolve_repository'),

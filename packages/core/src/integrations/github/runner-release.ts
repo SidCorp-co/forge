@@ -68,6 +68,7 @@ const truthOf = (row: RunnerReleaseRow, tagState = row.tagState) =>
   repositoryTruth({
     tag: row.tag,
     commitSha: row.commitSha,
+    tagCommitSha: row.tagCommitSha,
     tagState,
     publication: row.publication,
     publicationDetail: row.publicationDetail,
@@ -120,10 +121,12 @@ async function cutTheTag(
       commitSha,
       tagMessageForVersion(row.version),
     );
+    // cm:guard the tag Forge just cut points at the commit Forge cut it at, so the observed target is written here from the same act — not inferred later from `commit_sha`, which is the requested one and equal only by coincidence of this path.
     await advance(row.id, row.attempt, {
       step: 'await_build',
       status: 'building',
       tagState: 'present',
+      tagCommitSha: commitSha,
       tagCutAt: new Date(),
     });
     await appendReading(
@@ -142,9 +145,8 @@ async function cutTheTag(
       : err.beforeWrite || rejected
         ? ('absent' as const)
         : ('unknown' as const);
-    // cm:guard `present` here came from GitHub saying the ref is already there, which says nothing about WHAT it points at — Forge never read it. Passing this release's own commit into the sentence would have it assert that the tag somebody else cut is at the commit this attempt resolved, off no reading at all. The other two states name the commit legitimately: they are about the create Forge sent.
-    const truthCommit = tagState === 'present' ? null : commitSha;
-    const failure = `${refusal.message} ${truthOf({ ...row, commitSha: truthCommit, tagState }, tagState)}`;
+    // cm:guard `present` here came from GitHub saying the ref is already there, which says nothing about WHAT it points at — Forge never read it, so `tag_commit_sha` stays NULL and the sentence says the tag exists without saying where. The commit this attempt resolved is a different fact and stays on `commit_sha`.
+    const failure = `${refusal.message} ${truthOf({ ...row, commitSha, tagState }, tagState)}`;
     await settleFailed(row.id, row.attempt, { step: 'cut_tag', failure, tagState });
     await appendReading(row.id, row.attempt, `cut_tag: refused — ${refusal.cause}`);
     logger.warn(
@@ -201,21 +203,24 @@ async function runPreflight(
     tagRead = true;
     if (existing) {
       // cm:guard the sentence names the commit the tag WAS FOUND at and, separately, the commit this release resolved — they are two different facts and only one of them was read off the repository. Describing the existing tag with the requested commit is a row contradicting its own lead sentence, and it is the reading an operator acts on when deciding whether the tag that is there is the one they wanted.
+      const observed = { ...row, commitSha, tagCommitSha: existing.sha };
       const failure =
         `\`${row.tag}\` already exists on ${client.fullName}, pointing at ${existing.sha}, ` +
         `and this release resolved ${commitSha}. ` +
-        `${truthOf({ ...row, commitSha: existing.sha, tagState: 'present' as const }, 'present')}`;
+        `${truthOf(observed, 'present')}`;
+      // cm:guard the observed target is STORED and not only printed. Every later reader — the next start's refusal, the deadline pass, the API — rebuilds this sentence from the row, and a row that keeps only the requested commit rebuilds it saying the tag is at a commit nobody saw it at.
       const settled = await settleFailed(row.id, row.attempt, {
         step,
         failure,
         tagState: 'present',
+        tagCommitSha: existing.sha,
       });
       if (!settled) return lostTheRow(row);
       return {
         started: false,
         kind: 'stopped',
         message: failure,
-        release: await asPersisted(row.id, { ...row, commitSha, tagState: 'present' as const }),
+        release: await asPersisted(row.id, { ...observed, tagState: 'present' as const }),
       };
     }
     if (!(await advance(row.id, row.attempt, { tagState: 'absent' }))) return lostTheRow(row);

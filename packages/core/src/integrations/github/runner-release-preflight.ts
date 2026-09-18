@@ -249,11 +249,15 @@ const IMMUTABLE =
 export function repositoryTruth(args: {
   tag: string;
   commitSha: string | null;
+  /** The commit the tag was OBSERVED at. NULL where nobody read it. */
+  tagCommitSha?: string | null;
   tagState: RunnerReleaseTagState;
   publication: RunnerReleasePublication;
   publicationDetail: string | null;
 }): string {
+  // cm:guard two different commits and the sentence picks by what it is about. `unknown` is about the create Forge SENT, so it names the commit Forge asked for. `present` is about a tag on the repository, so it names the commit that tag was READ at — and says nothing where nobody read it. Falling back from one to the other is how a refusal reports a tag at a commit it was never seen at.
   const at = args.commitSha ? ` at ${args.commitSha}` : '';
+  const atTag = args.tagCommitSha ? ` at ${args.tagCommitSha}` : '';
   // cm:guard `unread` and `absent` are ONE fact about Forge — no create request left this process — and TWO different facts about the repository, so they get two sentences. Saying "the tag does not exist" off a lookup that never answered is a claim about a repository Forge did not read, and it is the sentence an operator acts on before cutting anything else.
   if (args.tagState === 'unread') {
     return (
@@ -271,7 +275,7 @@ export function repositoryTruth(args: {
       IMMUTABLE
     );
   }
-  const exists = `The tag \`${args.tag}\` exists${at}`;
+  const exists = `The tag \`${args.tag}\` exists${atTag}`;
   switch (args.publication) {
     case 'published':
       return `${exists} and GitHub holds a published release for it.`;

@@ -7,6 +7,7 @@ CREATE TABLE "runner_releases" (
 	"tag" text NOT NULL,
 	"attempt" integer DEFAULT 1 NOT NULL,
 	"commit_sha" text,
+	"tag_commit_sha" text,
 	"status" text DEFAULT 'preflight' NOT NULL,
 	"step" text DEFAULT 'resolve_repository' NOT NULL,
 	"tag_state" text DEFAULT 'unread' NOT NULL,

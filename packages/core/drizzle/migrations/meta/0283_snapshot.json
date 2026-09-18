@@ -1,5 +1,5 @@
 {
-  "id": "6833e56e-b08f-4c0e-8e35-365d7048b2d3",
+  "id": "32a9a66e-5354-48cf-8a58-77c018d3973b",
   "prevId": "1fba434d-d03a-4780-a157-32c9b1d9c702",
   "version": "7",
   "dialect": "postgresql",
@@ -16466,6 +16466,12 @@
         },
         "commit_sha": {
           "name": "commit_sha",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "tag_commit_sha": {
+          "name": "tag_commit_sha",
           "type": "text",
           "primaryKey": false,
           "notNull": false

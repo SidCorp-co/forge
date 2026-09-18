@@ -190,6 +190,8 @@ describe('the whole sequence when nothing is wrong', () => {
     expect(row()?.step).toBe('await_build');
     expect(row()?.tagState).toBe('present');
     expect(row()?.commitSha).toBe('abc1234');
+    // cm:guard the tag Forge cut points at the commit Forge cut it at, and that is RECORDED from the act rather than inferred later from `commit_sha` — which is the commit this release asked for, equal here only because this is the path where Forge made the tag itself.
+    expect(row()?.tagCommitSha).toBe('abc1234');
     expect(row()?.settledAt).toBeNull();
   });
 
@@ -249,6 +251,9 @@ describe('the preflights, each naming the step and that nothing was written', ()
     // cm:guard both commits, labelled, and the truth sentence built from the OBSERVED one. A refusal that names `olderco` in its lead and then says the tag exists at `abc1234` contradicts itself in two consecutive sentences, and the second one is the reading an operator acts on.
     expect(String(row()?.failure)).toContain('this release resolved abc1234');
     expect(String(row()?.failure)).toContain('The tag `runner-v0.13.3` exists at olderco');
+    // cm:guard STORED, not only printed. The sentence above is written once; every later reader — the next start's refusal, the deadline pass, the API — rebuilds it off the row, and a row keeping only the requested commit rebuilds it naming a commit nobody saw the tag at.
+    expect(row()?.tagCommitSha).toBe('olderco');
+    expect(row()?.commitSha).toBe('abc1234');
     expect(repo.createTagRef).not.toHaveBeenCalled();
   });
 
@@ -354,6 +359,7 @@ describe('the three things that can be true after a cut that did not answer', ()
     // cm:guard the sentence says the tag EXISTS and does not say where. GitHub answering "the ref is already there" is not a reading of what it points at, and naming this attempt's own commit there would be the row asserting, off nothing, that somebody else's tag is at the commit Forge resolved.
     expect(String(row()?.failure)).toContain('The tag `runner-v0.13.3` exists');
     expect(String(row()?.failure)).not.toContain('exists at abc1234');
+    expect(row()?.tagCommitSha).toBeUndefined();
   });
 
   // cm:guard a 5xx is NOT a refusal that proves nothing was written: GitHub can commit the ref and then fall over answering, and `absent` here is what lets the next attempt cut over a tag that is already on the repository.

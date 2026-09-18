@@ -68,6 +68,7 @@ export async function nameOverdueRunnerReleases(
     const failure = `${leadFor(row, now)} ${repositoryTruth({
       tag: row.tag,
       commitSha: row.commitSha,
+      tagCommitSha: row.tagCommitSha,
       tagState: row.tagState,
       publication: row.publication,
       publicationDetail: row.publicationDetail,

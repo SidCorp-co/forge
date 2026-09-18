@@ -54,6 +54,7 @@ export async function openRunnerRelease(args: OpenArgs): Promise<OpenOutcome> {
       publication = 'unread',
       publication_detail = NULL,
       commit_sha = NULL,
+      tag_commit_sha = NULL,
       workflow_run_id = NULL,
       workflow_url = NULL,
       build_conclusion = NULL,
@@ -162,6 +163,7 @@ export interface AdvanceArgs {
   status?: 'preflight' | 'cutting' | 'building';
   tagState?: RunnerReleaseTagState;
   commitSha?: string;
+  tagCommitSha?: string;
   tagCutAt?: Date;
   workflowRunId?: string;
   workflowUrl?: string;
@@ -174,6 +176,7 @@ export async function advance(id: string, attempt: number, args: AdvanceArgs): P
   if (args.status) sets.push(sql`status = ${args.status}`);
   if (args.tagState) sets.push(sql`tag_state = ${args.tagState}`);
   if (args.commitSha) sets.push(sql`commit_sha = ${args.commitSha}`);
+  if (args.tagCommitSha) sets.push(sql`tag_commit_sha = ${args.tagCommitSha}`);
   if (args.tagCutAt) sets.push(sql`tag_cut_at = ${args.tagCutAt.toISOString()}`);
   if (args.workflowRunId) sets.push(sql`workflow_run_id = ${args.workflowRunId}`);
   if (args.workflowUrl) sets.push(sql`workflow_url = ${args.workflowUrl}`);
@@ -188,6 +191,7 @@ export async function advance(id: string, attempt: number, args: AdvanceArgs): P
 export interface SettleFailedArgs {
   step: RunnerReleaseStep;
   failure: string;
+  tagCommitSha?: string;
   /** Settle only while the row still reads as it did when the caller read it. */
   ifUnchanged?: { step: RunnerReleaseStep; tagState: RunnerReleaseTagState };
   tagState?: RunnerReleaseTagState;
@@ -214,6 +218,7 @@ export async function settleFailed(
     sql`updated_at = now()`,
   ];
   if (args.tagState) sets.push(sql`tag_state = ${args.tagState}`);
+  if (args.tagCommitSha) sets.push(sql`tag_commit_sha = ${args.tagCommitSha}`);
   if (args.publication) sets.push(sql`publication = ${args.publication}`);
   if (args.publicationDetail) sets.push(sql`publication_detail = ${args.publicationDetail}`);
   if (args.buildConclusion) sets.push(sql`build_conclusion = ${args.buildConclusion}`);

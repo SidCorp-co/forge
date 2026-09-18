@@ -122,6 +122,7 @@ beforeEach(() => {
     tag: 'runner-v0.13.3',
     version: '0.13.3',
     commitSha: 'abc1234',
+    tagCommitSha: 'abc1234',
     status: 'building',
     step: 'await_build',
     tagState: 'present',

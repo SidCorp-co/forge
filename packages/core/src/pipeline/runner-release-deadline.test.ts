@@ -55,6 +55,7 @@ const release = (over: Partial<Row> = {}): Row => ({
   attempt: 1,
   tag: 'runner-v0.13.3',
   commitSha: 'abc1234',
+  tagCommitSha: 'abc1234',
   step: 'await_build',
   tagState: 'present',
   publication: 'unread',

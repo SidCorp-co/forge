@@ -193,6 +193,7 @@ async function settle(
   const failure = `${lead} ${repositoryTruth({
     tag: row.tag,
     commitSha: row.commitSha,
+    tagCommitSha: row.tagCommitSha,
     tagState: 'present',
     publication: read.publication,
     publicationDetail: read.detail,

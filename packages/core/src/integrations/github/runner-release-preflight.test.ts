@@ -220,7 +220,13 @@ describe('what GitHub holds for the tag', () => {
 });
 
 describe('what is now true on the repository', () => {
-  const base = { tag: 'runner-v0.13.3', commitSha: 'abc1234', publicationDetail: null };
+  // cm:guard two commits on the fixture, deliberately different: `commitSha` is what this release ASKED for and `tagCommitSha` is what the tag was READ at. A fixture where they are equal cannot tell a sentence that names the right one from a sentence that names either.
+  const base = {
+    tag: 'runner-v0.13.3',
+    commitSha: 'abc1234',
+    tagCommitSha: 'olderco',
+    publicationDetail: null,
+  };
 
   it('says nothing was written when the tag is absent', () => {
     const said = repositoryTruth({ ...base, tagState: 'absent', publication: 'unread' });
@@ -241,6 +247,8 @@ describe('what is now true on the repository', () => {
   // cm:guard this sentence is the whole of ISS-1075 point 3 for the shape nobody else reports: a process that died between asking for the tag and hearing the answer. It has to say the tag MAY exist, and it has to say Forge will not tidy it away.
   it('says the tag may or may not exist after a cut whose answer never came', () => {
     const said = repositoryTruth({ ...base, tagState: 'unknown', publication: 'unread' });
+    // cm:guard `unknown` is about the create Forge SENT, so it names the commit Forge asked for and not a tag target nobody read.
+    expect(said).toContain('at abc1234');
     expect(said).toContain('never heard the answer');
     expect(said).toContain('may or may not exist');
     expect(said).toContain('deletes none and re-cuts none');
@@ -248,7 +256,8 @@ describe('what is now true on the repository', () => {
 
   it('says the tag exists and nothing is published when the release is absent', () => {
     const said = repositoryTruth({ ...base, tagState: 'present', publication: 'absent' });
-    expect(said).toContain('`runner-v0.13.3` exists at abc1234');
+    expect(said).toContain('`runner-v0.13.3` exists at olderco');
+    expect(said).not.toContain('at abc1234');
     expect(said).toContain('nothing is published');
     expect(said).toContain('deletes none and re-cuts none');
   });
@@ -268,6 +277,18 @@ describe('what is now true on the repository', () => {
     expect(unknown).toContain('could not read what GitHub holds');
     expect(unknown).toContain('unknown');
     expect(unknown).not.toContain('nothing is published');
+  });
+
+  // cm:guard a tag whose target was never read says it exists and stops there. Substituting the requested commit would have the row assert, off no reading at all, that somebody else's tag is at the commit this attempt resolved.
+  it('names no commit for a tag nobody read the target of', () => {
+    const said = repositoryTruth({
+      ...base,
+      tagCommitSha: null,
+      tagState: 'present',
+      publication: 'absent',
+    });
+    expect(said).toContain('The tag `runner-v0.13.3` exists and');
+    expect(said).not.toContain('abc1234');
   });
 
   it('says the release exists when it is published', () => {

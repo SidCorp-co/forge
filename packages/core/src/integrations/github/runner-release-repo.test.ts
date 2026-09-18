@@ -98,6 +98,18 @@ describe('the reads', () => {
     expect(await readTagRef(present.client, 'runner-v0.13.2')).toEqual({ sha: 'abc1234' });
   });
 
+  // cm:guard a peel that 404s says NOTHING about the ref, which GitHub answered a moment ago. Sharing the ref lookup's 404-as-absence with it turns a tag Forge has seen into a tag it reports missing — and the sequence walks straight on and cuts over it. The defect did not exist before the peel did.
+  it('refuses a peel that 404s rather than reading the tag as absent', async () => {
+    const { client } = stubClient((call) =>
+      call.path.includes('/git/ref/tags/')
+        ? { object: { sha: 'tagobj1', type: 'tag' } }
+        : new GitHubPublishError({ op: 'lookup', status: 404, message: 'no object' }),
+    );
+    const err = await readTagRef(client, 'runner-v0.14.0').catch((e) => e);
+    expect(err).toBeInstanceOf(RunnerReleaseRepoError);
+    expect(err.beforeWrite).toBe(true);
+  });
+
   // cm:guard every `runner-v*` tag on this repository is annotated, Forge's own now included, and an annotated ref points at a tag OBJECT. Criterion 2 says the refusal names the COMMIT the tag points at, so the object is peeled — without it the refusal prints a sha that is real, is not a commit, and is called one, and whoever reads it goes looking for a commit that does not exist.
   it('peels an annotated tag to the commit it points at', async () => {
     const { client, calls } = stubClient((call) =>

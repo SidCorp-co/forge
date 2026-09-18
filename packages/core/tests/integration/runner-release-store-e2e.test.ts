@@ -378,6 +378,50 @@ describe('runner_releases — settling under the reading it was selected on', ()
   });
 });
 
+describe('runner_releases — the commit the tag was read at', () => {
+  // cm:guard `commit_sha` is what this release ASKED for and `tag_commit_sha` is what the tag was
+  // READ at, and they differ on exactly the case the row is refusing: a tag that was already
+  // there. The observed one is stored rather than printed once, because every later reader — the
+  // next start's refusal, the deadline pass, the API — rebuilds the sentence from the row, and a
+  // row keeping only the requested commit rebuilds it naming a commit nobody saw the tag at.
+  it('keeps the observed target apart from the requested one', async () => {
+    const id = String((await open()).opened?.id);
+    await store.advance(id, 1, { commitSha: 'abc1234' });
+    await store.settleFailed(id, 1, {
+      step: 'check_tag_absent',
+      failure: 'already exists, pointing at olderco',
+      tagState: 'present',
+      tagCommitSha: 'olderco',
+    });
+    const row = await store.findById(id);
+    expect(row?.commitSha).toBe('abc1234');
+    expect(row?.tagCommitSha).toBe('olderco');
+  });
+
+  it('leaves the observed target unread where nobody read it', async () => {
+    const id = String((await open()).opened?.id);
+    await store.advance(id, 1, { commitSha: 'abc1234' });
+    await store.settleFailed(id, 1, {
+      step: 'cut_tag',
+      failure: 'GitHub says the ref is already there',
+      tagState: 'present',
+    });
+    expect((await store.findById(id))?.tagCommitSha).toBeNull();
+  });
+
+  it('clears it on the re-arm, with the rest of the previous attempt', async () => {
+    const id = String((await open()).opened?.id);
+    await store.settleFailed(id, 1, {
+      step: 'resolve_commit',
+      failure: 'read refused',
+      tagState: 'unread',
+      tagCommitSha: 'olderco',
+    });
+    const second = await open();
+    expect(second.opened?.tagCommitSha).toBeNull();
+  });
+});
+
 describe('runner_releases — the attempt a write was issued for', () => {
   // cm:guard the re-arm reuses the ROW, so `settled_at IS NULL` becomes true again and the step and
   // tag state can come back round to the pair an older reader is holding. Without a number on the
