@@ -9,22 +9,15 @@
 
 import { env } from '../../config/env.js';
 
+// cm:guard `APP_BASE_URL` and NOT the first `CORS_ORIGINS` entry, which this read before it was
+// corrected: CORS is a list of origins allowed to CALL the API, in whatever order a deployment
+// happened to write them — a desktop `tauri://localhost` sitting first would have put a link nobody
+// can open in front of every unlinked speaker. `APP_BASE_URL` is the one variable that names the web
+// frontend, and `projects/invitation-email.ts:invitationUrl` builds its accept link off the same one.
 // cm:guard a function and not a const: read at module scope this validated the whole environment on
 // import, which is the ISS-1067 shape `connection-manager.ts:webBaseUrl` already carries a note about.
-let cached: string | undefined;
-let read = false;
-function appBaseUrl(): string | undefined {
-  if (!read) {
-    cached = env.CORS_ORIGINS.split(',')[0]?.trim().replace(/\/+$/, '') || undefined;
-    read = true;
-  }
-  return cached;
-}
-
-/** Only for tests that change the environment between cases. */
-export function resetAppBaseUrlCache(): void {
-  read = false;
-  cached = undefined;
+function appBaseUrl(): string {
+  return env.APP_BASE_URL.replace(/\/+$/, '');
 }
 
 export interface SpeakerLinkTarget {
@@ -33,18 +26,12 @@ export interface SpeakerLinkTarget {
   externalId: string;
 }
 
-/**
- * The confirm page for one speaker, or null where this deployment does not know
- * its own web address — in which case a caller says the rest without a link
- * rather than printing a broken one.
- */
-export function speakerLinkUrl(target: SpeakerLinkTarget): string | null {
-  const base = appBaseUrl();
-  if (!base) return null;
+/** The confirm page for one speaker, on this deployment's own web frontend. */
+export function speakerLinkUrl(target: SpeakerLinkTarget): string {
   const q = new URLSearchParams({
     projectId: target.projectId,
     source: target.source,
     externalId: target.externalId,
   });
-  return `${base}/link-chat?${q.toString()}`;
+  return `${appBaseUrl()}/link-chat?${q.toString()}`;
 }

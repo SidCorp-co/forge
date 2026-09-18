@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../db/client.js', () => ({ db: {} }));
 vi.mock('../../config/env.js', () => ({
-  env: { CORS_ORIGINS: 'https://forge.example.co,https://other.example.co' },
+  env: { APP_BASE_URL: 'https://forge.example.co/', CORS_ORIGINS: 'tauri://localhost' },
 }));
 
 const { unlinkedMessage } = await import('./speaker-link.js');
@@ -64,13 +64,15 @@ describe('unlinkedMessage — degrading rather than lying', () => {
 describe('speakerLinkUrl — one builder for every adapter', () => {
   it('carries the three things the page needs, whatever the source is', () => {
     const url = speakerLinkUrl({ projectId: PROJECT, source: 'telegram', externalId: 'abc 1' });
-    const q = new URL(url as string).searchParams;
+    const q = new URL(url).searchParams;
     expect(q.get('projectId')).toBe(PROJECT);
     expect(q.get('source')).toBe('telegram');
     expect(q.get('externalId')).toBe('abc 1');
   });
 
-  it('takes the first CORS origin as this deployment own web address', () => {
+  // The env mock puts a desktop scheme in CORS_ORIGINS on purpose: reading the first CORS entry
+  // would hand a chat reader `tauri://localhost`, which no browser they have can open.
+  it('builds on APP_BASE_URL, the one variable that names the web frontend', () => {
     expect(speakerLinkUrl({ projectId: PROJECT, source: 'rocketchat', externalId: 'x' })).toMatch(
       /^https:\/\/forge\.example\.co\/link-chat\?/,
     );

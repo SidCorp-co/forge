@@ -65,9 +65,9 @@ function speakerPhrase(ref: SpeakerRef): string {
 // The condition is the ADDRESSES MATCHING: measured 2026-09-18, the person who hit this was refused
 // because the channel reports one address for them and they sign in to Forge as another, and the
 // refusal they got never used the word "email".
-// cm:guard the last sentence degrades rather than lies. With a project it is a link to the confirm
-// page; without one, or on a deployment that does not know its own web address, it names the
-// endpoint instead. A refusal that prints a broken URL is worse than one that prints none.
+// cm:guard the last sentence degrades rather than lies: with a project it is a link to the confirm
+// page, and without one — the resolver called from a path that does not know the project — it names
+// the endpoint instead, because a page URL missing the project it must scope to opens onto nothing.
 export function unlinkedMessage(ref: SpeakerRef, projectId?: string): string {
   const url = projectId
     ? speakerLinkUrl({ projectId, source: ref.source, externalId: ref.externalId })
