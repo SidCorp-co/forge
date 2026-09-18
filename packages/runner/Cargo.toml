@@ -25,7 +25,7 @@ rusqlite = { version = "0.38", features = ["bundled"] }
 
 # Declared ahead for M1+ (not referenced by any crate yet — pulled in lazily)
 reqwest = { version = "0.12", default-features = false, features = ["json", "rustls-tls"] }
-tokio-tungstenite = "0.29"
+tokio-tungstenite = "0.30"
 futures-util = "0.3"
 keyring = { version = "3", features = ["apple-native", "windows-native", "sync-secret-service"] }
 uuid = { version = "1", features = ["v4"] }
