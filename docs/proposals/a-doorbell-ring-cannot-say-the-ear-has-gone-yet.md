@@ -40,3 +40,15 @@ Not "make the test stable". The question underneath it is what `Ring::NoListener
 The readers of that verdict are what make it ISS-964's to settle: a bounded wait is gated on
 `NoListener`, so the two readings differ in whether a question can be parked against a run whose
 listener died between the ring and the read.
+
+## Honest costs
+
+The cost of settling this, not of the red that raised it. Both readings are priced, because which
+one is taken is the decision.
+
+| Reading | What taking it costs |
+|---|---|
+| **The ear is gone** (a fact about the listener) | `ring` must become able to report a listener that has closed but whose close has not propagated — an extra syscall, a retry, or a handshake, on the hot path every bounded wait rings through. Every ringer pays that on every ring to make one assertion in one test deterministic. |
+| **The ear is gone and that is now observable** (a fact about this ring) | `Heard` becomes a legitimate answer for a door whose listener has already died, so a bounded wait can be parked against a run nobody is waiting on. Whoever reads `Heard` inherits the job of noticing that later, and the doorbell stops being the single place that question is answered. |
+| Either | The existing assertion in `dropping_the_ear_stops_the_door_being_heard` is rewritten or deleted, so the one test that names this behaviour today stops being evidence for it until the replacement lands. |
+| Doing neither | A red that reproduces roughly once in four full runs under load stays on a required check, and the next person to meet it has to re-derive this measurement before they can tell it from a real defect. |
