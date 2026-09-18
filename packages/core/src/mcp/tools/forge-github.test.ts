@@ -270,7 +270,7 @@ describe('what a caller is told rather than left to infer', () => {
   it('answers merge with where the merge lives, before the schema is consulted', async () => {
     await expect(
       tool().handler({ action: 'merge', projectId: PROJECT_ID, pullRequest: 481 }),
-    ).rejects.toThrow(/ISS-1073/);
+    ).rejects.toThrow(/pull_request\.merge/);
     await expect(
       tool().handler({ action: 'delete-branch', projectId: PROJECT_ID }),
     ).rejects.toThrow(/kernel transition/);

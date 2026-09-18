@@ -86,20 +86,26 @@ describe('the declaration and the implementation agree', () => {
 });
 
 describe('what it refuses, and by what name', () => {
-  it('refuses an event it does not serve, naming it AND the one it does', async () => {
+  // cm:guard the refusal names EVERY verb the table holds, not the first one. ISS-1073 added a
+  // second, and a refusal that had gone on naming one would have told a caller with a typo that the
+  // verb it actually wanted does not exist.
+  it('refuses an event it does not serve, naming it AND every verb it does', async () => {
     await expect(
-      dispatch()?.(ctx, { eventName: 'pull_request.merge', payload: {} }),
-    ).rejects.toThrow(/pull_request\.merge/);
+      dispatch()?.(ctx, { eventName: 'pull_request.open', payload: {} }),
+    ).rejects.toThrow(/pull_request\.open/);
     await expect(
-      dispatch()?.(ctx, { eventName: 'pull_request.merge', payload: {} }),
+      dispatch()?.(ctx, { eventName: 'pull_request.open', payload: {} }),
     ).rejects.toThrow(new RegExp(CHECK_PUBLISH_EVENT.replace('.', '\\.')));
+    await expect(
+      dispatch()?.(ctx, { eventName: 'pull_request.open', payload: {} }),
+    ).rejects.toThrow(/pull_request\.merge/);
     expect(publishForStoredPullRequest).not.toHaveBeenCalled();
   });
 
-  it('refuses the merge verb explicitly, which is a later layer and not this one', async () => {
+  it('sends a caller naming a judgement verb to the face that carries it', async () => {
     await expect(
-      dispatch()?.(ctx, { eventName: 'pull_request.merge', payload: {} }),
-    ).rejects.toThrow(/Merging/);
+      dispatch()?.(ctx, { eventName: 'pull_request.review', payload: {} }),
+    ).rejects.toThrow(/forge_github/);
   });
 
   // cm:guard the refusal is RECORDED as well as thrown, and against a NULL binding rather than the dead one: a row scoped to a binding that is gone is a row nothing will list.

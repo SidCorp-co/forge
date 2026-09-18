@@ -2,12 +2,16 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // cm:guard ISS-669 — `awaiting_release` must NOT close the issue's open pipeline_run, because the release step runs inside it; only the statuses in `RUN_CLOSING_STATUSES` close a run, and these cases assert `closeOpenRunForIssue` fires on exactly those and no others.
 
-const updateReturning = vi.fn();
+// cm:guard the default is an EMPTY ARRAY and never `undefined`. Drizzle's `.returning()` resolves to
+// a row array whatever the WHERE matched, and a double answering `undefined` is a double the real
+// thing cannot produce — `merge-record.ts` destructures the first row, so a test that got away with
+// it was passing against a runtime that could not represent the shape it was asserting about.
+const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn(() => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
 const txExecute = vi.fn(async () => undefined);
-// cm:why the EMPTY row set is the point — `markMergedIfLeavingBase` reads `projects` before deciding to stamp `merged_at`, and no row resolves the default merge states and short-circuits it
+// cm:why the EMPTY row set is what keeps the reads in this transaction answering: `entry-criteria.ts` and the close stamp's read-back both go through this chain, and a link that is missing throws for a caller that never staged a value
 const selectLimit = vi.fn(async () => [] as unknown[]);
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));

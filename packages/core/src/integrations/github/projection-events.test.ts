@@ -28,7 +28,23 @@ vi.mock('./projection.js', () => ({
   findRowByNumber: (...a: unknown[]) => findRowByNumber(...a),
   openPullRequestsOnBase: (...a: unknown[]) => openPullRequestsOnBase(...a),
   branchOfPush: (p: { ref?: string }) => p.ref?.replace('refs/heads/', '') ?? null,
+  // cm:guard `stateOf` is the REAL one and not a stub, because it is the single definition of what
+  // `merged` means and the merged arm this suite exercises is decided by it. A stub here would let
+  // the two disagree, which is the thing the projection exists to stop.
+  stateOf: (pr: { merged?: boolean; merged_at?: string | null; state?: string }) =>
+    pr.merged === true || pr.merged_at
+      ? 'merged'
+      : pr.state === 'closed'
+        ? 'closed'
+        : 'open',
 }));
+
+const recordIssueMerge = vi.fn(async () => ({ wrote: false, mergedAt: null, commitSha: null }));
+vi.mock('../../issues/merge-record.js', () => ({
+  recordIssueMerge: (...a: unknown[]) => recordIssueMerge(...(a as [])),
+}));
+
+vi.mock('./issue-link.js', () => ({ resolveIssueForHeadRef: async () => null }));
 
 vi.mock('./projection-refresh.js', () => ({
   BASE_PUSH_REFRESH_CAP: 25,

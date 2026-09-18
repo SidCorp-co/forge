@@ -8,9 +8,13 @@
  * which is deliberately payload-only and holds no credential.
  */
 
+import { db } from '../../db/client.js';
+import { recordIssueMerge } from '../../issues/merge-record.js';
 import { logger } from '../../logger.js';
+import { hooks } from '../../pipeline/hooks.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
 import { publishForStoredPullRequest } from './contract-check.js';
+import { resolveIssueForHeadRef } from './issue-link.js';
 import {
   applyCheckRunEvent,
   applyPullRequestEvent,
@@ -23,6 +27,7 @@ import {
   type PullRequestPayload,
   type PushPayload,
   type ReviewPayload,
+  stateOf,
 } from './projection.js';
 import {
   BASE_PUSH_REFRESH_CAP,
@@ -88,8 +93,48 @@ const REFRESHING_PR_ACTIONS = new Set([
   'ready_for_review',
 ]);
 
+/**
+ * Record a merge a person made, on the same row the kernel's own merge writes.
+ *
+ * ISS-1073's outcome 3. Somebody pressing Merge on GitHub and Forge merging
+ * through `merge.ts` are one landing arriving by two routes, and they produce
+ * ONE record because both write through `issues/merge-record.ts` under
+ * `merged_commit_sha IS NULL` — whichever gets there first holds the row, and
+ * the second reads it back rather than overwriting it.
+ */
+// cm:guard the evidence comes from the PAYLOAD and not from the projection row this delivery just wrote. They agree today, and reading the payload is what keeps that true: a row whose scalars were skipped by the out-of-order guard (`setWhere` on `payloadIsNotOlder`) holds an older merge state, and stamping an issue from it would record whichever delivery lost the ordering race.
+// cm:guard an issue this branch names nothing for is not an error and writes nothing. A pull request whose branch resolves to no issue is an ordinary pull request this repository has, and the projection holds it either way (`issue-link.ts`).
+async function stampMergedIssue(ctx: DeliveryContext, payload: PullRequestPayload): Promise<void> {
+  const pr = payload.pull_request;
+  if (!pr || stateOf(pr) !== 'merged') return;
+  const commitSha = pr.merge_commit_sha;
+  const mergedAt = pr.merged_at ? new Date(pr.merged_at) : null;
+  if (!commitSha || !mergedAt || Number.isNaN(mergedAt.getTime())) return;
+  const headRef = pr.head?.ref;
+  if (!headRef) return;
+  const issueId = await resolveIssueForHeadRef({ projectId: ctx.projectId, headRef });
+  if (!issueId) return;
+  const record = await recordIssueMerge(db, {
+    issueId,
+    evidence: { kind: 'observed', commitSha, mergedAt, via: 'event' },
+  });
+  if (!record.wrote) return;
+  // cm:guard announced only when THIS delivery wrote, so the kernel's merge and the event that follows it do not republish the same change twice. `merge.ts` announces its own.
+  try {
+    await hooks.emit('contractInputChanged', {
+      projectId: ctx.projectId,
+      issueId,
+      reason: 'merged on GitHub',
+    });
+  } catch (err) {
+    logger.warn({ err, issueId }, 'repo projection: announcing the merge failed');
+  }
+}
+
 async function onPullRequest(ctx: DeliveryContext, payload: PullRequestPayload): Promise<number> {
   const written = await applyPullRequestEvent(ctx, payload);
+  // cm:guard the stamp runs whatever the projection wrote, and BEFORE the early return below. `applyPullRequestEvent` answers 0 for a payload it could not build a row from and for one the ordering guard skipped, and neither of those is a reason to lose a merge: the issue's stamp is keyed on the head branch and the payload, not on the row.
+  await stampMergedIssue(ctx, payload);
   if (written === 0) return 0;
   if (!REFRESHING_PR_ACTIONS.has(payload.action ?? '')) return written;
   const number = payload.pull_request?.number;

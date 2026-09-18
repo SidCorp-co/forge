@@ -37,7 +37,8 @@ const PUBLISH_TIMEOUT_MS = 8000;
  * installation does not exist, and a 404 on `create` means the App no longer
  * reaches the repository. Reporting either as the other invents a history.
  */
-export type GitHubPublishOp = 'mint' | 'lookup' | 'create' | 'update';
+// cm:guard `merge` is an op of its own and not a `create`. A timeout on a create means Forge does not know whether a check run was written, which is recoverable by publishing again; a timeout on a merge means Forge does not know whether a pull request LANDED, and the two are not the same thing to tell an operator (ISS-1073).
+export type GitHubPublishOp = 'mint' | 'lookup' | 'create' | 'update' | 'merge';
 
 /**
  * Why this project cannot be read as the App. The `reason` is what a caller
@@ -122,7 +123,7 @@ export interface GitHubRepoClient {
    */
   publish<T>(args: {
     op: GitHubPublishOp;
-    method: 'GET' | 'POST' | 'PATCH';
+    method: 'GET' | 'POST' | 'PATCH' | 'PUT';
     path: string;
     body?: unknown;
   }): Promise<T>;
@@ -228,7 +229,7 @@ export function buildRepoClient(args: {
     // cm:guard the lookup goes through HERE and never through `get` above, though both are a GET. `get` collapses a `GitHubAuthError` into a `GitHubReadError` and keeps only the status, which throws away the two things a publish refusal is built from: whether the failure was at the mint or on the repository, and the rate-limit headers that tell an exhausted quota from an ungranted permission. Routing the lookup through `get` to save nine lines is how criterion 24 stops holding.
     async publish<T>(args: {
       op: GitHubPublishOp;
-      method: 'GET' | 'POST' | 'PATCH';
+      method: 'GET' | 'POST' | 'PATCH' | 'PUT';
       path: string;
       body?: unknown;
     }): Promise<T> {

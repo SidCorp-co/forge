@@ -1,5 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { issueAttachments } from '../../db/schema.js';
+import { repoPullRequests } from '../../db/schema-repo-projection.js';
 import { makeFakeJobPrincipal } from '../fake-principal.fixture.js';
 
 // cm:why the prefix reader is a collaborator with a query shape of its own, stubbed so this file stays a check of what the module under test does with the reference rather than of how the prefix is read (ISS-992)
@@ -38,14 +39,20 @@ const selectLeftJoin2 = vi.fn(() => ({ where: selectWhere }));
 const selectLeftJoin = vi.fn(() => ({ leftJoin: selectLeftJoin2, where: selectWhere }));
 // cm:guard branch on the TABLE, never on the chain shape — the ISS-963 name lookup reads issue_attachments through the same .where().orderBy().limit() shape the authz lookups use, so a shared resolver hands it a row queued for a project row and every attachment is refused as a duplicate of itself
 const noCollision = { orderBy: () => ({ limit: async () => [] as unknown[] }) };
+// cm:guard `repo_pull_requests` answers EMPTY from its own branch for the same reason, and it is the
+// same class of defect one issue later: `merge-record.ts:observedMergeForIssue` reads it through
+// `.where().orderBy().limit()` on every mark, so a shared resolver would hand it the row queued for
+// the mark's own issue lookup and shift every later expectation in the test by one (ISS-1073).
 const selectFrom = vi.fn((table: unknown) =>
-  table === issueAttachments
+  table === issueAttachments || table === repoPullRequests
     ? { where: () => noCollision, leftJoin: selectLeftJoin }
     : { where: selectWhere, leftJoin: selectLeftJoin },
 );
 const insertReturning = vi.fn();
 const insertValues = vi.fn(() => ({ returning: insertReturning }));
-const updateReturning = vi.fn();
+// cm:guard the default is an EMPTY ARRAY and never `undefined`: drizzle's `.returning()` resolves to
+// a row array whatever the WHERE matched, and `merge-record.ts` destructures the first row.
+const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn((_set?: unknown) => ({ where: updateWhere }));
 

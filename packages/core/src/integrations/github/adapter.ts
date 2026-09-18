@@ -9,14 +9,19 @@
  * produced 0 of 4,436 issues, so there was nothing in the field to keep
  * working.
  *
- * Outbound is ONE verb: publishing `forge/issue-contract` on a pull request's
- * head. `canDispatch` turned true in the change that implemented it and not
- * before, which is the rule ISS-1062 wrote and
- * `check-integration-declarations.mjs` holds the adapter to. Opening a pull
- * request, reviewing one and MERGING one are still not implemented, and this
- * verb refuses any event name but its own rather than growing a branch that
- * does the nearest thing — the merge is ISS-1073's and is deliberately ordered
- * after this, because a check run cannot damage a repository and a merge can.
+ * Outbound is a TABLE of verbs, and today it holds two: publishing
+ * `forge/issue-contract` on a pull request's head (ISS-1072), and merging a
+ * pull request (ISS-1073). `canDispatch` turned true in the change that
+ * implemented the first and not before, which is the rule ISS-1062 wrote and
+ * `check-integration-declarations.mjs` holds the adapter to.
+ *
+ * The two arrived in that order on purpose: a check run cannot damage a
+ * repository and a merge can, so the projection was proved under real load by a
+ * face that could not hurt anything before the kernel was given power to merge
+ * on it. Opening a pull request and reviewing one are still not here — they need
+ * judgement, so they are `agent-ops.ts`'s — and a name this table does not hold
+ * is refused against the table rather than growing a branch that does the
+ * nearest thing.
  */
 
 import { and, eq } from 'drizzle-orm';
@@ -39,10 +44,31 @@ import {
 import { GitHubAuthError, installationToken } from './app-auth.js';
 import { githubInboundSecret, syncRepoUrlFromGitHubBinding } from './bind-effects.js';
 import { CHECK_PUBLISH_EVENT, publishForStoredPullRequest } from './contract-check.js';
+import { MERGE_EVENT, MERGE_METHODS, type MergeMethod, mergeStoredPullRequest } from './merge.js';
 import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } from './schemas.js';
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 8000;
+
+/** A merge method GitHub has, refused by name rather than defaulted from anything else. */
+function isMergeMethod(value: unknown): value is MergeMethod {
+  return typeof value === 'string' && (MERGE_METHODS as readonly string[]).includes(value);
+}
+
+/**
+ * Every outbound verb this adapter serves, in the order they were implemented.
+ *
+ * One array rather than a switch with a `default` that throws, because the
+ * refusal has to NAME the legal set and a switch cannot be asked what its own
+ * cases are. Adding a verb here and a branch below is one edit; the sentence a
+ * caller gets for a name that is not on it needs no edit at all.
+ */
+// cm:edge lockstep -> packages/core/src/integrations/github/contract-check.ts, packages/core/src/integrations/github/merge.ts — each entry is that module's own exported event name, read rather than restated so a rename there cannot leave a verb this adapter claims to serve and does not
+const SERVED_VERBS = [CHECK_PUBLISH_EVENT, MERGE_EVENT] as const;
+
+function isServedVerb(name: string): name is (typeof SERVED_VERBS)[number] {
+  return (SERVED_VERBS as readonly string[]).includes(name);
+}
 
 const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecrets> = {
   inboundSecret: (connection) => githubInboundSecret(connection as IntegrationConnectionRow),
@@ -175,15 +201,15 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     return { deliveryId, actions: result.actions };
   },
 
-  // cm:guard the event name is matched EXACTLY and anything else is refused naming both it and the one verb this adapter serves. A default arm that published the contract check for any event would make a caller's mistake return 200 and look like it worked, which is the wrong-input-absorbed shape CLAUDE.md refuses; the refusal IS the deliverable here.
+  // cm:guard the event name is matched against the TABLE and anything else is refused naming every verb the table holds. A default arm that did the nearest thing would make a caller's mistake return 200 and look like it worked, which is the wrong-input-absorbed shape CLAUDE.md refuses; the refusal IS the deliverable here. The table is also the extension point: a verb is added by putting it in `SERVED_VERBS`, and the refusal picks it up without being edited.
   async dispatchOutbound(
     ctx: AdapterContext<GitHubConfig, GitHubSecrets>,
     input: OutboundDispatchInput,
   ): Promise<OutboundDispatchResult> {
     const startedAt = Date.now();
-    if (input.eventName !== CHECK_PUBLISH_EVENT) {
+    if (!isServedVerb(input.eventName)) {
       throw new Error(
-        `github: no outbound verb named \`${input.eventName}\` — this adapter serves \`${CHECK_PUBLISH_EVENT}\` and nothing else. Merging and opening a pull request are not implemented here.`,
+        `github: no outbound verb named \`${input.eventName}\` — this adapter serves ${SERVED_VERBS.map((v) => `\`${v}\``).join(', ')} and nothing else. Opening a pull request and reviewing one need judgement and are \`forge_github\`'s.`,
       );
     }
 
@@ -205,16 +231,45 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
       throw new Error(message);
     }
 
-    const pullRequestId = (input.payload as { pullRequestId?: string } | null)?.pullRequestId;
+    const payload = (input.payload ?? {}) as Record<string, unknown>;
+    const pullRequestId = typeof payload.pullRequestId === 'string' ? payload.pullRequestId : null;
     if (!pullRequestId) {
       throw new Error(
-        `github: \`${CHECK_PUBLISH_EVENT}\` needs a payload of the shape { pullRequestId: "<uuid of a repo_pull_requests row>" }`,
+        `github: \`${input.eventName}\` needs a payload of the shape { pullRequestId: "<uuid of a repo_pull_requests row>" }`,
       );
     }
 
-    // cm:guard the binding the context authorised is carried INTO the publish. Without it the
+    // cm:guard the binding the context authorised is carried INTO both verbs. Without it the
     // caller's authorisation and the repository written to are resolved independently, and a
-    // dispatch for one project's binding could publish on another's.
+    // dispatch for one project's binding could publish — or MERGE — on another's.
+    if (input.eventName === MERGE_EVENT) {
+      const requestedBy = typeof payload.requestedBy === 'string' ? payload.requestedBy : '';
+      const merged = await mergeStoredPullRequest(
+        {
+          pullRequestId,
+          requestedBy,
+          runId: input.runId ?? null,
+          ...(typeof payload.expectedHeadSha === 'string'
+            ? { expectedHeadSha: payload.expectedHeadSha }
+            : {}),
+          ...(isMergeMethod(payload.method) ? { method: payload.method } : {}),
+        },
+        ctx.bindingId,
+      );
+      if (!merged) {
+        throw new Error(
+          `github: no stored pull request ${pullRequestId} — nothing on this project's projection has that id`,
+        );
+      }
+      // cm:guard a REFUSED merge throws rather than returning a result, and that is the difference from the check publish beside it. A skipped publish is Forge deciding not to write; a refused merge is a caller's merge that did not happen, and returning it as a dispatch RESULT would let a worker mark the job done. The delivery row carries the sentence either way.
+      if (merged.kind === 'refused') throw new Error(merged.detail);
+      return {
+        deliveryId: merged.deliveryId,
+        durationMs: Date.now() - startedAt,
+        externalId: merged.commitSha,
+      };
+    }
+
     const outcome = await publishForStoredPullRequest(pullRequestId, ctx.bindingId);
     if (!outcome) {
       throw new Error(
@@ -252,7 +307,7 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     webhookSignatureHeader: 'x-hub-signature-256',
     structuredRollback: false,
     // cm:guard `core-mediated` and NOT `direct-mcp`, and the difference is the whole of ISS-1071's rule 2: `direct-mcp` renders the credential into a runner box's MCP config and puts Forge outside the call path. This App's private key is the identity every write to the repository is made under — it can open, comment and review on every repository the installation covers — so there is no version of handing it to a box that is worth the round trip it saves. Core holds it, core makes the call, and `forge_github` is where an agent asks.
-    // cm:guard `forge_github` is the WHOLE list on purpose. A verb that merges is not missing from it, it is refused by it: merging is a kernel transition on the dispatch face (ISS-1073), where the same operation stamps `merged_at`. `agent-ops.ts:kernelVerbRefusal` is the sentence a caller naming one gets.
+    // cm:guard `forge_github` is the WHOLE list on purpose. A verb that merges is not missing from it, it is refused by it: merging is a kernel transition on THIS face, where the same operation stamps `merged_at` (ISS-1073, `merge.ts`). `agent-ops.ts:kernelVerbRefusal` is the sentence a caller naming one gets.
     agentPath: { kind: 'core-mediated', tools: ['forge_github'] },
   },
   schemas: {
