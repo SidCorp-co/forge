@@ -6,12 +6,8 @@
  * extraction moved to `room-delivery.test.ts` with the function itself.
  */
 
-// cm:guard a mock screen ADMITS the segments it was shown, rather than returning a bare `ok`:
-// since ISS-978 a verdict carries what it was passed over, and a fake one that records nothing
-// mints no proof — so a mock that merely says "it passed" silently turns every delivery in this
-// file into a fallback.
-import { admitted } from '../../messaging/screen.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 
 // cm:guard this stub must stay, and must stay above the subject's import — `config/env.js` validates EAGERLY and throws at import time without DATABASE_URL / JWT_SECRET / DEVICE_TOKEN_PEPPER, which `escalation-bridge.js` pulls in transitively through escalation.js's chat-turn/lifecycle graph, so removing it turns the whole file into a collection error rather than a failing test (same pattern as agent-sessions/chat-turn.test.ts)
 vi.mock('../../config/env.js', () => ({
@@ -212,9 +208,7 @@ describe('deliverEscalationReplyOnce', () => {
       reply: 'Bao says: here is the synthesized answer.',
       toolCalls: [],
     });
-    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
-      admitted(input.segments),
-    );
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -257,9 +251,7 @@ describe('deliverEscalationReplyOnce', () => {
       reply: 'Logged it as a draft issue.',
       toolCalls: [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
     });
-    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
-      admitted(input.segments),
-    );
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -292,9 +284,7 @@ describe('deliverEscalationReplyOnce', () => {
       reply: 'Just an answer.',
       toolCalls: [],
     });
-    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
-      admitted(input.segments),
-    );
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -321,7 +311,7 @@ describe('the repair budget the escalation-synthesis door declares', () => {
       .mockResolvedValueOnce({ sessionId: 'bao', reply: 'the repaired answer', toolCalls: [] });
     screenRoomReply
       .mockResolvedValueOnce({ ok: false, refusals: [REFUSAL] })
-      .mockResolvedValueOnce({ ok: true });
+      .mockImplementationOnce(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({ messages: [{ type: 'assistant', content: '{"answer": "raw"}' }] }),

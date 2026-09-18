@@ -58,17 +58,27 @@ describe('a screened message', () => {
     expect(message?.proof).toMatchObject({ text: 'a reply', door: 'chat-sync' });
   });
 
-  // cm:guard the directive IS the assertion, and it is the only place this can be refused: at runtime a
-  // forged verdict is indistinguishable from a real one — `verdict.ok` is true either way — so the
-  // expectation below is what the code honestly does and proves nothing on its own. Un-brand
-  // `MessageVerdict`'s `ok` arm and the literal compiles, the `@ts-expect-error` goes unused, and
-  // `tsc` fails with TS2578. Nothing else can fail this test, which is what makes it evidence.
-  it('takes a forged verdict at runtime, and does not compile with one', () => {
+  // cm:guard TWO assertions on one line, and they fail for different reasons. The `@ts-expect-error` is
+  // the compile-time half: un-brand `MessageVerdict`'s `ok` arm and the literal compiles, the directive
+  // goes unused, and `tsc` fails with TS2578. The `toBeNull` is the runtime half, and it only became
+  // possible once a verdict carried the segments it was passed over — a forged one has registered
+  // nothing, so it can mint no proof. Before that this line could only be a comment.
+  it('refuses a forged verdict, which also does not compile', () => {
     expect(
       // @ts-expect-error ISS-978 F5: `{ ok: true }` is not a MessageVerdict — the whole
       // point of branding the arm is that a caller cannot declare its own text screened.
       screened('a reply', 'chat-sync', { ok: true }),
-    ).not.toBeNull();
+    ).toBeNull();
+  });
+
+  // cm:guard the finding the whole-set review raised against the first version of this fix: a GENUINE
+  // verdict for one string could mint a proof for another, with no cast anywhere, which moved the
+  // ISS-978 F5 pairing rather than closing it. A verdict now says what it was passed over and `proven`
+  // compares it, so screening A and sending B is refused at the mint.
+  it('refuses a genuine verdict raised over different text', () => {
+    const verdictForA = screenAtDoor('chat-sync', ['the answer that was screened']);
+    expect(verdictForA.ok).toBe(true);
+    expect(screened('something else entirely', 'chat-sync', verdictForA)).toBeNull();
   });
 
   // cm:guard a refused verdict yields NO value at all rather than one carrying the problems: the point is that a caller holding a `ScreenedMessage` is holding text a screen passed, so a shape that can represent "screened and refused" is the hole this closes (ISS-978's review found the structural version of it).

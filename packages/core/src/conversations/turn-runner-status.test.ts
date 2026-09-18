@@ -8,12 +8,8 @@
  * The mock header is `turn-runner.test.ts`'s, which was at its line ceiling.
  */
 
-// cm:guard a mock screen ADMITS the segments it was shown, rather than returning a bare `ok`:
-// since ISS-978 a verdict carries what it was passed over, and a fake one that records nothing
-// mints no proof — so a mock that merely says "it passed" silently turns every delivery in this
-// file into a fallback.
-import { admitted } from '../messaging/screen.js';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../messaging/screen-passes.fixture.js';
 
 vi.mock('../observability/sentry.js', () => ({ Sentry: { captureException: vi.fn() } }));
 
@@ -109,9 +105,7 @@ beforeEach(() => {
   clearConversationTransports();
   registerConversationTransport({ adapter: 'widget', deliver, fetchHistory });
   deliver.mockResolvedValue({ messageId: 'server-id-9' });
-  screenReplyAtDoor.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
-    admitted(input.segments),
-  );
+  screenReplyAtDoor.mockImplementation(screenPasses);
   runExternalChatTurn.mockResolvedValue(answered);
 });
 

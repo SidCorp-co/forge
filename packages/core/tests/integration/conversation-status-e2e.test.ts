@@ -7,14 +7,10 @@
  * transcript and the participants are real.
  */
 
-// cm:guard a mock screen ADMITS the segments it was shown, rather than returning a bare `ok`:
-// since ISS-978 a verdict carries what it was passed over, and a fake one that records nothing
-// mints no proof — so a mock that merely says "it passed" silently turns every delivery in this
-// file into a fallback.
-import { admitted } from '../../src/messaging/screen.js';
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../src/messaging/screen-passes.fixture.js';
 import {
   createTestProject,
   createTestUser,
@@ -28,8 +24,7 @@ vi.mock('../../src/assistant/external-chat.js', () => ({
   runExternalChatTurn: (...a: unknown[]) => runExternalChatTurn(...a),
 }));
 vi.mock('../../src/messaging/reply-screen.js', () => ({
-  screenReplyAtDoor: async (_door: unknown, input: { segments: readonly string[] }) =>
-    admitted(input.segments),
+  screenReplyAtDoor: screenPasses,
 }));
 
 let harness: TestDatabase;

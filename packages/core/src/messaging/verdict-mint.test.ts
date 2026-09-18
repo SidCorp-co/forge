@@ -23,7 +23,7 @@ const SRC_ROOT = fileURLToPath(new URL('../', import.meta.url));
 // bounded — the empty text it stands for reaches `codeAuthored` before it can reach `screened()`, so
 // it mints no proof and posts nothing — and it ends when that callback grows a third outcome.
 const MAY_MINT = new Map<string, string>([
-  ['messaging/screen.ts', 'THE screen: the cell rules run here and this is their verdict'],
+  ['messaging/screen.ts', 'THE screen: the cell rules run here, and `admitted` is the mint itself'],
   [
     'integrations/rocketchat/comment-carry.ts',
     'a screen too — it reads a carried comment against NO_ROOM_BROADCAST_CARRIED and refuses on what it finds',
@@ -32,9 +32,16 @@ const MAY_MINT = new Map<string, string>([
     'conversations/screened-reply.ts',
     'cm:hack ISS-978: a control-flow signal for an empty first reply, which can mint no proof',
   ],
+  [
+    'messaging/screen-passes.fixture.ts',
+    'a TEST fixture: a screen that admits whatever it is shown, listed here rather than excluded by filename because a producer hiding in a `.fixture.ts` is what this scan exists to catch',
+  ],
 ]);
 
-const MINT_RE = /as\s+(?:unknown\s+as\s+)?MessageVerdict/;
+// cm:guard BOTH shapes count as minting: `admitted(...)` is the real mint, and a cast is what a
+// file does when it wants an `ok` verdict without going through one. A scan that watched only the cast
+// would let a sixth reply path call `admitted` and declare its own text passed.
+const MINT_RE = /as\s+(?:unknown\s+as\s+)?MessageVerdict|\badmitted\(/;
 
 function stripComments(src: string): string {
   return src.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/(^|[^:])\/\/[^\n]*/g, '$1');
@@ -77,6 +84,7 @@ describe('only a screen mints a passing verdict (ISS-978 F5)', () => {
     expect(MINT_RE.test(stripComments('const v = { ok: true } as MessageVerdict;'))).toBe(true);
     expect(MINT_RE.test(stripComments('const v = x as unknown as MessageVerdict;'))).toBe(true);
     expect(MINT_RE.test(stripComments('// const v = { ok: true } as MessageVerdict;'))).toBe(false);
+    expect(MINT_RE.test(stripComments('const v = admitted([text]);'))).toBe(true);
     expect(MINT_RE.test(stripComments('function f(): MessageVerdict { return screen(); }'))).toBe(
       false,
     );
