@@ -187,6 +187,7 @@ export const githubIntegration = declareIntegration<GitHubConfig, GitHubSecrets>
     hasDeliveryLog: true,
     multiBinding: false,
     webhookHeader: 'x-github-event',
+    webhookSignatureHeader: 'x-hub-signature-256',
     structuredRollback: false,
     // cm:guard `core-mediated` and NOT `direct-mcp`, and the difference is the whole of ISS-1071's rule 2: `direct-mcp` renders the credential into a runner box's MCP config and puts Forge outside the call path. This App's private key is the identity every write to the repository is made under — it can open, comment and review on every repository the installation covers — so there is no version of handing it to a box that is worth the round trip it saves. Core holds it, core makes the call, and `forge_github` is where an agent asks.
     // cm:guard `forge_github` is the WHOLE list on purpose. A verb that merges is not missing from it, it is refused by it: merging is a kernel transition on the dispatch face (ISS-1073), where the same operation stamps `merged_at`. `agent-ops.ts:kernelVerbRefusal` is the sentence a caller naming one gets.

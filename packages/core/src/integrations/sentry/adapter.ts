@@ -9,11 +9,10 @@
  * `GET /api/0/organizations/`, which validates the auth token and surfaces the accessible orgs to
  * the config UI.
  *
- * Sentry text DOES now reach a Forge issue — `intake.ts`, the scheduled pull (slice 3) — and that
- * is a pull core initiates, not a surface Sentry pushes to. `handleInbound` still refuses by name,
- * because there is still no webhook: that is slice 4, and the issue's own body says why it comes
- * second (a lost webhook delivery is lost for good, while a scheduled pull catches up on the next
- * tick).
+ * Sentry text reaches a Forge issue by TWO doors now: the scheduled pull (`intake.ts`, slice 3) and
+ * the inbound webhook (`webhook.ts`, slice 4). They share one decision — `intake-issue.ts` — so the
+ * webhook changes the intake's latency and never its capability, which is why the pull was built
+ * first: if Forge is down a delivery is lost for good, while a pull catches up on the next tick.
  *
  * The chokepoint that omission used to stand in for is now real code and is described where it
  * lives, in `intake.ts`'s header. In short: every free-text field is `sanitizeUntrusted`-stripped on
@@ -39,6 +38,7 @@ import { buildSentryMcpEntry } from './resolver.js';
 import { SENTRY_BINDING_CONFIG_KEYS, sentryConfigBase, sentrySecretsSchema } from './schemas.js';
 import { renderSentryTargetsLine, resolveSentryTargets } from './targets.js';
 import type { SentryConfig, SentrySecrets } from './types.js';
+import { handleSentryWebhook, SENTRY_RESOURCE_HEADER, SENTRY_SIGNATURE_HEADER } from './webhook.js';
 
 const PROBE_TIMEOUT_MS = 15_000;
 
@@ -48,11 +48,6 @@ interface SentryOrg {
   slug?: string;
   name?: string;
 }
-
-const notSupported = (op: string): never => {
-  // There is no inbound surface, on purpose — see this file's header.
-  throw new Error(`sentry: ${op} is not supported (this provider has no inbound surface)`);
-};
 
 const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecrets> = {
   async healthcheck(ctx): Promise<HealthCheckResult> {
@@ -172,9 +167,9 @@ const sentryAdapterMethods: IntegrationAdapterMethods<SentryConfig, SentrySecret
   // file stays the declaration rather than becoming the client.
   dispatchOutbound: dispatchSentryOutbound,
 
-  async handleInbound() {
-    return notSupported('handleInbound');
-  },
+  // The generic door (`webhooks/inbound-routes.ts`) lands here; the work is in `webhook.ts` so this
+  // file stays the declaration rather than becoming the handler.
+  handleInbound: handleSentryWebhook,
 };
 
 /**
@@ -187,7 +182,7 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
   provider: 'sentry',
   capabilities: {
     canDispatch: true,
-    canReceiveWebhook: false,
+    canReceiveWebhook: true,
     canDeploy: false,
     liveConfirmGate: false,
     // cm:why true follows `canDispatch`: every outbound call writes an `integration_deliveries` row,
@@ -195,6 +190,8 @@ export const sentryIntegration = declareIntegration<SentryConfig, SentrySecrets>
     // that lies — the connection drawer would hide deliveries an operator has to be able to read.
     hasDeliveryLog: true,
     multiBinding: false,
+    webhookHeader: SENTRY_RESOURCE_HEADER,
+    webhookSignatureHeader: SENTRY_SIGNATURE_HEADER,
     structuredRollback: false,
     agentPath: {
       kind: 'direct-mcp',

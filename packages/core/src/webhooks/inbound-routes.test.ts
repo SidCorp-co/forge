@@ -1,3 +1,4 @@
+import { createHmac } from 'node:crypto';
 import { Hono } from 'hono';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { signHmacSha256 } from './hmac.js';
@@ -21,14 +22,33 @@ const getAdapterMock = vi.fn(() => ({ provider: 'github', handleInbound: handleI
 // here is the point of the test: if the route stopped reading `capabilities.webhookHeader`, or a
 // provider declared one without `canReceiveWebhook`, the derived map would change and these
 // signature tests would go red rather than routing to nobody in silence.
+//
+// ISS-1085 slice 4 — `webhookSignatureHeader` is declared here for the same reason. Sentry appears
+// beside github so the route is exercised for TWO providers signing under two different headers,
+// which is the whole of what moving that knowledge out of this file bought; `noSignature` is a
+// provider that declared an inbound surface and forgot how it is signed.
+const declarations = [
+  {
+    provider: 'github',
+    capabilities: {
+      canReceiveWebhook: true,
+      webhookHeader: 'x-github-event',
+      webhookSignatureHeader: 'x-hub-signature-256',
+    },
+  },
+  {
+    provider: 'sentry',
+    capabilities: {
+      canReceiveWebhook: true,
+      webhookHeader: 'sentry-hook-resource',
+      webhookSignatureHeader: 'sentry-hook-signature',
+    },
+  },
+];
+let declared = declarations;
 vi.mock('../integrations/registry.js', () => ({
   getAdapter: (...a: unknown[]) => getAdapterMock(...(a as [])),
-  listIntegrations: () => [
-    {
-      provider: 'github',
-      capabilities: { canReceiveWebhook: true, webhookHeader: 'x-github-event' },
-    },
-  ],
+  listIntegrations: () => declared,
 }));
 
 const listBindingsMock = vi.fn(async () => [
@@ -65,7 +85,13 @@ async function post(path: string, body: string, headers: Record<string, string> 
 beforeEach(() => {
   vi.clearAllMocks();
   selectLimit.mockReset();
+  declared = declarations;
 });
+
+/** Sentry signs with a BARE hex digest rather than github's `sha256=` prefix. */
+function sentrySignature(secret: string, raw: string): string {
+  return createHmac('sha256', secret).update(raw).digest('hex');
+}
 
 describe('POST /api/webhooks/in/:slug', () => {
   it('404 when slug has no matching project', async () => {
@@ -175,5 +201,132 @@ describe('POST /api/webhooks/in/:slug', () => {
     expect(r.status).toBe(500);
     const json = (await r.json()) as { code?: string };
     expect(json.code).toBe('HANDLER_FAILED');
+  });
+});
+
+// The signature header a provider-routed delivery is verified against is now the matched
+// provider's own declaration rather than a list this file holds (ISS-1085 slice 4).
+describe('POST /api/webhooks/in/:slug — the declared signature header', () => {
+  it('routes a delivery carrying sentry-hook-resource to the Sentry adapter', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+    getAdapterMock.mockReturnValueOnce({ provider: 'sentry', handleInbound: handleInboundMock });
+    const body = '{"action":"created","data":{"issue":{}}}';
+    const r = await buildApp().fetch(
+      await post('/api/webhooks/in/p', body, {
+        'sentry-hook-resource': 'issue',
+        'sentry-hook-signature': sentrySignature(BINDING_SECRET, body),
+      }),
+    );
+    expect(r.status).toBe(200);
+    const json = (await r.json()) as { handler: string };
+    expect(json.handler).toBe('sentry');
+    expect(handleInboundMock).toHaveBeenCalled();
+  });
+
+  it('401 INVALID_SIGNATURE when the Sentry digest does not verify', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+    const body = '{"action":"created"}';
+    const r = await buildApp().fetch(
+      await post('/api/webhooks/in/p', body, {
+        'sentry-hook-resource': 'issue',
+        'sentry-hook-signature': 'deadbeef',
+      }),
+    );
+    expect(r.status).toBe(401);
+    expect(((await r.json()) as { code?: string }).code).toBe('INVALID_SIGNATURE');
+    expect(handleInboundMock).not.toHaveBeenCalled();
+  });
+
+  it('401 MISSING_SIGNATURE when a Sentry delivery carries no signature at all', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+    const r = await buildApp().fetch(
+      await post('/api/webhooks/in/p', '{}', { 'sentry-hook-resource': 'issue' }),
+    );
+    expect(r.status).toBe(401);
+    expect(((await r.json()) as { code?: string }).code).toBe('MISSING_SIGNATURE');
+  });
+
+  // cm:guard the narrowing ISS-1085 slice 4 took, asserted in both directions. A provider-routed delivery is verified against the ONE header its declaration names, so a correct digest under another provider's header no longer opens the door: the header name is what identifies the sender, and a set-of-headers lookup made it decorative.
+  it('401 when a Sentry delivery is signed under x-hub-signature-256 instead', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+    const body = '{"action":"created"}';
+    const r = await buildApp().fetch(
+      await post('/api/webhooks/in/p', body, {
+        'sentry-hook-resource': 'issue',
+        'x-hub-signature-256': signHmacSha256(BINDING_SECRET, body),
+      }),
+    );
+    expect(r.status).toBe(401);
+    expect(handleInboundMock).not.toHaveBeenCalled();
+  });
+
+  it('401 when a GitHub delivery is signed only under x-forge-signature-256', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+    const body = '{"action":"opened","issue":{"id":1}}';
+    const r = await buildApp().fetch(
+      await post('/api/webhooks/in/p', body, {
+        'x-github-event': 'issues',
+        'x-forge-signature-256': signHmacSha256(BINDING_SECRET, body),
+      }),
+    );
+    expect(r.status).toBe(401);
+    expect(handleInboundMock).not.toHaveBeenCalled();
+  });
+
+  // cm:guard the GENERIC path keeps BOTH headers. It is not provider-routed, so there is no declaration to read one off, and narrowing it would break every project pointed at the generic door while its adapter is written.
+  it.each(['x-hub-signature-256', 'x-forge-signature-256'])(
+    'still accepts a provider-less delivery signed under %s',
+    async (header) => {
+      selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+      const body = '{"ping":true}';
+      const r = await buildApp().fetch(
+        await post('/api/webhooks/in/p', body, { [header]: signHmacSha256(SECRET, body) }),
+      );
+      expect(r.status).toBe(200);
+      expect(((await r.json()) as { handler: string }).handler).toBe('generic');
+    },
+  );
+
+  // cm:guard a matched provider that declares NO signature header is refused BY NAME rather than dropped through to the generic path. Falling through would verify a provider's delivery against `projects.webhookSecret` and answer `actions: 0` — a 200 for a payload nobody handled.
+  it('refuses by name a provider that declares a webhook and no signature header', async () => {
+    declared = [
+      {
+        provider: 'github',
+        capabilities: { canReceiveWebhook: true, webhookHeader: 'x-github-event' },
+      },
+    ] as typeof declarations;
+    selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+    const body = '{"action":"opened"}';
+    const r = await buildApp().fetch(
+      await post('/api/webhooks/in/p', body, {
+        'x-github-event': 'issues',
+        'x-hub-signature-256': signHmacSha256(BINDING_SECRET, body),
+      }),
+    );
+    expect(r.status).toBe(400);
+    expect(((await r.json()) as { code?: string }).code).toBe(
+      'PROVIDER_DECLARES_NO_SIGNATURE_HEADER',
+    );
+    expect(handleInboundMock).not.toHaveBeenCalled();
+  });
+
+  it('echoes a handler refusal so an operator sees why nothing happened', async () => {
+    selectLimit.mockResolvedValueOnce([{ id: 'p1', secret: SECRET }]);
+    getAdapterMock.mockReturnValueOnce({ provider: 'sentry', handleInbound: handleInboundMock });
+    handleInboundMock.mockResolvedValueOnce({
+      deliveryId: 'del-2',
+      actions: 0,
+      refusal: 'this delivery carries sentry-hook-resource "error"',
+    } as never);
+    const body = '{"action":"created"}';
+    const r = await buildApp().fetch(
+      await post('/api/webhooks/in/p', body, {
+        'sentry-hook-resource': 'error',
+        'sentry-hook-signature': sentrySignature(BINDING_SECRET, body),
+      }),
+    );
+    const json = (await r.json()) as { actions: number; refusal?: string };
+    expect(json.actions).toBe(0);
+    expect(json.refusal).toContain('"error"');
   });
 });
