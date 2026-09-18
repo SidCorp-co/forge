@@ -2624,7 +2624,7 @@ mod give_back_tests {
     // only trace is a pane that keeps disappearing (ISS-1050).
     /// What the daemon log SAYS when a recorded conversation cannot be resumed.
     // cm:why captured through a real subscriber rather than asserted on a returned string: `resume_for` answers `None` for "nothing stored" and for "stored but unreachable" alike, so a test reading only the return value passes just as happily when the warning is deleted — and that warning is the whole difference between a pane that silently forgot what it was doing and one whose operator can see why.
-    fn logged_while(f: impl FnOnce()) -> String {
+    pub(super) fn logged_while(f: impl FnOnce()) -> String {
         use std::sync::{Arc, Mutex};
         #[derive(Clone)]
         struct Buf(Arc<Mutex<Vec<u8>>>);
@@ -3692,6 +3692,22 @@ mod unplaced_tests {
             .expect("ensure_master must be findable")
     }
 
+    // cm:guard the three helpers below scan SOURCE TEXT, and what that can and cannot catch is
+    // stated here rather than left for a reader to infer. It catches the thing removed, renamed or
+    // reworded — every ISS-1092 mutation that got past the assertions this replaced. It does NOT
+    // catch a behaviour change that leaves the text standing: a branch made unreachable above it, a
+    // returned value ignored, a call whose effect is undone further down. It also reds on a
+    // refactor that moves no behaviour, which is a real cost paid by whoever edits `sweep` or
+    // `ensure_master` next.
+    //
+    // It is used here because these four criteria are not reachable any other way: criteria 11 and
+    // 12 live inside `sweep` and criteria 17 and 18 inside `ensure_master`, and both need a live
+    // tmux pane and a core client to run at all. Where a criterion IS reachable it is NOT scanned —
+    // criterion 15's `say_unplaced` is a free function, so
+    // `an_unplaced_pane_is_reported_once_and_names_its_project_and_reason` drives it through a real
+    // subscriber and asserts the emitted level and fields, which is how a demotion from `warn!` to
+    // `info!` is caught. A source scan for the format string would not catch that one, which is the
+    // measure of the difference.
     /// Where a block opened at `indent` spaces closes, in `rest`.
     ///
     /// Matches the newline BEFORE the closing brace and never the one after
@@ -3717,30 +3733,6 @@ mod unplaced_tests {
             .expect("the sweep still has its drained-runner branch");
         let rest = &body[start..];
         let end = block_end(rest, 8).expect("the drained-runner branch must close");
-        &rest[..end]
-    }
-
-    fn say_unplaced_body() -> &'static str {
-        production()
-            .split("\nfn say_unplaced(")
-            .nth(1)
-            .and_then(|r| r.split("\nfn ").next())
-            .expect("say_unplaced must be findable")
-    }
-
-    /// The body of `say_unplaced`'s change gate, on its own.
-    ///
-    /// Scoped to the inside of the `if`, because a warning that merely sits
-    /// somewhere in the same function is one that can be moved out of the gate
-    /// while every assertion over the function still passes — which is the
-    /// containment the once-ness depends on (ISS-1092 F1 on the follow-up).
-    fn say_unplaced_gate() -> &'static str {
-        let body = say_unplaced_body();
-        let start = body
-            .find("if masters.note_unplaced(")
-            .expect("the report must be gated on the reason having changed");
-        let rest = &body[start..];
-        let end = block_end(rest, 4).expect("the change gate must close");
         &rest[..end]
     }
 
@@ -4094,34 +4086,66 @@ mod unplaced_tests {
         );
     }
 
-    // cm:guard the WARNING itself, and not the bool that gates it.
-    // `a_reason_is_reported_when_it_arrives_and_when_it_changes_and_never_in_between` asserts what
-    // `note_unplaced` answers; deleting `say_unplaced`'s `tracing::warn!` outright left all 737
-    // tests green, so nothing held the log line at all (ISS-1092 criterion 15).
+    // cm:guard the WARNING itself, through a real subscriber, and NOT the source text of
+    // `say_unplaced` nor the bool that gates it. This is the one of ISS-1092's log criteria that a
+    // behavioural test can reach — `say_unplaced` is a free function over `Arc<Masters>` and needs
+    // no tmux and no core — so it is reached that way. `a_reason_is_reported_when_it_arrives_...`
+    // asserts what `note_unplaced` ANSWERS, which stayed green when the `tracing::warn!` was
+    // deleted outright (ISS-1092 criteria 15, 16, measured at a40f4bdab: 737 passed with no log
+    // line emitted at all).
     #[test]
     fn an_unplaced_pane_is_reported_once_and_names_its_project_and_reason() {
-        let body = say_unplaced_body();
+        let masters = Arc::new(Masters::new());
+        let first = super::give_back_tests::logged_while(|| {
+            say_unplaced(
+                &masters,
+                "proj-1",
+                "the-slug",
+                Unplaced::Draining {
+                    status: "draining".into(),
+                },
+            );
+        });
         assert!(
-            body.contains("tracing::warn!"),
-            "a reason nothing writes down is a reason no operator ever reads: {body}"
-        );
-        let gate = say_unplaced_gate();
-        assert!(
-            gate.contains("tracing::warn!"),
-            "the warning sits INSIDE the change gate and not merely in the same function: moved out of it, every reason is reported on every sweep and the once-ness is gone while the function still reads as if it had it: {gate}"
-        );
-        assert_eq!(
-            body.matches("tracing::warn!").count(),
-            1,
-            "one warning, so a second copy outside the gate cannot report every sweep alongside the gated one: {body}"
-        );
-        assert!(
-            gate.contains("{slug}"),
-            "the warning names the project, or a box serving 28 of them says only that something is unplaced: {gate}"
+            first.contains("WARN"),
+            "at WARN: a project this box cannot place a master for is not routine information, and \
+             a reason nothing writes down is one no operator ever reads; log was: {first}"
         );
         assert!(
-            gate.contains("{why}"),
-            "the warning carries the reason, which is the whole of what an operator acts on: {gate}"
+            first.contains("the-slug"),
+            "the warning names the project, or a box serving 28 of them says only that something \
+             is unplaced; log was: {first}"
+        );
+        assert!(
+            first.contains("draining"),
+            "and carries the reason, which is the whole of what an operator acts on; log was: \
+             {first}"
+        );
+
+        let again = super::give_back_tests::logged_while(|| {
+            say_unplaced(
+                &masters,
+                "proj-1",
+                "the-slug",
+                Unplaced::Draining {
+                    status: "draining".into(),
+                },
+            );
+        });
+        assert!(
+            again.is_empty(),
+            "the SAME reason on the next sweep says nothing. This box sweeps every thirty seconds, \
+             so a line per sweep per project is one a reader learns to scroll past — including on \
+             the sweep where the reason changed; log was: {again}"
+        );
+
+        let changed = super::give_back_tests::logged_while(|| {
+            say_unplaced(&masters, "proj-1", "the-slug", Unplaced::NoRepoPath);
+        });
+        assert!(
+            changed.contains("WARN") && changed.contains("checkout"),
+            "a DIFFERENT reason is a different thing for an operator to do, so it is reported \
+             again; log was: {changed}"
         );
     }
 }
