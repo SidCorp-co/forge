@@ -5,11 +5,12 @@
 // conversation handler. Letting a refusal fall through turns "option 2 is
 // admins only" into an LLM turn about the weather.
 
-import { eq } from 'drizzle-orm';
+import { and, eq } from 'drizzle-orm';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { resolveSpeaker, unlinkedMessage } from '../../assistant/identity/speaker-link.js';
 import { db } from '../../db/client.js';
 import { agentQuestions, isChoiceStep } from '../../db/schema-questions.js';
+import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { logger } from '../../logger.js';
 import { problemsOf } from '../../messaging/contract.js';
 import { screenAtDoor } from '../../messaging/screen.js';
@@ -28,6 +29,22 @@ import {
   STALE_ROUND_REPLY,
   UNKNOWN_OPTION_REPLY,
 } from './question-render.js';
+
+/** Was this round actually put to somebody, or is it a round nobody has been shown? */
+// cm:guard reads the DELIVERY row and not the question, because a round exists on `agent_questions` from the moment it is asked and is delivered — or refused — separately. A reply cannot answer a round nobody was shown, and the material of one must not be rendered on the strength of a reply to a different round.
+async function roundWasDelivered(questionId: string, round: number): Promise<boolean> {
+  const [row] = await db
+    .select({ status: rocketchatQuestionDeliveries.status })
+    .from(rocketchatQuestionDeliveries)
+    .where(
+      and(
+        eq(rocketchatQuestionDeliveries.questionId, questionId),
+        eq(rocketchatQuestionDeliveries.round, round),
+      ),
+    )
+    .limit(1);
+  return row?.status === 'delivered';
+}
 
 async function say(transport: ReplyTransport, text: string): Promise<void> {
   try {
@@ -66,6 +83,18 @@ export async function handleQuestionThreadReply(args: {
   const current = question.steps[rounds - 1];
   if (!current) {
     await say(transport, ANSWER_FAILED('that question carries no round to answer.'));
+    return;
+  }
+
+  // cm:guard a PRIVATE round that was never delivered is refused here without one word of its material reaching this thread, and refusing the delivery is not enough on its own: the round is still this question's current one, so a reply arriving in the thread an EARLIER public round opened reaches the re-post below, which renders the current round's options into whichever room the reply came from. That is the disclosure the private destination exists to prevent, performed by the answer path instead of the delivery path (ISS-1091 criterion 5).
+  // cm:guard scoped to a private round, deliberately, so an ordinary round keeps today's behaviour exactly: the delivered mark is written just after the post returns, and gating every round on it would refuse a reply that landed in that window.
+  if (current.sensitive === true && !(await roundWasDelivered(args.questionId, current.round))) {
+    await say(
+      transport,
+      ANSWER_FAILED(
+        'that question is waiting on something private, and it has not been put to anybody here — it cannot be shown or answered in this thread.',
+      ),
+    );
     return;
   }
 

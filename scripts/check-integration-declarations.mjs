@@ -104,6 +104,9 @@ for (const decl of listIntegrations()) {
       types: Object.fromEntries(BOOLEANS.map((k) => [k, typeOf(caps[k])])),
       canDeploy: caps.canDeploy,
       canDispatch: caps.canDispatch,
+      canReceiveWebhook: caps.canReceiveWebhook,
+      webhookHeader: caps.webhookHeader,
+      webhookSignatureHeader: caps.webhookSignatureHeader,
       agentPath: {
         present: path !== undefined && path !== null,
         kind: path && path.kind,

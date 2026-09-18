@@ -380,7 +380,7 @@ fn run_declare(
                 })
                 .collect();
             return ClaimReply::refused(format!(
-                "this pane was resumed holding {} run(s) it has not answered for yet: {}. Say what happens to each — `continue`, `restart` or `leave`, with your reason — before declaring new work.",
+                "this pane was resumed holding {} run(s) it has not answered for yet: {}. Answer each one with `forge-runner run choice <run-id> continue|restart|leave --reason \"<why>\"` before declaring new work. Closing a run is not answering for it: the close records that the row ended, not what you decided, and a reason written there reaches no issue.",
                 pending.len(),
                 names.join("; ")
             ));
@@ -620,6 +620,30 @@ pub async fn request_run_declare(
     .await
 }
 
+/// Record a resumed pane's choice about a run it inherited, over the control socket.
+// cm:guard this client existed nowhere until ISS-1050's testing pass, and its absence is why
+// `resume_choice` was 0 of 368 rows across eight days. The frame (`RunChoice`), the daemon handler
+// (`run_choice`), the ledger column and the report path onto the issue were all present and
+// correct; nothing could call them, so criterion 29 could never have passed however the gate was
+// written. The same producer-gone shape this whole issue was filed about, one layer up.
+#[cfg(unix)]
+pub async fn request_run_choice(
+    path: &std::path::Path,
+    token: &str,
+    run_id: &str,
+    choice: &str,
+    why: &str,
+) -> std::io::Result<ClaimReply> {
+    ask(
+        path,
+        serde_json::json!({
+            "op": "run_choice", "token": token, "runId": run_id,
+            "choice": choice, "why": why
+        }),
+    )
+    .await
+}
+
 /// Close a declared run from a pane, over the control socket.
 #[cfg(unix)]
 pub async fn request_run_close(
@@ -642,6 +666,17 @@ pub async fn request_run_declare(
     _project_id: &str,
     _issue_keys: &[String],
     _worktree_path: &str,
+) -> std::io::Result<ClaimReply> {
+    Err(no_socket())
+}
+
+#[cfg(not(unix))]
+pub async fn request_run_choice(
+    _path: &std::path::Path,
+    _token: &str,
+    _run_id: &str,
+    _choice: &str,
+    _why: &str,
 ) -> std::io::Result<ClaimReply> {
     Err(no_socket())
 }
@@ -791,6 +826,31 @@ mod tests {
             }),
             token,
         )
+    }
+
+    // cm:guard the frame is the one `request_run_choice` builds, byte for byte. Everything behind
+    // this op — the `RunChoice` variant, the `run_choice` handler, `record_resume_choice`, the
+    // column and the report onto the issue — shipped in the original change and was reachable from
+    // nothing: no client function, no CLI subcommand, so `resume_choice` was 0 of 368 rows over
+    // eight days and criterion 29 could not have passed however the gate was written. This test is
+    // the wire half; the handler tests above it call `run_choice` directly and would not have
+    // noticed the absence (ISS-1050 criterion 29).
+    #[test]
+    fn a_choice_frame_from_the_cli_decodes_with_its_run_choice_and_reason() {
+        let frame = r#"{"op":"run_choice","token":"t1","runId":"r-1","choice":"restart","why":"nothing was started"}"#;
+        let req: Request = serde_json::from_str(frame).expect("the choice frame must decode");
+        let Request::RunChoice {
+            run_id,
+            choice,
+            why,
+            ..
+        } = &req
+        else {
+            panic!("a frame whose op is `run_choice` must decode as one");
+        };
+        assert_eq!(run_id, "r-1");
+        assert_eq!(choice, "restart");
+        assert_eq!(why, "nothing was started");
     }
 
     // cm:guard the frame is the one the CLI actually sends, byte for byte, and the op name is
@@ -1163,6 +1223,116 @@ mod tests {
             assert!(
                 reason.contains("continue"),
                 "name the three words: {reason}"
+            );
+        }
+        // cm:guard the refusal must carry the command that ENDS it. A gate with no way out named in it
+        // is one a master retries, and until this pass there was no way out at all to name.
+        #[test]
+        fn the_refusal_names_the_command_that_answers_it() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+
+            let reason = reply.reason.unwrap_or_default();
+            assert!(
+                reason.contains("forge-runner run choice"),
+                "the refusal must name the verb that answers it: {reason}"
+            );
+            for word in ["continue", "restart", "leave"] {
+                assert!(reason.contains(word), "and the three words: {reason}");
+            }
+        }
+
+        // cm:guard the obligation survives the CLOSE, and this is the case that broke in production
+        // rather than a case the code was already shaped for. Measured on forge-vm's ledger,
+        // 2026-09-16T12:34Z: four runs were stamped `resume_owed_at` and two of them were then ended
+        // `ended_by = master` with the decision written into the close's own reason — one of them
+        // literally `"restart: the subagent died with the previous pane and left nothing anywhere"`.
+        // The word is one of the three, the reason is exactly what criterion 29 asks for, and none of
+        // it reached `resume_choice`, core, or the issue: `resume_choice` is 0 of 365 across eight
+        // days. Closing the row cleared `ended_by IS NULL` out from under `runs_awaiting_choice`, so
+        // the gate stopped asking, and a master must close its unbound row anyway to satisfy the
+        // one-unbound-row rule — which makes the escape the NORMAL path and not an exotic one
+        // (ISS-1050 criterion 29, review finding F10).
+        #[test]
+        fn closing_an_inherited_run_does_not_discharge_the_choice_it_owes() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+
+            let closed = run_close(
+                &ctl,
+                &run_id,
+                Some("restart: the subagent died with the previous pane and left nothing anywhere"),
+                "sess-a",
+            );
+            assert!(closed.ok, "{:?}", closed.reason);
+
+            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+
+            assert!(
+                !reply.ok,
+                "closing the inherited row must not buy a declaration the pane never answered for"
+            );
+            let reason = reply.reason.unwrap_or_default();
+            assert!(reason.contains("ISS-7"), "name the run's issues: {reason}");
+            assert!(
+                reason.contains("continue"),
+                "name the three words: {reason}"
+            );
+        }
+        // cm:guard the gate the test above closes must not become a WEDGE: the pane has to be able to
+        // answer for a run that has already ended, or a master that closed its inherited row can never
+        // declare again for the life of the boot. `record_resume_choice` never read `ended_by`, so the
+        // answer is reachable — this is the test that keeps it that way.
+        #[test]
+        fn a_choice_recorded_after_the_close_releases_the_gate() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+            run_close(
+                &ctl,
+                &run_id,
+                Some("the pane died before dispatch"),
+                "sess-a",
+            );
+
+            let choice = run_choice(
+                &ctl,
+                &run_id,
+                "restart",
+                "nothing was started, so nothing is lost",
+                "sess-a",
+            );
+            assert!(choice.ok, "{:?}", choice.reason);
+
+            let reply = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a");
+            assert!(reply.ok, "{:?}", reply.reason);
+        }
+        // cm:guard the choice for an ENDED run still has to reach the issue, which is the half of
+        // criterion 29 the ledger alone cannot satisfy. `choices_awaiting_report` is what the sweep
+        // drains onto the tracker, and a run closed before its choice was written must still appear
+        // there — otherwise the gate would merely be silent later instead of silent now.
+        #[test]
+        fn a_closed_runs_choice_is_still_owed_to_the_issue() {
+            let (ctl, _t) = declaring_control("sess-a", "proj-1");
+            let run_id = declared_and_inherited(&ctl, "proj-1", "sess-a");
+            run_close(
+                &ctl,
+                &run_id,
+                Some("restart: nothing to reconcile"),
+                "sess-a",
+            );
+            run_choice(&ctl, &run_id, "restart", "nothing to reconcile", "sess-a");
+
+            let held = ctl.ledger.lock().unwrap();
+            let waiting = held
+                .as_ref()
+                .unwrap()
+                .choices_awaiting_report(&ctl.boot_id)
+                .unwrap();
+            assert!(
+                waiting.iter().any(|r| r.run_id == run_id),
+                "a closed run's choice must still be reported onto its issue"
             );
         }
         #[test]

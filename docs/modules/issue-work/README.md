@@ -27,7 +27,7 @@ flowchart LR
 | Labels and modules | `core/src/labels/`, `schema.ts:labels` |
 | Relations between issues | `schema.ts:issueDependencies`, `schema.ts:issueDependencyKinds` |
 | Human sub-work under an issue | `core/src/tasks/`, `schema.ts:tasks` |
-| Inbound creation from outside | `core/src/webhooks/`, `core/src/mcp/tools/` |
+| Inbound creation from outside | `core/src/webhooks/` (the router and GitHub), `core/src/integrations/sentry/` (both Sentry doors — the scheduled pull and the webhook share `intake-issue.ts`), `core/src/mcp/tools/` |
 | UI | web `features/issues/`, `activity/` |
 
 ## Vocabulary

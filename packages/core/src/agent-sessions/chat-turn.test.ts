@@ -5,11 +5,10 @@ vi.mock('../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
 }));
 
-// Unit tests for the SINGLE chat-turn dispatcher — the logic /start, /send and
-// schedule.run all share. The behaviour that matters: a cold session (no
-// claudeSessionId) starts a fresh Claude run (`agent:start`); a warm one
-// follows up (`agent:send`); device resolution self-heals a dead pin; desktop
-// stays local.
+// Unit tests for the SINGLE chat-turn dispatcher /start, /send and schedule.run
+// all share: a cold session (no claudeSessionId) starts a fresh Claude run
+// (`agent:start`), a warm one follows up (`agent:send`), device resolution
+// self-heals a dead pin, and desktop stays local.
 
 const selectLimit = vi.fn();
 const selectFrom = vi.fn(() => ({ where: vi.fn(() => ({ limit: selectLimit })) }));
@@ -22,8 +21,9 @@ vi.mock('../db/client.js', () => {
   const dbStub = {
     select: vi.fn(() => ({ from: selectFrom })),
     update: vi.fn(() => ({ set: updateSet })),
-    // cm:why `withKernelMarker` (db/kernel-marker.ts) opens a transaction and stamps `forge.kernel_txn` through `tx.execute` before the write, so a db double that omits `execute` fails every wrapped path with `exec.transaction is not a function` or a missing method rather than with what the test is about.
+    // cm:why `withKernelMarker` (db/kernel-marker.ts) opens a transaction and stamps `forge.kernel_txn` through `tx.execute` before the write, and since ISS-1030 the turn also writes its user entry into `agent_session_events` inside it — so a db double missing `execute` or `insert` fails every wrapped path with `exec.transaction is not a function` rather than with what the test is about.
     execute: vi.fn(async () => []),
+    insert: vi.fn(() => ({ values: vi.fn(async () => undefined) })),
     transaction: vi.fn(async (fn: (tx: unknown) => unknown) => fn(dbStub)),
   };
   return { db: dbStub };
@@ -266,7 +266,7 @@ describe('dispatchChatTurn', () => {
       baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
     ]);
     await dispatchChatTurn({
-      session: baseSession({ claudeSessionId: 'c-1', messages: [{ role: 'user', content: 'a' }] }),
+      session: baseSession({ claudeSessionId: 'c-1', messages: [{ type: 'user', content: 'a' }] }),
       project: PROJECT,
       client: { deviceId: DEVICE, isLocal: false },
       message: 'again',
@@ -280,8 +280,7 @@ describe('dispatchChatTurn', () => {
     expect(data.message).toBe('again');
     expect(data.claudeSessionId).toBe('c-1');
     expect(data.systemPrompt).toBeUndefined();
-    // Each follow-up re-spawns `claude` with a fresh `--mcp-config`, so the
-    // project-default MCP servers must ride on `agent:send` too.
+    // Each follow-up re-spawns `claude` with a fresh `--mcp-config`, so the project-default MCP servers must ride on `agent:send` too.
     expect(data.mcpServersOverride).toEqual({ playwright: { type: 'stdio' } });
   });
 
@@ -295,8 +294,8 @@ describe('dispatchChatTurn', () => {
         deviceId: DEVICE,
         metadata: { deviceId: DEVICE },
         messages: [
-          { role: 'user', content: 'where is the runner code' },
-          { role: 'assistant', content: 'in packages/runner' },
+          { type: 'user', content: 'where is the runner code' },
+          { type: 'assistant', content: 'in packages/runner' },
         ],
       }),
       project: PROJECT,
@@ -318,8 +317,9 @@ describe('dispatchChatTurn', () => {
     // Preamble + prior transcript + the new message are all primed into the cold start.
     expect(prompt).toContain('[Preamble]');
     expect(prompt).toContain('This is a cold start');
-    expect(prompt).toContain('where is the runner code');
-    expect(prompt).toContain('in packages/runner');
+    // cm:guard LABELLED, off the canonical `type`: the words alone leave the new box unable to tell the person's requests from its own prior answers.
+    expect(prompt).toContain('User: where is the runner code');
+    expect(prompt).toContain('Assistant: in packages/runner');
     expect(prompt).toContain('and the dispatch loop?');
     // The stale Claude session id (file lives on the dead box) is cleared.
     const updates = updateSet.mock.calls[0]?.[0] as { claudeSessionId?: string | null };
@@ -337,7 +337,7 @@ describe('dispatchChatTurn', () => {
         deviceId: DEVICE,
         metadata: { deviceId: DEVICE },
         repoPath: '/repo/on/dev-1',
-        messages: [{ role: 'user', content: 'hi' }],
+        messages: [{ type: 'user', content: 'hi' }],
       }),
       project: PROJECT,
       client: { deviceId: 'dev-2', isLocal: false, migrated: true },
@@ -362,7 +362,7 @@ describe('dispatchChatTurn', () => {
         claudeSessionId: 'c-1',
         deviceId: DEVICE,
         repoPath: '/repo/on/dev-1',
-        messages: [{ role: 'user', content: 'a' }],
+        messages: [{ type: 'user', content: 'a' }],
       }),
       project: PROJECT,
       client: { deviceId: DEVICE, isLocal: false, migrated: false },
@@ -383,8 +383,8 @@ describe('dispatchChatTurn', () => {
         metadata: { deviceId: 'dev-2' },
         claudeSessionId: null,
         messages: [
-          { role: 'user', content: 'where is the runner code' },
-          { role: 'assistant', content: 'in packages/runner' },
+          { type: 'user', content: 'where is the runner code' },
+          { type: 'assistant', content: 'in packages/runner' },
         ],
       }),
       project: PROJECT,
@@ -439,9 +439,9 @@ describe('dispatchChatTurn', () => {
     ];
     expect(prev).toEqual([]);
     expect(next).toHaveLength(1);
-    expect(next[0]).toMatchObject({ role: 'user', content: 'hello' });
-    // The user turn is materialized as part of the same update that flips the
-    // session to running — never after dispatch.
+    // cm:guard CANONICAL (`type`), never `role`: ISS-1030 removed the reader branches that read both, so a `role` here draws this turn as an agent row.
+    expect(next[0]).toMatchObject({ type: 'user', content: 'hello' });
+    // The user turn is materialized in the same update that flips the session to running — never after dispatch.
     const updates = updateSet.mock.calls[0]?.[0] as { messages: unknown[]; status: string };
     expect(updates.status).toBe('running');
     expect(updates.messages).toHaveLength(1);
@@ -467,7 +467,7 @@ describe('dispatchChatTurn', () => {
       session: baseSession({
         title: 'Chat',
         claudeSessionId: 'c-1',
-        messages: [{ role: 'user', content: 'first' }],
+        messages: [{ type: 'user', content: 'first' }],
       }),
       project: PROJECT,
       client: { deviceId: DEVICE, isLocal: false },
@@ -512,7 +512,7 @@ describe('dispatchChatTurn', () => {
       session: baseSession({
         title: 'Chat',
         claudeSessionId: 'c-1',
-        messages: [{ role: 'user', content: 'first' }],
+        messages: [{ type: 'user', content: 'first' }],
       }),
       project: PROJECT,
       client: { deviceId: DEVICE, isLocal: false },
@@ -562,7 +562,7 @@ describe('dispatchChatTurn', () => {
       baseSession({ status: 'running', deviceId: DEVICE, claudeSessionId: 'c-1' }),
     ]);
     await dispatchChatTurn({
-      session: baseSession({ claudeSessionId: 'c-1', messages: [{ role: 'user', content: 'a' }] }),
+      session: baseSession({ claudeSessionId: 'c-1', messages: [{ type: 'user', content: 'a' }] }),
       project: PROJECT,
       client: { deviceId: DEVICE, isLocal: false },
       message: 'again',

@@ -55,7 +55,7 @@ export async function drainWebConversationWindows(): Promise<void> {
  */
 // cm:guard the registration lives HERE and not in `index.ts`, and the reason is a gate rather than a taste: `index.ts` already coordinates 48 modules against an `.arch.json` limit of 6, frozen at that set by the archmap baseline, so a direct `conversations/ports.js` import there is a 49th module and a new violation of a rule the file is already amnestied for. One call from the module that owns the adapter costs the coordinator nothing it was not already paying (ISS-1004 step 5).
 // cm:guard the transport is registered BEFORE the drain starts, never after: a stranded window claimed by a tick that ran first would find no `web` transport in the registry and close `unreachable` a question somebody is still owed.
-// cm:guard NOT gated on the `chatProvider` flag — that flag gates the SSE `/api/chat` surface, while `/api/conversations` is mounted unconditionally, so gating this would leave a send endpoint whose reply had nowhere to be delivered.
+// cm:why this used to carry a guard against gating it on the `chatProvider` flag: that flag mounted the SSE `/api/chat` surface, while `/api/conversations` is mounted unconditionally, so gating the drain would have left a send endpoint whose reply had nowhere to be delivered. ISS-1030 removed the door and the flag, and `index.ts` now bootstraps the providers unconditionally for the same reason.
 export function registerWebConversationAdapter(): () => void {
   registerConversationTransport(webConversationPorts);
   const stopDrain = startWebConversationDrain();

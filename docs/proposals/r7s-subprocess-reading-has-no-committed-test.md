@@ -63,27 +63,34 @@ Priced against the two shapes above, not against the false red that found this.
 | A test harness must fake the child process, so it proves the reading and not the tool. `archmap`'s real wordings stay verified by the regex comment alone, and a third phrasing would pass the new tests and still fail the gate. | whoever upgrades archmap |
 | Whatever makes the second spawn come back unreadable is not fixed by any of this, and a green test suite here may read as if it were. The tests would pin the READING of a child process; they say nothing about why a child that ran goes quiet. | whoever next sees R7 red inside a full `verify` |
 
-## One thing to know before picking a shape, and what is still only a hypothesis
+## One thing to know before picking a shape: the false red had a cause, and it is fixed
 
-The red that started this was **false**. Separate that from its cause, because the cause is not
-established and this document is no place to imply it is.
+The red that started this was **false**, and on 2026-09-18 the cause was established and fixed.
+Read this section before picking a shape, because it changes what a test here is for.
 
-**Measured.** In one failing `pnpm verify`, `relations · archmap` — the gate, spawning the same
-binary over the same graph — reported `ok` four lines above R7's red. One run, one binary, one
+**Measured, then.** In one failing `pnpm verify`, `relations · archmap` — the gate, spawning the
+same binary over the same graph — reported `ok` four lines above R7's red. One run, one binary, one
 graph, two spawns, one answer lost. Run alone, `node scripts/conformance-audit.mjs` is green and
 `archmap check --stats` answers its count consistently; five isolated R7 runs were green 5/5. CI's
-`conformance` job was green at both heads. The red reproduces only inside a FULL `verify`.
+`conformance` job was green at both heads. The red reproduced only inside a FULL `verify`.
 
-**Not established.** Two explanations have been offered and neither has been proved. The first was
-resource starvation — the box was at load average 14/25/28 on 48 cores — which the five green
-isolated runs weigh against without refuting, since those runs were also on a quieter box. The
-second is a collision between the two concurrent `archmap` invocations a full `verify` makes, over
-something they share under `.forge/archmap/`. That one is **testable and untested**: two concurrent
-invocations, assert both answer. The full reading, and the retraction of the starvation account by
-the person who first offered it, is ISS-1085 comment `3344e8f9-9e7e-4b5a-9a72-454e18f40139`.
+**Established since.** Two explanations had been offered. Resource starvation was withdrawn by the
+person who offered it. The second — a collision between the two concurrent `archmap` invocations a
+full `verify` makes — was the right one, and it is no longer a hypothesis: two concurrent
+`archmap check --stats` over one checkout reproduce it deterministically, one answering with its
+count and the other exiting 2 with `scope matched no files (.)`, while five sequential runs answer
+5/5. It reproduces on an idle worktree with no changes in it, so it was never about any diff.
 
-So a test harness for this rule should plant the child's behaviour rather than race a real
-`archmap`; and whichever of the two accounts turns out to be right, neither fix addresses it. A
-child that goes quiet is now reported honestly as `could not run` — which `verify` treats exactly as
-it treats a violation, because it exits non-zero on 2 as on 1. The symptom is honest. It is not
-gone.
+`scripts/verify.mjs` now lets a check declare an `exclusive` group and never runs two members of one
+group at the same time; the `relations` check and the `conformance audit` both declare `archmap`.
+Four consecutive `verify` runs at one commit agree where they used to alternate between exit 0 and
+exit 2. What is NOT fixed is archmap itself: the binary is vendored under `.forge/archmap/` and
+cannot be made concurrency-safe from this repo, so anything else that learns to spawn it must join
+that group. The amnesty ends when archmap is safe to run twice at once in one checkout.
+
+**What this leaves for the test.** The shortfall at the top of this document is untouched by any of
+it: the ordering — count parsed before exit status — is still held down by a `cm:guard` and nothing
+that fails. The value of the test went UP rather than down, because the honest `could not run` path
+is now rare, and a reading bug in a path nobody exercises is a reading bug nobody finds. A harness
+here should still plant the child's behaviour rather than race a real `archmap`; racing it is now a
+test of `verify`'s pool, which is a different assertion in a different file.

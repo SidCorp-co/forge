@@ -133,6 +133,105 @@ describe('resolveReleaseChannels', () => {
   });
 });
 
+/**
+ * ISS-1069 — a project's own live address becomes the probe a binding that declares none gets.
+ *
+ * Before this, declaring `verify.probes` needed the one thing Forge did not hold: the project's
+ * production hostname. 0 of 32 projects filled it and `sidpeak` could not cut a release at all.
+ * The rule that matters here is WHEN the default fires — on absence, never on a declaration
+ * `parseVerifyConfig` refused — because filling in for a broken declaration would verify somewhere
+ * the operator never named and wear a green verdict doing it.
+ */
+describe('resolveReleaseChannels — the probe a live address earns', () => {
+  const LIVE = {
+    live: { url: 'https://app.x', commitUrl: 'https://api.x/health', commitPath: 'data.commit' },
+  };
+
+  it.each([
+    ['no verify key at all', {}],
+    ['a JSON-null verify', { verify: null }],
+  ])('defaults the probe from environments.live for a binding with %s', async (_l, cfg) => {
+    listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
+    selectLimit.mockResolvedValue([{ environments: LIVE }]);
+
+    const [channel] = await resolveReleaseChannels(PROJECT_ID);
+    expect(channel?.verify?.probes).toEqual([
+      { url: 'https://api.x/health', commitPath: 'data.commit' },
+    ]);
+    expect(channel?.verifySource).toBe('environments-live');
+  });
+
+  // cm:guard `parseVerifyConfig` answers null to an ABSENT key, to `{}`, to `{"probes":[]}` and to
+  // probes with no url ALIKE, so falling back on its answer alone would replace a broken
+  // declaration with a working one. These three cases are the whole difference between supplying
+  // an absence and overriding a choice, and each is a separate stored value an operator can type.
+  it.each([
+    ['an empty verify object', { verify: {} }],
+    ['a verify with an empty probe list', { verify: { probes: [] } }],
+    ['probes with no url', { verify: { probes: [{ commitPath: 'commit' }] } }],
+  ])('takes NO default for a binding declaring %s', async (_l, cfg) => {
+    listBindings.mockResolvedValue([binding({ bindingConfig: cfg })]);
+    selectLimit.mockResolvedValue([{ environments: LIVE }]);
+
+    const [channel] = await resolveReleaseChannels(PROJECT_ID);
+    expect(channel?.verify).toBeNull();
+    expect(channel?.verifySource).toBe('none');
+  });
+
+  it('keeps a usable binding declaration whatever environments.live holds', async () => {
+    listBindings.mockResolvedValue([
+      binding({
+        bindingConfig: { verify: { probes: [{ url: 'https://own.x/health', commitPath: 'c' }] } },
+      }),
+    ]);
+    selectLimit.mockResolvedValue([{ environments: LIVE }]);
+
+    const [channel] = await resolveReleaseChannels(PROJECT_ID);
+    expect(channel?.verify?.probes).toEqual([{ url: 'https://own.x/health', commitPath: 'c' }]);
+    expect(channel?.verifySource).toBe('binding');
+  });
+
+  it('reports `none` where the binding declares nothing and the project holds no live commit endpoint', async () => {
+    listBindings.mockResolvedValue([binding({})]);
+    selectLimit.mockResolvedValue([{ environments: { live: { url: 'https://app.x' } } }]);
+
+    const [channel] = await resolveReleaseChannels(PROJECT_ID);
+    expect(channel?.verify).toBeNull();
+    expect(channel?.verifySource).toBe('none');
+  });
+
+  // cm:guard `commitPath` reaches `readProbe` ABSENT and never as null, because an absent path is
+  // read as "the whole body, trimmed" — the same reading a hand-declared probe with no commitPath
+  // gets. The two declarations have to mean the same thing.
+  it('omits commitPath entirely where the project declares none', async () => {
+    listBindings.mockResolvedValue([binding({})]);
+    selectLimit.mockResolvedValue([
+      { environments: { live: { commitUrl: 'https://api.x/health', commitPath: null } } },
+    ]);
+
+    const [channel] = await resolveReleaseChannels(PROJECT_ID);
+    expect(channel?.verify?.probes[0]).toEqual({ url: 'https://api.x/health' });
+  });
+
+  it('reads the project row once for any number of bindings', async () => {
+    listBindings.mockResolvedValue([
+      binding({ provider: 'coolify' }),
+      binding({ provider: 'epodsystem' }),
+    ]);
+    selectLimit.mockResolvedValue([{ environments: LIVE }]);
+
+    const channels = await resolveReleaseChannels(PROJECT_ID);
+    expect(channels.map((c) => c.verifySource)).toEqual(['environments-live', 'environments-live']);
+    expect(selectLimit).toHaveBeenCalledTimes(1);
+  });
+
+  it('reads no project row at all where the project declares no live binding', async () => {
+    listBindings.mockResolvedValue([]);
+    expect(await resolveReleaseChannels(PROJECT_ID)).toEqual([]);
+    expect(selectLimit).not.toHaveBeenCalled();
+  });
+});
+
 describe('releaseRunnerLabelOf', () => {
   // cm:guard the ONE axis on which the set still collapses to a single answer, because it names a
   // MACHINE. Returning the set here and letting a caller take `[0]` would put back the silent pick

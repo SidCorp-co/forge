@@ -61,15 +61,21 @@ describe('roomStillBoundTo', () => {
 });
 
 describe('extractFinalAssistantText', () => {
-  it('reads the desktop/chat shape (entry.role)', () => {
+  // cm:guard a legacy `role` entry answers NOTHING, and this assertion is the
+  // point rather than a tautology: this reader discriminates through
+  // `messageRoleToTurnRole`, which lost its `role` branch in ISS-1030. Every row
+  // at rest was rewritten and what an old daemon sends is converted on the way
+  // in, so a `role` entry reaching here is a conversion that did not happen — and
+  // answering it would hide that by making the legacy path work anyway.
+  it('does not read a legacy `role` entry — the conversion happens before this', () => {
     const text = extractFinalAssistantText([
       { role: 'user', content: 'hi' },
       { role: 'assistant', content: 'the answer' },
     ]);
-    expect(text).toBe('the answer');
+    expect(text).toBeNull();
   });
 
-  it('reads the CLI-runner shape (entry.type, no role)', () => {
+  it('reads the canonical shape (entry.type)', () => {
     const text = extractFinalAssistantText([
       { type: 'user', content: 'hi' },
       { type: 'assistant', content: 'the answer' },

@@ -14,18 +14,20 @@
 // prose into `knowledge_entries`), and the live deploy binding's `instructions`
 // for the channel-side one.
 
-import { sql } from 'drizzle-orm';
+import { eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
+import { projects } from '../db/schema.js';
 import { getIntegration } from '../integrations/registry.js';
 import { effectiveConfig, listActiveDeployBindingsForStage } from '../integrations/store.js';
 import { getKnowledgeEntry } from '../knowledge/service.js';
+import { normalizeEnvironments } from '../projects/environments.js';
 import {
   RELEASE_PROCEDURE_FACT,
   type ReleaseChannel,
   type ReleasePlan,
   type ReleaseRollback,
 } from './plan.js';
-import { parseVerifyConfig } from './verify.js';
+import { parseVerifyConfig, type VerifyConfig } from './verify.js';
 
 export type { ReleaseChannel, ReleasePlan, ReleaseRollback } from './plan.js';
 export { defaultReleaseProcedure, RELEASE_PROCEDURE_FACT } from './plan.js';
@@ -72,17 +74,59 @@ export function classifyRollback(provider: string, raw: unknown): ReleaseRollbac
 // `dodgeprint-api` it was a Sentry project, so the release agent was handed a chat channel and an
 // error tracker as things to release onto. Adding a uniqueness constraint would not have fixed it —
 // the fault was core choosing, not the set having more than one member.
+/**
+ * The probe a project's own live address earns it, for a binding that declares none.
+ *
+ * ISS-1069 — before this, declaring a probe needed the one thing Forge did not hold: the project's
+ * production hostname. 0 of 32 projects filled `verify.probes`, and `sidpeak` could not cut a
+ * release at all. `environments.live` is where that address lives now, so a project that has
+ * declared it has declared its probe.
+ *
+ * `commitUrl` and NOT `url`: the two are different addresses on this fleet, and deriving one from
+ * the other by appending a health path is the hostname guessing this whole change exists to stop.
+ * A live side with a `url` and no `commitUrl` therefore earns no probe — which is the refusal, by
+ * name, that `undeclaredProbes` carries.
+ */
+// cm:guard `commitPath: undefined` and never `null` — `readProbe` reads an ABSENT path as "the whole body, trimmed", which is the same reading a hand-declared probe with no `commitPath` gets. Passing null through would type-error rather than change behaviour, and the point of saying it here is that the two declarations mean the same thing.
+export function liveProbeFrom(environments: unknown): VerifyConfig | null {
+  const live = normalizeEnvironments(environments).live;
+  if (live.commitUrl === null) return null;
+  return parseVerifyConfig({
+    probes: [{ url: live.commitUrl, commitPath: live.commitPath ?? undefined }],
+  });
+}
+
 export async function resolveReleaseChannels(projectId: string): Promise<ReleaseChannel[]> {
   const pairs = await listActiveDeployBindingsForStage(projectId, 'live');
+  if (pairs.length === 0) return [];
+  const [row] = await db
+    .select({ environments: projects.environments })
+    .from(projects)
+    .where(eq(projects.id, projectId))
+    .limit(1);
+  const fallback = liveProbeFrom(row?.environments);
   return pairs.map((pair) => {
     const cfg = effectiveConfig(pair);
     const label = cfg.releaseRunnerLabel;
+    const declared = parseVerifyConfig(cfg.verify);
+    // cm:guard the default fires on ABSENCE and never on a declaration `parseVerifyConfig` refused.
+    // That function answers `null` to an absent key, to `{}`, to `{probes:[]}` and to probes with no
+    // url alike, so falling back on its answer alone would REPLACE a broken declaration with a
+    // working one and verify somewhere the operator never named — a silent substitution wearing a
+    // green verdict. `verifySource` below is what keeps the two apart for every later reader.
+    const absent = cfg.verify === undefined || cfg.verify === null;
+    const verify = declared ?? (absent ? fallback : null);
     return {
       bindingId: pair.binding.id,
       provider: pair.binding.provider,
       label: pair.binding.label,
       instructions: pair.binding.instructions ?? null,
-      verify: parseVerifyConfig(cfg.verify),
+      verify,
+      verifySource: declared
+        ? ('binding' as const)
+        : verify
+          ? ('environments-live' as const)
+          : ('none' as const),
       rollback: classifyRollback(pair.binding.provider, cfg.rollback),
       // cm:guard read the pool label out of `config`, NEVER out of `integration_bindings.label` — that column is the multi-store slug (ISS-558), and borrowing it would make "which box releases" and "which store is this" the same field
       releaseRunnerLabel: typeof label === 'string' && label.length > 0 ? label : null,
