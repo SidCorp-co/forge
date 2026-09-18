@@ -40,6 +40,7 @@ import {
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { RETIRED_STATE_CONTEXT_MESSAGE, readAgentConfig } from './agent-config.js';
+import { announceContractInput } from './contract-input-announce.js';
 import { environmentsPatchSchema, RETIRED_PREVIEW_DEPLOY_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
@@ -515,6 +516,7 @@ projectRoutes.patch(
       return tx.update(projects).set(updates).where(eq(projects.id, id)).returning(PATCHED_PROJECT);
     });
     if (!updated) throw notFound();
+    await announceContractInput(id, patch);
 
     // cm:guard same rule on the write door as on the read one: a PATCH that set `releaseModel: 'none'`
     // must not echo back the live branch the row still carries, or the caller writes it straight back.

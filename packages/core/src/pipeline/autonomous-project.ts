@@ -13,14 +13,26 @@
 // that disagree about the unreadable case must not also share a name.
 
 import { eq } from 'drizzle-orm';
-import { db } from '../db/client.js';
+import { type Db, db } from '../db/client.js';
 import { projects } from '../db/schema.js';
 import { isAutonomous } from './autonomous-mode.js';
 import { type PipelineConfig, pipelineConfigSchema } from './pipeline-config-schema.js';
 
-/** `null` when the project is missing or its stored config does not parse. */
-export async function readPipelineConfig(projectId: string): Promise<PipelineConfig | null> {
-  const [row] = await db
+/**
+ * `null` when the project is missing or its stored config does not parse.
+ *
+ * The executor is the caller's, defaulting to the pool. ISS-1072: the check-run
+ * publish reads this INSIDE a transaction that already holds a pooled
+ * connection, and a read on the pool from there needs a second one — ten
+ * concurrent publishes would each hold one and each wait for another, which is
+ * the whole pool waiting on itself until `idle_in_transaction_session_timeout`
+ * breaks it.
+ */
+export async function readPipelineConfig(
+  projectId: string,
+  executor: Pick<Db, 'select'> = db,
+): Promise<PipelineConfig | null> {
+  const [row] = await executor
     .select({ agentConfig: projects.agentConfig })
     .from(projects)
     .where(eq(projects.id, projectId))

@@ -196,6 +196,12 @@ export async function applyMergeMarker(args: {
     before: { mergedAt: before.mergedAt },
     after: { mergedAt: issue.mergedAt, mergedCommitSha: issue.mergedCommitSha },
   });
+  // cm:guard beside `issueUpdated` and not instead of it. The merged mark is one of the five criteria `statusEntryCriteria` can declare, and this writer does not go through `updateIssueFields` — it stamps through `merged-at.ts` — so the announcement `update-service.ts` makes would never fire for a mark or an unmark without this line (ISS-1072).
+  await hooks.emit('contractInputChanged', {
+    projectId: before.projectId,
+    issueId: before.id,
+    reason: args.op === 'mark' ? 'merged mark written' : 'merged mark cleared',
+  });
 
   // cm:guard the tick is on `mark` ONLY — clearing `merged_at` can only ADD a block, so waking the dispatcher there is work that can never find anything, while skipping it on `mark` leaves a now-unblocked parent waiting out the 60s pg-boss backstop instead of dispatching in ~1s.
 

@@ -24,7 +24,7 @@ import { type Db, db } from '../db/client.js';
 import { type IssueStatus, issues } from '../db/schema.js';
 import { logger } from '../logger.js';
 import { readPipelineConfig } from '../pipeline/autonomous-project.js';
-import { findMissingWorkEvidence } from '../pipeline/work-evidence.js';
+import { findMissingWorkEvidence, missingWorkEvidenceStrict } from '../pipeline/work-evidence.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
 
 type CriterionExecutor = Pick<Db, 'select'>;
@@ -50,7 +50,10 @@ const isBlank = (v: string | null): boolean => v == null || v.trim().length === 
 
 // cm:guard a criterion reads the TRACKER RECORD and never a working tree. `forge guide contract earning-and-unearning` states the constraint and the reason: "a check that read the working tree would answer differently on every machine that ran it", so anything the repository knows is written onto the issue at the step that knew it and read back from there. `work_evidence` is the shape of that rule, not an exception to it — it reads the handoff a step wrote, not git.
 // cm:guard each detail names ONE record and how to write it. A refusal that says "criteria unmet" sends the reader to the config to find out what it means, and the config is the one place they cannot fix it from — the shortfall has to be actionable from the issue.
-const CRITERIA: Record<EntryCriterionKey, Criterion> = {
+// cm:guard the map is BUILT from the work-evidence check rather than naming one, and that is the whole of how ISS-1072 got a strict reading without a second copy of these five sentences. A duplicated remedy string is a sentence that stops matching the gate's the first time either is edited, and the reader it misleads is on a pull request rather than in a refusal.
+const criteriaWith = (
+  workEvidence: (id: string, executor: CriterionExecutor) => Promise<string | null>,
+): Record<EntryCriterionKey, Criterion> => ({
   plan: (_id, record) =>
     isBlank(record.plan)
       ? 'no `plan` is written on this issue — write the plan field before this status'
@@ -64,12 +67,20 @@ const CRITERIA: Record<EntryCriterionKey, Criterion> = {
       ? 'no `releaseNotes` is written on this issue — `{ section, userFacing }`, or ' +
         "`{ section: 'Skip', userFacing: '-' }` when the change has no user-facing half"
       : null,
-  work_evidence: (id, _record, executor) => findMissingWorkEvidence(id, executor),
+  work_evidence: (id, _record, executor) => workEvidence(id, executor),
   merged_mark: (_id, record) =>
     record.mergedAt == null
       ? 'this issue carries no merged mark — mark it merged, naming the commit it landed at, before this status'
       : null,
-};
+});
+
+// cm:guard each reader is reached through a wrapper rather than passed by name, so the import is
+// read when a `work_evidence` criterion is EVALUATED and not when this module loads. Binding the
+// identifiers here instead made importing this file — which `apply-transition.ts` pulls in, so
+// most of the tracker — fail outright in any test whose `work-evidence.js` mock was short one
+// export. Three suites went red on it at once and not one of them declares `work_evidence`.
+const CRITERIA = criteriaWith((id, executor) => findMissingWorkEvidence(id, executor));
+const STRICT_CRITERIA = criteriaWith((id, executor) => missingWorkEvidenceStrict(id, executor));
 
 /**
  * What the project declared for the status being entered, or an empty list.
@@ -123,4 +134,66 @@ export async function findUnmetEntryCriteria(args: {
     if (detail) unmet.push({ key, detail });
   }
   return unmet.length > 0 ? { unmet } : null;
+}
+
+/**
+ * ISS-1072 — the same declaration and the same five criteria, read strictly and
+ * returned whole, for a caller that PUBLISHES the answer instead of gating on it.
+ *
+ * Three differences from the pair above, and each is the same reason. The config
+ * read is not swallowed, because `[]` from a failed read and `[]` from a project
+ * that declared nothing are one value here and the first is a lie on a pull
+ * request. `work_evidence` runs the strict check, for the same reason one rung
+ * down. And what comes back names the MET criteria as well as the unmet, because
+ * "nothing is missing" and "nothing was asked" are the two answers a reader of a
+ * check run most needs told apart.
+ *
+ * It throws where it cannot answer. That is the point: the caller renders the
+ * refusal rather than a verdict it did not earn.
+ */
+export interface EntryCriteriaReading {
+  declared: EntryCriterionKey[];
+  met: EntryCriterionKey[];
+  unmet: { key: EntryCriterionKey; detail: string }[];
+}
+
+export async function readEntryCriteriaStrict(args: {
+  projectId: string;
+  issueId: string;
+  status: IssueStatus;
+  executor?: CriterionExecutor;
+}): Promise<EntryCriteriaReading> {
+  const executor = args.executor ?? db;
+  const config = await readPipelineConfig(args.projectId, executor);
+  // cm:guard `null` is REFUSED here and read as `[]` by the gate above. `readPipelineConfig`
+  // answers null for a project that is missing and for a stored config that does not parse, and
+  // for neither of those is "this project declares no records" a true sentence — a valid config
+  // declaring nothing parses to an object, so the two cases stay apart. Reading null as the
+  // empty declaration is criterion 7's exact failure, published on a pull request.
+  if (!config) {
+    throw new Error(`the pipeline configuration for project ${args.projectId} could not be read`);
+  }
+  const declared = config.statusEntryCriteria?.[args.status] ?? [];
+  if (declared.length === 0) return { declared: [], met: [], unmet: [] };
+  const [record] = await executor
+    .select({
+      plan: issues.plan,
+      acceptanceCriteria: issues.acceptanceCriteria,
+      releaseNotes: issues.releaseNotes,
+      mergedAt: issues.mergedAt,
+    })
+    .from(issues)
+    .where(eq(issues.id, args.issueId))
+    .limit(1);
+  // cm:guard an issue row that is not there is REFUSED here and skipped by `findUnmetEntryCriteria`. The gate is mid-transaction on a row it is about to write, so a miss there is a race it must not fail on; this caller is publishing a report about an issue, and the honest answer when the issue is gone is that it could not be read.
+  if (!record) throw new Error(`no issue row for ${args.issueId}`);
+
+  const met: EntryCriterionKey[] = [];
+  const unmet: EntryCriteriaReading['unmet'] = [];
+  for (const key of declared) {
+    const detail = await STRICT_CRITERIA[key](args.issueId, record, executor);
+    if (detail) unmet.push({ key, detail });
+    else met.push(key);
+  }
+  return { declared: [...declared], met, unmet };
 }

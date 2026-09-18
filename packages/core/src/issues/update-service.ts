@@ -2,6 +2,8 @@ import { and, eq, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issueLabels, issues } from '../db/schema.js';
 import { type Actor, recordActivityTx } from '../pipeline/activity.js';
+import { hooks } from '../pipeline/hooks.js';
+import { CONTRACT_INPUT_FIELDS } from './entry-criteria-keys.js';
 import type { ResolvedLabelAttach } from './label-service.js';
 import type { IssueRow } from './read-service.js';
 import type { SessionContextExpect } from './session-context.js';
@@ -33,6 +35,12 @@ export type IssueUpdateInput = {
  */
 // cm:guard the label delta and its activity rows commit in ONE transaction with the field update — a partial commit leaves `issue.labeled` claiming a label the issues row does not carry, and the activity feed is the only record of who changed a label
 export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
+  const row = await writeIssueFields(input);
+  await announceContractInput(input.issueId, row.projectId, input.updates);
+  return row;
+}
+
+async function writeIssueFields(input: IssueUpdateInput): Promise<IssueRow> {
   const { issueId, updates, labelIds, expect, actor } = input;
   const guard = expect ? [sessionContextGuard(expect.sessionContext)] : [];
 
@@ -82,6 +90,31 @@ export async function updateIssueFields(input: IssueUpdateInput): Promise<IssueR
     }
 
     return row;
+  });
+}
+
+/**
+ * ISS-1072 — tell whatever publishes the contract that one of its inputs moved.
+ *
+ * Here rather than on `issueUpdated`, because this is where BOTH field surfaces
+ * converge and `issueUpdated` covers only one of them: `issues/patch-fields.ts`
+ * records the drift — REST emits it, MCP's update deliberately does not — and
+ * MCP's update is the door `forge record plan` and `forge record criteria` come
+ * through. Subscribing to `issueUpdated` would miss exactly the writes a
+ * contract check is most about.
+ */
+// cm:guard fired AFTER the transaction has returned, never inside it. A subscriber of this reaches GitHub over the network; running it inside would hold the issue's row lock across an HTTP call, and a throw would roll back a field write that succeeded.
+async function announceContractInput(
+  issueId: string,
+  projectId: string,
+  updates: Record<string, unknown>,
+): Promise<void> {
+  const moved = CONTRACT_INPUT_FIELDS.filter((f) => f in updates);
+  if (moved.length === 0) return;
+  await hooks.emit('contractInputChanged', {
+    projectId,
+    issueId,
+    reason: `fields written: ${moved.join(', ')}`,
   });
 }
 
