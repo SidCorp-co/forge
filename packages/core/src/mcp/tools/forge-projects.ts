@@ -8,11 +8,15 @@ import {
   orgDerivedProjectRole,
   orgRoleAtLeast,
 } from '../../lib/authz.js';
+import {
+  normalizeEnvironments,
+  RETIRED_PREVIEW_DEPLOY_NOTES_MESSAGE,
+} from '../../projects/environments.js';
 import { readableLiveBranch } from '../../projects/release-model.js';
 import {
   createProject,
   ProjectSlugTakenError,
-  readPreviewDeploy,
+  readEnvironments,
   readProjectSummary,
   updateProject,
 } from '../../projects/service.js';
@@ -163,28 +167,53 @@ export const forgeProjectsCreateTool: ContextScopedMcpToolFactory = (ctx) => ({
   },
 });
 
+/**
+ * ISS-1069 — `previewDeployNotes` is refused on the RAW patch, before the strict object below
+ * reads it.
+ *
+ * `.strict()` does refuse an unknown key, but it refuses it as "Unrecognized key", which tells an
+ * agent holding a tool description one version old that it typed something wrong and nothing about
+ * what replaced it. The message is the deliverable: this is the same door `refuseRetiredProjectKeys`
+ * holds on REST, and the same reason.
+ */
+function refuseRetiredPatchKeys(raw: unknown, ctx: z.RefinementCtx): void {
+  if (!raw || typeof raw !== 'object') return;
+  if ('previewDeployNotes' in (raw as Record<string, unknown>)) {
+    ctx.addIssue({
+      code: 'custom',
+      path: ['previewDeployNotes'],
+      message: RETIRED_PREVIEW_DEPLOY_NOTES_MESSAGE,
+    });
+  }
+}
+
 const updateInputSchema = z
   .object({
     projectId: z.uuid(),
     patch: z
-      .object({
-        name: z.string().trim().min(1).max(200).optional(),
-        description: z.string().trim().max(2000).nullable().optional(),
-        repoPath: z.string().trim().max(500).nullable().optional(),
-        baseBranch: z.string().trim().max(100).nullable().optional(),
-        liveBranch: z.string().trim().max(100).nullable().optional(),
-        // cm:guard exposed here and not left to REST because REST PATCH needs a user JWT — a device/MCP principal cannot reach it, and the only projects that need `website` are set up by an agent. Removing it makes the field create-only again for anyone without a browser session.
-        kind: z.enum(projectKinds).optional(),
-        // cm:guard scoped write for `previewDeploy.notes` ONLY — the rest of previewDeploy holds testCredentials and stays REST-only. This merges into the existing jsonb; it must never replace it, or a note would delete the credentials beside it.
-        previewDeployNotes: z.string().trim().max(8000).nullable().optional(),
-        // cm:guard writable over MCP so the stage that just repaired a workspace can record the procedure that WORKED — the whole saving depends on the loop closing without a human, and no browser session exists on a runner box. It is read by the setup agent and executed by nobody, so treat a rewrite as documentation, not configuration: never overwrite a human-authored procedure with a guess.
-        workspaceSetup: z.string().trim().max(8000).nullable().optional(),
-      })
-      .strict()
-      // cm:guard refine on VALUES and never on key count: zod v4 `.strict()` rejects unknown keys but does NOT strip an explicit `undefined` from an optional field, so `{name: undefined}` passes an `Object.keys(o).length > 0` guard and then loses every field to the downstream `!== undefined` filter, leaving an empty drizzle SET and malformed SQL.
-      .refine((o) => Object.values(o).some((v) => v !== undefined), {
-        message: 'patch must have at least one defined field',
-      }),
+      .unknown()
+      .superRefine(refuseRetiredPatchKeys)
+      .pipe(
+        z
+          .object({
+            name: z.string().trim().min(1).max(200).optional(),
+            description: z.string().trim().max(2000).nullable().optional(),
+            repoPath: z.string().trim().max(500).nullable().optional(),
+            baseBranch: z.string().trim().max(100).nullable().optional(),
+            liveBranch: z.string().trim().max(100).nullable().optional(),
+            // cm:guard exposed here and not left to REST because REST PATCH needs a user JWT — a device/MCP principal cannot reach it, and the only projects that need `website` are set up by an agent. Removing it makes the field create-only again for anyone without a browser session.
+            kind: z.enum(projectKinds).optional(),
+            // cm:guard scoped write for `environments.limits` ONLY — the rest of `environments` holds testCredentials and stays REST-only. This READ-MODIFY-WRITES the existing jsonb; it must never replace it, or a limits edit would delete the credentials beside it. That is the price stated for keeping REST's own wholesale-replacement semantics (ISS-1069).
+            environmentsLimits: z.string().trim().max(8000).nullable().optional(),
+            // cm:guard writable over MCP so the stage that just repaired a workspace can record the procedure that WORKED — the whole saving depends on the loop closing without a human, and no browser session exists on a runner box. It is read by the setup agent and executed by nobody, so treat a rewrite as documentation, not configuration: never overwrite a human-authored procedure with a guess.
+            workspaceSetup: z.string().trim().max(8000).nullable().optional(),
+          })
+          .strict()
+          // cm:guard refine on VALUES and never on key count: zod v4 `.strict()` rejects unknown keys but does NOT strip an explicit `undefined` from an optional field, so `{name: undefined}` passes an `Object.keys(o).length > 0` guard and then loses every field to the downstream `!== undefined` filter, leaving an empty drizzle SET and malformed SQL.
+          .refine((o) => Object.values(o).some((v) => v !== undefined), {
+            message: 'patch must have at least one defined field',
+          }),
+      ),
   })
   .strict();
 
@@ -192,9 +221,9 @@ const updateInputSchema = z
  * Update a project's settings (name/description/repoPath/baseBranch/
  * liveBranch) — the subset of `updateProjectSchema` that's safe to
  * expose to MCP. Sensitive fields (webhookSecret, apiKey, agentConfig,
- * defaultDeviceId) intentionally stay on the REST handler. `previewDeploy`
+ * defaultDeviceId) intentionally stay on the REST handler. `environments`
  * is exposed READ-ONLY through `forge_projects.get` (ISS-225); writes stay
- * on REST.
+ * on REST, with the one scoped exception below.
  *
  * Authorization is OWNER-ONLY, matching REST PATCH /api/projects/:id
  * (projects/routes.ts:349-351 — `project.ownerId === userId || role === 'owner'`).
@@ -206,7 +235,7 @@ const updateInputSchema = z
 export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.update',
   description:
-    "Update project settings (name, description, repoPath, baseBranch, liveBranch, kind). `kind` is the project's SHAPE, not a label: `website` means an Epodsystem-backed storefront where the store is the source of truth and a git repo is optional, and the runner then skips the git preflight and the workspace refresh for every job. Set it on a project that has no repo; never set it on one that does, or its stages stop verifying the checkout they run in. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. `workspaceSetup` is prose describing how to bring this repo's workspace to a state a stage can build, test and commit in (install commands, hook setup, toolchain quirks) — the runner's setup agent reads it before every stage that lands in a broken workspace, so writing it once retires a per-job derivation. Record only a procedure you actually ran; null clears it. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; previewDeploy is otherwise read-only via forge_projects.get, with ONE scoped exception: `previewDeployNotes` writes `previewDeploy.notes` — the how-to-use and known limits of the project's test resources (which surfaces the test account can reach, which states this environment never contains, what must not be faked). Write it as prose for whoever plans a live walk. NEVER put a secret in it: it is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`. null clears it.",
+    "Update project settings (name, description, repoPath, baseBranch, liveBranch, kind). `kind` is the project's SHAPE, not a label: `website` means an Epodsystem-backed storefront where the store is the source of truth and a git repo is optional, and the runner then skips the git preflight and the workspace refresh for every job. Set it on a project that has no repo; never set it on one that does, or its stages stop verifying the checkout they run in. Caller must be org owner/admin on the project's org (a merely-invited project admin cannot mutate settings — matches REST PATCH /api/projects/:id). PAT principals must additionally carry the `write` scope. `workspaceSetup` is prose describing how to bring this repo's workspace to a state a stage can build, test and commit in (install commands, hook setup, toolchain quirks) — the runner's setup agent reads it before every stage that lands in a broken workspace, so writing it once retires a per-job derivation. Record only a procedure you actually ran; null clears it. Sensitive fields (webhookSecret, apiKey, agentConfig, defaultDeviceId) stay on REST; `environments` is otherwise read-only via forge_projects.get, with ONE scoped exception: `environmentsLimits` writes `environments.limits` and leaves every other key of the blob — the credentials included — exactly as it found them. `limits` answers ONE question: what does this environment NOT have? (which surfaces the test account cannot reach, which states this environment never contains, what must not be faked). The field it replaced invited anything and was filled on 4 of 32 projects. NEVER put a secret in it: it is readable by every project member and is injected into agent prompts as `{{project:test-notes}}`. null clears it. `previewDeployNotes` was retired by ISS-1069 and is refused by name.",
   inputSchema: zodToMcpSchema(updateInputSchema),
   handler: async (args) => {
     const input = updateInputSchema.parse(args);
@@ -249,9 +278,14 @@ export const forgeProjectsUpdateTool: ContextScopedMcpToolFactory = (ctx) => ({
     if (input.patch.workspaceSetup !== undefined) {
       updates.workspaceSetup = input.patch.workspaceSetup;
     }
-    if (input.patch.previewDeployNotes !== undefined) {
-      const current = await readPreviewDeploy(input.projectId);
-      updates.previewDeploy = { ...current, notes: input.patch.previewDeployNotes };
+    // cm:guard READ-MODIFY-WRITE and never a replacement. REST's `environments` patch replaces the
+    // column wholesale, deliberately; this narrow door does the opposite, so an agent recording the
+    // limits of a test environment cannot delete the credentials, the live address or an unknown key
+    // sitting beside them. `readEnvironments` hands back the RAW blob for exactly this reason — the
+    // normalised reading names four fields and would drop everything else on the way back down.
+    if (input.patch.environmentsLimits !== undefined) {
+      const current = await readEnvironments(input.projectId);
+      updates.environments = { ...current, limits: input.patch.environmentsLimits };
     }
 
     const project = await updateProject(input.projectId, updates);
@@ -277,7 +311,7 @@ const getInputSchema = z.object({ projectId: z.uuid() }).strict();
 export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
   name: 'forge_projects.get',
   description:
-    'Fetch project detail visible to the principal — id, slug, name, description, orgId, createdBy, role (effective: admin|member|viewer), repoPath, workspaceSetup, baseBranch, liveBranch (non-null only under releaseModel `promote`), releaseModel, releaseStrategy, defaultDeviceId, previewDeploy.{stagingUrl,stagingApiUrl,testingUrls,testCredentials,notes}, createdAt. `workspaceSetup` is the project-declared setup procedure (install commands, hook setup, toolchain quirks) — follow it rather than guessing when a checkout will not build, and if it is null and you establish one, record it via forge_projects.update. READ previewDeploy.notes before planning any live verification: it carries the how-to-use and the known limits of these resources (what a test account can and cannot reach, states this environment never contains), and those limits decide whether an acceptance criterion is walkable AT ALL — check it while the work is still being scoped, not at the testing gate. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
+    'Fetch project detail visible to the principal — id, slug, name, description, orgId, createdBy, role (effective: admin|member|viewer), repoPath, workspaceSetup, baseBranch, liveBranch (non-null only under releaseModel `promote`), releaseModel, releaseStrategy, defaultDeviceId, environments.{preview,live,testCredentials,limits}, createdAt. `environments` carries BOTH sides of a deployment: `preview` is `{url, apiUrl, urls[]}` or null — null means this project has no preview side at all, which is normal for a one-box project and is not a gap to report or to work around — and `live` is `{url, apiUrl, commitUrl, commitPath}`, the address a release ships to. `workspaceSetup` is the project-declared setup procedure (install commands, hook setup, toolchain quirks) — follow it rather than guessing when a checkout will not build, and if it is null and you establish one, record it via forge_projects.update. READ environments.limits before planning any live verification: it answers what this environment does NOT have (what a test account cannot reach, states this environment never contains), and those limits decide whether an acceptance criterion is walkable AT ALL — check it while the work is still being scoped, not at the testing gate. If it is empty and you discover such a limit, record it with forge_projects.update `environmentsLimits`. Any effective project role can read. PAT principals must carry the `read` scope. Sensitive fields (agentConfig, webhookSecret, apiKey) stay on REST.',
   inputSchema: zodToMcpSchema(getInputSchema),
   handler: async (args) => {
     const input = getInputSchema.parse(args);
@@ -309,16 +343,12 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
     }
     const role: ProjectMemberRole = access.role;
 
-    // Normalize previewDeploy: tolerate null + missing inner fields so the
-    // response shape is stable regardless of DB state.
-    const pd = (proj.previewDeploy ?? {}) as Record<string, unknown>;
-    const previewDeploy = {
-      stagingUrl: (pd.stagingUrl as string | null | undefined) ?? null,
-      stagingApiUrl: (pd.stagingApiUrl as string | null | undefined) ?? null,
-      testingUrls: Array.isArray(pd.testingUrls) ? pd.testingUrls : [],
-      testCredentials: Array.isArray(pd.testCredentials) ? pd.testCredentials : [],
-      notes: (pd.notes as string | null | undefined) ?? null,
-    };
+    // cm:guard the READING and not the stored blob, through the one normaliser every reader shares
+    // (ISS-1069). Before it, this handler, `readPreviewDeploy` and `loadProjectFactInputs` each
+    // picked keys out of the column by hand with `?? {}`, so what an empty value MEANT lived in no
+    // single place and the three could disagree about it. `preview: null` here is a one-box project
+    // saying it has no other side, and `live.url === null` is the question this shape makes askable.
+    const environments = normalizeEnvironments(proj.environments);
 
     return {
       project: {
@@ -337,7 +367,7 @@ export const forgeProjectsGetTool: ContextScopedMcpToolFactory = (ctx) => ({
         releaseModel: proj.releaseModel,
         releaseStrategy: proj.releaseStrategy,
         defaultDeviceId: proj.defaultDeviceId,
-        previewDeploy,
+        environments,
         createdAt: proj.createdAt,
       },
     };

@@ -104,6 +104,16 @@ export interface InboundDispatchInput {
 export interface InboundDispatchResult {
   deliveryId: string;
   actions: number;
+  /**
+   * Why this delivery was accepted, recorded and then acted on by nothing.
+   *
+   * A permanent refusal — an unserved event, a payload naming a project no target declares — is not
+   * a failure to answer, so it is a 200 rather than a throw: throwing makes the provider retry a
+   * delivery whose outcome cannot change. But `actions: 0` on its own is indistinguishable from the
+   * generic path's "signed, and dropped on the floor", which is the one thing an operator must not
+   * have to guess at. The sentence goes on the delivery row for later and comes back here for now.
+   */
+  refusal?: string;
 }
 
 /**
@@ -198,6 +208,19 @@ export interface IntegrationCapabilities {
    * new one on the floor. Only meaningful where `canReceiveWebhook` is true.
    */
   webhookHeader?: string;
+  /**
+   * The request header carrying the HMAC signature over an inbound delivery's raw body.
+   *
+   * Declared for the same reason `webhookHeader` is, and it was the half ISS-1071 left behind:
+   * `webhooks/inbound-routes.ts` derived the header→provider map from these declarations and then
+   * looked for the signature in a literal `['x-hub-signature-256', 'x-forge-signature-256']` in its
+   * own file. A provider signing with anything else — Sentry's `sentry-hook-signature`, ISS-1085
+   * slice 4 — therefore routed correctly to its adapter and was then refused `MISSING_SIGNATURE`,
+   * with nothing beside that array saying a second edit was owed. REQUIRED wherever
+   * `canReceiveWebhook` is true; `capabilities.test.ts` holds that, and the router refuses a matched
+   * provider that declares none by name rather than falling through to the generic path.
+   */
+  webhookSignatureHeader?: string;
   /**
    * True where this provider's API can express a rollback as a structured action rather than as
    * prose for a human to carry out. Read by `release-batch/channel.ts`, which classified it with

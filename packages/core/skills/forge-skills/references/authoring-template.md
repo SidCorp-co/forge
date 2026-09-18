@@ -32,6 +32,6 @@ Post the comment, then transition status as the LAST action.
 ```
 
 ## Notes
-- **Per-project values** (branch, URLs, creds, domain facts) → `forge_knowledge` / `previewDeploy`, NOT the body.
+- **Per-project values** (branch, URLs, creds, domain facts) → `forge_knowledge` / `environments`, NOT the body.
 - **Adding `references/` via MCP:** pass each file with `encoding:"utf8"` (or `base64` for binaries).
 - **Non-standard build/deploy** (MCP-driven, docs-only): replace the build/test/deploy steps with the project's real model; keep durable invariants inline, defer tool mechanics to the live MCP playbook.

@@ -55,6 +55,36 @@ emits a snapshot under `meta/`.
 Both mean the generated file is a starting point on this repo, not a finished
 one. Keep the snapshot drizzle emitted; rewrite the SQL and the journal entry.
 
+### When a sibling migration lands on `main` first
+
+Regenerate yours on the merged tree; do not renumber by hand. Measured twice on ISS-1030: on
+2026-09-17 its `0266`/`0267` were buried by `0268` landing an hour earlier at a `when` 16 days
+above them, and on 2026-09-18 the renumbered `0269`/`0270` were buried again by `0272`. As they
+stood, drizzle would have skipped both silently and forever. Expect this once per sibling that
+lands, not once per branch.
+
+Renaming the files and raising the `when` is not enough, because a snapshot records the schema it
+was diffed FROM: yours chains off the snapshot `main` held when you generated it, and `main` now
+carries another one. The chain gate fails it by name, and the first `pnpm db:generate` after that
+re-emits DDL the database already has. So after `git merge origin/main`:
+
+1. Delete your `.sql` files, your `meta/<idx>_snapshot.json` files, and your entries from
+   `meta/_journal.json` (`git checkout origin/main -- meta/_journal.json` restores it whole).
+2. `pnpm db:generate` once. It emits ONE `.sql` carrying every table your branch adds, plus one
+   snapshot chained off whatever `main`'s head snapshot now is — which is the only thing you are
+   keeping. Splitting the modules across several passes is not needed: only the HEAD entry owes a
+   snapshot, and `migrations-journal.test.ts` allows an entry that carries none.
+3. Diff the emitted SQL against what you had; it should be the union of your files, statement for
+   statement. Anything else is a real schema change you did not mean to make. Restore your own
+   `.sql` files under their new `idx`, discard the emitted one, and rename the emitted snapshot to
+   `meta/<head idx>_snapshot.json`.
+4. Set the `when` values by hand — `generate` writes `Date.now()`, which is months below the floor.
+
+**Neither `when` test can see this.** With the stale numbering sitting BELOW a higher-`idx` entry
+from `main`, the journal still reads strictly increasing in `idx` order and the head entry is still
+a whole day above the previous maximum, so both go green; only the snapshot chain reds. Read the
+floor off `main` and off every unmerged sibling yourself — the gate reads your journal alone.
+
 ### Hand-written SQL (rare)
 
 Use only when codegen can't express the change (data backfills,

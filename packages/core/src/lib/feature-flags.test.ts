@@ -19,20 +19,20 @@ describe('feature-flags', () => {
   });
 
   it('returns true by default (no env set) — flags ship on for v0.1.x alpha', () => {
-    expect(isEnabled('chatProvider')).toBe(true);
     expect(isEnabled('pipelineControl')).toBe(true);
+    expect(isEnabled('commentMentions')).toBe(true);
   });
 
   it('explicit FEATURE_X=false overrides default-on', () => {
-    process.env.FEATURE_CHAT_PROVIDER = 'false';
-    expect(isEnabled('chatProvider')).toBe(false);
+    process.env.FEATURE_COMMENT_MENTIONS = 'false';
+    expect(isEnabled('commentMentions')).toBe(false);
     process.env.FEATURE_PIPELINE_CONTROL = '0';
     expect(isEnabled('pipelineControl')).toBe(false);
   });
 
   it('reads `true` from env (camelCase → SCREAMING_SNAKE_CASE)', () => {
-    process.env.FEATURE_CHAT_PROVIDER = 'true';
-    expect(isEnabled('chatProvider')).toBe(true);
+    process.env.FEATURE_COMMENT_MENTIONS = 'true';
+    expect(isEnabled('commentMentions')).toBe(true);
   });
 
   it('reads `1` as enabled', () => {
@@ -41,16 +41,15 @@ describe('feature-flags', () => {
   });
 
   it('rejects other values (e.g. "on", "yes")', () => {
-    process.env.FEATURE_CHAT_PROVIDER = 'on';
-    expect(isEnabled('chatProvider')).toBe(false);
-    process.env.FEATURE_CHAT_PROVIDER = 'yes';
-    expect(isEnabled('chatProvider')).toBe(false);
+    process.env.FEATURE_COMMENT_MENTIONS = 'on';
+    expect(isEnabled('commentMentions')).toBe(false);
+    process.env.FEATURE_COMMENT_MENTIONS = 'yes';
+    expect(isEnabled('commentMentions')).toBe(false);
   });
 
   it('snapshotFlags returns every defined flag', () => {
     const snap = snapshotFlags();
     const expectedKeys: FeatureFlag[] = [
-      'chatProvider',
       'pipelineControl',
       'commentMentions',
       'userPreferences',

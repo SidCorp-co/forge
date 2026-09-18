@@ -53,9 +53,9 @@ export function webDoorLines(projectSlug: string, askedBy: string | null): strin
 }
 
 /**
- * The assistant's voice in a Forge conversation and on `POST /api/chat`.
+ * The assistant's voice in a Forge conversation.
  */
-// cm:guard both web doors build their persona HERE and neither keeps its own: `conversation-send.ts` answers the browser and `assistant/routes.ts` answers the SSE surface, and `docs/proposals/api-chat-has-no-client.md` prices two persona assemblies over one store as drift a reader cannot resolve. A second assembly re-introduced anywhere is that cost back (ISS-1007).
+// cm:guard every door builds its persona HERE and none keeps its own: `conversation-send.ts` answers the browser and `external-chat.ts` answers a room. The second web door — the SSE `POST /api/chat` — is gone with ISS-1030, and what it cost while it stood was two persona assemblies over one store, drift a reader could not resolve. A second assembly re-introduced anywhere is that cost back (ISS-1007).
 export function webConversationPersona(
   projectName: string,
   projectSlug: string,

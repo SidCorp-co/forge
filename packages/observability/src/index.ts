@@ -32,7 +32,10 @@ export const SCRUB_BODY_KEYS: ReadonlySet<string> = new Set([
   'sessionToken',
   'session_token',
   'bearerToken',
-  // ISS-225 — previewDeploy.testCredentials[] carries QA login pairs.
+  // ISS-225 — `environments.testCredentials[]` carries QA login pairs (the column was
+  // `previewDeploy` until ISS-1069 renamed it; this set matches on the KEY NAME and not on a path,
+  // which is why the rename kept that spelling and why a future rename of the FIELD would stop the
+  // redaction silently — the scrubber would succeed and the secret would be in the log).
   'testCredentials',
   // ISS-1036 — a GitHub App's PEM and a Google service-account key file. Both
   // are credentials with no token-shaped signature of their own, so the key
@@ -145,7 +148,7 @@ export function scrubPatInString(s: string): string {
 /**
  * Mutates `obj` in place, replacing values whose keys appear in
  * SCRUB_BODY_KEYS. Walks nested objects and arrays depth-limited (≤ 8) so
- * deeply-nested secrets like `previewDeploy.testCredentials[]` get redacted
+ * deeply-nested secrets like `environments.testCredentials[]` get redacted
  * too. Matched subtrees are replaced with `[Filtered]` outright — we do not
  * recurse INTO a redacted subtree.
  */

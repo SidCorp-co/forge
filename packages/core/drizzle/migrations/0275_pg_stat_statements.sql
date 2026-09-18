@@ -1,0 +1,23 @@
+-- ISS-1026. Per-statement attribution for the beta server.
+--
+-- The other half of this change is the `command:` block on the `postgres` service in
+-- docker-compose.prod.yml: `shared_preload_libraries=pg_stat_statements`. Neither half works
+-- alone, and the order between them does not matter.
+--
+--   * This statement on a server that has NOT preloaded the library SUCCEEDS. The extension's
+--     SQL objects are created; only reading the view then raises
+--     `pg_stat_statements must be loaded via shared_preload_libraries`, which is a loud break
+--     naming its own cause rather than an empty result. So a deploy that lands this migration
+--     before the postmaster restart is not broken by it.
+--   * Preloading without this statement gives a collecting library and no view to read it by.
+--
+-- The postmaster must be RESTARTED, not reloaded, for the preload to take effect.
+--
+-- `pg_stat_statements` ships in the same Debian `postgresql-17` package as `pg_trgm` (migration
+-- 0262) and `pgcrypto` (0034), so this adds no requirement on the server that this repository's
+-- migrations did not already carry. It is confirmed present in `pg_available_extensions` at
+-- version 1.11 on the running beta container.
+--
+-- No schema object of this application's own is created or altered here, so the snapshot beside
+-- this file is 0268's schema carried forward unchanged.
+CREATE EXTENSION IF NOT EXISTS pg_stat_statements;

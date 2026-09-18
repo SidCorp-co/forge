@@ -1,7 +1,7 @@
 <!doctype html>
 <meta charset="utf-8">
 <meta name="flow-module" content="agent-execution">
-<meta name="flow-answers" content="How a box takes work and runs it, why a worker outlives a single turn, which blocked branch releases the box, and why removing a capability must refuse by name">
+<meta name="flow-answers" content="How a box takes work and runs it, why a worker outlives a single turn, which blocked branch releases the box, why removing a capability must refuse by name, and how what a worker said reaches a reader without a box ever deciding the shape of it">
 <title>Flow · agent-execution</title>
 <style>
   :root { --fg:#1c1a17; --mut:#6b645c; --faint:#9a9288; --line:#ddd7cf; --bg:#fbfaf8; --panel:#fff;
@@ -135,6 +135,35 @@ under them fails at the moment of use rather than at deploy.</p>
 <p>So a removal must be <b>refused by name</b> while any reachable box still expects it. The wrong
 move — and the one that has to stay impossible — is letting the call fail with a generic error, which
 tells whoever hits it nothing about what happened or which version they are on.</p>
+</section>
+
+<section class="pane">
+<h2>How a worker&rsquo;s transcript gets here</h2>
+<p>A worker narrates itself as it runs, one line per thing it did, and those lines are what a person
+later reads as the transcript. The box does not decide what a transcript looks like: it forwards the
+raw lines in batches and core folds them into entries. That is the whole reason the shape is the
+same for a chat and for a pipeline run &mdash; there is one reader because there is one folder, and a
+box on last week&rsquo;s build cannot invent a second shape.</p>
+<p>Three properties hold the arrangement up, and each exists because its absence loses something
+quietly:</p>
+<ul>
+  <li><b>A line&rsquo;s identity travels with it.</b> The batch carries the number of each line, so a
+  batch delivered twice stores it once. A retry that re-sent a line and stored it again would
+  duplicate whatever the worker said, and a retry is the ordinary case rather than the rare one.</li>
+  <li><b>The fold advances over an unbroken run of lines, never over the highest one seen.</b>
+  Batches can arrive out of order, and a reader that remembered only its furthest point would step
+  over a lower line when it landed and never come back for it &mdash; a transcript missing a tool call
+  reads exactly like a turn that never made one.</li>
+  <li><b>One writer per number.</b> A person editing a turn and a worker still running it both want
+  the next free number, so the two are serialised and the loser is <em>refused by name</em>. The
+  refusal is the deliverable: an edit silently written past a live worker is found later as a
+  transcript that disagrees with what happened.</li>
+</ul>
+<p>A box running the previous build does not speak this at all &mdash; it sends the whole transcript it
+assembled itself. That is admitted rather than rejected, and what it sends is converted on the way in
+and recorded as a replacement of everything before it, so the fold stays the only thing that decides
+the shape. The admission is temporary by construction: it ends when no box in the field predates the
+release that taught them to forward lines.</p>
 </section>
 
 <section class="pane">
