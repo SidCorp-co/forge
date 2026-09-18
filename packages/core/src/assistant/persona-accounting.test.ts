@@ -103,7 +103,8 @@ describe('the persona claim ledger', () => {
     // 34 through ISS-1064; ISS-1039 added Agent mode's own five, which contradict the web door's
     // sentence by sentence and therefore cannot share its rows
     // 39 through ISS-1039; ISS-1086 added the room's mid-conversation line (`mid-conversation-turn`)
-    expect(LEDGER).toHaveLength(40);
+    // 40 through ISS-1086; ISS-1087 added the quote-neighbour tool's line (`rocketchat-quote-context`)
+    expect(LEDGER).toHaveLength(41);
   });
 
   it('gives each claim exactly one owner', () => {

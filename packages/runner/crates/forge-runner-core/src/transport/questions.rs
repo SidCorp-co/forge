@@ -57,6 +57,11 @@ pub struct Ask<'a> {
     pub needed: Option<&'a str>,
     pub assumed: Option<serde_json::Value>,
     pub cost: Option<serde_json::Value>,
+    /// This round's material is private to whoever asked, so core puts it to them in a direct room.
+    // cm:edge contract -> packages/core/src/questions/write.ts — the flag is stored on the STEP and
+    // read by the delivery lane's destination resolver; `None` and `Some(false)` are the same
+    // public round, which is what every box built before ISS-1091 asks for.
+    pub sensitive: Option<bool>,
 }
 
 /// Tell core about a question this box has ALREADY recorded locally.
@@ -91,6 +96,9 @@ pub async fn ask(client: &CoreClient, req: Ask<'_>) -> Result<String> {
     }
     if let Some(v) = req.cost {
         body["cost"] = v;
+    }
+    if req.sensitive == Some(true) {
+        body["sensitive"] = serde_json::json!(true);
     }
     let resp = client
         .http()
@@ -273,6 +281,7 @@ mod tests {
                 needed: None,
                 assumed: None,
                 cost: None,
+                sensitive: None,
             },
         )
         .await

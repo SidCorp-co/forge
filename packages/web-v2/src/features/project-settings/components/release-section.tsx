@@ -28,6 +28,12 @@ const GAP_TEXT: Record<ReleaseReadiness["gaps"][number], string> = {
     "A live Coolify binding declares its rollback as free text, which Forge no longer executes — convert it to the Coolify rollback action, or a failed release aborts and comments.",
   "verify-probes":
     "A live binding declares no verify probe — a release batch is refused, because a gate with no probes closes on the agent's word.",
+  // cm:guard this gap is about the PROJECT and `verify-probes` is about a BINDING, and they are not
+  // two spellings of one fact: a project may declare probes on every binding and still record
+  // nowhere that a person could open. Filling this one field answers `verify-probes` for every live
+  // binding at once, which is why it is worded as the shorter way round (ISS-1069).
+  "live-commit-endpoint":
+    "This project records no live commit endpoint — nothing holds the address a release ships to, so every live binding has to declare its own probe. Set it under Settings → Testing → Live.",
 };
 
 // cm:guard the link says what the operator must DO, and for one gap that is not "set it on the
@@ -136,6 +142,11 @@ export function ReleaseSection({
   // now holds this text — the Knowledge screen's Rules tab.
   const knowledgeHref = slug ? `/projects/${slug}/library?tab=knowledge&sub=rules` : undefined;
   const integrationsHref = slug ? `/projects/${slug}/settings?tab=integrations` : undefined;
+  // cm:guard `live-commit-endpoint` is a PROJECT field and every other non-fact gap is a BINDING
+  // field, so it is the one gap whose link must not point at Integrations. Sending a reader there
+  // names a row that cannot hold the answer — the same mistake `release-target`'s guard above
+  // records, arriving from the other direction (ISS-1069).
+  const testingHref = slug ? `/projects/${slug}/settings?tab=testing` : undefined;
 
   return (
     <div className="mt-6 border-t border-line pt-5">
@@ -203,6 +214,10 @@ export function ReleaseSection({
               {FACT_GAPS.has(g) && knowledgeHref ? (
                 <Link href={knowledgeHref} className="underline">
                   Write it in Knowledge rules
+                </Link>
+              ) : g === "live-commit-endpoint" && testingHref ? (
+                <Link href={testingHref} className="underline">
+                  Record the live commit endpoint
                 </Link>
               ) : integrationsHref ? (
                 <Link href={integrationsHref} className="underline">

@@ -29,6 +29,7 @@ import {
   settleShape,
 } from '../conversations/membership.js';
 import { addHandle, addPerson, listParticipants } from '../conversations/participants.js';
+import { PresenceValidationError, validateRoomPresence } from '../conversations/presence.js';
 import { derivedScope } from '../conversations/scope.js';
 import {
   type ConversationRow,
@@ -40,6 +41,7 @@ import {
   readMessages,
   renameConversation,
   setConversationArchived,
+  setConversationPresence,
 } from '../conversations/store.js';
 import { listWindowsForConversation } from '../conversations/windows.js';
 import { db } from '../db/client.js';
@@ -107,14 +109,17 @@ const createSchema = z
 // nothing: `title` was required before this, so an empty object was already a 400, and widening it
 // to optional without this refinement would have turned every malformed rename into a silent no-op
 // the caller reads as a success (ISS-1028).
+// cm:guard `presence` is `unknown` here on purpose, as the self route holds it: its keys and bounds are `presence.ts`'s to refuse by name, and a second schema here would be the drift a refusal cannot explain. Null clears the room's override (ISS-1087 criteria 1-4).
 const patchSchema = z
   .object({
     title: z.string().max(500).nullable().optional(),
     archived: z.boolean().optional(),
+    presence: z.record(z.string(), z.unknown()).nullable().optional(),
   })
   .strict()
-  .refine((v) => v.title !== undefined || v.archived !== undefined, {
-    error: 'a PATCH body must carry `title` (a string or null) or `archived` (a boolean), or both',
+  .refine((v) => v.title !== undefined || v.archived !== undefined || v.presence !== undefined, {
+    error:
+      'a PATCH body must carry `title` (a string or null), `archived` (a boolean) or `presence` (an object or null)',
   });
 
 // cm:guard `mode` is OPTIONAL and a body carrying it into a room that already holds a message is
@@ -350,16 +355,32 @@ conversationRoutes.patch(
   }),
   async (c) => {
     const { id } = c.req.valid('param');
-    const { title, archived } = c.req.valid('json');
+    const { title, archived, presence } = c.req.valid('json');
     const userId = c.get('userId');
     await writableConversation(id, userId);
-    // cm:guard both writes RUN when both fields are sent, rather than the first one winning an
+    // cm:guard the room's presence is validated BEFORE any write, so a body carrying a rename and a bad presence writes nothing and is refused whole: half an act answered 400 is a rename the caller believes was refused.
+    let roomPresence: ReturnType<typeof validateRoomPresence> | null | undefined;
+    if (presence !== undefined) {
+      try {
+        roomPresence = presence === null ? null : validateRoomPresence(presence);
+      } catch (err) {
+        if (err instanceof PresenceValidationError) {
+          throw new HTTPException(400, {
+            message: err.message,
+            cause: { code: 'PRESENCE_INVALID', issues: err.issues },
+          });
+        }
+        throw err;
+      }
+    }
+    // cm:guard every write RUNS when several fields are sent, rather than the first one winning an
     // if/else: a body carrying a rename and an archive together is one act to the caller, and an
-    // else-branch here silently drops the archive and answers 200 with the renamed row. Both
+    // else-branch here silently drops the archive and answers 200 with the renamed row. All
     // writers return the whole of `selection`, so whichever runs last answers completely.
     let updated: ConversationRow | null = null;
     if (title !== undefined) updated = await renameConversation(id, title);
     if (archived !== undefined) updated = await setConversationArchived(id, archived);
+    if (roomPresence !== undefined) updated = await setConversationPresence(id, roomPresence);
     if (!updated) throw notFound('conversation not found');
     return c.json(updated);
   },

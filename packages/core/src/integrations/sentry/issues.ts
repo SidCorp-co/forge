@@ -260,7 +260,17 @@ function count(value: unknown): number | null {
   return null;
 }
 
-function projectIssue(body: unknown, fallbackId: string): SentryIssueDetail {
+/**
+ * One Sentry issue serialization read into `SentryIssueDetail`, whatever door it arrived by.
+ *
+ * Exported since ISS-1085 slice 4 because a webhook's `data.issue` is the SAME serialization the
+ * REST issue endpoint answers with — same `shortId`, `substatus`, `count`, `userCount`, `level` and
+ * `metadata.value` — and reading it with a second parser would mean two places deciding what
+ * Sentry's `count` is when it arrives as a string, and two places remembering that the three
+ * free-text fields go through `sanitizeUntrusted`. A parser a caller can forget to use is the
+ * chokepoint with a door beside it.
+ */
+export function projectIssue(body: unknown, fallbackId: string): SentryIssueDetail {
   const raw = (body ?? {}) as Record<string, unknown>;
   const project = (raw.project ?? {}) as Record<string, unknown>;
   const metadata = (raw.metadata ?? {}) as Record<string, unknown>;

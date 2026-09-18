@@ -34,6 +34,29 @@ export interface RocketChatIncomingMessage {
   tmid?: string | undefined;
   /** Images uploaded with the message, as absolute credentialed refs. */
   images: RocketChatImageRef[];
+  /**
+   * What this message replies to: the quoted message's id where it quotes one,
+   * else the thread parent, else undefined (ISS-1087).
+   */
+  replyToId?: string | undefined;
+}
+
+// cm:guard the QUOTE wins over the thread parent: a message inside a thread that quotes a specific message is answering that one, and the thread root is where it was said. Rocket.Chat carries a quote only as a `?msg=<id>` link, in `attachments[].message_link` and again in the text, so both are read (ISS-1087 criteria 9-11).
+const QUOTE_LINK_RE = /\?msg=([A-Za-z0-9]+)/;
+export function replyTargetOf(m: {
+  msg?: unknown;
+  tmid?: unknown;
+  attachments?: unknown;
+}): string | undefined {
+  const attachments = Array.isArray(m.attachments) ? m.attachments : [];
+  for (const a of attachments) {
+    const link = (a as { message_link?: unknown })?.message_link;
+    const hit = typeof link === 'string' ? QUOTE_LINK_RE.exec(link) : null;
+    if (hit) return hit[1];
+  }
+  const inText = typeof m.msg === 'string' ? QUOTE_LINK_RE.exec(m.msg) : null;
+  if (inText) return inText[1];
+  return typeof m.tmid === 'string' ? m.tmid : undefined;
 }
 
 export type DdpClientState =
@@ -87,6 +110,7 @@ export function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatInco
     isEdited: m.editedAt != null,
     tmid: typeof m.tmid === 'string' ? m.tmid : undefined,
     images: extractMessageImages(m as Parameters<typeof extractMessageImages>[0], serverUrl),
+    replyToId: replyTargetOf(m),
   };
 }
 
@@ -332,6 +356,41 @@ export class RocketChatDdpClient {
         id,
         params: [{ _id: messageId, rid, msg: text, ...(tmid ? { tmid } : {}) }],
       });
+    });
+  }
+
+  /**
+   * Tell the room the bot is typing, or that it stopped.
+   */
+  // cm:guard the ONE write `stream-notify-room` accepts from a client is `<rid>/user-activity`, and the server checks `shownName` against the name it shows for this account — the username, or the display name under `UI_Use_Real_Name` — so a mismatch is an error frame and the caller's to retry under the other name. `['user-typing']` starts and `[]` stops; the client forgets an activity it has not heard about for 15 seconds, so a caller that wants it kept renews (ISS-1088 criterion 24).
+  notifyUserActivity(rid: string, shownName: string, on: boolean): Promise<void> {
+    return this.call('stream-notify-room', [
+      `${rid}/user-activity`,
+      shownName,
+      on ? ['user-typing'] : [],
+      {},
+    ]).then(() => undefined);
+  }
+
+  /** One DDP method call: resolves on the server's result, rejects on its error frame or the send timeout. */
+  private call(method: string, params: unknown[]): Promise<unknown> {
+    const id = this.nextId();
+    return new Promise((resolve, reject) => {
+      const timer = setTimeout(() => {
+        if (this.pending.delete(id)) reject(new Error(`${method} ack timed out`));
+      }, SEND_TIMEOUT_MS);
+      timer.unref?.();
+      this.pending.set(id, {
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      });
+      this.send({ msg: 'method', method, id, params });
     });
   }
 

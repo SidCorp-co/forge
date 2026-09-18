@@ -1,39 +1,30 @@
 import { and, asc, eq, gt, gte, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import {
-  type AgentSessionTurnRole,
-  agentSessionTurnRoles,
-  agentSessionTurns,
-} from '../db/schema.js';
+import { type AgentSessionTurnRole, agentSessionTurns } from '../db/schema.js';
 
 type Tx = Parameters<Parameters<typeof db.transaction>[0]>[0];
 /** Either the top-level db client or an in-flight drizzle transaction. */
 export type DbOrTx = typeof db | Tx;
 
 /**
- * Coerce a message entry into the per-turn enum. Two shapes exist on disk:
- *   - the desktop runner / edited turns carry `entry.role`
- *     (`user | assistant | tool | system`);
- *   - the CLI-runner transcript derived by `buildSessionFromEvents`
- *     (`agent-stream-parser`) carries NO `role` — it uses `entry.type`
- *     (`assistant | user | system | tool_use | tool_result`).
+ * Coerce a transcript entry into the per-turn enum.
  *
- * `role` takes precedence (back-compat); when absent we fall back to `type` so
- * derived/pipeline sessions populate the turns table too. The older runner
- * sometimes emitted `'system'` for tool/preamble entries — those map to
- * `'tool'` so the row is preserved (they're never user-edited).
+ * One shape reaches this function: the canonical `entry.type`
+ * (`assistant | user | system | tool_use | tool_result`). A `system`, `tool_use`
+ * or `tool_result` entry is a `tool` turn — they are never user-edited, and the
+ * row is kept rather than dropped.
+ *
+ * cm:guard there is no `role` branch and there is not meant to be one. Until
+ * ISS-1030 this read `entry.role` first and fell back to `type`, because the
+ * desktop runner and edited turns wrote one shape and the derive wrote another.
+ * Both producers now speak the canonical entry, every row at rest was rewritten
+ * by `db/backfill-canonical-transcripts.ts`, and a device still on the previous
+ * release has what it sends converted on the way IN by
+ * `agent-sessions/canonical-legacy.ts`. Re-adding a `role` branch here is
+ * re-admitting the second shape those three pieces exist to remove.
  */
 export function messageRoleToTurnRole(entry: unknown): AgentSessionTurnRole | null {
   if (!entry || typeof entry !== 'object') return null;
-  const raw = (entry as { role?: unknown }).role;
-  if (typeof raw === 'string') {
-    if ((agentSessionTurnRoles as readonly string[]).includes(raw)) {
-      return raw as AgentSessionTurnRole;
-    }
-    if (raw === 'system') return 'tool';
-    return null;
-  }
-  // No `role` — fall back to the canonical `entry.type` (CLI-runner shape).
   const type = (entry as { type?: unknown }).type;
   if (typeof type !== 'string') return null;
   if (type === 'assistant') return 'assistant';

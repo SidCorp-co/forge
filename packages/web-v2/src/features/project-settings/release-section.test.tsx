@@ -105,6 +105,25 @@ describe("ReleaseSection", () => {
     expect(onScreen).not.toMatch(/Set it on the live binding/i);
   });
 
+  // cm:guard ISS-1069 — the live address is a PROJECT field, so this is the one non-fact gap whose
+  // link must not point at Integrations. Sending the reader there names a row that cannot hold the
+  // answer, which is the `release-target` mistake arriving from the other direction.
+  it("sends the live-endpoint gap to the Testing tab and not to the live binding", () => {
+    const { container } = renderWith({
+      hasReleaseGate: true,
+      releaseModel: "promote",
+      liveBranch: "production",
+      providers: ["coolify"],
+      gaps: ["live-commit-endpoint"],
+    });
+
+    const link = screen.getByRole("link", { name: /record the live commit endpoint/i });
+    expect(link).toHaveAttribute("href", "/projects/forge-dev/settings?tab=testing");
+    const onScreen = (container.textContent ?? "").replace(/\s+/g, " ");
+    expect(onScreen).toMatch(/records no live commit endpoint/i);
+    expect(onScreen).not.toMatch(/Set it on the live binding/i);
+  });
+
   it("still says set it on the live binding where the binding is the thing that is there", () => {
     renderWith({
       hasReleaseGate: true,

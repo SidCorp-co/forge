@@ -320,6 +320,42 @@ function parseResultMessage(
 }
 
 /**
+ * The blocks of a continued assistant turn: what was there, plus what the new
+ * line added.
+ *
+ * cm:guard `todos` and `thinking` members are CARRIED, and until ISS-1030 they
+ * were not: the filter here admitted `text` and unseen `tool` blocks and dropped
+ * everything else, so a turn whose TodoWrite landed on any assistant line but
+ * the first stored no todo list at all — and the same for a pause. A block type
+ * added to `ContentBlock` answers to this function as well as to the parser, and
+ * silently: an unlisted member is not a type error, it is a block that vanishes
+ * on the next continuation.
+ * cm:guard a `todos` block REPLACES the one already there rather than appending
+ * beside it, which is the same rule `processTodoBlock` applies inside one line:
+ * a TodoWrite call states the whole list, so two of them are two versions of one
+ * list and not two lists.
+ */
+function mergeBlocks(
+  oldBlocks: ContentBlock[],
+  newBlocks: ContentBlock[],
+  existingToolIds: Set<string | undefined>,
+): ContentBlock[] {
+  const out = [...oldBlocks];
+  for (const b of newBlocks) {
+    if (b.type === 'tool' && existingToolIds.has(b.toolCall?.id)) continue;
+    if (b.type === 'todos') {
+      const at = out.findIndex((x) => x.type === 'todos');
+      if (at >= 0) {
+        out[at] = b;
+        continue;
+      }
+    }
+    out.push(b);
+  }
+  return out;
+}
+
+/**
  * Merge parsed agent messages into an existing message list (mutates array).
  * Handles assistant continuation, tool_result attachment, and appending new
  * messages. Ported verbatim from desktop `session-tracker.ts::mergeMessages`.
@@ -339,12 +375,7 @@ export function mergeMessages(messages: AgentMessage[], parsed: AgentMessage[]):
       const existingToolIds = new Set(
         oldBlocks.filter((b) => b.type === 'tool').map((b) => b.toolCall?.id),
       );
-      const mergedBlocks = [
-        ...oldBlocks,
-        ...newBlocks.filter(
-          (b) => b.type === 'text' || (b.type === 'tool' && !existingToolIds.has(b.toolCall?.id)),
-        ),
-      ];
+      const mergedBlocks = mergeBlocks(oldBlocks, newBlocks, existingToolIds);
 
       messages[messages.length - 1] = {
         ...p,

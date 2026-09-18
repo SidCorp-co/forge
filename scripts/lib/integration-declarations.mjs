@@ -191,6 +191,44 @@ function deployReasons(decl, contractCanDeploy) {
  * @param report `{providers: [...projection], contractCanDeploy: {name: boolean}}`
  * @returns `Array<{provider: string, reasons: string[]}>`
  */
+/**
+ * What `canReceiveWebhook: true` commits a provider to declaring.
+ *
+ * `webhooks/inbound-routes.ts` derives BOTH the route and the signature header from these fields
+ * and holds no list of its own. A provider declaring an inbound surface without saying which header
+ * identifies it is never routed; one that names the route and not the signature is routed and then
+ * refused `PROVIDER_DECLARES_NO_SIGNATURE_HEADER` on every delivery. Both are a live integration
+ * that answers nothing, and neither shows up as anything but silence at the provider's end — which
+ * is why they are caught at the gate rather than in a delivery log somebody has to think to open.
+ */
+// cm:guard the reverse is a fault too: a header declared with `canReceiveWebhook: false` is a route the filter drops, so the declaration says a delivery is handled and the router never builds the path. ISS-1071's defect was this shape one field over — correct routing for the providers already listed, silence for the new one.
+function webhookReasons(caps) {
+  if (!caps) return [];
+  const reasons = [];
+  const named = (k) => typeof caps[k] === 'string' && caps[k].length > 0;
+  if (caps.canReceiveWebhook === true) {
+    if (!named('webhookHeader')) {
+      reasons.push(
+        '`canReceiveWebhook` is true but `webhookHeader` names no header — the inbound router derives its route from that field, so this provider is declared to receive webhooks and is routed nowhere',
+      );
+    }
+    if (!named('webhookSignatureHeader')) {
+      reasons.push(
+        '`canReceiveWebhook` is true but `webhookSignatureHeader` names no header — the router reads the signature header off this declaration, so every delivery is refused PROVIDER_DECLARES_NO_SIGNATURE_HEADER',
+      );
+    }
+  } else {
+    for (const k of ['webhookHeader', 'webhookSignatureHeader']) {
+      if (named(k)) {
+        reasons.push(
+          `\`${k}\` names ${JSON.stringify(caps[k])} while \`canReceiveWebhook\` is ${JSON.stringify(caps.canReceiveWebhook)} — the router filters on the boolean, so this header builds no route and the declaration promises a surface that does not exist`,
+        );
+      }
+    }
+  }
+  return reasons;
+}
+
 export function declarationFaults(report) {
   const contractCanDeploy = report?.contractCanDeploy ?? {};
   const faults = [];
@@ -201,6 +239,7 @@ export function declarationFaults(report) {
     }
     reasons.push(
       ...capabilityReasons(decl.capabilities),
+      ...webhookReasons(decl.capabilities),
       ...dispatchReasons(decl),
       ...schemaReasons(decl.schemas),
       ...deployReasons(decl, contractCanDeploy),

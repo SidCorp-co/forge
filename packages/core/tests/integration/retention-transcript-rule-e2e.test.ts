@@ -237,3 +237,49 @@ describe('the transcript rule: the repair pass (ISS-1027)', () => {
     }
   });
 });
+
+describe('the chat carrier leaves whole or not at all (ISS-1030)', () => {
+  const sessionEvents = () => fx.count('agent_session_events');
+
+  // cm:guard ONE batch, deliberately smaller than the carrier it must not cut.
+  // The rule is not "the sweep eventually removes them all" — a sweep stopped by
+  // its own batch cap, by a crash or by a deploy is the ordinary case, and a
+  // carrier holding its newest rows and not its oldest rebuilds a transcript
+  // that is a truncation of the one it replaces.
+  it('takes every event of a releasable session in one batch, never a prefix of them', async () => {
+    const sessionId = await fx.insertSession({
+      metadata: { transcriptFinalizedAt: new Date().toISOString() },
+    });
+    for (let seq = 1; seq <= 5; seq += 1) await fx.insertSessionEvent(sessionId, OLD, seq);
+
+    const result = await fx.mods.runRetentionSweep({ batchSize: 2, maxBatches: 1 });
+
+    expect(await sessionEvents()).toBe(0);
+    expect(result.tables.find((t) => t.table === 'agent_session_events')?.deleted).toBe(5);
+  });
+
+  it('holds every event of a session whose carrier has a row inside the window', async () => {
+    const sessionId = await fx.insertSession({
+      metadata: { transcriptFinalizedAt: new Date().toISOString() },
+    });
+    await fx.insertSessionEvent(sessionId, OLD, 1);
+    await fx.insertSessionEvent(sessionId, OLD, 2);
+    await fx.insertSessionEvent(sessionId, 0, 3);
+
+    const result = await fx.mods.runRetentionSweep();
+
+    expect(await sessionEvents()).toBe(3);
+    const swept = result.tables.find((t) => t.table === 'agent_session_events');
+    expect(swept?.deleted).toBe(0);
+    expect(swept?.heldBack).toBe(2);
+  });
+
+  it('holds them while the session records no finalisation', async () => {
+    const sessionId = await fx.insertSession({ metadata: {} });
+    await fx.insertSessionEvent(sessionId, OLD, 1);
+
+    await fx.mods.runRetentionSweep();
+
+    expect(await sessionEvents()).toBe(1);
+  });
+});

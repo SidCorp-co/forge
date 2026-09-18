@@ -19,6 +19,7 @@ import {
 import type { IssueDependencyExecutor } from '../issues/dependency-executor.js';
 import { hooks } from '../pipeline/hooks.js';
 import { wakeMastersForAnswer } from '../ws/master-wake.js';
+import { resolveAskOrigin } from './origin.js';
 import { screenRound } from './screen.js';
 
 // cm:guard the shape is DECLARED by the asker, never derived from which field arrived. A caller that sends an option list and a needed-text line has asked two questions in one round, and deriving would silently pick one of them for the person to answer (ISS-996).
@@ -41,6 +42,9 @@ export type AskInput = {
   cost?: { claimsHeld?: number; workspacesPinned?: number; dependents?: number };
   maxRounds?: number;
   parkDeadlineAt?: Date;
+  /** This round's material is private to whoever asked, so it is put to them in a direct room. */
+  // cm:guard declared by the ASKER on the round and never derived from the prompt's words: a classifier reading the text would decide in public whether a thing was private, and the round it got wrong is posted in a room before anybody can disagree (ISS-1091 outcome 2).
+  sensitive?: boolean;
 };
 
 // cm:guard the `code` is the machine-readable half a surface acts on and it must stay distinct per refusal — web-v2's `formatApiError` replaces a generic `FORBIDDEN` with "You do not have access to this resource", so a stale round or an already-answered question routed through that code reaches the person as a sentence about permissions.
@@ -126,26 +130,31 @@ export function checkAnswer(answer: AskAnswer): void {
 }
 
 // cm:guard EVERY round this file mints is built here and screened here — the first one and every follow-up — because the cell does not care which round it is: round three is put to the same person, in the same room, by the same agent. Screening only the first would let a follow-up carry the option list inline that the first was refused for.
-function step(round: number, prompt: string, answer: AskAnswer): QuestionStep {
-  const built = buildStep(round, prompt, answer);
+function step(round: number, prompt: string, answer: AskAnswer, sensitive?: boolean): QuestionStep {
+  const built = buildStep(round, prompt, answer, sensitive);
   screenRound(built, (message, code) => {
     throw new QuestionRefused(message, code);
   });
   return built;
 }
 
-function buildStep(round: number, prompt: string, answer: AskAnswer): QuestionStep {
+// cm:guard the flag is written only when it is TRUE, so a round that is not sensitive carries no key at all: the absent-means-public reading on `QuestionStep` is what every row written before ISS-1091 relies on, and storing `sensitive: false` beside it would make absence look like a third state.
+function buildStep(
+  round: number,
+  prompt: string,
+  answer: AskAnswer,
+  sensitive?: boolean,
+): QuestionStep {
   const askedAt = new Date().toISOString();
+  const common = { round, prompt, askedAt, ...(sensitive ? { sensitive: true } : {}) };
   return answer.shape === 'choice'
     ? {
-        round,
-        prompt,
-        askedAt,
+        ...common,
         answerShape: 'choice',
         options: answer.options,
         recommendedOptionId: answer.recommendedOptionId,
       }
-    : { round, prompt, askedAt, answerShape: 'free_text', needed: answer.needed };
+    : { ...common, answerShape: 'free_text', needed: answer.needed };
 }
 
 // cm:guard the issue must belong to the project the question names, and the refusal is here because a row whose two columns disagree is unreachable by every reader downstream: the issue-scoped list, the attention bucket's cost subqueries and `answerReachesAParkedRun` all reach a question through one column or the other, and each narrowing that excludes the crossed row silently excludes it from something a person or a parked run needed (ISS-989). Refused by name rather than absorbed, because no reader can tell which of the two columns the caller meant.
@@ -199,6 +208,7 @@ export async function askParkQuestion(
 }
 
 async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
+  const origin = await resolveAskOrigin(executor, input.agentSessionId);
   const [row] = await executor
     .insert(agentQuestions)
     .values({
@@ -207,8 +217,9 @@ async function insertQuestion(executor: QuestionExecutor, input: AskInput) {
       issueId: input.issueId,
       agentSessionId: input.agentSessionId,
       blockerKind: input.blockerKind,
-      steps: [step(1, input.prompt, input.answer)],
+      steps: [step(1, input.prompt, input.answer, input.sensitive)],
       assumed: input.assumed,
+      origin,
       maxRounds: input.maxRounds ?? 3,
       claimsHeld: input.cost?.claimsHeld ?? 0,
       workspacesPinned: input.cost?.workspacesPinned ?? 0,
@@ -367,7 +378,12 @@ export async function answerQuestion(args: AnswerInput) {
 }
 
 // cm:guard a follow-up is a STEP on the same row, never a second row. Two rows for one chain is two entries in a queue ordered by the cost of blocking, and the cost is a property of the decision rather than of how many times the agent had to come back (ISS-964 criterion 20).
-export async function askFollowUp(args: { questionId: string; prompt: string; answer: AskAnswer }) {
+export async function askFollowUp(args: {
+  questionId: string;
+  prompt: string;
+  answer: AskAnswer;
+  sensitive?: boolean;
+}) {
   const row = await load(args.questionId);
   checkAnswer(args.answer);
   if (row.steps.length >= row.maxRounds) {
@@ -380,7 +396,10 @@ export async function askFollowUp(args: { questionId: string; prompt: string; an
       `max_rounds ${row.maxRounds} reached — the thread is the record now, and this question is needs_info`,
     );
   }
-  const steps = [...row.steps, step(row.steps.length + 1, args.prompt, args.answer)];
+  const steps = [
+    ...row.steps,
+    step(row.steps.length + 1, args.prompt, args.answer, args.sensitive),
+  ];
   await db
     .update(agentQuestions)
     .set({ steps, status: 'open', updatedAt: new Date() })

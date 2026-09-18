@@ -9,7 +9,7 @@
 import { and, eq, isNull, lte, or, sql } from 'drizzle-orm';
 import { db } from '../../db/client.js';
 import { issues, organizations, projects } from '../../db/schema.js';
-import { agentQuestions } from '../../db/schema-questions.js';
+import { agentQuestions, type QuestionOrigin } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { activeIssuePrefix } from '../../issues/issue-prefix-read.js';
 import { formatIssueRef } from '../../lib/issue-ref.js';
@@ -18,12 +18,11 @@ import { problemsOf } from '../../messaging/contract.js';
 import { screenAtDoor } from '../../messaging/screen.js';
 import { resolveNotifications } from '../../notifications/auto-resolve.js';
 import { emitNotification } from '../../notifications/emit.js';
-import { activeRocketChatBinding } from './binding.js';
 import { sendFixedReply } from './outbound.js';
+import { isUnreachableRoom, resolveQuestionDestination } from './question-destination.js';
 import { agentAuthoredSegments, renderRound } from './question-render.js';
 import { resolveRoomPostAuth } from './room-delivery.js';
-import { registerThread, threadForQuestion } from './thread-registry.js';
-import type { RocketChatBindingConfig } from './types.js';
+import { registerThread, releaseQuestionThread } from './thread-registry.js';
 
 const RETRY_BACKOFF_MS = 60_000;
 const MAX_ATTEMPTS = 8;
@@ -94,27 +93,16 @@ export async function owedRounds(now: Date = new Date()): Promise<OwedRound[]> {
   }));
 }
 
-export interface RoomBinding {
-  connectionId: string;
-  rid: string;
-}
-
-/** The room this project's questions go to, or null when nobody has bound one. */
-// cm:guard the FIRST rid of the first active binding, matching `connection-manager.ts:buildRoutes`, which takes the first binding per room from a `desc(createdAt)` ordering — two answers to "which room is this project's" is how a question is delivered to a room nobody is watching.
-export async function roomForProject(projectId: string): Promise<RoomBinding | null> {
-  const bindings = await activeRocketChatBinding(projectId).then((p) => (p ? [p] : []));
-  for (const { binding } of bindings) {
-    const rid = ((binding.config as RocketChatBindingConfig | null)?.rids ?? [])[0];
-    if (rid) return { connectionId: binding.connectionId, rid };
-  }
-  return null;
-}
-
 const undeliverableKey = (questionId: string) => `rocketchat-question-undeliverable:${questionId}`;
 
 // cm:guard the person told is the org's creator, resolved as `escalation-bridge.ts` resolves it, because a project with NO binding has no route to read a principal off — and a question nobody can be told about is exactly the state this notification exists to make visible (ISS-978 criterion 24).
 // cm:guard fired ONCE per question, on the move into undeliverable and never on the retries after it: `createNotification` inserts unconditionally — `resolutionKey` is what a later resolver clears, not a dedup key — so a per-retry call would put a row in somebody's list every five minutes for as long as the project has no room.
-async function reportUndeliverable(owed: OwedRound, already: boolean): Promise<void> {
+// cm:guard the REASON is carried in rather than restated here, because there is no longer one cause: since ISS-1091 a round is undeliverable when no room is bound, when the conversation it was asked in has no route back, when the bot has been removed from that room, when a private round's asker cannot be reached, and when the venue is a surface this lane does not post to. A fixed sentence about binding a room tells an operator to fix something that is not broken (ISS-1091 criterion 14).
+async function reportUndeliverable(
+  owed: OwedRound,
+  already: boolean,
+  reason: string,
+): Promise<void> {
   if (already) return;
   const [row] = await db
     .select({ slug: projects.slug, name: projects.name, createdBy: organizations.createdBy })
@@ -129,8 +117,8 @@ async function reportUndeliverable(owed: OwedRound, already: boolean): Promise<v
     issueId: owed.issueId,
     type: 'ops_alert',
     severity: 'warning',
-    title: `${row.name} has a question waiting and no chat room to ask it in`,
-    body: `A question is waiting on a person, and no Rocket.Chat room is bound to ${row.slug}. Bind one and the question is delivered on the next sweep — whoever asked does not have to ask again.`,
+    title: `${row.name} has a question waiting that cannot be delivered`,
+    body: `A question is waiting on a person and ${row.slug} has nowhere to put it: ${reason}. Nothing was posted anywhere. Put that right and the question is delivered on the next sweep — whoever asked does not have to ask again.`,
     resolutionKey: undeliverableKey(owed.questionId),
   });
 }
@@ -217,15 +205,14 @@ export async function deliverOwedRound(
 
   if (!(await claimRound(owed, now))) return 'held';
 
-  const room = await roomForProject(owed.projectId);
-  if (!room) {
-    await settle(
-      owed,
-      { status: 'undeliverable', lastError: 'no Rocket.Chat room is bound to this project' },
-      now,
-    );
-    await reportUndeliverable(owed, owed.wasUndeliverable);
-    return 'undeliverable';
+  const destination = await resolveQuestionDestination({
+    questionId: owed.questionId,
+    projectId: owed.projectId,
+    origin: question.origin ?? null,
+    step,
+  });
+  if (destination.kind === 'unresolvable') {
+    return refuse(owed, destination.reason, now);
   }
 
   const verdict = screenAtDoor('question-delivery', agentAuthoredSegments(step));
@@ -239,13 +226,30 @@ export async function deliverOwedRound(
     return 'failed';
   }
 
-  const auth = await resolveRoomPostAuth(room.connectionId, {
+  const auth = await resolveRoomPostAuth(destination.connectionId, {
     source: 'rocketchat.question-delivery',
     questionId: owed.questionId,
   });
   if (!auth) {
     await noteFailure(owed, 'the connection carries no usable credentials', now);
     return 'failed';
+  }
+
+  const ref = {
+    connectionId: destination.connectionId,
+    rid: destination.rid,
+    tmid: destination.tmid ?? '',
+  };
+  // cm:guard an anchored round TAKES its thread before it posts, and this is the whole of the race: the anchor is a message that already exists, so two questions raised against it would both pass a read-then-post and this insert would drop one of them in silence — after which every reply in that thread answers one question and the other waits for ever. `registerThread` answers whether the triple is ours, and a round that did not take it is refused by name (ISS-1091 criteria 20, 21).
+  if (destination.takeAnchor && destination.tmid) {
+    const took = await registerThread({ questionId: owed.questionId }, ref);
+    if (!took) {
+      return refuse(
+        owed,
+        `the message this question was raised against (${destination.tmid}) is already another thread's root, so this round cannot be hung under it`,
+        now,
+      );
+    }
   }
 
   const [issue] = owed.issueId
@@ -255,7 +259,6 @@ export async function deliverOwedRound(
         .where(eq(issues.id, owed.issueId))
         .limit(1)
     : [];
-  const existingThread = await threadForQuestion(owed.questionId);
   const text = renderRound({
     issueKey: issue?.issSeq
       ? formatIssueRef(await activeIssuePrefix(owed.projectId), issue.issSeq)
@@ -263,15 +266,43 @@ export async function deliverOwedRound(
     step,
     rounds: question.steps.length,
     parkDeadlineAt: question.parkDeadlineAt ?? null,
+    askedBy: askerOf(question.origin ?? null),
   });
 
+  // cm:guard the POST has a try of its own, and the anchor is given back only from here. A post that returned is a message somebody can already see and reply to, so releasing the anchor after one would leave a real round standing under a triple nothing owns: replies to it open ordinary windows, and another question can take the same anchor and consume them. Releasing is about an anchor whose message never appeared, which is exactly and only a post that threw (ISS-1091 criteria 20, 21).
+  let receipt: { messageId: string | null };
   try {
-    const receipt = await sendFixedReply(
-      { kind: 'rest', auth, rid: room.rid, ...(existingThread ? { tmid: existingThread } : {}) },
+    receipt = await sendFixedReply(
+      {
+        kind: 'rest',
+        auth,
+        rid: destination.rid,
+        ...(destination.tmid ? { tmid: destination.tmid } : {}),
+      },
       text,
       { ok: true, problems: problemsOf(verdict) },
     );
-    const tmid = existingThread ?? receipt.messageId;
+  } catch (err) {
+    await releaseTakenAnchor(destination, owed.questionId);
+    logger.error(
+      { err, questionId: owed.questionId, round: owed.round, rid: destination.rid },
+      'rocketchat.question-delivery: posting the round failed',
+    );
+    // cm:guard a room the bot has been REMOVED from is a destination, not a flake: its binding is live so the round resolves, and counted as a retryable failure it burns MAX_ATTEMPTS and then stops being owed with nobody told — a question that quietly ceases to exist (ISS-1091 criterion 13).
+    if (isUnreachableRoom(err)) {
+      return refuse(
+        owed,
+        `this bot can no longer post in room ${destination.rid}, which is where this question was asked`,
+        now,
+      );
+    }
+    await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
+    return 'failed';
+  }
+
+  // cm:guard everything past the post KEEPS the anchor, whatever it does: the round is on the wall of a room, and the retry that follows has to find the same triple rather than race a competitor for it.
+  try {
+    const tmid = destination.tmid ?? receipt.messageId;
     if (!tmid) {
       await noteFailure(owed, 'the post named no message id, so no thread can be registered', now);
       return 'failed';
@@ -279,19 +310,45 @@ export async function deliverOwedRound(
     // cm:guard the thread is registered BEFORE the round is marked delivered: a round marked delivered with no thread row is a message in a room whose replies reach nothing, and this order makes that state unreachable rather than merely unlikely (ISS-978 criterion 7).
     await registerThread(
       { questionId: owed.questionId },
-      { connectionId: room.connectionId, rid: room.rid, tmid },
+      { connectionId: destination.connectionId, rid: destination.rid, tmid },
     );
     await settle(owed, { status: 'delivered' }, now);
     await resolveNotifications(undeliverableKey(owed.questionId));
     return 'delivered';
   } catch (err) {
     logger.error(
-      { err, questionId: owed.questionId, round: owed.round, rid: room.rid },
-      'rocketchat.question-delivery: posting the round failed',
+      { err, questionId: owed.questionId, round: owed.round, rid: destination.rid },
+      'rocketchat.question-delivery: the round was posted and recording it failed',
     );
     await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
     return 'failed';
   }
+}
+
+/** Settle this round undeliverable, tell the operator once, and post nothing anywhere. */
+// cm:guard the ONE place a round becomes undeliverable, so the reason on the row and the reason in the notification cannot drift, and so no branch can settle one without telling anybody. It posts nothing: widening back to `roomForProject` is the defect ISS-1091 exists to remove, and for a round marked private it would be a disclosure rather than a misdelivery.
+async function refuse(owed: OwedRound, reason: string, now: Date): Promise<'undeliverable'> {
+  await settle(owed, { status: 'undeliverable', lastError: reason }, now);
+  await reportUndeliverable(owed, owed.wasUndeliverable, reason);
+  return 'undeliverable';
+}
+
+/** Give back an anchor this attempt took, and only one this attempt took. */
+async function releaseTakenAnchor(
+  destination: { takeAnchor: boolean; connectionId: string; rid: string; tmid: string | null },
+  questionId: string,
+): Promise<void> {
+  if (!destination.takeAnchor || !destination.tmid) return;
+  await releaseQuestionThread(questionId, {
+    connectionId: destination.connectionId,
+    rid: destination.rid,
+    tmid: destination.tmid,
+  });
+}
+
+/** Who this round is being put to, where the question remembers. */
+function askerOf(origin: QuestionOrigin | null): string | null {
+  return origin?.kind === 'conversation' ? origin.askedByLabel : null;
 }
 
 export interface QuestionDrainResult {

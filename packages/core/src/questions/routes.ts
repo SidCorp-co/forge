@@ -67,6 +67,8 @@ const askSchema = z
     assumed: z.record(z.string(), z.unknown()).optional(),
     maxRounds: z.number().int().min(1).max(10).optional(),
     parkDeadlineAt: z.iso.datetime().optional(),
+    // cm:guard the caller DECLARES this and the door never infers it: a private round is put to whoever asked in a direct room rather than in the conversation's own, and a server that guessed would be deciding in public whether a thing was private (ISS-1091 criterion 19).
+    sensitive: z.boolean().optional(),
   })
   .strict();
 

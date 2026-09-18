@@ -36,6 +36,20 @@ export const RETENTION_RULES: readonly RetentionRule[] = [
     floorDays: 7,
     why: 'The events a session transcript is derived from. They go only once that transcript is recorded as finalised, because the transcript is the record that survives and these rows are what rebuild it. A session whose finalisation never happened has its transcript derived by the sweep rather than its events expired — unless only part of its history is left, in which case both are kept and the session is reported, since a rebuild from a suffix would replace a stored transcript with a shorter one. A week is the shortest window an incident can still be reconstructed from.',
   },
+  // cm:guard swept per SESSION and all-or-nothing, never per row on age alone: a
+  // transcript is rebuilt from `seq` 1 upward, so deleting a prefix and leaving a
+  // suffix would let a later rebuild replace a complete stored transcript with a
+  // shorter one. `retention/statements.ts` carries that predicate and
+  // `jobs/session-transcript.ts` refuses to rebuild a chat session whose stored
+  // history is not whole — both halves, because either alone still admits the
+  // truncation.
+  {
+    table: 'agent_session_events',
+    days: 30,
+    env: 'RETENTION_AGENT_SESSION_EVENTS_DAYS',
+    floorDays: 7,
+    why: 'The raw stream-json lines a chat session transcript is derived from (ISS-1030), the chat path\u2019s answer to what job_events is for the pipeline path. A session\u2019s rows go only once it is terminal, its transcript is recorded as finalised, and EVERY one of its rows is past the window \u2014 all-or-nothing per session, because a surviving suffix is a rebuild that truncates the record it was meant to protect. A week is the shortest window an incident is still reconstructable from, as it is for job_events.',
+  },
   {
     table: 'queue_snapshots',
     days: 90,

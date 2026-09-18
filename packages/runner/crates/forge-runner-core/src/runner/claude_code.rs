@@ -627,7 +627,7 @@ fn build_args(spec: &JobSpec, mcp_path: &str) -> Vec<String> {
     ];
     args.push("--input-format".into());
     args.push("stream-json".into());
-    // cm:guard the replay comes back as `type:"user"` with `isReplay:true`, and chat's `parse_assistant_message` keys on `type=="assistant"`, so it is inert there. Any future consumer that reads user turns off this stream MUST skip replays or it will persist the prompt twice.
+    // cm:guard the replay comes back as `type:"user"` with `isReplay:true`. Since ISS-1030 the chat path forwards every line to core, and `parseStreamMessages` answers `{messages:[]}` for a `user` line carrying no `tool_result` — so a replay folds to nothing and core seeds the prompt itself. Any future consumer that reads user turns off this stream MUST skip replays or it will persist the prompt twice.
     args.push("--replay-user-messages".into());
     if let Some(sp) = spec.system_prompt.as_deref().filter(|s| !s.is_empty()) {
         args.push("--append-system-prompt".into());

@@ -25,6 +25,10 @@ export interface RocketChatRestMessage {
   /** ISO timestamp. */
   ts: string;
   isSystem: boolean;
+  /** The room the server says this message is in; absent on a payload that named none (ISS-1087). */
+  rid?: string | undefined;
+  /** The thread it was posted inside, where it was. */
+  tmid?: string | undefined;
 }
 
 const FETCH_TIMEOUT_MS = 8000;
@@ -37,6 +41,8 @@ interface RawRestFile {
 
 interface RawRestMessage {
   _id?: string;
+  rid?: string;
+  tmid?: string;
   msg?: string;
   ts?: string;
   t?: string;
@@ -141,6 +147,8 @@ function mapMessage(raw: RawRestMessage, baseUrl?: string): RocketChatRestMessag
     username: raw.u.username ?? raw.u._id,
     ts: typeof raw.ts === 'string' ? raw.ts : '',
     isSystem: typeof raw.t === 'string' && raw.t.length > 0,
+    ...(typeof raw.rid === 'string' ? { rid: raw.rid } : {}),
+    ...(typeof raw.tmid === 'string' ? { tmid: raw.tmid } : {}),
   };
 }
 
@@ -208,6 +216,45 @@ export async function fetchRoomHistory(
     }
   }
   return [];
+}
+
+const MESSAGES_ENDPOINTS = ['channels.messages', 'groups.messages', 'im.messages'] as const;
+const messagesEndpointByRoom = new Map<string, string>();
+
+/**
+ * The `count` messages nearest to `ts` on one side of it, oldest-first.
+ */
+// cm:guard the `.messages` endpoints and NOT `.history`, because history pages newest-first inside a time range and the two OLDEST of such a page are the two farthest from the anchor, not the two beside it. `.messages` takes a `query` over `ts` and a `sort`, so the server itself answers "the two immediately after" — `$gt` ascending — and "the two immediately before" — `$lt` descending — however many follow (ISS-1087 criteria 25, 36). Empty on any failure, and the caller says so rather than guessing neighbours.
+export async function fetchMessagesBeside(
+  auth: RocketChatRestAuth,
+  rid: string,
+  ts: string,
+  side: 'before' | 'after',
+  count: number,
+): Promise<RocketChatRestMessage[] | null> {
+  const params: Record<string, string> = {
+    roomId: rid,
+    count: String(count),
+    query: JSON.stringify({ ts: { [side === 'after' ? '$gt' : '$lt']: { $date: ts } } }),
+    sort: JSON.stringify({ ts: side === 'after' ? 1 : -1 }),
+  };
+  const cached = messagesEndpointByRoom.get(rid);
+  const order = cached
+    ? [cached, ...MESSAGES_ENDPOINTS.filter((e) => e !== cached)]
+    : [...MESSAGES_ENDPOINTS];
+  for (const endpoint of order) {
+    const body = await rcGet(auth, endpoint, params);
+    const raw = body?.messages;
+    if (Array.isArray(raw)) {
+      messagesEndpointByRoom.set(rid, endpoint);
+      return raw
+        .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
+        .filter((m): m is RocketChatRestMessage => m !== null)
+        .sort((a, b) => a.ts.localeCompare(b.ts));
+    }
+  }
+  // cm:guard null and not []: an empty page says nothing was said there, a refused read says nothing is known, and the tool that reads this owes the model the difference (ISS-1087 criterion 30; whole-set review F4).
+  return null;
 }
 
 export interface RocketChatRoomInfo {
@@ -289,9 +336,54 @@ export async function buildMessagePermalink(
 /** The bot account's own username (api/v1/me) — lets the bot speak about
  *  itself by name instead of as "the system". Null on failure. */
 export async function fetchOwnUsername(auth: RocketChatRestAuth): Promise<string | null> {
-  const body = await rcGet(auth, 'me', {});
-  const username = (body as { username?: string } | null)?.username;
-  return typeof username === 'string' && username.length > 0 ? username : null;
+  return (await fetchOwnIdentity(auth)).username;
+}
+
+/** The two names Rocket.Chat may show for the bot: its username, and the display name `UI_Use_Real_Name` swaps in. */
+export interface RocketChatOwnIdentity {
+  username: string | null;
+  displayName: string | null;
+}
+
+// cm:guard BOTH names and not the username alone: the user-activity stream validates the name a write carries against the one the server currently SHOWS for the account, which is the display name under `UI_Use_Real_Name`, so a port holding only the username is refused on every such server (ISS-1088 criteria 24, 26).
+export async function fetchOwnIdentity(auth: RocketChatRestAuth): Promise<RocketChatOwnIdentity> {
+  const body = (await rcGet(auth, 'me', {})) as { username?: unknown; name?: unknown } | null;
+  const text = (v: unknown): string | null => (typeof v === 'string' && v.length > 0 ? v : null);
+  return { username: text(body?.username), displayName: text(body?.name) };
+}
+
+/**
+ * Set or clear one reaction on a message, as the bot.
+ */
+// cm:guard a SETTER and not a toggle: `chat.react` without `shouldReact` flips whatever is there, and a receipt set twice by two attempts would come off again. False on any refusal rather than a throw, because a reaction is decoration on a turn and the caller logs it (ISS-1088 criterion 23).
+export async function reactToMessage(
+  auth: RocketChatRestAuth,
+  messageId: string,
+  emoji: string,
+  on: boolean,
+): Promise<boolean> {
+  const base = auth.serverUrl.replace(/\/+$/, '');
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), FETCH_TIMEOUT_MS);
+  try {
+    const res = await fetch(`${base}/api/v1/chat.react`, {
+      method: 'POST',
+      headers: {
+        'X-Auth-Token': auth.authToken,
+        'X-User-Id': auth.userId,
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ messageId, emoji, shouldReact: on }),
+      signal: controller.signal,
+    });
+    if (!res.ok) return false;
+    const body = (await res.json().catch(() => null)) as { success?: unknown } | null;
+    return body?.success !== false;
+  } catch {
+    return false;
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 /** One Rocket.Chat account as the server's own directory reports it. */
@@ -350,10 +442,11 @@ export async function fetchThreadMessages(
   auth: RocketChatRestAuth,
   tmid: string,
   count: number,
-): Promise<RocketChatRestMessage[]> {
+): Promise<RocketChatRestMessage[] | null> {
   const body = await rcGet(auth, 'chat.getThreadMessages', { tmid, count: String(count) });
   const raw = body?.messages;
-  if (!Array.isArray(raw)) return [];
+  // cm:guard null and not []: a thread with no replies yet and a thread the server refused to read are different answers, and the quote tool owes the model the difference (ISS-1087 criterion 30; whole-set review, round 6 F1).
+  if (!Array.isArray(raw)) return null;
   return raw
     .map((m) => mapMessage(m as RawRestMessage, auth.serverUrl))
     .filter((m): m is RocketChatRestMessage => m !== null)

@@ -41,6 +41,7 @@
     "clean": "rm -rf dist",
     "db:generate": "drizzle-kit generate",
     "db:migrate": "drizzle-kit migrate",
+    "db:revert-canonical": "tsx src/db/revert-canonical.ts",
     "db:studio": "drizzle-kit studio"
   },
   "dependencies": {

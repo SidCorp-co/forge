@@ -30,6 +30,12 @@ pub enum Command {
     /// Declare the issues about to be handed to a subagent. Starts nothing.
     // cm:guard NOT called `open`: the pool verb this socket used to carry was `run_open`, it took a job from a queue and started a process, and it is still banned by name in `control.rs`. This one writes a row and starts nothing (ISS-1050).
     Declare(DeclareArgs),
+    /// Say what happens to a run this pane inherited when it was resumed.
+    // cm:guard the way OUT of criterion 29's gate, and it must exist wherever that gate does. The
+    // gate refuses a declaration while an inherited run is unanswered; with no verb to answer with,
+    // a resumed pane could never declare again for the life of the boot. `run_choice` and its frame
+    // were written in the original change and reachable from nothing (ISS-1050 criterion 29).
+    Choice(ChoiceArgs),
     /// Say a declared run is finished, or never started.
     Close(CloseArgs),
 }
@@ -45,6 +51,17 @@ pub struct DeclareArgs {
     /// The worktree the subagent will work in.
     #[arg(long)]
     pub worktree: String,
+}
+
+#[derive(ClapArgs)]
+pub struct ChoiceArgs {
+    /// The run id this pane inherited, as the refusal names it.
+    pub run_id: String,
+    /// `continue`, `restart` or `leave`, and nothing else.
+    pub choice: String,
+    /// Why, in your own words. Required: the record is what the next reader has.
+    #[arg(long)]
+    pub reason: String,
 }
 
 #[derive(ClapArgs)]
@@ -78,6 +95,9 @@ pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
         Command::Declare(o) => {
             control::request_run_declare(&sock, &token, &o.project, &o.issue, &o.worktree).await?
         }
+        Command::Choice(c) => {
+            control::request_run_choice(&sock, &token, &c.run_id, &c.choice, &c.reason).await?
+        }
         Command::Close(c) => {
             control::request_run_close(&sock, &token, &c.run_id, c.reason.as_deref()).await?
         }
@@ -92,6 +112,7 @@ pub async fn run(_ctx: super::Ctx, args: Args) -> anyhow::Result<()> {
     }
     match args.cmd {
         Command::Declare(_) => println!("{}", declared_id(reply.job_id)?),
+        Command::Choice(c) => println!("run {} recorded as {}", c.run_id, c.choice),
         Command::Close(c) => println!("run {} closed", c.run_id),
     }
     Ok(())

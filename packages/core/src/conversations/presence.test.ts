@@ -10,13 +10,18 @@ vi.mock('../config/env.js', () => ({ env: { NODE_ENV: 'test' } }));
 vi.mock('../db/client.js', () => ({ db: {} }));
 
 import {
+  applyRoomPresence,
+  foldAnswerInGroup,
   foldPresence,
   heartbeatOf,
   namesHandle,
   PRESENCE_BOUNDS,
   PRESENCE_DEFAULTS,
   PresenceValidationError,
+  replyTargetsOf,
   validatePresence,
+  validateRoomPresence,
+  windowAddressesAHandle,
   windowNamesAHandle,
 } from './presence.js';
 import { BACKOFF_AFTER, DORMANT_MS, LOOP_BOUNCE_MS, LOOP_LIMIT } from './proactivity.js';
@@ -180,5 +185,85 @@ describe('namesHandle', () => {
     expect(windowNamesAHandle(messages, [null, 'babo'])).toBe(true);
     expect(windowNamesAHandle(messages, ['forge'])).toBe(false);
     expect(windowNamesAHandle([], ['babo'])).toBe(false);
+  });
+});
+
+describe('a room’s own presence (ISS-1087)', () => {
+  const fold = foldPresence([]);
+
+  it('applies each key the room set and leaves the fold for the rest (criterion 6)', () => {
+    const out = applyRoomPresence(fold, { backoffAfter: 1, answerInGroup: 'mention' });
+    expect(out.backoffAfter).toBe(1);
+    expect(out.answerInGroup).toBe('mention');
+    expect(out.dormantMs).toBe(fold.dormantMs);
+    expect(out.loopBounceMs).toBe(fold.loopBounceMs);
+    expect(out.loopLimit).toBe(fold.loopLimit);
+  });
+
+  it('changes nothing for a room that set nothing', () => {
+    expect(applyRoomPresence(fold, null)).toEqual(fold);
+    expect(applyRoomPresence(fold, {})).toEqual(fold);
+  });
+
+  // cm:guard the refusal NAMES heartbeat as a handle's own and lists what a room takes, because the person fixing the payload reads the error and not this file (criterion 3).
+  it('refuses heartbeat by name, listing the five room keys (criterion 3)', () => {
+    expect(() => validateRoomPresence({ heartbeat: { enabled: true } })).toThrow(
+      /`heartbeat` is a handle's own and is not set on a room; a room takes only: dormantMs, backoffAfter, loopBounceMs, loopLimit, answerInGroup/,
+    );
+  });
+
+  it('refuses an out-of-bounds value naming the key and the bounds (criterion 4)', () => {
+    expect(() => validateRoomPresence({ backoffAfter: 21 })).toThrow(
+      /presence.backoffAfter must be between 1 and 20/,
+    );
+  });
+
+  it('accepts tool as a room mode and as a self mode (criterion 15)', () => {
+    expect(validateRoomPresence({ answerInGroup: 'tool' })).toEqual({ answerInGroup: 'tool' });
+    expect(validatePresence({ answerInGroup: 'tool' })).toEqual({ answerInGroup: 'tool' });
+  });
+
+  it('reads nothing off the room for the heartbeat (criterion 7)', () => {
+    expect(heartbeatOf({ heartbeat: { enabled: true } })).toEqual({
+      enabled: true,
+      intervalMs: PRESENCE_DEFAULTS.heartbeatIntervalMs,
+    });
+  });
+});
+
+describe('answerInGroup with three modes (ISS-1087)', () => {
+  it('folds mention over tool over window (criterion 16)', () => {
+    expect(foldAnswerInGroup(['mention', 'tool'])).toBe('mention');
+    expect(foldAnswerInGroup(['tool', 'window'])).toBe('tool');
+    expect(foldAnswerInGroup(['tool', undefined])).toBe('tool');
+    expect(foldAnswerInGroup(['window', undefined])).toBe('window');
+    expect(foldPresence([{ answerInGroup: 'tool' }, {}]).answerInGroup).toBe('tool');
+  });
+});
+
+describe('a window that replies to the handle (ISS-1087)', () => {
+  const handles = ['babo'];
+  const reply = (replyToExternalId: string | null, content = 'still wrong') => ({
+    content,
+    replyToExternalId,
+  });
+
+  it('is addressed when a reply target is one the handle sent (criterion 13)', () => {
+    expect(windowAddressesAHandle([reply('rc-bot-1')], handles, new Set(['rc-bot-1']))).toBe(true);
+  });
+
+  it('is not addressed when the reply target is a person’s message (criterion 14)', () => {
+    expect(windowAddressesAHandle([reply('rc-alice-1')], handles, new Set(['rc-bot-1']))).toBe(
+      false,
+    );
+    expect(windowAddressesAHandle([reply(null)], handles, new Set(['rc-bot-1']))).toBe(false);
+  });
+
+  it('is still addressed by name alone', () => {
+    expect(windowAddressesAHandle([reply(null, '@babo look')], handles, new Set())).toBe(true);
+  });
+
+  it('collects the distinct reply targets for the store to resolve', () => {
+    expect(replyTargetsOf([reply('a'), reply('a'), reply(null), reply('b')])).toEqual(['a', 'b']);
   });
 });
