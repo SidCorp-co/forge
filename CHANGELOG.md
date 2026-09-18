@@ -2999,6 +2999,10 @@
   set is now 59.
 
 ### Fixed
+- **Three checks on the dispatch gate could not fail, so they said nothing.** Two fail-open paths
+  went unexercised and one test rebuilt the code it judged instead of calling it. Each is now
+  proven by watching it go red.
+
 - **The instructions a master is given no longer contradict themselves.** The text typed into its
   pane disagreed with the guide it works from about what decides whether work gets declared. It now
   carries only what the guide cannot know.
