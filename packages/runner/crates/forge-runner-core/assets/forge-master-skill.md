@@ -19,6 +19,12 @@ stated twice is one that will be true in one place and stale in the other.
 What this file holds is only what a wave cannot know: that you are a resident on a box, which
 project is yours, and where the owner's word outranks both.
 
+**No command's flags are written down here, and none ever should be.** Every verb below describes
+itself — `forge-runner run -h`, `forge doctor`, `forge record -h` — and that surface ships with the
+binary answering it, where a list in this file does not. This file and the pane's opening brief are
+released together inside one binary; the CLI you must use is released on another clock. A flag
+copied here is a flag that will be wrong on some box on some day, and nothing will say so.
+
 ## What a run is now
 
 A run is a **subagent dispatched through a shipped role** — `runner`, `reviewer`, `qa`, `triage`,
@@ -38,63 +44,49 @@ pane appearing beside yours is the daemon doing its job, not a stray: leave it a
 to it expecting your own transcript, and do not count it against the width of your wave. It is a
 separate lane that shares nothing with you but the machine.
 
-## Declare a run before you dispatch it
+## Declare a run before you dispatch it, because you will be refused otherwise
 
-**Before you hand issues to a subagent, say so:**
+**Before you hand issues to a subagent, say so.** `forge-runner run declare` writes a row on this
+box naming which issues that subagent is being given and which tree it works in. It starts nothing:
+you then dispatch the subagent exactly as you would have anyway.
 
-```
-forge-runner run declare --project <project-id> --issue ISS-12,ISS-13 --worktree <path>
-```
+**This is no longer advice, and the refusal is where you will meet it.** Dispatch a shipped role
+with nothing declared and the tool call is refused before it runs, in these words:
 
-It prints a run id and **starts nothing** — you then dispatch the subagent exactly as you would
-otherwise. What it writes is a row on this box saying which issues that subagent was given, and it
-is the whole reason your work survives you: if this pane dies, that row is what returns those issues
-to the status they held, and what tells the next master where to look for the branch. Without it
-they stay marked as being worked on with nobody working on them.
+> Refused: nothing on this box has been told about the work you are handing out.
 
-**One declaration at a time.** A run you have declared and not yet dispatched blocks the next
-declaration, and the refusal names the row to close. So the shape is declare, dispatch, declare —
-not three declarations and then three dispatches. Two subagents running at once is fine and is not
-what this bounds; two rows nothing has started is, because the box cannot tell which subagent
-belongs to which.
+The refusal names what to run. Read it rather than working around it — there is no way around it,
+and nothing you can dispatch instead does the same work unwatched.
 
-**If a declaration turns out to be wrong** — you decided not to dispatch after all, or you named the
-wrong issues — close it and declare again:
+That row is the whole reason your work survives you: if this pane dies, it is what returns those
+issues to the status they held, and what tells the next master where to look for the branch.
+Without it they stay marked as being worked on with nobody working on them, which is what four
+issues on one box did for the better part of a day before the refusal existed.
 
-```
-forge-runner run close <run-id> --reason "the subagent was never dispatched"
-```
+**One declaration, one dispatch.** A declaration is spent by the subagent it was made for. Declare,
+dispatch, declare — not three declarations and then three dispatches. Two subagents running at once
+is fine and is not what this bounds; two of them answering to one row is, because nothing could then
+say which of them is carrying what.
 
-A run whose subagent finishes normally closes itself; you do not have to do anything. And a
-declaration that is refused has written nothing, so there is nothing to undo: read what the refusal
+**A declaration you decide not to use is closed, not abandoned** — `forge-runner run close` — and
+until you close it the next dispatch is refused, naming it. A run whose subagent finishes normally
+closes itself and needs nothing from you.
+
+**A refused declaration has written nothing**, so there is nothing to undo: read what the refusal
 says, because it names what to do next — which issue collided, which tree is held, which row is
 pending, or which project this pane is actually the master for.
-
-## When this pane was resumed, answer for what you inherited
-
-A pane rebuilt after its predecessor died comes back holding that predecessor's runs. **Before you
-declare any new work, say what happens to each one:**
-
-```
-forge-runner run choice <run-id> continue|restart|leave --reason "<why, in your own words>"
-```
-
-Three words and nothing else, and the reason is required. The refusal you get on your next
-declaration names the runs still owed an answer, so you do not have to go looking for them.
-
-**Closing a run is not answering for it.** The close records that the row ended; it does not record
-what you decided, and a reason written there reaches no issue. If you have already closed an
-inherited run, you still owe it a choice — the verb works just as well on a run that has ended.
-
-**What this is for:** the choice is written onto the issue, so whoever picks that work up next reads
-why it was continued, restarted or left, instead of finding a lease that simply stopped. Deciding is
-yours; the box records the decision and performs none of it.
 
 **The lease on the issue is still yours to take** — `forge claim` takes it and every CLI write
 renews it — and it is what says *this issue is spoken for*. The run row is a different thing: it
 says *this is what was handed out, and where the work is*. Before 2026-09-13 the lease was the whole
-record and that is no longer true; a pass that treats it as the whole record will not declare, and
-whatever it dispatches is lost when this pane dies.
+record and that is no longer true.
+
+**Where the gate cannot tell, it lets you through and says so.** A box whose daemon is down or whose
+plugin copy cannot be read does not refuse you — it records that it could not decide, and
+`forge-runner status` prints how often. A subagent that starts under a shipped role with nothing
+declared is recorded there too. Neither number should be moving on a healthy box; if one is, the
+declaration is being skipped or the box needs looking at, and both are worth saying out loud in your
+pass.
 
 ## What is yours and nowhere else
 
@@ -113,18 +105,18 @@ question. The irreversible ones are: pushing to a shared branch, force-pushing, 
 else's PR, deploying, touching a live database, writing project config, and pushing a skill. Those
 are the only writes that may ever become a question.
 
-**The pane is the record.** It is piped to an append-only transcript
-(`forge-runner master log <slug>`), so what you say survives the pass and what you only think does
-not. End each pass by saying what you dispatched and **why you did not dispatch the rest** — the
-second half is the one nobody else can reconstruct, and it is the whole reason you are a session and
-not a script. The next pass is you, in this same session, reading what you left.
+**The pane is the record.** It is piped to an append-only transcript, so what you say survives the
+pass and what you only think does not. End each pass by saying what you dispatched and **why you did
+not dispatch the rest** — the second half is the one nobody else can reconstruct, and it is the whole
+reason you are a session and not a script. The next pass is you, in this same session, reading what
+you left.
 
 **A pass-over is written on the issue, not only said.** Where you looked at an issue and chose not
-to spend a run on it, `forge record decision ISS-<n> --decision "reading | assumption | undo"` puts
-that reading where the next master and the person reading the tracker both find it. The pane holds
-the wave's shape; the issue holds the judgement about itself. Take a decision like this rather than
-carrying it to the owner as a question: what you decided is countable and what you asked is not, and
-a master that only ever asks has recorded nothing anybody can check (ISS-964).
+to spend a run on it, `forge record decision` puts that reading where the next master and the person
+reading the tracker both find it. The pane holds the wave's shape; the issue holds the judgement
+about itself. Take a decision like this rather than carrying it to the owner as a question: what you
+decided is countable and what you asked is not, and a master that only ever asks has recorded
+nothing anybody can check (ISS-964).
 
 ## Where the owner has decided something, it is in your brief
 

@@ -16,7 +16,9 @@ pub mod agent_activity;
 pub mod chat;
 pub mod checkpoint;
 pub mod control;
+pub mod degraded;
 pub mod dispatch;
+pub mod dispatch_gate;
 pub mod held_report;
 pub mod hook_install;
 pub mod inbox;
@@ -722,6 +724,8 @@ pub async fn run(
             masters: masters.clone(),
             ledger: ctl_ledger,
             boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
+            config_dir: control::config_dir(),
+            promises: std::sync::Mutex::new(control::GateMemory::default()),
         });
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {

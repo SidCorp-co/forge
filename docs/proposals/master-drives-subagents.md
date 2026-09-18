@@ -1,7 +1,14 @@
 # The master drives its agents as in-session subagents
 
-Decided 2026-09-09 (owner). Nothing here is implemented yet. This file is the design; the drawn
-figure is [master-drives-subagents.html](master-drives-subagents.html).
+Decided 2026-09-09 (owner). This file is the design; the drawn figure is
+[master-drives-subagents.html](master-drives-subagents.html).
+
+**One piece of it has landed.** ISS-1094 built the half of `assignment` that can be enforced from
+outside the master: a hand-off to a subagent is refused unless a run has been declared for it
+(`daemon/dispatch_gate.rs`, registered as a `PreToolUse` hook by `daemon/hook_install.rs`), and a
+`SubagentStart` with nothing declared is denounced and counted. Everything else below — the master
+assigning work inside its own session in place of detached run sessions, and the report schema the
+master validates — is still design.
 
 Today a master orchestrates work by opening **run sessions** — separate Claude processes parented by
 tmux, spawned `setsid`-detached so they outlive the daemon, tracked by a box-local ledger

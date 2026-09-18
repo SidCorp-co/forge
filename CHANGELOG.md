@@ -112,6 +112,9 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Work handed to a subagent must be declared, and a box now refuses the hand-off rather than
+  advising against it.** Skipping it left that work invisible and its issues never offered again.
+  `forge-runner status` counts what still got through.
 - **A machine can be given an identity of its own.** Make an agent in Settings → Agents, name its
   projects, and pick it when you approve a pairing. What that box does is then filed as the agent.
 
@@ -2997,6 +3000,11 @@
   set is now 59.
 
 ### Fixed
+- **The instructions a master is given no longer contradict themselves.** The text typed into its
+  pane disagreed with the guide it works from about what decides whether work gets declared. It now
+  carries only what the guide cannot know.
+
+
 
 - **Work an agent does now shows as the agent's on the issue list, not as yours.** A box filing on
   your token was credited to you, while the activity log said an agent. Issues already filed are

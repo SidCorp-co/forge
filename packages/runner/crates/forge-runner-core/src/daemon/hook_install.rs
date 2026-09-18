@@ -18,10 +18,24 @@ const SETTINGS: &str = ".claude/settings.local.json";
 
 /// How a managed command is recognised on a later pass.
 // cm:guard identity is the VERB, never the exe path: the path changes under an update and a marker keyed on it would leave the old entry behind, so every restart would add one more copy of every hook and a pane would report each boundary as many times as this daemon had ever been installed.
-const MANAGED_MARKER: &str = "hook --event";
+// cm:guard BOTH of this daemon's verbs are listed, and the flag alone is never the marker. Keyed on `hook --event` a stale `gate` entry survives every pane spawn and the hooks multiply; keyed on `--event` alone, an operator's own `audit-hook --event PreToolUse` is classified as ours and silently deleted on the next spawn — a pane spawn that removes somebody's automation, which is the failure the merge exists to prevent (ISS-1094, review F6).
+// cm:guard each marker carries its LEADING SPACE, which is the boundary between the exe path and
+// the verb. Without it `audit-hook --event PreToolUse` — an operator's own command — contains
+// `hook --event` and is deleted as ours on the next pane spawn. Measured by the test below, which
+// went red against the first version of this fix.
+const MANAGED_MARKERS: [&str; 2] = [" hook --event ", " gate --event "];
 
 fn command_for(exe: &str, event: Event) -> String {
     format!("{exe} hook --event {}", event.wire())
+}
+
+/// The `PreToolUse` entry: the one hook on a pane that ANSWERS rather than reports.
+// cm:guard this is the door the declaration is enforced at, and registering it here rather than anywhere else is the whole of why it holds: `install` is called before every pane this daemon spawns, so a master gets the gate without anybody configuring a box. A gate wired up somewhere a person has to opt into is the advice this issue is replacing, wearing a config key.
+// cm:edge lockstep -> packages/runner/crates/forge-runner/src/cmd/gate.rs — the verb this names and the event it is registered for are one decision; the end-to-end test runs THIS string as a process and feeds it a real payload, so a wrong verb or a wrong event here fails there rather than in silence.
+pub const GATE_EVENT: &str = "PreToolUse";
+
+fn gate_command_for(exe: &str) -> String {
+    format!("{exe} gate --event {GATE_EVENT}")
 }
 
 /// Whether one entry in an event's hook array is ours.
@@ -33,7 +47,7 @@ fn is_managed(entry: &Value) -> bool {
             hs.iter().any(|h| {
                 h.get("command")
                     .and_then(Value::as_str)
-                    .is_some_and(|c| c.contains(MANAGED_MARKER))
+                    .is_some_and(|c| MANAGED_MARKERS.iter().any(|m| c.contains(m)))
             })
         })
 }
@@ -71,6 +85,21 @@ pub fn merged(existing: Option<&str>, exe: &str) -> Result<String> {
         }));
         hooks.insert(event.wire().to_string(), Value::Array(entries));
     }
+
+    let mut gate: Vec<Value> = hooks
+        .get(GATE_EVENT)
+        .and_then(Value::as_array)
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .filter(|e| !is_managed(e))
+        .collect();
+    // cm:guard the matcher is `*` and not the dispatch tool's name. Measured on claude 2.1.276 that tool is `Agent`; it has been called other things, and a matcher naming it would turn the gate off on the version that renames it, silently. The verb itself answers in microseconds for every tool call that is not a dispatch.
+    gate.push(json!({
+        "matcher": "*",
+        "hooks": [{ "type": "command", "command": gate_command_for(exe) }]
+    }));
+    hooks.insert(GATE_EVENT.to_string(), Value::Array(gate));
 
     root.insert("hooks".into(), Value::Object(hooks));
     serde_json::to_string_pretty(&Value::Object(root))
@@ -117,7 +146,57 @@ mod tests {
                 e.wire()
             );
         }
-        assert_eq!(hooks.len(), Event::ALL.len());
+        assert_eq!(
+            hooks.len(),
+            Event::ALL.len() + 1,
+            "the eight reporting events plus the one gate, and nothing else"
+        );
+    }
+
+    /// Criterion 20. The gate reaches a pane because the same installer that
+    /// registers the activity hooks registers it, with nobody configuring a box.
+    // cm:guard this is the DOOR, not the arm. Deleting `gate` from `merged` leaves every test of `dispatch_gate::decide` green while no dispatch on the fleet ever reaches it — which is the shape of a criterion that stayed green after the event it was about was removed from the list entirely (ISS-1075).
+    #[test]
+    fn the_declaration_gate_is_registered_on_every_pane_this_daemon_opens() {
+        let hooks = hooks_of(&merged(None, "/bin/fr").unwrap());
+        let entries = hooks
+            .get(GATE_EVENT)
+            .and_then(Value::as_array)
+            .unwrap_or_else(|| panic!("no {GATE_EVENT} entry: a master would dispatch ungated"));
+        let cmd = entries
+            .iter()
+            .filter_map(|e| e["hooks"][0]["command"].as_str())
+            .find(|c| c.contains("gate --event"))
+            .unwrap_or_else(|| panic!("no gate command among {entries:?}"));
+        assert_eq!(cmd, "/bin/fr gate --event PreToolUse");
+    }
+
+    /// Criterion 23. The event argument is part of the door, not decoration.
+    // cm:guard asserts the WHOLE string rather than that it contains `gate`. `gate --event SubagentStart` registers a hook that fires after the dispatch it was meant to refuse, and every structural test that only looked for the verb would still be green.
+    #[test]
+    fn the_gate_is_registered_for_the_event_that_runs_before_the_dispatch() {
+        assert_eq!(
+            gate_command_for("/bin/fr"),
+            "/bin/fr gate --event PreToolUse"
+        );
+        assert_ne!(GATE_EVENT, Event::SubagentStarted.wire());
+    }
+
+    /// Both of this daemon's verbs are recognised as its own on a later pass.
+    #[test]
+    fn the_gate_is_not_duplicated_by_a_second_install() {
+        let once = merged(None, "/bin/fr").unwrap();
+        let twice = merged(Some(&once), "/bin/fr").unwrap();
+        let entries = hooks_of(&twice)[GATE_EVENT].as_array().unwrap().clone();
+        let ours = entries
+            .iter()
+            .filter(|e| {
+                e["hooks"][0]["command"]
+                    .as_str()
+                    .is_some_and(|c| c.contains("gate --event"))
+            })
+            .count();
+        assert_eq!(ours, 1, "{entries:?}");
     }
 
     // cm:guard the failure this prevents is silent and cumulative: a marker keyed on the exe path would not match after an update, so every daemon restart would append one more copy of every hook and each boundary would be reported many times over.
@@ -140,6 +219,39 @@ mod tests {
         assert!(cmd.starts_with("/new/path/"), "{cmd}");
     }
 
+    /// Review F6. An operator's own command that happens to take `--event`.
+    // cm:guard the damage this prevents is silent and total: a pane spawn deletes somebody's automation and the only symptom is their hook stopping. The marker exists to recognise THIS daemon's entries, and a flag is not a signature.
+    #[test]
+    fn an_operators_own_event_taking_hook_is_not_mistaken_for_ours() {
+        let theirs = serde_json::to_string(&json!({
+            "hooks": {
+                "PreToolUse": [
+                    { "matcher": "*", "hooks": [{ "type": "command", "command": "audit-hook --event PreToolUse" }] },
+                    { "matcher": "*", "hooks": [{ "type": "command", "command": "/old/fr gate --event PreToolUse" }] }
+                ],
+                "Stop": [{ "hooks": [{ "type": "command", "command": "/old/fr hook --event Stop" }] }]
+            }
+        }))
+        .unwrap();
+        let hooks = hooks_of(&merged(Some(&theirs), "/bin/fr").unwrap());
+        let pre = hooks["PreToolUse"].as_array().unwrap();
+        assert!(
+            pre.iter()
+                .any(|e| e["hooks"][0]["command"] == "audit-hook --event PreToolUse"),
+            "an operator's own hook is theirs: {pre:?}"
+        );
+        assert_eq!(
+            pre.iter()
+                .filter(|e| e["hooks"][0]["command"]
+                    .as_str()
+                    .is_some_and(|c| c.contains("gate --event")))
+                .count(),
+            1,
+            "our own stale entry is replaced, not joined: {pre:?}"
+        );
+        assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
+    }
+
     // cm:guard a user's own hooks are theirs. Without this, every pane spawn silently deletes whatever somebody configured on that checkout, and the only symptom is their hook stopping.
     #[test]
     fn a_users_own_hooks_survive_the_install() {
@@ -156,7 +268,15 @@ mod tests {
         let stop = hooks["Stop"].as_array().unwrap();
         assert_eq!(stop.len(), 2, "the user's Stop hook and ours");
         assert!(stop.iter().any(|e| e["hooks"][0]["command"] == "say done"));
-        assert_eq!(hooks["PreToolUse"].as_array().unwrap().len(), 1);
+        // The user's own `PreToolUse` hook and the declaration gate, side by side:
+        // the gate is added to that event now, and adding it may not cost somebody
+        // the linter they wired up on the same one.
+        let pre = hooks["PreToolUse"].as_array().unwrap();
+        assert_eq!(pre.len(), 2, "the user's PreToolUse hook and ours: {pre:?}");
+        assert!(pre.iter().any(|e| e["hooks"][0]["command"] == "lint"));
+        assert!(pre
+            .iter()
+            .any(|e| e["hooks"][0]["command"] == "/bin/fr gate --event PreToolUse"));
         let root: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(
             root["permissions"]["allow"][0], "Bash",
