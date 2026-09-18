@@ -131,7 +131,7 @@ function trimToBudget<T>(key: string, items: T[], maxChars: number, fromHead: bo
   return head === 0 && tail === items.length ? items : items.slice(head, tail);
 }
 
-// cm:guard never state a count that reads as a DB total — the only numbers here are `returned` and the caller's own `limit`, both of which the caller can verify. forge_feedback and forge_ux_findings used to say "the N most recent of M" where M was the rows already bounded by the limit; an agent read that as a total and it never was one.
+// cm:guard never state a count that reads as a DB total — the only numbers here are `returned` and the caller's own `limit`, both of which the caller can verify. forge_feedback used to say "the N most recent of M" where M was the rows already bounded by the limit; an agent read that as a total and it never was one.
 // cm:guard name WHICH rows survived, not just how many — the two trims drop from opposite ends on an ascending list, so "the N most recent" is false there and sends the caller looking for rows it already has
 // cm:guard when a cursor is on offer the remedy is the cursor and nothing else — "a higher limit will NOT help" was true and still left the caller with no move, which is the whole of ISS-956: a CLI client read that line as "this thread is unreadable" and it was right.
 function buildNotice(args: {

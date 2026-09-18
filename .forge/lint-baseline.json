@@ -104,9 +104,6 @@
     "packages/core/src/mcp/tools/forge-projects.ts": {
       "lint/complexity/useOptionalChain": 2
     },
-    "packages/core/src/mcp/tools/forge-ux-findings.ts": {
-      "lint/complexity/useOptionalChain": 1
-    },
     "packages/core/src/mcp/tools/lib.ts": {
       "lint/complexity/useOptionalChain": 2
     },

@@ -12,7 +12,7 @@ import { and, eq, inArray } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { agentSessions, jobs } from '../db/schema.js';
 
-// cm:guard NEVER narrow this to `= 'running'` — nothing in core ever writes that job status (queued → dispatched → terminal), so an equality test matches zero rows forever and every caller silently degrades (ISS-573/ISS-787: forge_ux_findings answered `no_active_issue` on 100% of calls, and forge_feedback recorded all 8 reports with null issueId/runId/jobId/stage).
+// cm:guard NEVER narrow this to `= 'running'` — nothing in core ever writes that job status (queued → dispatched → terminal), so an equality test matches zero rows forever and every caller silently degrades (ISS-573/ISS-787: forge_feedback recorded all 8 reports with null issueId/runId/jobId/stage).
 // cm:edge lockstep -> packages/core/src/jobs/queued-gates.ts — "in flight" must match `runner_load` there, NOT the wider `issueBusyJob` set: `held` is deliberately absent from both, because a held job has no live agent to attribute a tool call to (RFC 0002)
 const IN_FLIGHT_JOB_STATUSES = ['dispatched', 'running'] as const;
 
