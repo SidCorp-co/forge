@@ -3692,6 +3692,19 @@ mod unplaced_tests {
             .expect("ensure_master must be findable")
     }
 
+    /// Where a block opened at `indent` spaces closes, in `rest`.
+    ///
+    /// Matches the newline BEFORE the closing brace and never the one after
+    /// it: a checkout with CRLF endings holds `}\r\n`, so a pattern carrying
+    /// the trailing `\n` finds nothing and every block-scoped assertion below
+    /// panics on its `expect` instead of running. Measured on CI, which builds
+    /// this crate on windows-latest beside ubuntu and macos; the three tests
+    /// that read these regions went red there and green here on the same
+    /// commit.
+    fn block_end(rest: &str, indent: usize) -> Option<usize> {
+        rest.find(&format!("\n{}}}", " ".repeat(indent)))
+    }
+
     /// The drained-runner branch of the sweep, on its own.
     ///
     /// Scoped to the branch rather than to the sweep, because the sweep holds
@@ -3703,9 +3716,7 @@ mod unplaced_tests {
             .find("if !accepts_new_work(&runner.status) {")
             .expect("the sweep still has its drained-runner branch");
         let rest = &body[start..];
-        let end = rest
-            .find("\n        }\n")
-            .expect("the drained-runner branch must close");
+        let end = block_end(rest, 8).expect("the drained-runner branch must close");
         &rest[..end]
     }
 
@@ -3729,9 +3740,7 @@ mod unplaced_tests {
             .find("if masters.note_unplaced(")
             .expect("the report must be gated on the reason having changed");
         let rest = &body[start..];
-        let end = rest
-            .find("\n    }\n")
-            .expect("the change gate must close");
+        let end = block_end(rest, 4).expect("the change gate must close");
         &rest[..end]
     }
 
@@ -3748,9 +3757,7 @@ mod unplaced_tests {
             .find("if session.created {")
             .expect("the adopt branch must gate its report on session.created");
         let rest = &body[start..];
-        let end = rest
-            .find("\n            }\n")
-            .expect("the session.created report must close");
+        let end = block_end(rest, 12).expect("the session.created report must close");
         &rest[..end]
     }
 
