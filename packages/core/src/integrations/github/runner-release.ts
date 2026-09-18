@@ -86,6 +86,39 @@ async function asPersisted(id: string, fallback: RunnerReleaseRow): Promise<Runn
  * sentence of their own, so what a caller is owed here is the STORED outcome
  * rather than one this call invents over a row it no longer owns.
  */
+/**
+ * The outcome of a stop that WON its settle: this call's own message, beside
+ * the row as it now stands.
+ *
+ * The two can be about different attempts. Between the settle and the read-back
+ * another start may re-arm this row and be several steps into a release of its
+ * own, and pairing this call's "nothing was written, the tag does not exist"
+ * with that row's `building`/`present` is one answer asserting both. The
+ * attempt is what tells them apart, and where they differ the sentence says so
+ * rather than letting a reader assume the message describes the release beside
+ * it.
+ */
+async function stoppedOutcome(
+  row: RunnerReleaseRow,
+  message: string,
+  fallback: RunnerReleaseRow,
+): Promise<StartRunnerReleaseOutcome> {
+  const now = await asPersisted(row.id, fallback);
+  if (Number(now.attempt) === Number(row.attempt)) {
+    return { started: false, kind: 'stopped', message, release: now };
+  }
+  // cm:guard the message keeps this call's own outcome — it is what this call did and the caller asked about it — and gains the sentence that stops it being read as a description of the row beside it. Returning the newer row silently under the older prose is the two-live-paths defect in one HTTP response.
+  return {
+    started: false,
+    kind: 'stopped',
+    message:
+      `${message} Since this attempt stopped, \`${now.tag}\` has been run again: the release on ` +
+      `record is attempt ${now.attempt}, at \`${now.step}\`, and the outcome above is this ` +
+      "call's rather than that row's.",
+    release: now,
+  };
+}
+
 async function lostTheRow(row: RunnerReleaseRow): Promise<StartRunnerReleaseOutcome> {
   const settled = await asPersisted(row.id, row);
   const message =
@@ -156,12 +189,7 @@ async function cutTheTag(
       { releaseId: row.id, tag: row.tag, cause: refusal.cause, tagState },
       'runner-release: the tag was not cut',
     );
-    return {
-      started: false,
-      kind: 'stopped',
-      message: failure,
-      release: await asPersisted(row.id, { ...row, commitSha, tagState }),
-    };
+    return stoppedOutcome(row, failure, { ...row, commitSha, tagState });
   }
 }
 
@@ -182,12 +210,7 @@ async function runPreflight(
     const failure = `${message} ${truthOf({ ...row, commitSha, tagState }, tagState)}`;
     const settled = await settleFailed(row.id, row.attempt, { step, failure, tagState });
     if (!settled) return lostTheRow(row);
-    return {
-      started: false,
-      kind: 'stopped',
-      message: failure,
-      release: await asPersisted(row.id, { ...row, commitSha, tagState }),
-    };
+    return stoppedOutcome(row, failure, { ...row, commitSha, tagState });
   };
 
   let step: RunnerReleaseStep = 'resolve_commit';
@@ -219,12 +242,7 @@ async function runPreflight(
         tagCommitSha: existing.sha,
       });
       if (!settled) return lostTheRow(row);
-      return {
-        started: false,
-        kind: 'stopped',
-        message: failure,
-        release: await asPersisted(row.id, { ...observed, tagState: 'present' as const }),
-      };
+      return stoppedOutcome(row, failure, { ...observed, tagState: 'present' as const });
     }
     if (!(await advance(row.id, row.attempt, { tagState: 'absent' }))) return lostTheRow(row);
     await appendReading(

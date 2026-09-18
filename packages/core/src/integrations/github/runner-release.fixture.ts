@@ -62,12 +62,24 @@ export const saysRefExists = (r: { status: number | null; detail?: string | null
 /** Every row these suites wrote, keyed `<projectId>:<tag>` as the store keys them. */
 export const rows = new Map<string, FixtureRow>();
 
+/**
+ * What another writer does in the gap between two of this module's statements.
+ *
+ * The sequence's writes are not one statement, and the races that matter all
+ * live between two of them — a settle and its read-back, an insert and its
+ * read-back. A suite that cannot stand in those gaps cannot test them at all,
+ * so the gaps are named here rather than left to timing.
+ */
+export const between: {
+  settleAndReadBack: ((row: FixtureRow) => void) | null;
+} = { settleAndReadBack: null };
+
 // cm:guard the double of the real statement's WHERE, both halves: a row still in flight is HELD whatever its tag state, and a settled one re-arms only from `unread` or `absent` — and the re-arm bumps the attempt, so a caller holding the old one writes nothing afterwards.
 export async function openRunnerRelease(args: Record<string, unknown>) {
   const key = `${args.projectId}:${args.tag}`;
   const held = rows.get(key);
   if (held && !(held.settledAt && ['unread', 'absent'].includes(held.tagState))) {
-    return { opened: null, held };
+    return { opened: null, held: { ...held } };
   }
   if (held) {
     Object.assign(held, {
@@ -79,7 +91,7 @@ export async function openRunnerRelease(args: Record<string, unknown>) {
       settledAt: null,
       attempt: (held.attempt as number) + 1,
     });
-    return { opened: held, held: null };
+    return { opened: { ...held }, held: null };
   }
   const row: FixtureRow = {
     id: key,
@@ -101,7 +113,8 @@ export async function openRunnerRelease(args: Record<string, unknown>) {
     startedAt: new Date('2026-09-18T00:00:00.000Z'),
   };
   rows.set(key, row);
-  return { opened: row, held: null };
+  // cm:guard a COPY, as a real read hands back a copy. Returning the stored object makes the caller's `row` an alias of the row every later write mutates, and an alias cannot be out of date — so every comparison of "the attempt I hold" against "the attempt the row carries" is true by construction and the races they defend are untestable.
+  return { opened: { ...row }, held: null };
 }
 
 // cm:guard every double below carries the same `attempt` fence the statement does, so a case that re-arms a row proves the sequence is passing the attempt through rather than the double being forgiving about it.
@@ -124,9 +137,11 @@ export async function settleFailed(id: string, attempt: number, patch: Record<st
   if (guard && (row.step !== guard.step || row.tagState !== guard.tagState)) return false;
   const { ifUnchanged: _guard, ...sets } = patch;
   Object.assign(row, sets, { status: 'failed', settledAt: new Date() });
+  between.settleAndReadBack?.(row);
   return true;
 }
 
 export async function findById(id: string) {
-  return rows.get(id) ?? null;
+  const row = rows.get(id);
+  return row ? { ...row } : null;
 }

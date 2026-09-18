@@ -11,7 +11,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { agreeingFiles, publishError, rows } from './runner-release.fixture.js';
+import { agreeingFiles, between, publishError, rows } from './runner-release.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
@@ -75,6 +75,7 @@ const row = () => rows.get('p1:runner-v0.13.3');
 // cm:guard the implementations are restored by hand, because `vi.clearAllMocks` clears CALLS and not `mockImplementation` — a Cargo.lock a preflight case rewrote would otherwise leak into every later case and stop the sequence two steps before the one under test, with the failure reading as a bug in `cut_tag`.
 beforeEach(() => {
   rows.clear();
+  between.settleAndReadBack = null;
   vi.clearAllMocks();
   repo.readFileAtRef.mockImplementation(agreeingFiles);
   repo.readDefaultBranch.mockResolvedValue('main');
@@ -326,6 +327,32 @@ describe('a row that went terminal under the sequence', () => {
     expect(row()?.tagState).toBe('absent');
   });
 
+  // cm:guard the settle and the read-back are two statements, and another start can re-arm this row between them and be several steps into a release of its own. Pairing this call's "nothing was written, the tag does not exist" with that row's `building`/`present` is one answer asserting both — and the one a reader takes at face value is whichever they look at first.
+  it('says so when the row was re-run between its settle and its read-back', async () => {
+    repo.readFileAtRef.mockImplementation(async (_c: unknown, path: string) =>
+      path.endsWith('Cargo.toml')
+        ? '[workspace.package]\nversion = "0.13.2"\n'
+        : agreeingFiles(_c, path),
+    );
+    // A second start re-arms the row and gets several steps into a release of its own.
+    between.settleAndReadBack = (later) => {
+      Object.assign(later, {
+        attempt: later.attempt + 1,
+        status: 'building',
+        step: 'await_build',
+        tagState: 'present',
+        failure: null,
+        settledAt: null,
+      });
+    };
+    const outcome = await start();
+    expect(outcome.started).toBe(false);
+    expect('message' in outcome && outcome.message).toContain('perpetual update loop');
+    expect('message' in outcome && outcome.message).toContain('has been run again');
+    expect('message' in outcome && outcome.message).toContain('attempt 2');
+    expect(!outcome.started && outcome.release?.status).toBe('building');
+  });
+
   // cm:guard GitHub can take the ref and lose the response: the build's own delivery then settles this release — published, with a reading — while the create's error handler is still holding a timeout. Returning that handler's prose over the stored outcome tells an operator the tag "may or may not exist" about a release Forge has already recorded as published.
   it('answers with the stored outcome when a delivery settled the row mid-cut', async () => {
     repo.createTagRef.mockImplementation(async () => {
@@ -358,7 +385,7 @@ describe('a row that went terminal under the sequence', () => {
   it('answers with the persisted row rather than the opening snapshot', async () => {
     const outcome = await start();
     expect(outcome.started).toBe(true);
-    expect(outcome.started && outcome.release).toBe(row());
+    expect(outcome.started && outcome.release).toEqual(row());
     expect(outcome.started && outcome.release.step).toBe('await_build');
     expect(outcome.started && outcome.release.readings).toHaveLength(6);
   });
@@ -369,7 +396,7 @@ describe('a row that went terminal under the sequence', () => {
     );
     const outcome = await start();
     expect(outcome.started).toBe(false);
-    expect(!outcome.started && outcome.release).toBe(row());
+    expect(!outcome.started && outcome.release).toEqual(row());
     expect(!outcome.started && outcome.release?.status).toBe('failed');
     expect(!outcome.started && outcome.release?.settledAt).not.toBeNull();
   });
