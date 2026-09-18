@@ -25,3 +25,15 @@ of the right one. The `cm:guard` above that threshold says so, and names both fi
 
 What it would take: one derivation, from whatever declares the step a status dispatches, with the
 `"Auto "` prefix applied at the error surface rather than baked into a second table.
+
+## Honest costs
+
+The price of doing this, not of leaving it:
+
+| Cost | What it takes |
+|---|---|
+| A new owner, where there is none today | Nothing currently declares which step a status dispatches. This has to be given a home — the pipeline registry is the obvious one — and a home is a decision somebody has to make and defend, not a refactor. |
+| A third caller becomes a coupling | Two independent tables can each be wrong on their own. One derivation means a change to it reaches the skills feature and every API error message at once, and the blast radius of a wrong edit grows from one surface to both. |
+| Nine words get re-read by a person | The two tables have already drifted in form (`"Triage"` against `"Auto triage"`); picking one spelling means one of the two surfaces changes wording that somebody chose. The prefix has to move to the error surface as a prefix, which is a second small decision inside the first. |
+| It costs a round on a defect nobody has reported | Neither table has been observed wrong in the field. This is drift waiting to happen, and spending on it now is spending ahead of evidence. |
+| A partial fix is worse than none | Deriving one and leaving the other is three copies of the fact, not one. The change is only worth its round if both callers move together. |
