@@ -1677,6 +1677,22 @@ async fn ensure_master(
         return PaneState::Adopted;
     }
 
+    // cm:guard the SECOND adopt-only return, and it is not the first one repeated. The first is an
+    // optimisation — it avoids asking core for a session this sweep will not use. This one is the
+    // bound: the pane was alive at that check and is not alive at this one, which is a pane that
+    // exited while `register` and `project_mcp_servers` were awaited, and without this the code
+    // falls straight through into minting a capability and starting a master for a project with
+    // nothing claimable. Found by review of ISS-1092 (F1), not by a failing sweep.
+    if placement == Placement::AdoptOnly {
+        say_unplaced(
+            masters,
+            project_id,
+            &resolved.slug,
+            Unplaced::NothingAdmissible,
+        );
+        return PaneState::Absent;
+    }
+
     // cm:guard refuse to start when the skill cannot be written, rather than starting without it. A master with no skill still starts, still claims, and runs the whole orchestration off a four-line prompt — work that looks like it is being managed and is not.
     if let Err(e) = install_skill(&resolved.repo_path) {
         tracing::error!(
@@ -3890,6 +3906,26 @@ mod unplaced_tests {
         assert!(
             guard < register,
             "a sweep that starts no master must not create a session row for one"
+        );
+    }
+
+    // cm:guard the adopt-only path may not reach the spawn at all, and the window this closes is a
+    // pane that was alive at the first check and gone by the second — the awaits between them are
+    // a core call and an MCP read. Without this return the sweep starts a master for a project with
+    // nothing claimable, which is the bound above failing through the fix meant to keep it.
+    #[test]
+    fn adopt_only_cannot_fall_through_to_the_spawn_when_the_pane_dies_mid_registration() {
+        let body = ensure_master_body();
+        let adopted = body
+            .find("return PaneState::Adopted;")
+            .expect("the adopt branch must return");
+        let spawn = body
+            .find("install_skill(&resolved.repo_path)")
+            .expect("the spawn path must start with the skill install");
+        let between = &body[adopted..spawn];
+        assert!(
+            between.contains("if placement == Placement::AdoptOnly {"),
+            "a pane that exits while `register` is awaited must not turn `AdoptOnly` into a spawn"
         );
     }
 
