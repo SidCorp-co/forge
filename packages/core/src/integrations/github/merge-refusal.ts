@@ -35,6 +35,7 @@ function timedOut(): MergeCallRefusal {
     cause: 'timed-out-mid-write',
     op: 'merge',
     status: null,
+    detail: null,
     message:
       'Forge timed out merging the pull request, so whether GitHub took the merge is unknown. ' +
       'Do not send it again: read the pull request, and either the `pull_request.closed` event ' +
@@ -52,6 +53,7 @@ export function describeMergeRefusal(err: unknown, number: number): MergeCallRef
       cause: 'rejected-payload',
       op: 'merge',
       status: 405,
+      detail: err.detail ?? null,
       message:
         `GitHub refused to merge #${number}: it is not mergeable at the moment Forge asked` +
         (err.detail ? ` — GitHub said: ${err.detail}` : '') +
@@ -65,6 +67,7 @@ export function describeMergeRefusal(err: unknown, number: number): MergeCallRef
       cause: 'rejected-payload',
       op: 'merge',
       status: 409,
+      detail: err.detail ?? null,
       message:
         `GitHub refused to merge #${number}: its head branch was modified between Forge's read ` +
         'and the merge. The commits this would have landed are not the ones that were judged, so ' +

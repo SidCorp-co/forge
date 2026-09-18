@@ -112,6 +112,10 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Cutting a runner release is one thing Forge does, not eight by hand.** Name a version; Forge
+  checks the commit agrees, tags it as itself, hears how the build went, and names what is on the
+  repository if it stops.
+
 - **Forge merges pull requests itself, as its own GitHub App, and that merge is what records the
   work as landed.** No personal account, no machine to set up. A merge it cannot make is refused in
   plain words, never retried.

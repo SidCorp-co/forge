@@ -36,14 +36,17 @@ import {
   storeRefreshRefusal,
 } from './projection-refresh.js';
 import { noteReviewOnIssue } from './review-note.js';
+import { applyWorkflowRunEvent, type WorkflowRunPayload } from './runner-release-events.js';
 import type { GitHubConfig, GitHubSecrets } from './types.js';
 
+// cm:guard `workflow_run` is here for the runner release (ISS-1075) and carries no projection of its own: it writes `runner_releases` and touches no `repo_pull_requests` row. It is on this list rather than on a door of its own because this is where a delivery is resolved to its binding, its config and its credential, and a second door would be a second copy of that resolution.
 /** The events this projection is built from. Anything else falls through. */
 export const PROJECTED_EVENTS = [
   'pull_request',
   'check_run',
   'pull_request_review',
   'push',
+  'workflow_run',
 ] as const;
 
 export type ProjectedEvent = (typeof PROJECTED_EVENTS)[number];
@@ -215,5 +218,7 @@ export async function applyProjectedEvent(
       return onReview(ctx, payload as ReviewPayload);
     case 'push':
       return onPush(ctx, payload as PushPayload);
+    case 'workflow_run':
+      return applyWorkflowRunEvent(ctx, payload as WorkflowRunPayload);
   }
 }
