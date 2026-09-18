@@ -1167,25 +1167,14 @@ mod tests {
     // function left these tests green, which is how ISS-1094's re-judge found it. A helper that
     // rebuilds its subject is the arm being judged instead of the door, the exact shape ISS-1075
     // was caught on, rebuilt inside the change meant to have learned from it (ISS-1094).
-    // cm:hack ISS-1096 until:<the platform is a value `open_channel` reads rather than a `cfg`>
-    // PRICED: this gate asserts the declaration rule on UNIX ONLY. `dispatch_gate_reply` is
-    // `#[cfg(unix)]`, so a test that CALLS it cannot compile where it does not exist. What that
-    // costs: the `#[cfg(not(unix))]` stub set in this file — the arm a Windows box actually runs —
-    // stays unexercised by any test here, so on that platform the gate's behaviour is asserted by
-    // nothing. What it does NOT cost: the classification and the payload reading are platform-free
-    // and stay ungated (`classify_start`, `agents_reach`, `dispatch_in`).
-    //
-    // This hole is older than this branch and was INVISIBLE until now: `gate_on` used to
-    // re-implement `dispatch_gate_reply`, so it compiled and passed on Windows while asserting the
-    // rule against a copy of a function whose real Windows implementation is a different code path.
-    // Making the test honest is what exposed it — the same shape as ISS-1094's own C41 finding, one
-    // layer out: not a test that cannot fail, but a platform nothing exercises.
-    //
-    // ENDS WHEN: ISS-1096 makes the platform a value rather than a `cfg` — it is tracing this same
-    // set (`control::socket_path`, `hook_install::install` and `SessionTokens::mint` carry no
-    // platform gate while `control::serve` is `#[cfg(not(unix))] -> Err`, so a Windows box mints a
-    // capability and installs hooks into a channel no frame can reach). That refactor removes this
-    // attribute; this branch deliberately does not attempt it.
+    // cm:guard `#[cfg(unix)]` on this helper is SCOPING and not an amnesty, and ISS-1096 deleted the
+    // `cm:hack` that called it one after measuring the platform: there is no trade to price here.
+    // cm:guard the gate handler has NO `#[cfg(not(unix))]` twin — `dispatch_gate_reply` exists on
+    // unix alone, because `serve` refuses outright on a platform with no unix socket to host it.
+    // cm:guard so on Windows the gate is not "asserted by nothing": it is a compile-time absence at
+    // the server and `request_dispatch_gate` -> `Err(no_socket())`, refusing by name, at the client.
+    // cm:guard the hack's `until:` could never have discharged it either. It named `open_channel`,
+    // which is `pool_jobs.rs`'s, and no value there makes a `#[cfg(unix)]` item exist on Windows.
     #[cfg(unix)]
     fn gate_on(
         ctl: &Arc<Control>,
