@@ -185,10 +185,19 @@ describe('who may author, and what a refusal costs', () => {
   it('refuses a speaker no Forge user is linked to, naming the way out in the thread', async () => {
     await deliver(reply({ userId: STRANGER }));
 
-    // cm:guard the refusal must carry ISS-977's own way out — the two endpoints and that the person links themselves — because a local rewording of it drifts from the module that owns the contract (ISS-981 criterion 6).
+    // cm:guard the expected text is BUILT by the module that owns the contract, never copied into a
+    // literal here: a copy drifts the moment that module is reworded (ISS-981 criterion 6, ISS-1095).
+    const { unlinkedMessage } = await import('../../src/assistant/identity/speaker-link.js');
     expect(posts).toHaveLength(1);
     expect(posts[0]?.tmid).toBe('root-1');
-    expect(posts[0]?.text).toContain('is not linked to a Forge user');
+    expect(posts[0]?.text).toBe(
+      unlinkedMessage({
+        source: 'rocketchat',
+        namespace: 'chat.example.com',
+        externalId: STRANGER,
+        label: 'someone',
+      }),
+    );
     expect(posts[0]?.text).toContain('speaker-links');
   });
 
