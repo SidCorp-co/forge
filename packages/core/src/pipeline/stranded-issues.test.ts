@@ -24,12 +24,20 @@ vi.mock('../notifications/emit.js', () => ({
 }));
 
 const rows = vi.hoisted(() => ({ value: [] as unknown[] }));
+/** Every bound the detectors asked the database for, in call order. */
+const limits = vi.hoisted(() => [] as unknown[]);
 vi.mock('../db/client.js', () => {
   const chain: Record<string, unknown> = {};
   for (const k of ['select', 'from', 'innerJoin', 'where', 'orderBy']) {
     chain[k] = () => chain;
   }
-  chain.limit = () => Promise.resolve(rows.value);
+  // The argument is RECORDED, not just swallowed. A stub that resolves whatever it is handed
+  // returns 200 rows however large the bound was, so an assertion on the result cannot see a
+  // `.limit(STRANDED_SCAN_LIMIT * 10)` at all.
+  chain.limit = (n: unknown) => {
+    limits.push(n);
+    return Promise.resolve(rows.value);
+  };
   return { db: chain };
 });
 vi.mock('../logger.js', () => ({
@@ -107,15 +115,21 @@ describe('detectOwedCloses carries the same memo and bound (ISS-1021)', () => {
     expect(adminsFor.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(['p1', 'p2', 'p3']));
   });
 
-  it('reads no more than its bound in one pass', async () => {
+  it('asks the database for no more than its bound', async () => {
+    limits.length = 0;
     rows.value = Array.from({ length: STRANDED_SCAN_LIMIT }, (_, i) => strand('p1', i + 1));
 
     const result = await detectOwedCloses();
 
-    // The stub resolves whatever `.limit()` is handed, so this asserts the detector CONSUMED a
-    // bounded page rather than that the database applied one; the bound reaching SQL is what
-    // `tests/integration/sweep-fair-traversal-e2e.test.ts` proves for the sibling detector.
-    expect(result.detected).toBe(STRANDED_SCAN_LIMIT);
+    // The BOUND, read off the call, and the page the detector then consumed. The first is the
+    // criterion; the second alone is not, because the stub returns the rows it was given whatever
+    // number it was handed — a `.limit(STRANDED_SCAN_LIMIT * 10)` would leave `detected` at 200
+    // and say nothing. `tests/integration/sweep-fair-traversal-e2e.test.ts` proves the bound
+    // reaches real SQL for the sibling detector; this proves which number this one sends.
+    expect({ bound: limits[0], detected: result.detected }).toEqual({
+      bound: STRANDED_SCAN_LIMIT,
+      detected: STRANDED_SCAN_LIMIT,
+    });
   });
 });
 
