@@ -191,7 +191,7 @@ export const FORGE_FACTS: readonly ForgeFact[] = [
     tier: 'mandatory',
     scope: 'global',
     namespace: 'forge',
-    version: 9,
+    version: 10,
     render: () => PIPELINE_RULES_TEXT,
   },
   {

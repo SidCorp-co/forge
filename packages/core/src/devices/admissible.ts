@@ -19,11 +19,8 @@ import {
   type IssuePullRequest,
   readPullRequestsForIssues,
 } from '../integrations/repo-projection.js';
+import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from '../issues/dependency-effects.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
-import {
-  BLOCKER_SETTLED_STATUSES,
-  DISPATCH_GATING_KIND,
-} from '../issues/dependency-effects.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
   isAutonomous,

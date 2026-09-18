@@ -320,9 +320,7 @@ fn nudge_due(prev: Option<Nudge>, digest: u64, now: Instant, since: SinceNudge) 
     match prev {
         None => true,
         Some(last) if last.digest != digest => true,
-        Some(last) => {
-            now.saturating_duration_since(last.at) >= NUDGE_REFRESH && retry_owed(since)
-        }
+        Some(last) => now.saturating_duration_since(last.at) >= NUDGE_REFRESH && retry_owed(since),
     }
 }
 
@@ -3670,7 +3668,12 @@ mod give_back_tests {
     #[test]
     fn the_same_work_twice_in_a_row_is_not_nudged_twice() {
         let now = Instant::now();
-        assert!(!nudge_due(sent(7, now, Some(0)), 7, now, SinceNudge::NoTurn));
+        assert!(!nudge_due(
+            sent(7, now, Some(0)),
+            7,
+            now,
+            SinceNudge::NoTurn
+        ));
     }
 
     // cm:guard NEW work is nudged whatever the pane is doing, and this arm is the one that must not learn to consult the evidence: an issue that appears while the master is mid-turn is still an issue it has not been told about.
@@ -3743,7 +3746,10 @@ mod give_back_tests {
             (agent_activity::Event::PromptSubmitted, None),
             (agent_activity::Event::PermissionRequested, None),
         ]);
-        assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::AwaitingPermission);
+        assert_eq!(
+            since_nudge(Some(&a), Some(0)),
+            SinceNudge::AwaitingPermission
+        );
         assert!(!retry_owed(SinceNudge::AwaitingPermission));
     }
 
@@ -3841,7 +3847,10 @@ mod give_back_tests {
             !masters.claim_nudge("p1", 7, None),
             "the same work on the next sweep must not spend another pass"
         );
-        assert!(masters.claim_nudge("p1", 8, None), "new work nudges at once");
+        assert!(
+            masters.claim_nudge("p1", 8, None),
+            "new work nudges at once"
+        );
     }
 
     // cm:guard the whole of ISS-1100's box half, end to end through the real registry: the same
@@ -3902,7 +3911,14 @@ mod give_back_tests {
             .nth(1)
             .and_then(|r| r.split("fn work_digest(").next())
             .expect("the repeat decision is gone");
-        for banned in ["capture", "transcript", "terminal::", "tmux", "len()", "elapsed"] {
+        for banned in [
+            "capture",
+            "transcript",
+            "terminal::",
+            "tmux",
+            "len()",
+            "elapsed",
+        ] {
             assert!(
                 !body.contains(banned),
                 "`{banned}` in the repeat decision is the quiet gate coming back with a new name (ISS-933 criteria 17 and 18)"
