@@ -9,6 +9,14 @@
  * `prev.status = 'queued'` alone stayed green in that lane. Both are asserted
  * here, where Postgres evaluates the statement.
  *
+ * The CONCURRENT half of the exactly-once broadcast is not here and deliberately
+ * not repeated: `job-event-ingest-writes.test.ts` already holds a deterministic
+ * contention case for it, which pins both requests at the heartbeat with its own
+ * `FOR UPDATE` so the interleaving always happens. A naive two-`Promise.all`
+ * version was written here and measured: with the CTE's `FOR UPDATE` removed it
+ * stayed GREEN, because the two statements never overlapped. It was deleted
+ * rather than kept beside a comment claiming it caught that.
+ *
  * The frame that matters is the pane lane's own beat,
  * `{"source":"pool_jobs","state":"running"}` — no `runtimeState` key at all,
  * and the only thing that lane sends before a turn runs
@@ -132,10 +140,16 @@ async function session(id: string): Promise<Row> {
   return row;
 }
 
-function statusBroadcasts(): unknown[] {
-  return publish.mock.calls
-    .map((c) => c[1] as { event?: string })
-    .filter((p) => p?.event === 'agent-session.status');
+/** Every `agent-session.status` publication, counted PER ROOM — `broadcastSessionEvent`
+ *  publishes one to the project room and one to the device room for a single flip, so a
+ *  global count of 1 would be wrong and a global count of 2 hides a duplicate to one room. */
+function statusBroadcastsByRoom(): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const [room, payload] of publish.mock.calls) {
+    if ((payload as { event?: string })?.event !== 'agent-session.status') continue;
+    out[room as string] = (out[room as string] ?? 0) + 1;
+  }
+  return out;
 }
 
 /** The pane lane's own beat, verbatim: `daemon/pool_jobs.rs#CoreReport::progress`. */
@@ -216,12 +230,15 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
     expect(await session(sessionId).then((r) => r.status)).toBe('queued');
   });
 
-  it('announces the flip once when a batch reports a turn', async () => {
+  it('announces the flip exactly once per room when a batch reports a turn', async () => {
     const { jobId } = await seed('queued');
 
     expect((await post(jobId, [working])).status).toBe(200);
 
-    expect(statusBroadcasts().length).toBeGreaterThan(0);
+    expect(statusBroadcastsByRoom()).toEqual({
+      [`project:${projectId}`]: 1,
+      [`device:${deviceId}`]: 1,
+    });
   });
 
   // cm:guard THE assertion the unit lane cannot carry: `startedRunning` is computed in SQL, so only
@@ -232,7 +249,7 @@ describe('ISS-1101 · a beat proves the box, a report proves the turn', () => {
 
     expect((await post(jobId, [paneBeat])).status).toBe(200);
 
-    expect(statusBroadcasts()).toEqual([]);
+    expect(statusBroadcastsByRoom()).toEqual({});
   });
 
   // cm:guard the one-way-ness: narrowing the flip must never DEMOTE a session that already reported
