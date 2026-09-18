@@ -313,7 +313,14 @@ describe('an agent has no authorization path of its own', () => {
       projectIds: [projectA],
       handle: handle(),
     });
+    // The comparison is only worth anything if the two principals hold the SAME
+    // standing: `createAgentAccount` enrols its agent in the org as a plain member,
+    // so the person needs that row too, or the test compares an org member with a
+    // non-member and reads the difference as an agent/person difference.
     const person = await createTestUser(harness.db);
+    await harness.db.execute(
+      sql`INSERT INTO organization_members (org_id, user_id, role) VALUES (${orgId}, ${person.id}, 'member')`,
+    );
     await createTestProjectMember(harness.db, {
       userId: person.id,
       projectId: projectA,
