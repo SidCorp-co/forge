@@ -72,6 +72,11 @@ const ALLOW = [
   // what it asserts the rules match — so the audit scanning it would report its own evidence as the
   // defect. The file holds fixture strings and nothing else.
   /^packages\/core\/src\/db\/retired-model-audit\.test\.ts$/,
+  // cm:guard ISS-1070 — `agentConfig.productionBranch` is a jsonb key named after the retired column, and these four files exist to REFUSE it and to delete it. The refusal message has to say which key it is about, and the tests have to plant that key to watch the refusal fire; a retirement that could not name what it retires would answer an operator's save with a 200 and a silent discard, which is the defect the retirement is for. Named one by one for the reason the three release-axes files are: a `projects/` or `tests/` prefix here would exempt most of the surface this rule exists to hold. `projects/routes.test.ts` is deliberately NOT among them — the route-level refusal of that key is proved in the e2e below instead, so the general route test file stays under the audit.
+  /^packages\/core\/src\/projects\/agent-config-schema\.ts$/,
+  /^packages\/core\/src\/projects\/agent-config-doors\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/agent-config-doors-e2e\.test\.ts$/,
+  /^packages\/core\/tests\/integration\/agent-config-shadow-keys\.test\.ts$/,
   // CHANGELOG records what shipped, including the names that stopped existing.
   /^CHANGELOG\.md$/,
   // This checker names what it hunts.

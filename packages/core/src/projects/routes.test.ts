@@ -40,17 +40,43 @@ const txInsertMembers = vi.fn(() => ({ values: txInsertMembersValues }));
 
 const txInsert = vi.fn();
 
+// cm:guard ONE spy for both handles, because ISS-1070 moved every scoped `agentConfig` write onto `tx.execute` INSIDE the PATCH transaction while `/:id/plugins` still writes on the bare db. A per-call `vi.fn()` here would make the statement unassertable and every scoped-write case would read as green while writing nothing.
+const dbExecute = vi.fn(async (_statement: unknown): Promise<unknown[]> => []);
+
 const transaction = vi.fn(async (fn: (tx: unknown) => Promise<unknown>) => {
   // cm:why the PATCH now writes through the transaction, so the tx carries the same update/select doubles the bare db does (ISS-992)
   const tx = {
     insert: txInsert,
-    execute: vi.fn(async () => []),
+    execute: dbExecute,
     delete: dbDelete,
     update: dbUpdate,
     select: vi.fn(() => ({ from: selectFrom })),
   };
   return fn(tx);
 });
+
+/**
+ * The `agent_config` sub-key patch a `tx.execute` call carried, by the order the calls were made.
+ *
+ * A drizzle `sql` template interleaves literal `StringChunk`s with the raw bound values, so the
+ * values are the chunks that are not `StringChunk`s, in order: the removed-key array, the added-key
+ * JSON, then the project id. Read off the statement itself rather than off a shape the route
+ * assembled, because the statement is what Postgres runs.
+ */
+function agentConfigWrites(): Array<{ removed: string[]; added: Record<string, unknown> }> {
+  return dbExecute.mock.calls.map(([stmt]) => {
+    const chunks = (stmt as unknown as { queryChunks: unknown[] }).queryChunks;
+    const bound: string[] = chunks
+      .filter(
+        (c) => (c as { constructor?: { name?: string } })?.constructor?.name !== 'StringChunk',
+      )
+      .map((c) => String(c));
+    return {
+      removed: JSON.parse(bound[0] ?? '[]') as string[],
+      added: JSON.parse(bound[1] ?? '{}') as Record<string, unknown>,
+    };
+  });
+}
 
 const updateReturning = vi.fn();
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
@@ -78,6 +104,7 @@ vi.mock('../db/client.js', () => ({
     update: dbUpdate,
     delete: dbDelete,
     insert: dbInsert,
+    execute: dbExecute,
   },
 }));
 
@@ -510,7 +537,6 @@ describe('PATCH /api/projects/:id', () => {
     updateReturning.mockResolvedValueOnce([
       patchedRow({
         name: 'New Name',
-        agentConfig: { auto: true },
         webhookSecret: 'secret-of-at-least-16-chars',
       }),
     ]);
@@ -519,7 +545,6 @@ describe('PATCH /api/projects/:id', () => {
       method: 'PATCH',
       body: JSON.stringify({
         name: 'New Name',
-        agentConfig: { auto: true },
         webhookSecret: 'secret-of-at-least-16-chars',
       }),
       token,
@@ -527,7 +552,6 @@ describe('PATCH /api/projects/:id', () => {
     expect(res.status).toBe(200);
     expect(updateSet).toHaveBeenCalledWith({
       name: 'New Name',
-      agentConfig: { auto: true },
       webhookSecret: 'secret-of-at-least-16-chars',
     });
   });
@@ -942,7 +966,17 @@ describe('PATCH /api/projects/:id · environments', () => {
       expect(updateSet).not.toHaveBeenCalled();
     });
   }
+});
 
+/**
+ * ISS-1000, ISS-1048, ISS-1069, ISS-1070 — the retired keys and the `agentConfig` record, as their
+ * own block.
+ *
+ * Its own `describe` and not the one above, because that block was at the function line budget and
+ * these cases are about a different thing: what this route REFUSES, and what each scoped field
+ * writes when it does not.
+ */
+describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', () => {
   // cm:guard ISS-1000 — each case below is a DOOR and not a repetition: the scoped field, the same key inside the wholesale `agentConfig` record this route still accepts, and the two stage keys that record could otherwise carry past `pipelineConfigPatchSchema`. Drop any one refusal and that door answers 200 and writes a phantom back.
   // cm:guard each case asserts the MESSAGE as well as the status, and that is the whole value of it: with the refusal removed, a body naming only `stateContext` is stripped to `{}` and refused 400 by the schema's own `no fields to update` — so a case testing the status alone stays green against the defect it exists to catch.
   const RETIRED_BODIES: [string, Record<string, unknown>, string][] = [
@@ -983,6 +1017,36 @@ describe('PATCH /api/projects/:id · environments', () => {
       { previewDeploy: null },
       'previewDeploy has been renamed to environments',
     ],
+    // ISS-1070 — the shadow copies of real columns and the dead selector key. Each names the thing
+    // that owns its value, because "remove this key" alone leaves the operator with a setting they
+    // believed in and nowhere to put it. The fourth shadow is named after a column ISS-1046 retired,
+    // so its case lives in `tests/integration/agent-config-doors-e2e.test.ts` instead — one of the
+    // four files `check-retired-model.mjs` exempts, which this file deliberately is not.
+    [
+      'the shadow repoPath',
+      { agentConfig: { repoPath: '/home/kieutrung/tools/forge/jarvis-agents' } },
+      'the `projects.repo_path` column',
+    ],
+    [
+      'the shadow baseBranch',
+      { agentConfig: { baseBranch: 'main' } },
+      'the `projects.base_branch` column',
+    ],
+    [
+      'the shadow activeDeviceId',
+      { agentConfig: { activeDeviceId: '85644100-e4f5-455a-9754-6af76c19e50a' } },
+      'the `projects.default_device_id` column',
+    ],
+    [
+      'the dead runnerFallback',
+      { agentConfig: { runnerFallback: { type: 'claude-code' } } },
+      'agentConfig.runnerFallback decides nothing',
+    ],
+    [
+      'a null agentConfig, which used to clear the whole column',
+      { agentConfig: null },
+      'cleared through its own door',
+    ],
   ];
 
   for (const [label, body, names] of RETIRED_BODIES) {
@@ -1015,69 +1079,97 @@ describe('PATCH /api/projects/:id · environments', () => {
     expect(text).toContain('pipelineConfig.states[*].budget');
   });
 
-  // cm:guard the positive control, and it is what stops the refusal above from growing into a validation of the whole blob: `agentConfig` is the escape hatch four other settings surfaces write through, and only the retired keys are refused in it.
-  it('200: a wholesale agentConfig carrying some other key still goes through', async () => {
-    const token = await signUserToken('uuid-owner');
-    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
-    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
-    updateReturning.mockResolvedValueOnce([patchedRow({ agentConfig: { plugins: [] } })]);
+  // cm:guard this case USED to be the positive control — "a wholesale agentConfig carrying some other key still goes through" — and it is inverted deliberately (ISS-1070). The record was the escape hatch four settings surfaces wrote through; it closed because the two values that lacked a named field got one, so the record refuses every key by naming the door that writes it.
+  it.each([
+    ['a declared key', { plugins: [] }, '`PATCH /api/projects/:id/plugins`'],
+    ['a declared key with a scoped field', { personaStyle: 'terse' }, '`personaStyle` field'],
+    ['a key nothing declares', { whatIsThis: 1 }, 'is not a key this project'],
+  ])(
+    '400: a wholesale agentConfig carrying %s is refused naming its door, and writes nothing',
+    async (_label, agentConfig, names) => {
+      const token = await signUserToken('uuid-owner');
+      projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+      selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
 
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
-      method: 'PATCH',
-      body: JSON.stringify({ agentConfig: { plugins: [] } }),
-      token,
-    });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ agentConfig: { plugins: [] } });
-  });
+      const res = await req('/11111111-1111-4111-8111-111111111111', {
+        method: 'PATCH',
+        body: JSON.stringify({ agentConfig }),
+        token,
+      });
+      expect(res.status).toBe(400);
+      expect(await res.text()).toContain(names);
+      expect(updateSet).not.toHaveBeenCalled();
+      expect(dbExecute).not.toHaveBeenCalled();
+    },
+  );
 
-  // ISS-727 — RC bot answer-mode knob (agentConfig.rocketChatAnswerMode).
-  it('200 rocketChatAnswerMode: writes the scoped patch under agentConfig (preserves siblings)', async () => {
+  // cm:guard each scoped field writes ONE key and never a document: the assertion is on what the statement carried, not on a blob the route assembled. Before ISS-1070 these cases asserted `updateSet` was called with the WHOLE agentConfig the route had just read, which is the read- modify-write this change removed — that assertion passes for a route that also silently restores every sibling key another request changed in between, which is what it did.
+  it.each([
+    ['rocketChatAnswerMode', 'agent', { rocketChatAnswerMode: 'agent' }, []],
+    ['rocketChatAnswerMode', null, {}, ['rocketChatAnswerMode']],
+    ['personaStyle', 'be terse', { personaStyle: 'be terse' }, []],
+    ['personaStyle', '', {}, ['personaStyle']],
+    ['personaStyle', null, {}, ['personaStyle']],
+    ['systemPrompt', 'answer in Vietnamese', { systemPrompt: 'answer in Vietnamese' }, []],
+    ['systemPrompt', null, {}, ['systemPrompt']],
+    ['categories', ['bug'], { categories: ['bug'] }, []],
+    ['categories', [], { categories: [] }, []],
+    ['categories', null, {}, ['categories']],
+  ] as Array<[string, unknown, Record<string, unknown>, string[]]>)(
+    '200 %s=%j writes that key alone, adding %j and removing %j',
+    async (field, value, added, removed) => {
+      const token = await signUserToken('uuid-owner');
+      projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+      selectLimit
+        .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
+        .mockResolvedValueOnce([patchedRow({})]);
+
+      const res = await req('/11111111-1111-4111-8111-111111111111', {
+        method: 'PATCH',
+        body: JSON.stringify({ [field]: value }),
+        token,
+      });
+      expect(res.status).toBe(200);
+      expect(agentConfigWrites()).toEqual([{ added, removed }]);
+      // The `projects` columns are not touched by a config-only patch — there is nothing to set.
+      expect(updateSet).not.toHaveBeenCalled();
+    },
+  );
+
+  // cm:guard the sibling-preservation claim, made about the STATEMENT rather than about a document the route built: nothing the route sends names a key it was not asked to write, so a sibling written between this request's read and its write cannot be restored — there is no read.
+  it('names no key it was not asked to write', async () => {
     const token = await signUserToken('uuid-owner');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([{ agentConfig: { personaStyle: 'keep me' } }]);
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: 'agent' },
-      }),
-    ]);
+      .mockResolvedValueOnce([patchedRow({})]);
 
     const res = await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({ rocketChatAnswerMode: 'agent' }),
+      body: JSON.stringify({ personaStyle: 'terse', categories: null }),
       token,
     });
     expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({
-      agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: 'agent' },
-    });
+    expect(agentConfigWrites()).toEqual([
+      { added: { personaStyle: 'terse' }, removed: ['categories'] },
+    ]);
   });
 
-  it('200 rocketChatAnswerMode: null clears the key back to the fast default (preserves siblings)', async () => {
+  // cm:guard the scoped write runs INSIDE the route's transaction, which is the whole of the rollback promise: `db.execute` outside it would commit the config change of a request that then failed on the prefix and answered the operator an error.
+  it('writes the scoped key through the transaction handle and not the bare db', async () => {
     const token = await signUserToken('uuid-owner');
     projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
     selectLimit
       .mockResolvedValueOnce([{ emailVerifiedAt: new Date() }])
-      .mockResolvedValueOnce([
-        { agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: 'agent' } },
-      ]);
-    updateReturning.mockResolvedValueOnce([
-      patchedRow({
-        agentConfig: { personaStyle: 'keep me' },
-      }),
-    ]);
+      .mockResolvedValueOnce([patchedRow({})]);
 
-    const res = await req('/11111111-1111-4111-8111-111111111111', {
+    await req('/11111111-1111-4111-8111-111111111111', {
       method: 'PATCH',
-      body: JSON.stringify({ rocketChatAnswerMode: null }),
+      body: JSON.stringify({ systemPrompt: 'hello' }),
       token,
     });
-    expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({
-      agentConfig: { personaStyle: 'keep me', rocketChatAnswerMode: undefined },
-    });
+    expect(transaction).toHaveBeenCalledTimes(1);
+    expect(dbExecute).toHaveBeenCalledTimes(1);
   });
 
   it("400 BAD_REQUEST when rocketChatAnswerMode is not 'fast'|'agent'", async () => {
@@ -1536,16 +1628,14 @@ describe('PATCH /api/projects/:id — contractInputChanged', () => {
     });
   }
 
-  // cm:guard `agentConfig` is written WHOLESALE here, so a patch carrying it may have added the declaration or removed it, and the only honest reading is that it may have. Announced on the patch naming the field rather than on the value moving, which is the rule `updatePipelineConfig` already keeps.
-  it('announces an `agentConfig` write, which is how the declaration moves through this door', async () => {
+  // cm:guard ISS-1070 — this route no longer takes `agentConfig`, so `statusEntryCriteria` cannot reach the column through it and `updatePipelineConfig` is the one writer that announces the move. The announcement branch went with the door; this case is what says the door is shut.
+  it('refuses the agentConfig door that used to carry a statusEntryCriteria write', async () => {
     const res = await patchAs({
       agentConfig: { pipelineConfig: { statusEntryCriteria: { developed: ['plan'] } } },
     });
-    expect(res.status).toBe(200);
-    expect(heard).toHaveLength(1);
-    expect(heard[0]?.projectId).toBe('11111111-1111-4111-8111-111111111111');
-    expect(heard[0]?.issueId).toBeUndefined();
-    expect(heard[0]?.reason).toContain('statusEntryCriteria');
+    expect(res.status).toBe(400);
+    expect(await res.text()).toContain('/pipeline-config');
+    expect(heard).toEqual([]);
   });
 
   it.each(['baseBranch', 'liveBranch', 'releaseModel'])(

@@ -370,6 +370,8 @@ export const projects = pgTable(
     defaultDeviceId: uuid('default_device_id').references((): AnyPgColumn => devices.id, {
       onDelete: 'set null',
     }),
+    // cm:guard the key set is DECLARED, not open. Six keys survive and each has one writer; the shadow copies of `repo_path`, `base_branch`, `live_branch` and `default_device_id` were removed by 0285 (ISS-1070) and are refused by name — two of the three stored copies disagreed with their column, so the column is the source and nothing here is reconciled against it.
+    // cm:edge lockstep -> packages/core/src/projects/agent-config-schema.ts — that file is the ONLY place this column's shape is stated; every door validates through it and `agent-config-doors.test.ts` holds the declared keys and the write doors to each other in both directions
     agentConfig: jsonb('agent_config'),
     // cm:guard BOTH sides of a deployment, and `environments.live.url` is the only place in this schema that holds the address a release ships to. Renamed from `preview_deploy` by 0279 (ISS-1069), which also rewrote every row: sidpeak could not cut a release at all because the live address existed nowhere and had to be read off the Coolify UI by hand.
     // cm:edge lockstep -> packages/core/src/projects/environments.ts — that file is the ONLY place this column's shape is stated; every reader normalises through it.

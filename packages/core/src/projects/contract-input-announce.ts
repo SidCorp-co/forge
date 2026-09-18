@@ -3,17 +3,17 @@ import { hooks } from '../pipeline/hooks.js';
 /**
  * ISS-1072 — the OTHER door onto the contract's inputs.
  *
- * `pipeline-config-service.ts` announces a declaration change made through the
- * dedicated pipeline-config route. This route takes a wide-open `agentConfig`
- * jsonb, so `statusEntryCriteria` can be replaced here without that service
- * running at all — and `baseBranch`, `liveBranch` and `releaseModel` are read by
+ * `baseBranch`, `liveBranch` and `releaseModel` are read by
  * `work-evidence.ts:collectWorkEvidence`, so moving any of them moves the
  * `work_evidence` criterion's answer for every issue on the project.
  *
  * Announced on the patch NAMING the field rather than on the value moving, which
- * is the rule the pipeline-config service already keeps: `agentConfig` is written
- * wholesale here, so a patch carrying it may have added or removed the
- * declaration and the only honest reading is that it may have.
+ * is the rule the pipeline-config service already keeps.
+ *
+ * ISS-1070 — the `agentConfig` branch is gone with the door it announced. This route took a
+ * wide-open `agentConfig` jsonb, so `statusEntryCriteria` could be replaced here without
+ * `updatePipelineConfig` running at all; it no longer takes one, and that service is now the only
+ * writer of `pipelineConfig` and already announces the change itself.
  */
 // cm:guard fired AFTER the transaction returned, and never inside it: a subscriber of this reaches
 // GitHub over the network, and running it inside would hold the project's row lock across an HTTP
@@ -21,14 +21,12 @@ import { hooks } from '../pipeline/hooks.js';
 export async function announceContractInput(
   projectId: string,
   patch: {
-    agentConfig?: unknown;
     baseBranch?: unknown;
     liveBranch?: unknown;
     releaseModel?: unknown;
   },
 ): Promise<void> {
   const moved: string[] = [];
-  if (patch.agentConfig !== undefined) moved.push('agentConfig (may carry statusEntryCriteria)');
   for (const field of ['baseBranch', 'liveBranch', 'releaseModel'] as const) {
     if (patch[field] !== undefined) moved.push(field);
   }

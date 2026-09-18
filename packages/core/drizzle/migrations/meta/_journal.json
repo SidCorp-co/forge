@@ -1877,6 +1877,13 @@
       "when": 1802563200000,
       "tag": "0280_retire_ux_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 285,
+      "version": "7",
+      "when": 1804723200000,
+      "tag": "0285_agent_config_shadow_keys",
+      "breakpoints": true
     }
   ]
 }
