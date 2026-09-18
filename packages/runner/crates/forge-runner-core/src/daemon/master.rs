@@ -3692,6 +3692,50 @@ mod unplaced_tests {
             .expect("ensure_master must be findable")
     }
 
+    /// The drained-runner branch of the sweep, on its own.
+    ///
+    /// Scoped to the branch rather than to the sweep, because the sweep holds
+    /// four later `continue`s and an assertion that reads any of them cannot
+    /// tell this branch leaving from this branch falling through.
+    fn drain_branch() -> &'static str {
+        let body = sweep_body();
+        let start = body
+            .find("if !accepts_new_work(&runner.status) {")
+            .expect("the sweep still has its drained-runner branch");
+        let rest = &body[start..];
+        let end = rest
+            .find("\n        }\n")
+            .expect("the drained-runner branch must close");
+        &rest[..end]
+    }
+
+    fn say_unplaced_body() -> &'static str {
+        production()
+            .split("\nfn say_unplaced(")
+            .nth(1)
+            .and_then(|r| r.split("\nfn ").next())
+            .expect("say_unplaced must be findable")
+    }
+
+    /// The `session.created` report inside `ensure_master`'s adopt branch, on
+    /// its own.
+    ///
+    /// Scoped to the one `if` block. `ensure_master` holds eight further
+    /// `tracing::error!` calls, and both `{name}` and `session.session_id`
+    /// appear again further down it — so an assertion over the rest of the
+    /// function body holds whatever this report is written as.
+    fn adopt_report() -> &'static str {
+        let body = ensure_master_body();
+        let start = body
+            .find("if session.created {")
+            .expect("the adopt branch must gate its report on session.created");
+        let rest = &body[start..];
+        let end = rest
+            .find("\n            }\n")
+            .expect("the session.created report must close");
+        &rest[..end]
+    }
+
     fn issue(id: &str) -> AdmissibleIssue {
         serde_json::from_value(serde_json::json!({ "issueId": id })).expect("admissible fixture")
     }
@@ -3946,24 +3990,107 @@ mod unplaced_tests {
 
     // cm:guard `created` while a pane is ALIVE is the daemon proving the running pane's capability
     // is orphaned, and it is reported at ERROR because nothing on this box will clear it.
+    // cm:guard scoped to `adopt_report` and never to the rest of `ensure_master`. The version this
+    // replaces sliced the function from its first `tracing::error!` onward, and the function holds
+    // eight more of them plus later uses of both `{name}` and `session.session_id` — so it stayed
+    // green when the report was demoted to `info!` and when it named neither the pane nor the
+    // session (ISS-1092 criteria 17, 18, measured by planting exactly those three).
     #[test]
     fn adopting_a_pane_onto_a_freshly_created_session_is_reported() {
         let body = ensure_master_body();
         let adopt = body
             .find("adopting the resident session")
             .expect("the adopt branch must be findable");
-        let rest = &body[adopt..];
         assert!(
-            rest.contains("if session.created {"),
+            body[adopt..].contains("if session.created {"),
             "a pane adopted onto a session core created fresh holds a capability for the session that one replaced, and nothing else on this box can notice it"
         );
-        let report = rest
-            .find("tracing::error!")
-            .map(|i| &rest[i..])
-            .expect("it is an error, not an info: the only recovery is ending the pane");
+        let report = adopt_report();
         assert!(
-            report.contains("{name}") && report.contains("session.session_id"),
-            "the report names the pane to end and the session the box now holds, because those two are what the operator acts on"
+            report.contains("tracing::error!"),
+            "it is an error and not an info or a warn: the only recovery is an operator ending the pane, and nothing on this box will do it: {report}"
+        );
+        assert!(
+            report.contains("{name}"),
+            "the report names the pane to end, because that is what the operator acts on: {report}"
+        );
+        assert!(
+            report.contains("session.session_id"),
+            "the report names the session this box now holds, which is what tells a stale capability from a daemon that has not looked yet: {report}"
+        );
+    }
+
+    // cm:guard the drained branch LEAVES the iteration, and the assertion is scoped to the branch.
+    // The sweep holds four later `continue`s, so an ordering test over the whole body stays green
+    // when this one is deleted — measured at a40f4bdab, where removing it let a drained project
+    // fall through to `resolve_repo` and `ensure_master` with all 737 tests still passing
+    // (ISS-1092 criterion 11).
+    #[test]
+    fn a_drained_runner_has_no_master_pane_placed_for_it() {
+        let branch = drain_branch();
+        assert!(
+            branch.contains("continue;"),
+            "a drained runner must leave the iteration before placement, or core taking a project off this box still starts a master for it: {branch}"
+        );
+        assert!(
+            !branch.contains("ensure_master("),
+            "placement must sit outside the drained branch, not inside it"
+        );
+        let body = sweep_body();
+        let drain = body
+            .find("if !accepts_new_work(&runner.status) {")
+            .expect("the sweep still has its drained-runner branch");
+        let ensure = body
+            .find("ensure_master(")
+            .expect("the sweep must place panes through ensure_master");
+        assert!(
+            drain < ensure,
+            "the drain branch has to be reached before placement, or it decides nothing"
+        );
+    }
+
+    // cm:guard the SWEEP's own call, which `a_recorded_reason_reaches_the_pane_that_asked` does not
+    // reach: that test records a Draining reason by hand and proves only that `why_unplaced` reads
+    // one back. Deleting this call left all 737 tests green (ISS-1092 criterion 12).
+    #[test]
+    fn a_drained_runner_records_its_status_as_the_reason_no_pane_was_placed() {
+        let branch = drain_branch();
+        assert!(
+            branch.contains("note_unplaced("),
+            "the sweep has to record why it placed no pane, or the refusal a master gets has nothing to carry: {branch}"
+        );
+        assert!(
+            branch.contains("Unplaced::Draining"),
+            "the reason recorded for a drained runner is the drain itself: {branch}"
+        );
+        assert!(
+            branch.contains("runner.status"),
+            "the runner row's own status is what an operator changes, so it is the status that is carried and not a fixed word: {branch}"
+        );
+    }
+
+    // cm:guard the WARNING itself, and not the bool that gates it.
+    // `a_reason_is_reported_when_it_arrives_and_when_it_changes_and_never_in_between` asserts what
+    // `note_unplaced` answers; deleting `say_unplaced`'s `tracing::warn!` outright left all 737
+    // tests green, so nothing held the log line at all (ISS-1092 criterion 15).
+    #[test]
+    fn an_unplaced_pane_is_reported_once_and_names_its_project_and_reason() {
+        let body = say_unplaced_body();
+        assert!(
+            body.contains("tracing::warn!"),
+            "a reason nothing writes down is a reason no operator ever reads: {body}"
+        );
+        assert!(
+            body.contains("if masters.note_unplaced("),
+            "the log is gated on the reason having CHANGED, or a box sweeping every thirty seconds writes thousands of identical lines a day: {body}"
+        );
+        assert!(
+            body.contains("{slug}"),
+            "the warning names the project, or a box serving 28 of them says only that something is unplaced: {body}"
+        );
+        assert!(
+            body.contains("{why}"),
+            "the warning carries the reason, which is the whole of what an operator acts on: {body}"
         );
     }
 }
