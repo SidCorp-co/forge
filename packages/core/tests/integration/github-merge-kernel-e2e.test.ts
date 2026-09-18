@@ -20,7 +20,7 @@
  * not any real branch's — including `enforce_admins`, which is asserted here as
  * a thing the path tolerates rather than turned on anywhere.
  */
-// cm:guard the authoritative source for `cm:flow release/stamp`. The step moved onto `merge.ts:mergeStoredPullRequest` when ISS-1073 deleted `markMergedIfLeavingBase`, and `check-flow-coverage.mjs` counts a step reached only when the INTEGRATION suite entered the annotated function — so if this file stops calling `mergeStoredPullRequest`, that gate goes red rather than quietly measuring unit coverage.
+// cm:guard this file is the authoritative source for the release flow's stamp step, whose annotation sits on `merge.ts:mergeStoredPullRequest`. `check-flow-coverage.mjs` counts that step reached only when the INTEGRATION suite entered the annotated function, so if this file stops calling it the gate goes red rather than quietly measuring unit coverage. The step's marker is NOT spelled out here: the checker finds its sites with `git grep` over tracked files, so writing it in prose declares a second site in a file no coverage report contains — which drags the step's merged verdict to `outofscope` and reports a configuration fault that does not exist.
 
 import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';

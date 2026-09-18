@@ -187,8 +187,14 @@ for (const flow of flows) {
     byStep.set(site.step, mergeSites(byStep.get(site.step), per));
   }
   for (const [step, per] of byStep) {
-    const scoped = per.filter((p) => p.state === 'outofscope');
-    if (scoped.length === per.length) {
+    // cm:guard the two configuration faults below are judged over the reports that EXIST, never
+    // over every configured source. A source with no report on disk answers `nosource`, so
+    // `=== per.length` made both of these unreachable whenever one of the two reports was absent —
+    // which is the normal local state and was the state of the CI job that printed "no test enters
+    // it at all" for a misplaced annotation. A fault only one report can see is still a fault.
+    const answered = per.filter((p) => p.state !== 'nosource');
+    const scoped = answered.filter((p) => p.state === 'outofscope');
+    if (answered.length > 0 && scoped.length === answered.length) {
       die(
         `${flow}/${step}: not present in ANY coverage report. The step's file is outside the ` +
           'coverage scope, which is a configuration fault, not an uncovered step.',
@@ -200,8 +206,8 @@ for (const flow of flows) {
     // answers `nofn` for every source. Reported as uncovered it read "no test enters it at all" —
     // which sent ISS-1073 to write an integration test that DID enter the function and changed
     // nothing, because the gate was never looking at a function. One CI round trip per reader.
-    const unresolved = per.filter((p) => p.state === 'nofn');
-    if (unresolved.length === per.length) {
+    const unresolved = answered.filter((p) => p.state === 'nofn');
+    if (answered.length > 0 && unresolved.length === answered.length) {
       const where = sites
         .get(flow)
         .filter((s) => s.step === step)
