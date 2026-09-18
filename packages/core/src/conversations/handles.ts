@@ -11,6 +11,7 @@
 // project's handle is, and `existingProjectHandle` now says so rather than
 // relying on it.
 
+import { randomBytes } from 'node:crypto';
 import { and, asc, eq, ne, notExists, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
@@ -77,6 +78,39 @@ export async function existingProjectHandle(
 }
 
 /**
+ * A name for this org that `(org_id, handle)` will accept, starting from the one
+ * the slug gives.
+ *
+ * The base is taken only when some OTHER agent of this org already answers to it:
+ * an agent an admin named after the project, or a former handle of this very
+ * project that has since been widened to cover a second one and so no longer
+ * qualifies as its voice. Either way the project must still get a voice.
+ */
+// cm:guard chosen by LOOKING rather than by inserting and catching, because this runs inside the
+// caller's transaction and a unique violation aborts the whole of it — there would be nothing left
+// to retry on. The advisory lock above already serializes two venues of the same project, and the
+// account that holds the base name is not one this statement is creating, so the look is sound.
+// cm:guard bounded, and a REFUSAL at the end rather than a loop: the caller never types this name,
+// so a collision is ours to resolve, but an unbounded search turns a constraint nobody can satisfy
+// into a request that never returns (ISS-1093).
+async function freeHandleIn(tx: Executor, orgId: string, base: string): Promise<string> {
+  const stem = base.slice(0, 30).replace(/-+$/, '');
+  const candidates = [base, `${stem}-2`, `${stem}-${randomBytes(4).toString('hex')}`];
+  for (const name of candidates) {
+    const [taken] = await tx
+      .select({ userId: organizationMembers.userId })
+      .from(organizationMembers)
+      .where(and(eq(organizationMembers.orgId, orgId), eq(organizationMembers.handle, name)))
+      .limit(1);
+    if (!taken) return name;
+  }
+  throw new HTTPException(409, {
+    message: `every name this org would give project ${orgId}'s handle is already answered to by another agent (${candidates.join(', ')}); rename one of them and open the room again`,
+    cause: { code: 'HANDLE_NAME_TAKEN' },
+  });
+}
+
+/**
  * The project's handle, reused where it has one and minted where it does not.
  *
  * Must run inside a transaction: the advisory lock it takes is transaction
@@ -117,7 +151,7 @@ export async function resolveProjectHandle(
     });
   }
 
-  const handle = handleNameForProject(project.slug, project.id);
+  const handle = await freeHandleIn(tx, project.orgId, handleNameForProject(project.slug, project.id));
   const [created] = await tx
     .insert(users)
     .values({

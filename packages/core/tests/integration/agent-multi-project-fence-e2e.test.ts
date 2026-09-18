@@ -299,16 +299,18 @@ describe('minting a credential while the project set is being changed', () => {
    * A widening committed inside that gap leaves the new token on the old, narrower
    * fence with nothing coming to correct it.
    *
-   * The interleaving is forced rather than hoped for: the mint is started, the
-   * widening is fired while the mint is provably still in flight, and the test
-   * refuses to judge anything if the mint finished first.
+   * The property asserted is that the mint decides its fence UNDER the agent's
+   * lock, and it is asserted by holding that lock and watching the mint queue
+   * behind it. An earlier version of this test fired the widening after a 40 ms
+   * delay instead, which is not a barrier: CI's machine finished the mint inside
+   * the delay, the two never overlapped, and the test said so rather than passing
+   * over a window it had not opened.
    */
-  // cm:guard the assertion is what the credential REACHES afterwards, and never which order won.
-  // Both orders are correct once the two are serialized — mint first and the re-fence catches the
-  // new row, re-fence first and the mint reads the new set — so an order-sensitive assertion would
-  // fail the fix rather than the bug. What may never happen is a live credential a project short
-  // of the set that was committed (ISS-1093, review finding F2).
-  it('never leaves the box a project short of the set that was committed', async () => {
+  // cm:guard `blockedOnTheAgentLock` is the load-bearing assertion, not the reach below it. Once
+  // the two are serialized BOTH orders are correct — mint first and the re-fence catches the new
+  // row, re-fence first and the mint reads the new set — so no assertion about ordering can tell
+  // the fix from the bug. What can is whether the mint waits for the lock at all (ISS-1093, F2).
+  it('takes the agent fence lock before it decides what the box may reach', async () => {
     const { agent } = await accounts.createAgentAccount({
       orgId,
       projectIds: [projectA],
@@ -319,33 +321,49 @@ describe('minting a credential while the project set is being changed', () => {
       sql`INSERT INTO devices (id, owner_id, name, platform) VALUES (${deviceId}, ${agent.userId}, 'a box', 'linux')`,
     );
 
-    let minted = false;
-    const minting = credential
-      .issueDeviceCredential({ deviceId, holderUserId: agent.userId, holderIsAgent: true })
-      .then((t) => {
-        minted = true;
-        return t;
-      });
-
-    await new Promise((r) => setTimeout(r, 40));
-    // cm:guard the test is void if the mint already finished — the two never overlapped and a
-    // green would say nothing about the window. Stated as a failure rather than a skip so a
-    // machine fast enough to close the gap reports it instead of quietly proving nothing.
-    expect(minted).toBe(false);
+    let token = '';
+    let minting: Promise<unknown> = Promise.resolve();
+    // Hold the agent's lock, start the mint, and prove it is queued behind it. The
+    // widening is fired only once this transaction has committed, so it never waits
+    // on a lock this test is itself holding.
+    await harness.db.transaction(async (tx) => {
+      await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${agent.userId}, 0))`);
+      minting = credential
+        .issueDeviceCredential({ deviceId, holderUserId: agent.userId, holderIsAgent: true })
+        .then((t) => {
+          token = t;
+        });
+      await blockedOnAnAgentLock();
+    });
+    await minting;
 
     await accounts.setAgentProjects(orgId, agent.userId, [projectA, projectB]);
-    const token = await minting;
-
     expect(await restReaches(token, projectA)).toBe(true);
     expect(await restReaches(token, projectB)).toBe(true);
     expect(await restReaches(token, projectC)).toBe(false);
   });
+
+  /** Wait until some other backend is waiting on an advisory lock in this database. */
+  async function blockedOnAnAgentLock(): Promise<void> {
+    for (let i = 0; i < 200; i++) {
+      const rows = await harness.db.execute<{ n: number }>(sql`
+        SELECT count(*)::int AS n FROM pg_locks
+        WHERE locktype = 'advisory' AND NOT granted
+          AND database = (SELECT oid FROM pg_database WHERE datname = current_database())
+      `);
+      if (Number(rows[0]?.n) > 0) return;
+      await new Promise((r) => setTimeout(r, 25));
+    }
+    throw new Error(
+      'the mint never queued behind the agent fence lock, so it is reading memberships outside it — which is the window this test exists for',
+    );
+  }
 });
 
 describe('a multi-project agent and a project’s conversational voice', () => {
   /**
-   * `docs/proposals/device-role-in-the-token-table.md` named this in advance as a
-   * consequence of letting an agent hold more than one project membership, and
+   * `docs/proposals/device-role-in-the-token-table.md` named this in advance as
+   * the price of letting an agent hold more than one project membership, and
    * ISS-1093 is the change that takes that step.
    *
    * A project's handle is resolved as "the agent that is a member of this project,
@@ -376,6 +394,32 @@ describe('a multi-project agent and a project’s conversational voice', () => {
       sql`SELECT count(*)::int AS n FROM personal_access_tokens WHERE user_id = ${resolved.userId}`,
     );
     expect(Number(tokens[0]?.n)).toBe(0);
+  });
+
+  // cm:guard a project whose former handle has been widened still gets a voice. The exclusion
+  // above drops that account from the candidate list, but its ORG HANDLE stays occupied — and the
+  // replacement would be minted under the same slug-derived name, which `(org_id, handle)`
+  // refuses. The room would then fail to open on a project that was working, because of a write
+  // made about a different project. So the mint looks for a name this org will accept.
+  it('still gives a project a voice after its former handle was widened to a second project', async () => {
+    const first = await harness.db.transaction((tx) =>
+      handles.resolveProjectHandle(tx as never, projectA),
+    );
+    await accounts.setAgentProjects(orgId, first.userId, [projectA, projectB]);
+
+    const replacement = await harness.db.transaction((tx) =>
+      handles.resolveProjectHandle(tx as never, projectA),
+    );
+    expect(replacement.userId).not.toBe(first.userId);
+    expect(replacement.minted).toBe(true);
+    expect(replacement.handle).not.toBe(first.handle);
+
+    // And it is reused from then on, rather than a third being minted each time.
+    const again = await harness.db.transaction((tx) =>
+      handles.resolveProjectHandle(tx as never, projectA),
+    );
+    expect(again.userId).toBe(replacement.userId);
+    expect(again.minted).toBe(false);
   });
 
   // cm:guard the narrowing may not take the EXISTING answer away. A handle minted for one project
