@@ -83,7 +83,6 @@ import {
 import { forgeStepStartTool } from './tools/forge-step-start.js';
 import { forgeStorefrontTargetTool } from './tools/forge-storefront-target.js';
 import { forgeUploadsTool } from './tools/forge-uploads.js';
-import { forgeUxFindingsTool } from './tools/forge-ux-findings.js';
 import type { McpContext, McpTool } from './tools/lib.js';
 import { patEffectiveProjectIds, resolveProjectIdFromSlug } from './tools/project-scope.js';
 
@@ -196,7 +195,6 @@ export function createMcpServer(ctx: McpContext): Server {
     forgeStepStartTool(ctx),
     forgeCommentsTool(ctx),
     forgeFeedbackTool(ctx),
-    forgeUxFindingsTool(ctx),
     forgeUploadsTool(ctx),
     forgeConfigTool(ctx),
     forgeKnowledgeTool(ctx),

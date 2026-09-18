@@ -3,9 +3,9 @@
  *
  * The resolver used to require `jobs.status = 'running'`, a value nothing in
  * core ever writes (queued → dispatched → terminal). Every agent-facing caller
- * therefore resolved null forever: `forge_ux_findings` rejected every write with
- * `no_active_issue` (zero rows on every project since the feature shipped) and
- * `forge_feedback` stamped null issueId/runId/jobId/stage on all of its reports.
+ * therefore resolved null forever: `forge_feedback` stamped null
+ * issueId/runId/jobId/stage on all of its reports, and the retired
+ * `forge_ux_findings` tool rejected every write with `no_active_issue`.
  * The first test below is the one that reproduces that: a `dispatched` job under
  * a `queued` session is exactly the state a pipeline agent calls a tool from.
  *

@@ -91,7 +91,6 @@ anything.
 | `forge_metrics.*` (4) | `/api/projects/:id/metrics` |
 | `forge_agent_sessions.*` (2) | `/api/projects/:id/agent-sessions` |
 | `forge_reconcile` | `/api/projects/:projectId/reconcile-runs` |
-| `forge_ux_findings` | `/api/projects/:id/ux-findings` |
 | `forge_schedules` | `/api/schedules` |
 | `forge_health` | `/health` (public), `/api/projects/health` |
 | `forge_guide` | `/api/guides`, `/api/guides/:slug` — unauthenticated by design, so the fence does not apply |

@@ -7,8 +7,18 @@ import {
 } from '../db/schema.js';
 
 export interface RecordDeliveryInput {
-  /** Binding the delivery is scoped to (the post-cutover key). */
-  bindingId: string;
+  /**
+   * Binding the delivery is scoped to (the post-cutover key).
+   *
+   * Nullable since ISS-1072, matching the column, which never was `.notNull()`.
+   * One refusal has no binding to name and must still be recorded: a check-run
+   * publish asked for a project that has no active GitHub binding at all. The
+   * alternative was inventing a binding id for the audit row, which is a
+   * foreign key pointing at a repository nobody bound. Such a row carries the
+   * project in its `payload`; no screen lists binding-less deliveries today, so
+   * it is found by that field and by nothing else.
+   */
+  bindingId: string | null;
   direction: IntegrationDeliveryDirection;
   eventName: string;
   payload: unknown;
@@ -28,7 +38,7 @@ export async function recordDelivery(input: RecordDeliveryInput): Promise<string
   const [row] = await db
     .insert(integrationDeliveries)
     .values({
-      bindingId: input.bindingId,
+      bindingId: input.bindingId ?? null,
       direction: input.direction,
       eventName: input.eventName,
       payload: (input.payload ?? {}) as Record<string, unknown>,

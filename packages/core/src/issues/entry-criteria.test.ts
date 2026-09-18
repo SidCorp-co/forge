@@ -23,8 +23,13 @@ vi.mock('../db/client.js', () => ({ db: { select } }));
 const findMissingWorkEvidenceMock = vi.fn<(...args: unknown[]) => Promise<string | null>>(
   async () => null,
 );
+// cm:guard BOTH work-evidence entry points are stubbed, because `entry-criteria.ts` binds each into a criteria map at module load: a mock carrying only the fail-open one makes the module throw on import, which reads as the file being broken rather than the mock being short.
+const missingWorkEvidenceStrictMock = vi.fn<(...args: unknown[]) => Promise<string | null>>(
+  async () => null,
+);
 vi.mock('../pipeline/work-evidence.js', () => ({
   findMissingWorkEvidence: (...args: unknown[]) => findMissingWorkEvidenceMock(...args),
+  missingWorkEvidenceStrict: (...args: unknown[]) => missingWorkEvidenceStrictMock(...args),
 }));
 
 const readPipelineConfigMock = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => null);
@@ -33,9 +38,8 @@ vi.mock('../pipeline/autonomous-project.js', () => ({
 }));
 
 const { ENTRY_CRITERION_KEYS } = await import('./entry-criteria-keys.js');
-const { findUnmetEntryCriteria, resolveDeclaredEntryCriteria } = await import(
-  './entry-criteria.js'
-);
+const { findUnmetEntryCriteria, readEntryCriteriaStrict, resolveDeclaredEntryCriteria } =
+  await import('./entry-criteria.js');
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
@@ -51,6 +55,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   row = { ...complete };
   findMissingWorkEvidenceMock.mockResolvedValue(null);
+  missingWorkEvidenceStrictMock.mockResolvedValue(null);
   readPipelineConfigMock.mockResolvedValue(null);
 });
 
@@ -164,5 +169,138 @@ describe('findUnmetEntryCriteria', () => {
     row = undefined;
     const shortfall = await findUnmetEntryCriteria({ issueId: ISSUE_ID, declared: ['plan'] });
     expect(shortfall).toBeNull();
+  });
+});
+
+/**
+ * ISS-1072 — the strict reader, which publishes its answer instead of gating on
+ * it. Everything below is a difference from the pair above, and every one of
+ * those differences is the same sentence: a value that is right to swallow in a
+ * gate is a lie on a pull request.
+ */
+describe('readEntryCriteriaStrict', () => {
+  it('reads the declaration for the status the issue is standing in', async () => {
+    readPipelineConfigMock.mockResolvedValue({
+      statusEntryCriteria: { developed: ['plan', 'merged_mark'], testing: ['release_note'] },
+    });
+    const reading = await readEntryCriteriaStrict({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'developed',
+    });
+    expect(reading.declared).toEqual(['plan', 'merged_mark']);
+  });
+
+  it('names the criteria the issue DOES hold, which the gate never returns', async () => {
+    readPipelineConfigMock.mockResolvedValue({
+      statusEntryCriteria: { developed: ['plan', 'acceptance_criteria', 'merged_mark'] },
+    });
+    row = { ...complete, mergedAt: null };
+    const reading = await readEntryCriteriaStrict({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'developed',
+    });
+    expect(reading.met).toEqual(['plan', 'acceptance_criteria']);
+    expect(reading.unmet.map((u) => u.key)).toEqual(['merged_mark']);
+  });
+
+  it('carries the SAME remedy sentence the gate writes, from the one map', async () => {
+    readPipelineConfigMock.mockResolvedValue({ statusEntryCriteria: { developed: ['plan'] } });
+    row = { ...complete, plan: null };
+    const strict = await readEntryCriteriaStrict({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'developed',
+    });
+    const gate = await findUnmetEntryCriteria({ issueId: ISSUE_ID, declared: ['plan'] });
+    expect(strict.unmet[0]?.detail).toBe(gate?.unmet[0]?.detail);
+  });
+
+  it('declares nothing, and judges nothing, for a status the project did not name', async () => {
+    readPipelineConfigMock.mockResolvedValue({ statusEntryCriteria: { closed: ['plan'] } });
+    const reading = await readEntryCriteriaStrict({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'developed',
+    });
+    expect(reading).toEqual({ declared: [], met: [], unmet: [] });
+    expect(select).not.toHaveBeenCalled();
+  });
+
+  // cm:guard `readPipelineConfig` answers NULL both for a project that is gone and for a stored config that does not parse, and neither is "this project declares no records". A valid config declaring nothing parses to an object, so refusing null here keeps the two apart — reading null as the empty declaration is criterion 7's exact failure, published on a pull request.
+  it('refuses a config that could not be read, where the gate reads it as `[]`', async () => {
+    readPipelineConfigMock.mockResolvedValue(null);
+    await expect(
+      readEntryCriteriaStrict({ projectId: PROJECT_ID, issueId: ISSUE_ID, status: 'developed' }),
+    ).rejects.toThrow('could not be read');
+    expect(await resolveDeclaredEntryCriteria(PROJECT_ID, 'developed')).toEqual([]);
+  });
+
+  it('still answers "nothing declared" for a VALID config that declares nothing', async () => {
+    readPipelineConfigMock.mockResolvedValue({ enabled: true });
+    expect(
+      await readEntryCriteriaStrict({
+        projectId: PROJECT_ID,
+        issueId: ISSUE_ID,
+        status: 'developed',
+      }),
+    ).toEqual({ declared: [], met: [], unmet: [] });
+  });
+
+  // cm:guard the config read runs on the caller's executor, so a caller inside a transaction does not need a second pooled connection to ask what the project declared.
+  it('reads the declaration through the executor it was given', async () => {
+    const executor = { select } as never;
+    readPipelineConfigMock.mockResolvedValue({ statusEntryCriteria: { developed: ['plan'] } });
+    await readEntryCriteriaStrict({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'developed',
+      executor,
+    });
+    expect(readPipelineConfigMock).toHaveBeenCalledWith(PROJECT_ID, executor);
+  });
+
+  it('lets a failed config read OUT, where the gate turns it into `[]`', async () => {
+    readPipelineConfigMock.mockRejectedValue(new Error('connection terminated'));
+    await expect(
+      readEntryCriteriaStrict({ projectId: PROJECT_ID, issueId: ISSUE_ID, status: 'developed' }),
+    ).rejects.toThrow('connection terminated');
+    expect(await resolveDeclaredEntryCriteria(PROJECT_ID, 'developed')).toEqual([]);
+  });
+
+  it('lets a criterion that RAISES out, rather than reporting it met', async () => {
+    readPipelineConfigMock.mockResolvedValue({
+      statusEntryCriteria: { developed: ['work_evidence'] },
+    });
+    missingWorkEvidenceStrictMock.mockRejectedValue(new Error('evidence query failed'));
+    await expect(
+      readEntryCriteriaStrict({ projectId: PROJECT_ID, issueId: ISSUE_ID, status: 'developed' }),
+    ).rejects.toThrow('evidence query failed');
+  });
+
+  it('runs `work_evidence` through the STRICT reader and never the fail-open one', async () => {
+    readPipelineConfigMock.mockResolvedValue({
+      statusEntryCriteria: { developed: ['work_evidence'] },
+    });
+    missingWorkEvidenceStrictMock.mockResolvedValue('no branch, commit or code handoff');
+    const reading = await readEntryCriteriaStrict({
+      projectId: PROJECT_ID,
+      issueId: ISSUE_ID,
+      status: 'developed',
+    });
+    expect(missingWorkEvidenceStrictMock).toHaveBeenCalledWith(ISSUE_ID, expect.anything());
+    expect(findMissingWorkEvidenceMock).not.toHaveBeenCalled();
+    expect(reading.unmet).toEqual([
+      { key: 'work_evidence', detail: 'no branch, commit or code handoff' },
+    ]);
+  });
+
+  it('refuses an issue row that is gone, where the gate skips it', async () => {
+    readPipelineConfigMock.mockResolvedValue({ statusEntryCriteria: { developed: ['plan'] } });
+    row = undefined;
+    await expect(
+      readEntryCriteriaStrict({ projectId: PROJECT_ID, issueId: ISSUE_ID, status: 'developed' }),
+    ).rejects.toThrow(`no issue row for ${ISSUE_ID}`);
   });
 });

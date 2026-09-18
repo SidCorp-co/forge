@@ -71,5 +71,4 @@ export const REGISTERED_TOOLS = [
   'forge_step_start',
   'forge_storefront_target',
   'forge_uploads',
-  'forge_ux_findings',
 ];

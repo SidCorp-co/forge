@@ -80,6 +80,28 @@ export interface HookPayloads {
     issueId: string | null;
     type: JobType;
   };
+  /**
+   * ISS-1072 — an input to the tracker's CONTRACT answer moved: a record one of
+   * the `statusEntryCriteria` keys reads, or the declaration of those criteria
+   * itself. `issueId` absent means the declaration moved and every open pull
+   * request on the project is affected.
+   *
+   * It is a topic of its own rather than a widening of `issueUpdated`, and the
+   * reason is in `issues/patch-fields.ts`: REST emits `issueUpdated` and MCP's
+   * update deliberately does not, which is exactly the door `forge record plan`
+   * and `forge record criteria` come through. Subscribing to `issueUpdated`
+   * would therefore miss the writes this is most about. Widening it instead
+   * would fire the activity logger, the WebSocket broadcaster and the memory
+   * indexer on every MCP field write, which is a live behaviour change nobody
+   * asked for.
+   */
+  // cm:edge lockstep -> packages/core/src/issues/entry-criteria-keys.ts — every key there is a record some writer must emit this after. A key added there with no emit site is a criterion whose check run goes stale silently, which is the one failure mode a published report cannot afford.
+  contractInputChanged: {
+    projectId: string;
+    issueId?: string;
+    /** What moved, for the log. Never branched on. */
+    reason: string;
+  };
   // ISS-20 (Epic 4) — dependency graph mutation. Fire-and-forget; carries
   // enough to trigger a graph re-read but not the full graph.
   dependencyChanged: {

@@ -8,7 +8,6 @@ flowchart LR
   EXEC([execution]) --> EV[(job_events<br/>streamed, 30-day prune)]
   EXEC --> AL[(activity_log<br/>durable audit)]
   EXEC --> UP[(uploads<br/>screenshots · artefacts)]
-  EXEC --> UX[(ux_findings)]
   EXEC --> UR[(usage_records<br/>cost)]
   EV --> Q1[What is running?]
   AL --> Q2[What changed, and who?]
@@ -25,7 +24,6 @@ flowchart LR
 | Durable audit trail | `schema.ts:activityLog` |
 | Evidence retention policy | `core/src/pipeline/retention/policy.ts` (the stated rules), `core/src/pipeline/retention/sweep.ts` (the nightly sweep) |
 | Attachments and artefacts | `core/src/uploads/`, `core/src/storage/` |
-| UX contract findings | `schema.ts:uxFindings`, `schema.ts:uxContractRules` |
 | Metrics and analytics | `core/src/metrics/`, `core/src/pipeline/analytics-routes.ts` |
 | Cost and usage | `core/src/usage-records/` |
 | Telemetry helpers, secret scrubber | `packages/observability` |
@@ -50,7 +48,11 @@ are never swept.** A table with no rule and a table whose rule is "keep it all" 
 the outside, which is how six of them reached production with the deletion question deferred and
 invisible (ISS-1027). Each entry carries its window, the environment variable that moves it, the
 floor an override may not cross, and the reason. The nightly sweep reports what it removed and what
-its predicates held back, per table, on every tick.
+its predicates held back, per table, on every tick. Those two are different facts and the report
+keeps them apart: the held count is the negation of that table's own delete predicate, so it is what
+a rule keeps and never a backlog the tick ran out of budget for — a tick that stopped at its batch
+cap says so in `capped` instead. Fold them together and `deleted: 0, heldBack: n` stops telling a
+wedged rule from a sweep that simply has more to do.
 
 ## The interventions metric, defined by the event and not by the recorder
 

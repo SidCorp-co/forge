@@ -1,6 +1,7 @@
 import { and, eq, inArray, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type IssueStatus, issues, projects, runners } from '../db/schema.js';
+import { hooks } from './hooks.js';
 import {
   PIPELINE_CONFIG_DEFAULTS,
   type PipelineConfig,
@@ -191,6 +192,14 @@ export async function updatePipelineConfig(
   const pipelineConfig: PipelineConfig = { ...PIPELINE_CONFIG_DEFAULTS, ...parsed };
 
   const warnings: string[] = [];
+
+  // cm:guard the DECLARATION is an input to the contract's answer as much as any record is, so moving it moves every open pull request's check on this project (ISS-1072). The emit carries no issue, which is what makes the subscriber fan out over the project rather than over one issue — and it fires only when this patch actually named the key, because a patch about a stage's model must not republish every check on the project.
+  if ('statusEntryCriteria' in pipelinePatch) {
+    await hooks.emit('contractInputChanged', {
+      projectId,
+      reason: 'the project changed which records a status entry requires',
+    });
+  }
 
   return { pipelineConfig, warnings };
 }

@@ -15,7 +15,18 @@ import { CAP_REACHED_REASON, readRefreshFacts } from './projection-refresh.js';
 const HEAD = 'a'.repeat(40);
 
 function client(get: GitHubRepoClient['get']): GitHubRepoClient {
-  return { bindingId: 'b', owner: 'SidCorp-co', repo: 'forge', fullName: 'SidCorp-co/forge', get };
+  return {
+    bindingId: 'b',
+    appId: '1',
+    owner: 'SidCorp-co',
+    repo: 'forge',
+    fullName: 'SidCorp-co/forge',
+    get,
+    // cm:guard the refresh path reads and never publishes, so this fixture refuses rather than stubbing: a refresh that reached the publish helper would be a write made by a read path, and a silent stub here would let it.
+    publish: async () => {
+      throw new Error('projection refresh must not publish');
+    },
+  };
 }
 
 describe('the two reads an event invalidated', () => {

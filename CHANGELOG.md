@@ -196,6 +196,10 @@
   it is, whether it conflicts, which checks passed, which reviews are open. Work on a green build
   reads differently from work that conflicts.
 
+- **Forge now posts its own check on a pull request** — `forge/issue-contract` — saying whether the
+  issue behind it carries the records its status requires, and naming what is missing. It gates
+  nothing, and a project can turn it off.
+
 - **Reads Forge makes to GitHub are the app acting for the project, never a person's account.**
   A project with no repository bound, or whose app was never installed, is told which.
 
@@ -2367,6 +2371,10 @@
   with the assistant, and nothing ever called the older one. It has been removed with the switch
   that turned it on; nothing else changed.
 
+
+- **The UX Contract settings screen is retired.** Your project's UI checklist stays word for
+  word as an ordinary rule on the Knowledge screen, fetched when a change touches the UI
+  instead of pasted into every briefing.
 
 - **GitHub issues are no longer copied into your project, and no GitHub event changes or closes a
   Forge issue.** A project that wants outside reports admits them once, through a setting that
