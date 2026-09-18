@@ -36,8 +36,9 @@ describe('improvementMessages registry', () => {
   });
 
   it('getImprovementMessage returns the message for a known key', () => {
-    const first = listImprovementMessages()[0]!;
-    expect(getImprovementMessage(first.key)).toBe(first);
+    const [first] = listImprovementMessages();
+    expect(first).toBeDefined();
+    expect(getImprovementMessage(first?.key ?? '')).toBe(first);
   });
 
   // AC1: 3 one-shot entries removed from registry
@@ -49,22 +50,19 @@ describe('improvementMessages registry', () => {
 
   // AC2: optimize-skills standing entry present
   it('registry contains the optimize-skills standing entry', () => {
-    const msg = getImprovementMessage('optimize-skills');
-    expect(msg).toBeDefined();
-    expect(msg!.standing).toBe(true);
-    expect(msg!.category).toBe('steward');
-    expect(msg!.recommended).toBe(true);
+    expect(getImprovementMessage('optimize-skills')).toMatchObject({
+      standing: true,
+      category: 'steward',
+      recommended: true,
+    });
   });
 
   it('optimize-skills has correct shape', () => {
     const msg = getImprovementMessage('optimize-skills');
-    expect(msg).toBeDefined();
-    expect(msg!.version).toBe(1);
-    expect(msg!.defaultMode).toBe('propose');
-    expect(msg!.standing).toBe(true);
-    expect(msg!.title).toBeTruthy();
-    expect(msg!.message).toBeTruthy();
-    expect(msg!.rationale).toBeTruthy();
+    expect(msg).toMatchObject({ version: 1, defaultMode: 'propose', standing: true });
+    expect(msg?.title).toBeTruthy();
+    expect(msg?.message).toBeTruthy();
+    expect(msg?.rationale).toBeTruthy();
   });
 
   it('registry contains the standing templates (steward + drift-check + product-map-refresh + feedback-digest)', () => {
@@ -94,24 +92,25 @@ describe('improvementMessages registry', () => {
 
   // feedback-triage-digest standing entry (ISS-713)
   it('registry contains the feedback-triage-digest standing entry', () => {
-    const msg = getImprovementMessage('feedback-triage-digest');
-    expect(msg).toBeDefined();
-    expect(msg!.standing).toBe(true);
-    expect(msg!.category).toBe('ops');
-    expect(msg!.recommended).toBe(true);
-    expect(msg!.defaultMode).toBe('propose');
-    expect(msg!.version).toBe(1);
+    expect(getImprovementMessage('feedback-triage-digest')).toMatchObject({
+      standing: true,
+      category: 'ops',
+      recommended: true,
+      defaultMode: 'propose',
+      version: 1,
+    });
   });
 
   // product-map-refresh standing entry (ISS-587 Tier-3 MVP)
   it('registry contains the product-map-refresh standing entry with auto default', () => {
     const msg = getImprovementMessage('product-map-refresh');
-    expect(msg).toBeDefined();
-    expect(msg!.standing).toBe(true);
-    expect(msg!.category).toBe('documentation');
-    expect(msg!.recommended).toBe(true);
-    expect(msg!.defaultMode).toBe('auto');
-    expect(msg!.appliesWhen).toBeTruthy();
+    expect(msg).toMatchObject({
+      standing: true,
+      category: 'documentation',
+      recommended: true,
+      defaultMode: 'auto',
+    });
+    expect(msg?.appliesWhen).toBeTruthy();
   });
 });
 

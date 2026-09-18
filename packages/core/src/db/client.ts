@@ -18,6 +18,7 @@ import * as rocketchatSchema from './schema-rocketchat.js';
 import * as runLedgerSchema from './schema-run-ledger.js';
 import * as sessionInboxSchema from './schema-session-inbox.js';
 import * as speakerLinksSchema from './schema-speaker-links.js';
+import * as transcriptIndexSchema from './schema-transcript-index.js';
 import * as unauditedTransitionsSchema from './schema-unaudited-transitions.js';
 
 const schema = {
@@ -26,6 +27,7 @@ const schema = {
   ...agentSelvesSchema,
   ...adminThresholdsSchema,
   ...conversationsSchema,
+  ...transcriptIndexSchema,
   ...journalSchema,
   ...questionsSchema,
   ...rocketchatSchema,

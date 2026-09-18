@@ -216,6 +216,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         turn: { conversationId, speakerUserId, handleUserId },
         restAuth,
         rid: subject.rid,
+        ...(subject.tmid ? { tmid: subject.tmid } : {}),
         images: subject.images,
         externalToolsets: external.toolsets,
       });

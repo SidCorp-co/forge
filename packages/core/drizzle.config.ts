@@ -19,6 +19,7 @@ export default defineConfig({
     './src/db/schema-run-ledger.ts',
     './src/db/schema-release-ledger.ts',
     './src/db/schema-conversations.ts',
+    './src/db/schema-transcript-index.ts',
     './src/db/schema-agent-selves.ts',
     './src/db/schema-project-facts-backup.ts',
     './src/db/schema-repo-projection.ts',
