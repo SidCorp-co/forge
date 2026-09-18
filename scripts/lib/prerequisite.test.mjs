@@ -57,6 +57,28 @@ describe('absentPrerequisites', () => {
     expect(absentPrerequisites(root, ['deps'])).toHaveLength(1);
   });
 
+  // cm:guard the whole point of `archmap-resolver`: `deps` is satisfied by three DIRECTORIES, and on 2026-09-18 all three existed in a tree where archmap died instantly. dependency-cruiser 18.3.0 renamed the CLI entry point archmap spawns, so the package was installed, complete and runnable while the resolver was gone — and archmap reported it as `scope matched no files (.)`, a sentence about this repo's scope. If this assertion ever goes green with only `placeAll('deps')`, the prerequisite has stopped resolving the file and is back to resolving the directory.
+  it('is absent when dependency-cruiser is installed but its entry point is not the one archmap spawns', () => {
+    placeAll('deps');
+    place('packages/observability/dist/index.js');
+    place('node_modules/dependency-cruiser/package.json');
+    place('node_modules/dependency-cruiser/bin/dependency-cruiser.mjs');
+
+    const missing = absentPrerequisites(root, ['deps', 'archmap-resolver', 'observability-build']);
+    expect(missing.map((m) => m.name)).toEqual(['archmap-resolver']);
+    expect(missing[0].what).toContain('bin/dependency-cruise.mjs');
+    expect(missing[0].what).toContain('dependency-cruiser 18.3.0');
+  });
+
+  it('is present once the entry point archmap spawns is on disk', () => {
+    placeAll('deps');
+    place('packages/observability/dist/index.js');
+    place('node_modules/dependency-cruiser/bin/dependency-cruise.mjs');
+    expect(absentPrerequisites(root, ['deps', 'archmap-resolver', 'observability-build'])).toEqual(
+      [],
+    );
+  });
+
   it('declares an undeclared prerequisite name absent rather than present', () => {
     const missing = absentPrerequisites(root, ['no-such-thing']);
     expect(missing).toHaveLength(1);

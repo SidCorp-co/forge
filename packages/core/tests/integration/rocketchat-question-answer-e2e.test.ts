@@ -224,13 +224,18 @@ describe('the four refusals, each by name and none of them guessing', () => {
     expect(row?.status).toBe('open');
     expect(answerOn(row)).toEqual([null]);
     const { unlinkedMessage } = await import('../../src/assistant/identity/speaker-link.js');
-    const expected = unlinkedMessage({
-      source: 'rocketchat',
-      namespace: 'chat.example.com',
-      externalId: 'rc-stranger',
-      label: 'member.one',
-    });
+    const expected = unlinkedMessage(
+      {
+        source: 'rocketchat',
+        namespace: 'chat.example.com',
+        externalId: 'rc-stranger',
+        label: 'member.one',
+      },
+      projectId,
+    );
     expect(said).toEqual([expected]);
+    // The way out is a page the reader can open, and the question's project names it.
+    expect(expected).toContain('/link-chat?');
   });
 
   it('refuses a stale round rather than applying it to the latest step', async () => {

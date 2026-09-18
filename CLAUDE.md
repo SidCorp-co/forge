@@ -177,6 +177,27 @@ The pair is not symmetric. Nothing in this repo can gate that one: a change to t
 statuses, the drive prompt or the phase endpoints has a second half over there, and the
 `cm:guard`s naming it are the only record of the coupling.
 
+### An issue that does leave names the mechanism, not the symptom
+
+**Where an issue is the right container — a residual out of reach, a `forge-plugin` defect — it is
+written to the root cause or it buys nothing.** Three parts, each already a rule above:
+
+- **The deliverable is the mechanism, not the loop it broke.** The symptom is evidence attached to
+  the issue, never its Outcome. *Take the complete fix* decides what goes in the title.
+- **Reproduce before changing.** The failing path is reproduced deliberately and any fix is
+  measured against that reproduction — *plant exactly that, and watch it go red* binds the issue as
+  much as the test. A fix that cannot be shown closing a reproduced failure is a guess with a
+  commit message.
+- **What you could not explain is written down.** `VISION: state-never-lies` does not stop at the
+  code: a causal chain stated with its gap is a starting point, the same chain implied whole is a
+  trap for whoever picks it up.
+
+Measured 2026-09-18 (forge-dev ISS-1099): a master pane was refused by the daemon that adopted it
+across a restart, and answered 45 nudges over four hours while five rows stood still. The adhoc row
+reads *"kill the pane when it reports stale capability"* and is closed by a `tmux kill-session`; the
+deliverable is that a pane's authority survives the restart of the daemon adopting it. Same
+evidence, same afternoon — one of them comes back next restart.
+
 ## Green is a claim about one proposition
 
 **A green check is evidence for exactly one thing: that assertion held in the runtime that ran

@@ -206,6 +206,13 @@ jobs:
       # holds that ceiling.
       # The vendored copy in .forge/archmap is the authority: a contributor without a global
       # install and this job are held to the same reviewed version.
+      # Preflight FIRST. archmap's own exit 2 cannot name what stopped it: with no `go.mod`
+      # here its Go provider returns an empty-but-ok graph, so `buildScope` prints
+      # `scope matched no files (.)` and discards the TypeScript provider's reason. That
+      # sentence is about this repo's SCOPE, and it was the only thing #369, #394, #425 and
+      # #448 ever said about a file dependency-cruiser 18.3.0 renamed (ISS-1098). Both steps
+      # exit 2 for the same proposition — the gate could not run — and neither is a pass.
+      - run: node scripts/check-archmap-ready.mjs
       - run: ./.forge/archmap/archmap check
 
   changes:
