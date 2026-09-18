@@ -1,4 +1,4 @@
-import { type SQL, and, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { and, inArray, isNull, lt, type SQL, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { logger } from '../logger.js';
