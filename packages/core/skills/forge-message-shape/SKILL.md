@@ -42,6 +42,8 @@ Two audiences and three intents make **five cells** — the pairs are sparse, no
 | `role:chat` | the assistant's reply to somebody holding a role, in a Forge UI room |
 | `public:ask` | **reserved** — see the bottom of this page |
 | `public:report` | a reply to somebody who cannot open the tracker to check it |
+| `role:product:report` | the `lead` of a record, where no human member of the project reads as technical |
+| `role:technical:report` | the same lead, where one of them does |
 
 ## The rules, by cell
 
@@ -79,6 +81,35 @@ project: 6 of 391 comments in an 18-issue sample cite a `forge-plugin` key,
 which CLAUDE.md's own carve-out *requires* an agent to do. A reference this
 project does not hold is most likely another project's, so it is not judged. A
 status **asserted of** an issue this project does hold still is.
+
+### The record inside a comment: `role:product:report` and `role:technical:report`
+
+A comment carrying a ```` ```forge-record ```` block is screened twice. The whole comment meets
+`role:report` above, exactly as it always did. Then the block itself is read **field by field**, and
+the record's own `lead` — one sentence saying what was found — is read again on its own, against one
+of these two cells. Which of the two is not yours to choose: it is decided by the lenses the
+project's own human members carry, and a project with nobody reading as technical gets the stricter
+one.
+
+| rule | what it wants | cell |
+|---|---|---|
+| `field-budget` | every field of the block is at most **400 characters**, counted in code points | both, and it reads the whole block rather than the lead |
+| `lead-has-text` | the lead says something | both |
+| `no-developer-detail` | no code blocks, file paths with line numbers, or raw pipeline statuses | `role:product:report` only |
+
+**The unit is the field and there is no cap on the comment.** A refusal names the key and how far
+over it ran — `the \`why\` field is 57 character(s) over its 400-character budget` — so that what
+you shorten is the thing that outgrew its job. Trimming a different field to make the total fit is
+the one repair that does not answer it, and there is no total to fit.
+
+**A field holding something that belongs to another field is not made to fit by trimming.** Move it.
+Where it belongs to another issue entirely, that is a comment on that issue, not a longer field here.
+
+**`lead` and `beside` do not exist in the `forge-record` contract yet.** They are requested in
+`github.com/SidCorp-co/forge-plugin`, which owns that contract. Until they land, nothing you write
+carries a lead, the lead screen has nothing to read, and the parse says so by name rather than
+taking the first sentence of some other field and screening you for a sentence you did not compose.
+The budget applies to every field you do write, today.
 
 ### `role:chat`
 

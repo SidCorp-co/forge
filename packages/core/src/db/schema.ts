@@ -371,7 +371,9 @@ export const projects = pgTable(
       onDelete: 'set null',
     }),
     agentConfig: jsonb('agent_config'),
-    previewDeploy: jsonb('preview_deploy'),
+    // cm:guard BOTH sides of a deployment, and `environments.live.url` is the only place in this schema that holds the address a release ships to. Renamed from `preview_deploy` by 0279 (ISS-1069), which also rewrote every row: sidpeak could not cut a release at all because the live address existed nowhere and had to be read off the Coolify UI by hand.
+    // cm:edge lockstep -> packages/core/src/projects/environments.ts — that file is the ONLY place this column's shape is stated; every reader normalises through it.
+    environments: jsonb('environments'),
     webhookSecret: text('webhook_secret'),
     apiKey: text('api_key'),
     // cm:guard the ACTIVE issue-reference prefix, and NULL is not "unset" but the legacy `ISS` every project answered to before ISS-992. It may only name a prefix this project already holds in `issue_prefix_aliases` — `projects_issue_prefix_fk` enforces that in Postgres, so a pointer the parser would reject is unrepresentable rather than merely checked.
@@ -1057,7 +1059,10 @@ export type IssuePriority = (typeof issuePriorities)[number];
 export const issueComplexities = ['xs', 's', 'm', 'l', 'xl'] as const;
 export type IssueComplexity = (typeof issueComplexities)[number];
 
-export const issueSources = ['manual', 'github'] as const;
+// cm:why no CHECK constraint backs this tuple and none is added: `issues.source` is plain
+// `text DEFAULT 'manual' NOT NULL` (migration 0008), so widening the tuple is a TypeScript
+// narrowing that emits no DDL. ISS-1085 slice 3 verified that before assuming a migration was owed.
+export const issueSources = ['manual', 'github', 'sentry'] as const;
 export type IssueSource = (typeof issueSources)[number];
 
 // cm:why NEW column, not reused reportedBy — reportedBy is client-writable free text, so it can't carry a trusted label
@@ -1835,7 +1840,20 @@ export const scheduleModes = ['propose', 'auto'] as const;
 export type ScheduleMode = (typeof scheduleModes)[number];
 
 // cm:why `kind` is a plain text column with a TS-only enum, so adding a kind costs no migration — only every reader that switches on it. `prompt` dispatches a Claude agent session; `script` (ISS-618) and `release_batch` run in core with no session, no device and no runner.
-export const scheduleKinds = ['prompt', 'script', 'release_batch'] as const;
+export const scheduleKinds = ['prompt', 'script', 'release_batch', 'sentry_pull'] as const;
+
+// cm:guard the kinds that run INSIDE core and start no agent session, so their history lives in
+// `schedule_runs` and nowhere else. `schedules/service.ts:listScheduleRuns` reads this set to decide
+// which table to answer from, and `schedules/dispatch.ts` gives each one its own branch. A kind
+// added here without a dispatch branch falls through to the prompt arm; a runner-less kind left OUT
+// of here writes `schedule_runs` rows that the runs endpoint then answers `{ runs: [] }` over —
+// which is what `release_batch` did from the day it shipped until ISS-1085 slice 3.
+export const RUNNER_LESS_SCHEDULE_KINDS = ['script', 'release_batch', 'sentry_pull'] as const;
+export type RunnerLessScheduleKind = (typeof RUNNER_LESS_SCHEDULE_KINDS)[number];
+
+export function isRunnerLessScheduleKind(kind: string | null | undefined): boolean {
+  return (RUNNER_LESS_SCHEDULE_KINDS as readonly string[]).includes(kind ?? '');
+}
 export type ScheduleKind = (typeof scheduleKinds)[number];
 
 export const schedules = pgTable(

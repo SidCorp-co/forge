@@ -12,6 +12,7 @@
 // `@forge/contracts` has no agent-session-turn types yet, so these are re-typed
 // locally (same note as ISS-291's `features/sessions/types.ts`).
 
+import { decodeToolOutput } from "./result-summary";
 import type { ModelTier } from "@forge/contracts";
 
 export type { ModelTier };
@@ -32,14 +33,8 @@ export interface AgentTodo {
   activeForm?: string;
 }
 
-/** Structured content blocks within an assistant message entry (v1 desktop shape). */
-export type ContentBlock =
-  | { type: "text"; text: string }
-  | { type: "tool_use"; tool: ToolCallData }
-  | { type: "todos"; todos: AgentTodo[] };
-
 /**
- * A tool call as serialized on the canonical runner block. Differs from the v1
+ * A tool call as serialized on the canonical block. Differs from the render-ready
  * `ToolCallData` in two field names: the captured output lives on `output`
  * (string) rather than `result`. Normalize via `result ?? output` when mapping.
  */
@@ -54,9 +49,8 @@ export interface CanonicalToolCall {
 }
 
 /**
- * The canonical content block written by the CLI-runner transcript derive
- * (`packages/core/src/lib/agent-stream-parser.ts`). Note the field drift vs the
- * v1 `ContentBlock`: `tool` (not `tool_use`), `toolCall` (not `tool`).
+ * The canonical content block written by the transcript derive
+ * (`packages/core/src/lib/agent-stream-parser.ts`).
  */
 export type CanonicalBlock =
   | { type: "text"; text?: string }
@@ -68,13 +62,6 @@ export type CanonicalBlock =
   // is a block the database drops on the way out.
   | { type: "thinking"; thinking?: string; durationMs?: number };
 
-/**
- * A message entry. Two shapes coexist:
- *   - desktop / edited turns: `role` + `contentBlocks`/`toolCalls` + `content`;
- *   - CLI-runner derive: `type` + ordered `blocks` (+ `content` for plain text).
- * Stored at `agent_session_turns.content.value` (turns path) or directly in
- * `agent_sessions.messages` (messages fallback).
- */
 /** A file attached to a chat user turn (ISS-499). Same `{id,name,mime,size,url}`
  * shape the shared `AttachmentList` renderer accepts. */
 export interface SessionAttachment {
@@ -98,16 +85,19 @@ export interface RunTotals {
   isError?: boolean;
 }
 
+/**
+ * One transcript entry, in the one shape every producer writes. Stored at
+ * `agent_session_turns.content.value` (turns path) or directly in
+ * `agent_sessions.messages` (messages fallback).
+ */
 export interface MessageEntry {
   id?: string;
-  role?: "user" | "assistant" | "tool" | "system";
-  /** Canonical entry kind (CLI-runner shape) when `role` is absent. */
+  /** What this entry is. */
   type?: "user" | "assistant" | "tool" | "system" | "tool_use" | "tool_result";
   content?: unknown;
   timestamp?: number;
   toolCalls?: ToolCallData[];
-  contentBlocks?: ContentBlock[];
-  /** Ordered canonical blocks (CLI-runner shape). */
+  /** Ordered canonical blocks. */
   blocks?: CanonicalBlock[];
   /** Files the user attached to this turn (ISS-499); persisted on the user message. */
   attachments?: SessionAttachment[];
@@ -309,7 +299,12 @@ function toToolCallData(tc: CanonicalToolCall): ToolCallData {
     id: tc.id,
     name: tc.name,
     input: tc.input,
-    result: tc.result ?? tc.output,
+    // cm:guard `result` is read by KEY and `output` is DECODED, and both halves matter. `??` used to
+    // skip an explicit `result: null` — a call that answered nothing — and hand the card `undefined`,
+    // which the summary reads as still running. And `output` arrives serialized on every path, so
+    // passing it through made every card say `Text · N characters` (ISS-1083, implementation consult
+    // F1).
+    result: tc.result !== undefined ? tc.result : decodeToolOutput(tc.output),
     durationMs: tc.durationMs,
     isError: tc.isError,
   };
@@ -336,24 +331,21 @@ function assistantBlocks(entry: MessageEntry): RenderBlock[] {
         out.push({ type: "text", text: b.text });
       }
     }
-  } else if (entry.contentBlocks?.length) {
-    for (const b of entry.contentBlocks) {
-      if (b.type === "tool_use") {
-        out.push(
-          b.tool.name === "TodoWrite"
-            ? todoWriteToTodos(b.tool.input)
-            : { type: "tool", tool: b.tool },
-        );
-      } else if (b.type === "todos") {
-        out.push({ type: "todos", todos: b.todos });
-      } else if (b.type === "text" && b.text) {
-        out.push({ type: "text", text: b.text });
-      }
-    }
   } else {
     if (entry.toolCalls?.length) {
+      // cm:guard EVERY tool call reaches a card through `toToolCallData`, these two v1 paths
+      // included. They used to hand their calls through untouched, which was harmless while the
+      // card only previewed `result`: a CLI-derived entry carries its output on `output`, so
+      // `result` was undefined and the card showed nothing. Since ISS-1083 the card reads an absent
+      // result as `Running…`, and a settled turn in history claiming a call is still in flight is
+      // worse than showing nothing. Found by asking what bypasses the decoder rather than by a
+      // failing test, which is why the assertion below it exists.
       for (const tc of entry.toolCalls) {
-        out.push(tc.name === "TodoWrite" ? todoWriteToTodos(tc.input) : { type: "tool", tool: tc });
+        out.push(
+          tc.name === "TodoWrite"
+            ? todoWriteToTodos(tc.input)
+            : { type: "tool", tool: toToolCallData(tc) },
+        );
       }
     }
     const text = entryText(entry.content);
@@ -382,10 +374,20 @@ function withPauseCount(entry: MessageEntry, blocks: RenderBlock[]): RenderBlock
   return [{ type: "thinking", count }, ...blocks];
 }
 
-/** Role decision for an entry: prefer the explicit `role`, else the canonical
- *  `type` (`user` → prompt; everything else → agent). */
+/**
+ * Role decision for an entry, off the canonical `type`: `user` → prompt,
+ * `assistant` → agent, everything else → tool.
+ */
+// cm:guard no `role` branch, and re-adding one puts the second shape back.
+// Until ISS-1030 this read `entry.role` first, because the desktop runner and
+// edited turns wrote one shape while the derive wrote another. Both producers
+// speak the canonical entry now, `db/backfill-canonical-transcripts.ts` rewrote
+// every row at rest, and what a device on the previous release sends is
+// converted on the way in by core's `agent-sessions/canonical-legacy.ts`.
+// cm:edge lockstep -> packages/core/src/agent-sessions/turns-helpers.ts — the
+// same decision one layer in, and it has to read the same shape: the two answer
+// for the same entry arriving by two doors.
 function entryRole(entry: MessageEntry): TurnRole {
-  if (entry.role) return entry.role === "user" ? "user" : entry.role === "assistant" ? "assistant" : "tool";
   if (entry.type === "user") return "user";
   if (entry.type === "assistant") return "assistant";
   return "tool";

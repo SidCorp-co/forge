@@ -131,6 +131,13 @@ export interface RunnerSessionActivity {
 export interface RunnerActivity {
 	events: RunnerEvent[];
 	sessions: RunnerSessionActivity[];
+	/**
+	 * How many days of runner activity this deployment keeps, or null where it
+	 * keeps all of it. Served from core's retention policy rather than typed into
+	 * a string here, so the empty state names the window actually in force
+	 * (ISS-1027). Optional because a core older than that change sends nothing.
+	 */
+	retentionDays?: number | null;
 }
 
 /** The job a runner is currently executing (from `GET /api/runners/active`). */

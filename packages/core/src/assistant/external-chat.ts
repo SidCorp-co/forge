@@ -1,6 +1,6 @@
 /**
  * ISS-604 (P2a) — non-streaming chat entrypoint for external channels (Rocket.Chat, Telegram, …):
- * the same resolution as the SSE `/api/chat` route, but the shared turn loop is drained to one
+ * the same resolution the SSE `/api/chat` route used before ISS-1030 removed it, but the shared turn loop is drained to one
  * reply string. The caller supplies the toolset (it owns the principal); none means a tool-less
  * completion.
  *
@@ -94,6 +94,11 @@ export interface ExternalChatTurnArgs {
   // cm:guard `nothing` is for the RETRY of such a turn — its message is a code-authored instruction, and persisting it files words the speaker never said under their name — while a SILENCE is written under `question-only` all the same, because nothing replaces it and the reason is the row's whole point.
   // cm:guard `silence-only` is for a turn whose question is ALREADY a row — the collector wrote it when the message arrived — and whose answer is the screened caller's to record after delivery. What it still owes the transcript is the SILENCE: without it a window the model declined to answer leaves no row, and a person cannot tell it from a turn that never ran (ISS-1004).
   record?: 'question-and-answer' | 'question-only' | 'silence-only' | 'nothing';
+  /**
+   * The question is already a row of this conversation, so it is not appended again.
+   */
+  // cm:guard separate from `record`, because the two questions are different: `record` says what this turn PERSISTS, this says what the model is SHOWN. A `tool`-mode window persists nothing here (its runner files the one row after reading the capture) and its question is already in the history the collector wrote, so appending `message` again shows the model the window twice and spends a slot of the bounded history on the copy (ISS-1087; whole-set review, round 5 F1). `silence-only` implies it, as it always did.
+  questionInHistory?: boolean;
   db?: typeof defaultDb;
 }
 
@@ -186,7 +191,7 @@ export async function runExternalChatTurn(
   const record = args.record ?? 'question-and-answer';
   const images = args.images ?? [];
   // cm:guard `silence-only` appends NOTHING here, and that is not the same as `nothing`: the retry's instruction is appended-but-unpersisted so the model sees it, while a collected question is already IN `turn.history`, so appending it again would show the model the same message twice.
-  if (turn && record !== 'silence-only') {
+  if (turn && record !== 'silence-only' && !args.questionInHistory) {
     appendUserMessage(turn, args.message, {
       images,
       authorUserId: args.userId ?? null,
@@ -248,8 +253,7 @@ export async function runExternalChatTurn(
     // so the provider stream is not left open. The observer is `conversation-progress.ts`, whose
     // accumulator is also the producer of the blocks the transcript row is written with, so its
     // refusal of a tool result naming no call this turn made is an upstream pairing break rather than
-    // a watcher's inconvenience — `run-turn.ts` ends its turn on the same refusal from the same
-    // accumulator. A failure to PUBLISH is caught inside the observer, so a socket that went away
+    // a watcher's inconvenience. A failure to PUBLISH is caught inside the observer, so a socket that went away
     // cannot reach here (ISS-1078, and ISS-1029 criterion 14 for the refusal itself).
     if (args.onTurnEvent) {
       try {

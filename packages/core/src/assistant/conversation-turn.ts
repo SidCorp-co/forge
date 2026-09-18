@@ -31,7 +31,7 @@ import { effectiveProjectRole, projectRoleAtLeast } from '../lib/authz.js';
 import type { ChatContentPart, ChatMessage } from './providers/types.js';
 
 export type { ConversationImage };
-// cm:why re-exported rather than imported from the store directly by its callers: `run-turn.ts` is
+// cm:why re-exported rather than imported from the store directly by its callers: the turn loop is
 // not on the store's reader list in `conversations/transport-free.test.ts`, and the argument for
 // widening that list is one this change does not have — the turn layer already owns the store for
 // everything else it writes.

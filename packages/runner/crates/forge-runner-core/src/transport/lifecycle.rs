@@ -85,6 +85,13 @@ async fn send(client: &CoreClient, url: &str, body: serde_json::Value) -> Result
     if !resp.status().is_success() {
         let status = resp.status();
         let text = resp.text().await.unwrap_or_default();
+        // cm:guard 403 and 409 carry the SAME marker `events.rs:post_batch` puts on them, because `is_disowned` is one predicate asked of both transports: core answering `INVALID_STATE` to a fail on a terminal job means exactly what a 409 on its events means — this job is no longer this box's to work. Until ISS-1082 only the events route was marked, so `pool_jobs::supervise` read a terminal job's refusal as a failure of its own call and re-sent it every tick, for ever, keeping the registry entry that counts against `max_job_panes`.
+        if status.as_u16() == 403 || status.as_u16() == 409 {
+            return Err(Error::Other(format!(
+                "{}: lifecycle {status}: {text}",
+                crate::transport::events::DISOWNED
+            )));
+        }
         return Err(Error::Other(format!("lifecycle {status}: {text}")));
     }
     Ok(())
@@ -192,5 +199,38 @@ mod tests {
     async fn a_body_that_is_not_json_finishes_the_job() {
         let url = serve_once("200 OK", "not json at all").await;
         assert!(turn_is_job_end(&client(url), "job-1").await);
+    }
+
+    // cm:guard a terminal job's refusal must read as DISOWNED on this transport too. forge-vm 2026-09-17: two `release_batch` jobs done at 08:45 and 08:51 left their panes standing until 13:01, because `fail` on a terminal job answers `409 INVALID_STATE` and nothing here said so — `supervise` kept the entry and re-sent it every 60s, holding 2/2 of the box's job panes and stalling every project on it for four hours.
+    #[tokio::test]
+    async fn a_terminal_job_refusing_a_fail_reads_as_disowned() {
+        let url = serve_once(
+            "409 Conflict",
+            r#"{"code":"INVALID_STATE","message":"job is not in a runnable state"}"#,
+        )
+        .await;
+        let e = fail(&client(url), "job-1", "pane ended")
+            .await
+            .expect_err("a 409 must not report success");
+        assert!(crate::transport::events::is_disowned(&e), "{e}");
+    }
+
+    #[tokio::test]
+    async fn a_job_on_another_device_reads_as_disowned() {
+        let url = serve_once("403 Forbidden", "{}").await;
+        let e = fail(&client(url), "job-1", "pane ended")
+            .await
+            .expect_err("a 403 must not report success");
+        assert!(crate::transport::events::is_disowned(&e), "{e}");
+    }
+
+    // cm:guard the pair above is an assertion and not a tautology only while this one holds: an ordinary bad request is THIS box's mistake and must not be read as the job having moved on.
+    #[tokio::test]
+    async fn an_ordinary_client_error_is_not_disowned() {
+        let url = serve_once("400 Bad Request", "{}").await;
+        let e = fail(&client(url), "job-1", "pane ended")
+            .await
+            .expect_err("a 400 must not report success");
+        assert!(!crate::transport::events::is_disowned(&e), "{e}");
     }
 }

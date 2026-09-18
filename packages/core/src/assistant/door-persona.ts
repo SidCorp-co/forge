@@ -53,9 +53,9 @@ export function webDoorLines(projectSlug: string, askedBy: string | null): strin
 }
 
 /**
- * The assistant's voice in a Forge conversation and on `POST /api/chat`.
+ * The assistant's voice in a Forge conversation.
  */
-// cm:guard both web doors build their persona HERE and neither keeps its own: `conversation-send.ts` answers the browser and `assistant/routes.ts` answers the SSE surface, and `docs/proposals/api-chat-has-no-client.md` prices two persona assemblies over one store as drift a reader cannot resolve. A second assembly re-introduced anywhere is that cost back (ISS-1007).
+// cm:guard every door builds its persona HERE and none keeps its own: `conversation-send.ts` answers the browser and `external-chat.ts` answers a room. The second web door — the SSE `POST /api/chat` — is gone with ISS-1030, and what it cost while it stood was two persona assemblies over one store, drift a reader could not resolve. A second assembly re-introduced anywhere is that cost back (ISS-1007).
 export function webConversationPersona(
   projectName: string,
   projectSlug: string,
@@ -103,14 +103,28 @@ export function webAgentDoorLines(askedBy: string | null): string[] {
  * The assistant's voice in a Rocket.Chat room.
  */
 // cm:guard the room's own arrangement lives here beside the web app's rather than in the adapter, so the two orders are one file apart and a layer added to one is visibly absent from the other (ISS-1057).
+/**
+ * What a room turn is told when its window was cut before the room went quiet (ISS-1086).
+ */
+// cm:guard lives HERE and not in the layer module, which holds text and its header only and has `layer.ts` as its one reader: this is a VALUE the door fills a token with, and the door is where the room's values are named.
+// cm:guard the instruction changes BEHAVIOUR and does not merely disclose: a disclaimer ("note: the discussion may be ongoing") leaves the model free to summarise a room that has not finished, which is the failure the cut exists to prevent. Each clause is one of the four things a mid-conversation reply must do differently.
+export const MID_CONVERSATION_INSTRUCTION =
+  'the messages you were given were cut off before the room went quiet, so the discussion may still be moving and later messages may already exist that you cannot see. Answer only the questions actually asked in the messages you were given. Do not present the discussion as concluded and do not claim the room agreed on anything. Prefer one short, targeted contribution over a summary of the room. If what you can see is too incomplete to add anything useful, decline the turn.';
+
 export function rocketChatDoorPersona(
   door: DoorOpening,
-  room: { botName?: string | undefined; authorUsername?: string | undefined },
+  room: {
+    botName?: string | undefined;
+    authorUsername?: string | undefined;
+    /** The mid-conversation instruction, or null for a window that closed on quiet (ISS-1086). */
+    midConversation?: string | null | undefined;
+  },
 ): string {
   return composeLayers(ROCKETCHAT_DOOR_LAYERS, {
     ...openingValues(door),
     botName: room.botName ?? null,
     authorUsername: room.authorUsername ?? null,
+    midConversation: room.midConversation ?? null,
   });
 }
 
@@ -118,10 +132,12 @@ export function rocketChatDoorPersona(
 export function rocketChatDoorLines(
   botName?: string | undefined,
   authorUsername?: string | undefined,
+  midConversation?: string | null | undefined,
 ): string[] {
   const room = ROCKETCHAT_DOOR_LAYERS.filter((l) => l.id === 'door-rocketchat');
   return composeLayers(room, {
     botName: botName ?? null,
     authorUsername: authorUsername ?? null,
+    midConversation: midConversation ?? null,
   }).split('\n');
 }

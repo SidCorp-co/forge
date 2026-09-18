@@ -138,6 +138,85 @@ pub struct Masters(Arc<Mutex<Registry>>);
 #[derive(Default)]
 struct Registry {
     live: HashMap<String, MasterState>,
+    /// What the last sweep read as this box's projects.
+    served: Served,
+    /// Why each project's master pane was not placed on the last sweep.
+    unplaced: HashMap<String, Unplaced>,
+}
+
+/// What this box knows about which projects it serves.
+// cm:guard THREE states and never two, because "not in the set" and "no set" send an operator to
+// opposite places. A daemon that has not yet read `/me/runners`, or whose last read failed, knows
+// nothing about any project — and answering that with an empty set would tell a live master "this
+// box does not serve you" on the strength of a network error (ISS-1092 criteria 4, 6).
+#[derive(Default, Clone, PartialEq, Eq)]
+pub(crate) enum Served {
+    /// No sweep has read the list yet.
+    #[default]
+    Unread,
+    /// The last read failed, and this is what it said.
+    Unreadable(String),
+    /// The project ids core last answered for this device.
+    Read(Vec<String>),
+}
+
+/// Why this box did not place a project's master pane on its last sweep.
+///
+/// Each is a precondition of adoption that did not hold, named so a refusal can
+/// carry it and an operator can act on it.
+// cm:guard every variant names a condition SOMETHING has to change, and none of them names a
+// deadline. The sentence this replaces promised re-adoption "within thirty seconds" on every one of
+// these paths, and on a project with nothing admissible that promise never came true for 14 hours
+// (ISS-1092). A variant added here that resolves on its own belongs in the sweep, not in a refusal.
+#[derive(Clone, PartialEq, Eq)]
+pub(crate) enum Unplaced {
+    /// The runner row refuses new work, so this sweep placed no pane for it.
+    Draining { status: String },
+    /// Core serves this project to this box but nothing here says where the
+    /// checkout is.
+    NoRepoPath,
+    /// This box has no terminal multiplexer, so it can host no master at all.
+    NoTerminal,
+    /// Core refused the registration this pane's identity comes from.
+    RegisterFailed { detail: String },
+    /// The pane could not be given the skill it runs on, so none was started.
+    SkillMissing { detail: String },
+    /// Nothing is claimable and no pane is running, so none was started.
+    // cm:guard this is the ONE variant that is not a fault, and it is recorded anyway. It is what
+    // `NOTHING admissible starts no master` looks like from the outside, and a master pane cannot
+    // exist in this state — so a declaration that meets it is a pane the daemon did not start.
+    NothingAdmissible,
+}
+
+impl std::fmt::Display for Unplaced {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            Self::Draining { status } => write!(
+                f,
+                "this box's runner for it is `{status}`, so it starts no work and places no master until that changes"
+            ),
+            Self::NoRepoPath => write!(
+                f,
+                "core serves it to this box but nothing here says where its checkout is — bind it, or set the runner's repo_path"
+            ),
+            Self::NoTerminal => write!(
+                f,
+                "this box has no tmux, so it can host no master pane for any project"
+            ),
+            Self::RegisterFailed { detail } => write!(
+                f,
+                "core refused this box's master registration for it: {detail}"
+            ),
+            Self::SkillMissing { detail } => write!(
+                f,
+                "the forge-master skill could not be installed into its checkout: {detail}"
+            ),
+            Self::NothingAdmissible => write!(
+                f,
+                "it has nothing claimable and no pane of its own running, so this box started none"
+            ),
+        }
+    }
 }
 
 struct MasterState {
@@ -266,13 +345,80 @@ impl Masters {
     /// Which project's master a session id is, for a declaration this box is
     /// about to bound.
     // cm:guard the REVERSE of `pane_for_session`, and it is a local read of a map already keyed by project — it does NOT ask core which project a session belongs to, which is the thing the guard below says core neither knows nor says on a frame. The two answer opposite questions and neither is the other's fallback (ISS-1050 criterion 7).
-    // cm:guard `None` is REFUSED by the caller and never guessed. This map is an optimisation rather than the bound, so a daemon restart empties it while every master is still running: a declaration arriving in that window has to be told this box does not yet know which project its pane serves, and that the next sweep re-adopts the pane and restores the answer. Deriving a project from the only entry present, or from the frame's own claim, is how a pane on one project opens a run over another's issue.
+    // cm:guard `None` is REFUSED by the caller and never guessed. This map is an optimisation rather than the bound, so a daemon restart empties it while every master is still running: a declaration arriving in that window has to be refused, and `why_unplaced` is what says why rather than promising a sweep. Deriving a project from the only entry present, or from the frame's own claim, is how a pane on one project opens a run over another's issue.
     pub fn project_for_session(&self, session_id: &str) -> Option<String> {
         let reg = self.0.lock().expect("masters poisoned");
         reg.live
             .iter()
             .find(|(_, m)| m.session_id == session_id)
             .map(|(project_id, _)| project_id.clone())
+    }
+
+    /// Record what core just answered for this device, or why it could not be
+    /// read.
+    pub(crate) fn note_served(&self, served: Served) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.served = served;
+    }
+
+    /// Record why this project's master pane was not placed, answering whether
+    /// that reason is new or changed.
+    // cm:guard the bool is what keeps this out of the log every sweep. A project with nothing
+    // admissible is unplaced on every one of the ~2,880 sweeps a day, and a line per sweep is a
+    // line an operator learns to scroll past — including on the sweep where the reason changed.
+    pub(crate) fn note_unplaced(&self, project_id: &str, why: Unplaced) -> bool {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        let changed = reg.unplaced.get(project_id) != Some(&why);
+        reg.unplaced.insert(project_id.to_string(), why);
+        changed
+    }
+
+    /// This project's pane was placed; nothing stands against it any more.
+    pub(crate) fn clear_unplaced(&self, project_id: &str) {
+        let mut reg = self.0.lock().expect("masters poisoned");
+        reg.unplaced.remove(project_id);
+    }
+
+    /// Why a declaration for this project cannot be served, in words its caller
+    /// can act on.
+    ///
+    /// Reached only when the caller's capability names no session this box
+    /// holds a master under, so every arm refuses.
+    // cm:guard the project id is read for the DIAGNOSIS and for nothing else: this answers a
+    // string, never a project, and no caller of it may treat its output as a bound. Deriving what a
+    // pane serves from what the pane claims is what ISS-1050 criterion 7 refuses, and that refusal
+    // is the whole reason this function exists in this shape.
+    // cm:guard NO arm carries a number of seconds. The sentence this replaces promised thirty of
+    // them on every path, and on the one measured in the field the promise could never come true —
+    // a deadline the code does not enforce is worse than no deadline (ISS-1092 criterion 9).
+    pub fn why_unplaced(&self, project_id: &str) -> String {
+        let reg = self.0.lock().expect("masters poisoned");
+        if let Some(m) = reg.live.get(project_id) {
+            return format!(
+                "this box's master for {project_id} is session {} in pane {}, and your capability names a different session — it was minted for a session core has since replaced, so this pane's capability is stale and nothing this daemon does will place it. A pane cannot be handed a new capability: end this one, and a fresh master starts for {project_id} in its place",
+                m.session_id, m.name
+            );
+        }
+        match &reg.served {
+            Served::Unread => format!(
+                "this box has not yet read which projects it serves, so it cannot say whether it serves {project_id} at all — nothing here has an answer for you yet"
+            ),
+            Served::Unreadable(why) => format!(
+                "this box could not read which projects it serves ({why}), so it cannot say whether it serves {project_id} at all — nothing here has an answer for you yet"
+            ),
+            Served::Read(ids) if !ids.iter().any(|id| id == project_id) => format!(
+                "this box does not serve {project_id} — core's last answer for this device named {} project(s) and that was not one of them, so no sweep here will place a master for it",
+                ids.len()
+            ),
+            Served::Read(_) => match reg.unplaced.get(project_id) {
+                Some(why) => format!(
+                    "this daemon has placed no master for {project_id}: {why}. That is the state its last sweep found, and the next sweep finds the same until it changes"
+                ),
+                None => format!(
+                    "this daemon does not yet hold a master session for {project_id}; its next sweep places one, and a declaration made after that is served"
+                ),
+            },
+        }
     }
 
     /// The pane name for a master session id, for the inbox's terminal arm.
@@ -416,9 +562,17 @@ async fn sweep(
         Ok(rs) => rs,
         Err(e) => {
             tracing::warn!("[master] cannot read this box's projects: {e}");
+            // cm:guard the failure is RECORDED and not merely logged, because the refusal a master
+            // gets on the control socket is the only place most of these are ever read. A box with
+            // no answer must say it has no answer — reading "not in the set" off a network error
+            // would tell a live master this box does not serve it (ISS-1092 criterion 6).
+            masters.note_served(Served::Unreadable(e.to_string()));
             return POLL_INTERVAL;
         }
     };
+    masters.note_served(Served::Read(
+        served.iter().map(|r| r.project_id.clone()).collect(),
+    ));
     // cm:guard the listing is AUTHORITATIVE here and only here — the `Err` arm
     // above returned rather than falling through, so this is never a defaulted
     // or partial set. It is the one place on the box that knows which projects
@@ -460,6 +614,16 @@ async fn sweep(
                 runner.slug,
                 runner.status
             );
+            // cm:guard a drained project is recorded as unplaced even though a master may still be
+            // running on it from before the drain. What the record answers is whether THIS sweep
+            // would place one, which is what a refused declaration needs to know; the pane that is
+            // already there is still supervised on the line below.
+            masters.note_unplaced(
+                &runner.project_id,
+                Unplaced::Draining {
+                    status: runner.status.clone(),
+                },
+            );
             // cm:guard a drained runner still gets `supervise`, and only the START of new work is skipped. A master already running on a project being moved off this box must still be watched and still have its row closed when it dies — a drain that stopped watching would leave a dead master's session live in core with nothing reporting why, which is the drain doing damage rather than nothing.
             supervise(client, masters, &runner.project_id, &runner.slug).await;
             continue;
@@ -481,10 +645,14 @@ async fn sweep(
             .await
             .unwrap_or_default();
         // cm:guard NOTHING admissible starts no master, and that bound survives residency. A resident session is a `claude` process that lives until something ends it, and nothing counts it, so a box serving six projects would carry six permanent processes for however many of them never have work. A master that already exists is kept and still supervised; residency is for a project doing something, not for every row `/me/runners` returns.
-        if admissible.is_empty() {
-            if retire_if_idle(client, masters, ledger, &runner.project_id, &runner.slug).await
-                || masters.get(&runner.project_id).is_none()
-            {
+        // cm:guard the bound is STARTING one, and it used to be written as skipping the rest of the
+        // pass — which also skipped the `register` that keeps a live pane's session row beating, so
+        // core reaped the row of a master that was running perfectly and the pane's capability was
+        // orphaned for good. `Placement::AdoptOnly` is the same bound with the registration kept
+        // (ISS-1092 criteria 10, 13).
+        let placement = placement_for(&admissible);
+        if placement == Placement::AdoptOnly {
+            if retire_if_idle(client, masters, ledger, &runner.project_id, &runner.slug).await {
                 continue;
             }
         } else {
@@ -495,9 +663,16 @@ async fn sweep(
             Ok(r) => r,
             Err(slug) => {
                 // cm:guard refuse by NAME rather than falling back to some other directory. A master started in the wrong tree reads one repo and claims work for another, and every diff it produces lands where nobody looks — the silent substitution this repo forbids, and unrecoverable by the time anyone notices.
-                tracing::error!(
-                    "[master] {slug} has claimable work but no repo path on this box — no master will run for it; bind it or set the runner's repo_path"
-                );
+                // cm:guard the ERROR keeps its condition — work waiting with nowhere to run it — and
+                // the record is written either way. A project with no claimable work and no repo
+                // path is not an emergency, but it is still the reason its master pane is not
+                // there, and a pane asking why is owed it (ISS-1092 criterion 5).
+                if !admissible.is_empty() {
+                    tracing::error!(
+                        "[master] {slug} has claimable work but no repo path on this box — no master will run for it; bind it or set the runner's repo_path"
+                    );
+                }
+                say_unplaced(masters, &runner.project_id, &slug, Unplaced::NoRepoPath);
                 continue;
             }
         };
@@ -527,12 +702,13 @@ async fn sweep(
             &resolved,
             stored_conversation.as_deref(),
             &inherited,
+            placement,
         )
         .await;
         if pane == PaneState::Absent {
             continue;
         }
-        // cm:why collected here, on the path a project with a live pane takes, and NOT on the drained branch above. A drained runner starts no work, so a cap on it changes no dispatch decision — and reading it there would cost a `resolve_repo` and a ledger read on a path that exists to do less. The cost is stated rather than hidden: a box where EVERY project is drained reports no cap, and is also dispatching nothing.
+        // cm:why collected here, on the path a project with a live pane takes, and NOT on the drained branch above. A drained runner starts no work, so a cap on it changes no dispatch decision — and reading it there would cost a `resolve_repo` and a ledger read on a path that exists to do less. The cost is stated rather than hidden: a box where EVERY project is drained reports no cap, and is also dispatching nothing. Since ISS-1092 this also runs for a project with a live pane and an empty pool, which is correct rather than incidental: that pane is a `claude` process spending the same account whether or not anything is claimable.
         if let Some(said) = account_verdict(
             &resolved.repo_path,
             stored_conversation.as_deref(),
@@ -1081,8 +1257,23 @@ pub(crate) async fn say_resume_choices(
     };
     let mut said = 0;
     for run in owed {
-        let (Some(session_id), Some(choice)) = (run.session_id.clone(), run.resume_choice.clone())
-        else {
+        // cm:guard a run with no core session is SAID rather than skipped, and that is the whole of
+        // the change here. This was a bare `continue`: a master's recorded choice about a run whose
+        // subagent never started was dropped, every sweep, for the life of the boot, with nothing
+        // logged — and "the pane died before the subagent was ever dispatched" is the commonest
+        // thing a resumed master inherits, so it is the case that mattered most. The choice IS in
+        // the ledger; what cannot happen is the report, because
+        // `POST /api/devices/me/run-sessions/{session_id}/resume-choice` is keyed on a core session
+        // this run never had. A route that is not session-keyed is core's to add, so the residual is
+        // named here rather than guessed at (ISS-1050 criterion 29).
+        let Some(choice) = run.resume_choice.clone() else {
+            continue;
+        };
+        let Some(session_id) = run.session_id.clone() else {
+            tracing::warn!(
+                "[master] run {}: this pane chose to {choice} and the choice cannot reach its issue — the run has no core session, which is what a run whose subagent never started looks like. It stands in the box ledger and nowhere a reader will find it",
+                run.run_id
+            );
             continue;
         };
         let why = run.resume_choice_why.clone().unwrap_or_default();
@@ -1389,6 +1580,33 @@ fn report_stale_pane_config(
     );
 }
 
+/// How far this sweep may go for one project.
+// cm:guard `AdoptOnly` is what keeps `NOTHING admissible starts no master` true while still
+// registering a pane that already exists. Registering is not starting: the pane is there either
+// way, and the call is what keeps core's row for it beating. Skipping the whole of `ensure_master`
+// for a quiet project is what let core reap a live master's session row after a daemon restart, so
+// that when work returned `register` minted a SECOND row and the running pane's capability named
+// the dead one for good (ISS-1092, measured on forge-vm 2026-09-17).
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum Placement {
+    /// Adopt a live pane, and start one where there is none.
+    AdoptOrStart,
+    /// Adopt a live pane, and start nothing.
+    AdoptOnly,
+}
+
+/// How far this sweep may go for a project, from what its pool holds.
+// cm:guard an empty pool answers `AdoptOnly` and never "skip this project". The two were the same
+// thing until ISS-1092, and the difference is the `register` call that keeps a live pane's core
+// session row beating: skipping it let core reap the row of a master that was running perfectly.
+pub(crate) fn placement_for(admissible: &[AdmissibleIssue]) -> Placement {
+    if admissible.is_empty() {
+        Placement::AdoptOnly
+    } else {
+        Placement::AdoptOrStart
+    }
+}
+
 /// Make sure this project has a live, registered master, and return its id.
 // cm:guard register with core on EVERY sweep, not only when the pane is created. The row is what `jobs.held_by` carries, so a cached id would keep claiming onto a session core had already reaped — holds nobody can see, under an identity nobody is beating for. `ensureMasterSession` is idempotent precisely so this can be unconditional.
 async fn ensure_master(
@@ -1398,6 +1616,7 @@ async fn ensure_master(
     resolved: &crate::daemon::dispatch::Resolved,
     stored_conversation: Option<&str>,
     inherited: &[InheritedRun],
+    placement: Placement,
 ) -> PaneState {
     let name = terminal::session_name(terminal::MASTER_PREFIX, &resolved.slug);
     // cm:guard refuse by name when tmux is missing rather than falling back to the per-pass `claude -p` this replaced. A box that quietly reverted would look identical in the log to one that is working, while none of the liveness, the transcript or the addressable pane exist on it.
@@ -1406,6 +1625,20 @@ async fn ensure_master(
             "[master] {}: tmux is not installed on this box — no master will run for it; install tmux (`forge-runner doctor` checks for it)",
             resolved.slug
         );
+        say_unplaced(masters, project_id, &resolved.slug, Unplaced::NoTerminal);
+        return PaneState::Absent;
+    }
+
+    // cm:guard the liveness question comes BEFORE the registration on this branch and only on this
+    // branch. `register` creates a row where none is live, so asking core first under `AdoptOnly`
+    // would open a master session for a project this sweep is about to start no master for.
+    if placement == Placement::AdoptOnly && !terminal::alive(&name).await {
+        say_unplaced(
+            masters,
+            project_id,
+            &resolved.slug,
+            Unplaced::NothingAdmissible,
+        );
         return PaneState::Absent;
     }
 
@@ -1413,6 +1646,14 @@ async fn ensure_master(
         Ok(s) => s,
         Err(e) => {
             tracing::warn!("[master] {}: cannot register with core: {e}", resolved.slug);
+            say_unplaced(
+                masters,
+                project_id,
+                &resolved.slug,
+                Unplaced::RegisterFailed {
+                    detail: e.to_string(),
+                },
+            );
             return PaneState::Absent;
         }
     };
@@ -1432,9 +1673,39 @@ async fn ensure_master(
                 "[master] {}: adopting the resident session {name}",
                 resolved.slug
             );
+            // cm:guard `created` while the pane is ALIVE is core saying it found no live row to
+            // reuse — `ensureMasterSession` reuses only a non-terminal one — so the pane running
+            // here holds a capability minted for a session core has since failed, and every frame
+            // it sends is refused for the rest of its life. Say it at error, because the only
+            // recovery is ending the pane and nothing on this box will do that on its own
+            // (ISS-1092 criteria 17, 18).
+            if session.created {
+                tracing::error!(
+                    "[master] {}: adopted the resident session {name} onto a master session core created fresh ({}) — whatever capability that pane was started with names a session this box no longer holds, so its declarations are refused until it is replaced. A pane cannot be handed a new capability: `tmux kill-session -t {name}` and the next sweep starts one that carries the current session.",
+                    resolved.slug,
+                    session.session_id
+                );
+            }
             remember(masters, project_id, &session);
         }
+        masters.clear_unplaced(project_id);
         return PaneState::Adopted;
+    }
+
+    // cm:guard the SECOND adopt-only return, and it is not the first one repeated. The first is an
+    // optimisation — it avoids asking core for a session this sweep will not use. This one is the
+    // bound: the pane was alive at that check and is not alive at this one, which is a pane that
+    // exited while `register` and `project_mcp_servers` were awaited, and without this the code
+    // falls straight through into minting a capability and starting a master for a project with
+    // nothing claimable. Found by review of ISS-1092 (F1), not by a failing sweep.
+    if placement == Placement::AdoptOnly {
+        say_unplaced(
+            masters,
+            project_id,
+            &resolved.slug,
+            Unplaced::NothingAdmissible,
+        );
+        return PaneState::Absent;
     }
 
     // cm:guard refuse to start when the skill cannot be written, rather than starting without it. A master with no skill still starts, still claims, and runs the whole orchestration off a four-line prompt — work that looks like it is being managed and is not.
@@ -1443,6 +1714,14 @@ async fn ensure_master(
             "[master] {}: could not install the forge-master skill into {}: {e} — not starting a master",
             resolved.slug,
             resolved.repo_path.display()
+        );
+        say_unplaced(
+            masters,
+            project_id,
+            &resolved.slug,
+            Unplaced::SkillMissing {
+                detail: e.to_string(),
+            },
         );
         return PaneState::Absent;
     }
@@ -1544,6 +1823,7 @@ async fn ensure_master(
         resolved.repo_path.display()
     );
     remember(masters, project_id, &session);
+    masters.clear_unplaced(project_id);
 
     // cm:guard the standing brief is typed ONCE, into a pane that has just started, and the wait inside `brief_new_pane` is not decoration — the next sweep would otherwise prompt a master that was never briefed.
     let brief = standing_prompt(
@@ -1569,6 +1849,17 @@ async fn ensure_master(
     }
 }
 
+/// Record why this project's pane was not placed, and say it once.
+// cm:guard the log is gated on the reason CHANGING and never on the sweep. This is reached on every
+// sweep of every project that has no pane — on a box serving 28 projects that is thousands of lines
+// a day, and a reader who learns to scroll past them misses the one where a live pane went unplaced
+// (ISS-1092 criteria 15, 16).
+fn say_unplaced(masters: &Arc<Masters>, project_id: &str, slug: &str, why: Unplaced) {
+    if masters.note_unplaced(project_id, why.clone()) {
+        tracing::warn!("[master] {slug}: no master pane placed — {why}");
+    }
+}
+
 fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::MasterSession) {
     masters.remember(
         project_id,
@@ -1586,7 +1877,7 @@ fn remember(masters: &Arc<Masters>, project_id: &str, session: &master_api::Mast
 // cm:guard the queue is NOT embedded here, and that absence is what let the quiet gate go. Dispatch reads it itself with its own ranking verb, so a snapshot typed at the master is a second copy already stale by the time the turn reaches it — and a prompt that queued behind a turn then acted on that copy is exactly what the deleted quiet gate existed to prevent (ISS-933 criterion 17).
 // cm:edge contract -> packages/runner/crates/forge-runner-core/assets/forge-master-skill.md — the skill hands every pass to `forge:dispatch`, and this prompt is what must not contradict it by naming a phase, a width or a queue of its own (ISS-964 criterion 29).
 fn nudge() -> String {
-    "Pass. Hand it to the dispatch skill, and say what you dispatched and what you did not.".into()
+    "Pass. Hand it to the dispatch skill, and say what you dispatched and why you did not dispatch the rest.".into()
 }
 
 /// Tell a master there is something to look at.
@@ -3369,6 +3660,310 @@ impl Masters {
                 last_nudge: None,
                 mcp_stale_reported: false,
             },
+        );
+    }
+}
+
+/// What a master pane is told when this box cannot place it, and what the sweep
+/// does to make that answer true (ISS-1092).
+#[cfg(test)]
+mod unplaced_tests {
+    use super::*;
+
+    const SOURCE: &str = include_str!("master.rs");
+
+    fn production() -> &'static str {
+        SOURCE.split("\n#[cfg(test)]").next().unwrap()
+    }
+
+    fn sweep_body() -> &'static str {
+        production()
+            .split("\nasync fn sweep(")
+            .nth(1)
+            .and_then(|r| r.split("\nasync fn ").next())
+            .expect("sweep must be findable")
+    }
+
+    fn ensure_master_body() -> &'static str {
+        production()
+            .split("\nasync fn ensure_master(")
+            .nth(1)
+            .and_then(|r| r.split("\n/// ").next())
+            .expect("ensure_master must be findable")
+    }
+
+    fn issue(id: &str) -> AdmissibleIssue {
+        serde_json::from_value(serde_json::json!({ "issueId": id })).expect("admissible fixture")
+    }
+
+    /// The sentence this replaces promised thirty seconds on every path. A
+    /// number here is a promise the sweep does not keep, and the pane that met
+    /// it waited out fourteen hours of them.
+    fn carries_no_deadline(why: &str) {
+        for banned in ["thirty seconds", "30 seconds", "seconds,", " seconds."] {
+            assert!(
+                !why.contains(banned),
+                "a refusal may not name a deadline the sweep does not enforce: {why}"
+            );
+        }
+    }
+
+    // cm:guard the STALE-CAPABILITY arm, and it is the one the field incident landed in. The daemon
+    // had adopted the pane and logged that it had; what it held was the session core minted to
+    // replace the one the pane's token names, and no sweep will ever reconcile the two.
+    #[test]
+    fn a_pane_whose_capability_names_a_replaced_session_is_told_that_and_not_told_to_wait() {
+        let masters = Masters::new();
+        masters.note_served(Served::Read(vec!["proj-1".into()]));
+        masters.remember_for_test("proj-1", "sess-NEW", "pane-1");
+        let why = masters.why_unplaced("proj-1");
+        assert!(
+            why.contains("sess-NEW") && why.contains("pane-1"),
+            "the pane has to be told which session this box does hold, or it cannot tell a stale capability from a daemon that has not looked yet: {why}"
+        );
+        assert!(
+            why.contains("stale"),
+            "the reason the declaration fails is the capability, and naming anything else sends the master looking in the wrong place: {why}"
+        );
+        assert!(
+            !why.contains("sweep"),
+            "no sweep resolves this state — a pane cannot be handed a new capability, so naming one is the false promise this issue exists to remove: {why}"
+        );
+        carries_no_deadline(&why);
+    }
+
+    // cm:guard an unread list answers "I do not know" and never "you are not served". The two send
+    // an operator to opposite places, and a network error would otherwise read as a decommission.
+    #[test]
+    fn a_box_that_has_not_read_its_projects_says_so_rather_than_denying_the_project() {
+        let masters = Masters::new();
+        let why = masters.why_unplaced("proj-1");
+        assert!(
+            why.contains("has not yet read which projects it serves"),
+            "an unread list is not an empty one: {why}"
+        );
+        assert!(
+            !why.contains("does not serve"),
+            "reading absence off a list this box never read is how a live master is told it was decommissioned: {why}"
+        );
+        assert!(!why.contains("sweep"), "nothing is promised here: {why}");
+        carries_no_deadline(&why);
+    }
+
+    #[test]
+    fn a_box_whose_read_failed_names_the_failure_rather_than_denying_the_project() {
+        let masters = Masters::new();
+        masters.note_served(Served::Unreadable("connect timeout".into()));
+        let why = masters.why_unplaced("proj-1");
+        assert!(
+            why.contains("connect timeout"),
+            "the reason core could not be read is the only thing an operator can act on: {why}"
+        );
+        assert!(
+            !why.contains("does not serve"),
+            "a failed read is not a denial: {why}"
+        );
+        carries_no_deadline(&why);
+    }
+
+    #[test]
+    fn a_project_missing_from_a_list_this_box_did_read_is_denied_by_name() {
+        let masters = Masters::new();
+        masters.note_served(Served::Read(vec!["proj-2".into(), "proj-3".into()]));
+        let why = masters.why_unplaced("proj-1");
+        assert!(
+            why.contains("does not serve") && why.contains("proj-1"),
+            "a snapshot that was read and does not hold the project is the one case this box may deny: {why}"
+        );
+        assert!(
+            why.contains("no sweep here will place"),
+            "the denial has to close the door rather than leave a master waiting on one: {why}"
+        );
+        assert!(
+            !why.contains("next sweep"),
+            "no sweep adds a project core does not serve to this box: {why}"
+        );
+        carries_no_deadline(&why);
+    }
+
+    #[test]
+    fn a_recorded_reason_reaches_the_pane_that_asked() {
+        let masters = Masters::new();
+        masters.note_served(Served::Read(vec!["proj-1".into()]));
+        masters.note_unplaced(
+            "proj-1",
+            Unplaced::Draining {
+                status: "draining".into(),
+            },
+        );
+        let why = masters.why_unplaced("proj-1");
+        assert!(
+            why.contains("draining"),
+            "the precondition the sweep recorded is the whole deliverable of this refusal: {why}"
+        );
+        assert!(
+            !why.contains("sweep place") && !why.contains("next sweep places"),
+            "a recorded obstacle is not a wait: {why}"
+        );
+        carries_no_deadline(&why);
+    }
+
+    // cm:guard the ONE arm that may promise a sweep, and it may only because the sweep really does
+    // place a pane for a served project with nothing recorded against it.
+    #[test]
+    fn only_a_served_project_with_nothing_against_it_is_promised_the_next_sweep() {
+        let masters = Masters::new();
+        masters.note_served(Served::Read(vec!["proj-1".into()]));
+        let why = masters.why_unplaced("proj-1");
+        assert!(
+            why.contains("next sweep"),
+            "this is the one state a wait is the right answer for, and a master told nothing here stops declaring for good: {why}"
+        );
+        carries_no_deadline(&why);
+    }
+
+    // cm:guard the bool is the whole of the once-ness. A reason that repeats is a line per sweep on
+    // a box that sweeps every thirty seconds, which is the silence this issue is about wearing a
+    // different face.
+    #[test]
+    fn a_reason_is_reported_when_it_arrives_and_when_it_changes_and_never_in_between() {
+        let masters = Masters::new();
+        assert!(
+            masters.note_unplaced("proj-1", Unplaced::NothingAdmissible),
+            "a reason nothing has said yet is new"
+        );
+        assert!(
+            !masters.note_unplaced("proj-1", Unplaced::NothingAdmissible),
+            "the same reason on the next sweep says nothing"
+        );
+        assert!(
+            masters.note_unplaced("proj-1", Unplaced::NoRepoPath),
+            "a different reason is a different thing for an operator to do"
+        );
+        masters.clear_unplaced("proj-1");
+        assert!(
+            masters.note_unplaced("proj-1", Unplaced::NoRepoPath),
+            "a project placed and then unplaced again is reported again — the clear is what makes the next report honest"
+        );
+    }
+
+    #[test]
+    fn a_placed_project_has_nothing_recorded_against_it() {
+        let masters = Masters::new();
+        masters.note_served(Served::Read(vec!["proj-1".into()]));
+        masters.note_unplaced("proj-1", Unplaced::NothingAdmissible);
+        let held = masters.why_unplaced("proj-1");
+        assert!(
+            held.contains("nothing claimable"),
+            "while the reason stands it is what the pane is told: {held}"
+        );
+        masters.clear_unplaced("proj-1");
+        let cleared = masters.why_unplaced("proj-1");
+        assert_ne!(
+            held, cleared,
+            "a refusal that reads the same before and after the state changed is one nothing can learn from"
+        );
+        assert!(
+            !cleared.contains("nothing claimable"),
+            "a reason that outlives the state it described is a refusal that lies: {cleared}"
+        );
+    }
+
+    // cm:guard an empty pool answers `AdoptOnly`, NOT "skip". The distinction is the `register`
+    // call, and it is the whole of the field incident: 14 hours of skipped sweeps let core reap the
+    // session row of a master that was running the entire time.
+    #[test]
+    fn an_empty_pool_still_places_a_pane_that_already_exists() {
+        assert_eq!(
+            placement_for(&[]),
+            Placement::AdoptOnly,
+            "a project with nothing claimable still has its live pane adopted and re-registered, or core reaps the row that pane's capability names"
+        );
+        assert_eq!(
+            placement_for(&[issue("a")]),
+            Placement::AdoptOrStart,
+            "a project with work may have a master started for it"
+        );
+    }
+
+    // cm:guard the bound this replaces was written as a `continue`, and reinstating one here
+    // reinstates the whole defect. What remains is `AdoptOnly`, which starts nothing.
+    #[test]
+    fn the_empty_pool_branch_no_longer_skips_the_registration() {
+        let body = sweep_body();
+        assert!(
+            body.contains("placement_for(&admissible)"),
+            "the sweep decides placement from the pool through the named function, so the decision is a thing a test can call"
+        );
+        assert!(
+            !body.contains("|| masters.get(&runner.project_id).is_none()"),
+            "this short-circuit is what skipped `ensure_master` for a quiet project, and with it the `register` that keeps a live pane's session row beating (ISS-1092)"
+        );
+        assert!(
+            body.contains("ensure_master(") && body.contains("placement,"),
+            "the placement has to reach `ensure_master`, or the branch decides nothing"
+        );
+    }
+
+    // cm:guard the liveness question comes BEFORE `register` on the adopt-only path. Asking core
+    // first would open a master session row for a project this sweep is about to start no master
+    // for — a row nothing beats for, which is the reaping this change exists to stop, arriving
+    // through the fix.
+    #[test]
+    fn adopt_only_answers_absent_before_it_asks_core_for_a_session() {
+        let body = ensure_master_body();
+        let guard = body
+            .find("Placement::AdoptOnly && !terminal::alive")
+            .expect("the adopt-only path must ask tmux whether a pane is there");
+        let register = body
+            .find("master_api::register(")
+            .expect("ensure_master must register with core");
+        assert!(
+            guard < register,
+            "a sweep that starts no master must not create a session row for one"
+        );
+    }
+
+    // cm:guard the adopt-only path may not reach the spawn at all, and the window this closes is a
+    // pane that was alive at the first check and gone by the second — the awaits between them are
+    // a core call and an MCP read. Without this return the sweep starts a master for a project with
+    // nothing claimable, which is the bound above failing through the fix meant to keep it.
+    #[test]
+    fn adopt_only_cannot_fall_through_to_the_spawn_when_the_pane_dies_mid_registration() {
+        let body = ensure_master_body();
+        let adopted = body
+            .find("return PaneState::Adopted;")
+            .expect("the adopt branch must return");
+        let spawn = body
+            .find("install_skill(&resolved.repo_path)")
+            .expect("the spawn path must start with the skill install");
+        let between = &body[adopted..spawn];
+        assert!(
+            between.contains("if placement == Placement::AdoptOnly {"),
+            "a pane that exits while `register` is awaited must not turn `AdoptOnly` into a spawn"
+        );
+    }
+
+    // cm:guard `created` while a pane is ALIVE is the daemon proving the running pane's capability
+    // is orphaned, and it is reported at ERROR because nothing on this box will clear it.
+    #[test]
+    fn adopting_a_pane_onto_a_freshly_created_session_is_reported() {
+        let body = ensure_master_body();
+        let adopt = body
+            .find("adopting the resident session")
+            .expect("the adopt branch must be findable");
+        let rest = &body[adopt..];
+        assert!(
+            rest.contains("if session.created {"),
+            "a pane adopted onto a session core created fresh holds a capability for the session that one replaced, and nothing else on this box can notice it"
+        );
+        let report = rest
+            .find("tracing::error!")
+            .map(|i| &rest[i..])
+            .expect("it is an error, not an info: the only recovery is ending the pane");
+        assert!(
+            report.contains("{name}") && report.contains("session.session_id"),
+            "the report names the pane to end and the session the box now holds, because those two are what the operator acts on"
         );
     }
 }

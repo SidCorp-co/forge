@@ -17,17 +17,7 @@ const { messageRoleToTurnRole, normalizeTurnContent, replaceMessageAt, sliceMess
   await import('./turns-helpers.js');
 
 describe('messageRoleToTurnRole', () => {
-  it('passes through user/assistant/tool roles', () => {
-    expect(messageRoleToTurnRole({ role: 'user', content: 'hi' })).toBe('user');
-    expect(messageRoleToTurnRole({ role: 'assistant', content: 'hi' })).toBe('assistant');
-    expect(messageRoleToTurnRole({ role: 'tool', content: 'hi' })).toBe('tool');
-  });
-
-  it('coerces legacy system role to tool', () => {
-    expect(messageRoleToTurnRole({ role: 'system', content: 'hi' })).toBe('tool');
-  });
-
-  it('falls back to entry.type when role is absent (CLI-runner shape)', () => {
+  it('reads the canonical entry kind', () => {
     expect(messageRoleToTurnRole({ type: 'assistant', content: 'hi' })).toBe('assistant');
     expect(messageRoleToTurnRole({ type: 'user', content: 'hi' })).toBe('user');
     expect(messageRoleToTurnRole({ type: 'system', content: 'hi' })).toBe('tool');
@@ -35,8 +25,24 @@ describe('messageRoleToTurnRole', () => {
     expect(messageRoleToTurnRole({ type: 'tool_result' })).toBe('tool');
   });
 
-  it('prefers role over type when both are present', () => {
-    expect(messageRoleToTurnRole({ role: 'user', type: 'assistant', content: 'hi' })).toBe('user');
+  // cm:guard a legacy `role` entry answers NULL, and that is the assertion rather
+  // than an oversight. Every row at rest was rewritten by
+  // `db/backfill-canonical-transcripts.ts` and what a device on the previous
+  // release sends is converted on the way in by `canonical-legacy.ts`, so a
+  // `role` entry arriving here is a conversion that did not happen. Reading it
+  // anyway would make the missing conversion invisible and put the second shape
+  // back (ISS-1030).
+  it('does not read a legacy `role` entry — the conversion happens before this', () => {
+    expect(messageRoleToTurnRole({ role: 'user', content: 'hi' })).toBeNull();
+    expect(messageRoleToTurnRole({ role: 'assistant', content: 'hi' })).toBeNull();
+    expect(messageRoleToTurnRole({ role: 'tool', content: 'hi' })).toBeNull();
+    expect(messageRoleToTurnRole({ role: 'system', content: 'hi' })).toBeNull();
+  });
+
+  it('reads `type` on an entry that also carries a stale `role`', () => {
+    expect(messageRoleToTurnRole({ role: 'user', type: 'assistant', content: 'hi' })).toBe(
+      'assistant',
+    );
   });
 
   it('returns null for malformed entries', () => {

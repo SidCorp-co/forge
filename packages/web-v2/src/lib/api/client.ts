@@ -4,6 +4,7 @@
 // rewrites (next.config.ts → E2E_CORE_PROXY_URL) proxy to core. In prod
 // NEXT_PUBLIC_API_URL is set to core's absolute origin at build time.
 import { CORE_URL } from '@/lib/utils/core-url';
+import { reportTransportFailure } from './transport-failure';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || '/api';
 
@@ -56,13 +57,28 @@ async function parseErrorBody(res: Response): Promise<{
   return { message: res.statusText };
 }
 
+/**
+ * Every request this module makes goes out through here, and it is the ONLY
+ * place a rejected `fetch` is reported.
+ */
+// cm:guard one door on purpose. `apiMultipart` used to call `fetch` itself, which made the transport-failure boundary two places that had to agree; a second caller added later would have been a third. The `catch` rethrows untouched — reporting is not handling, and every caller still sees the error it always saw.
+async function sendRequest(endpoint: string, init: RequestInit): Promise<Response> {
+  const url = `${API_URL}${endpoint}`;
+  try {
+    return await fetch(url, init);
+  } catch (err) {
+    reportTransportFailure(err, { url, method: init.method ?? 'GET' });
+    throw err;
+  }
+}
+
 async function fetchRaw(endpoint: string, options: RequestInit = {}): Promise<Response> {
   const hasBody = options.body !== undefined && options.body !== null;
   const headers = new Headers(options.headers as HeadersInit | undefined);
   if (hasBody && !headers.has('Content-Type')) {
     headers.set('Content-Type', 'application/json');
   }
-  const res = await fetch(`${API_URL}${endpoint}`, {
+  const res = await sendRequest(endpoint, {
     ...options,
     credentials: 'include',
     headers,
@@ -85,7 +101,7 @@ export async function apiClient<T>(endpoint: string, options: RequestInit = {}):
 
 /** Multipart-aware client. Sends FormData without the JSON Content-Type. */
 export async function apiMultipart<T>(endpoint: string, formData: FormData): Promise<T> {
-  const res = await fetch(`${API_URL}${endpoint}`, {
+  const res = await sendRequest(endpoint, {
     method: 'POST',
     credentials: 'include',
     body: formData,

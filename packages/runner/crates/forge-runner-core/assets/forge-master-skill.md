@@ -70,6 +70,26 @@ declaration that is refused has written nothing, so there is nothing to undo: re
 says, because it names what to do next — which issue collided, which tree is held, which row is
 pending, or which project this pane is actually the master for.
 
+## When this pane was resumed, answer for what you inherited
+
+A pane rebuilt after its predecessor died comes back holding that predecessor's runs. **Before you
+declare any new work, say what happens to each one:**
+
+```
+forge-runner run choice <run-id> continue|restart|leave --reason "<why, in your own words>"
+```
+
+Three words and nothing else, and the reason is required. The refusal you get on your next
+declaration names the runs still owed an answer, so you do not have to go looking for them.
+
+**Closing a run is not answering for it.** The close records that the row ended; it does not record
+what you decided, and a reason written there reaches no issue. If you have already closed an
+inherited run, you still owe it a choice — the verb works just as well on a run that has ended.
+
+**What this is for:** the choice is written onto the issue, so whoever picks that work up next reads
+why it was continued, restarted or left, instead of finding a lease that simply stopped. Deciding is
+yours; the box records the decision and performs none of it.
+
 **The lease on the issue is still yours to take** — `forge claim` takes it and every CLI write
 renews it — and it is what says *this issue is spoken for*. The run row is a different thing: it
 says *this is what was handed out, and where the work is*. Before 2026-09-13 the lease was the whole

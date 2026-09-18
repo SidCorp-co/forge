@@ -35,10 +35,16 @@ import { broadcastSession, broadcastTurnAppended, broadcastTurnTruncated } from 
 import { extractTurnPreview } from './chat-preview.js';
 import { syncRunnerHealthFromChatTerminal } from './chat-runner-health.js';
 import { createChatSessionRow } from './chat-turn.js';
+import { agentSessionEventsRoutes } from './events-routes.js';
 import { agentSessionInboxRoutes } from './inbox-routes.js';
 import { agentSessionLifecycleRoutes } from './lifecycle-routes.js';
+import { applyTranscriptPatch } from './patch-transcript.js';
 import { agentSessionPipelineControlRoutes } from './pipeline-control-routes.js';
-import { BLIND_SCHEDULE_RUN_REASON, isBlindScheduleRun } from './schedule-evidence.js';
+import {
+  BLIND_SCHEDULE_RUN_REASON,
+  countTranscriptToolCalls,
+  isBlindScheduleRun,
+} from './schedule-evidence.js';
 import { agentSessionListColumns } from './service.js';
 import {
   assertAgentChatOwner,
@@ -54,6 +60,7 @@ import {
   notFound,
 } from './session-access.js';
 import { recordSessionCreatedActivity } from './session-activity.js';
+import { recordReportedTranscript } from './session-events.js';
 import { detectUnexpandedSkillFailure, finalizeScheduleSessionFailure } from './session-failure.js';
 import { onTerminalPatch } from './terminal-effects.js';
 import { syncTurnsWithMessages } from './turns-helpers.js';
@@ -96,7 +103,15 @@ const patchSchema = z
     usage: z.unknown().optional(),
     metadata: z.unknown().optional(),
     diff: z.unknown().optional(),
+    // cm:hack ISS-1030 until: no device below the runner release carrying the
+    // raw-line route has reported in 30 days — then this field goes with
+    // `messages`. A daemon on that release counts its own tool calls because its
+    // transcript could not; one on this release has a transcript that can.
     toolCallCount: z.number().int().min(0).optional(),
+    // cm:guard the runner reports an error STRING and core writes the transcript
+    // entry. The runner used to append a `system` entry to a `messages` array it
+    // sent itself, which is the second producer ISS-1030 removed.
+    turnError: z.string().max(4000).optional(),
     runtimeState: z.enum(sessionRuntimeStates).nullable().optional(),
   })
   .strict()
@@ -121,6 +136,7 @@ agentSessionRoutes.use('*', requireUserOrDevice(), assertEmailVerified());
 // cm:guard mounted BEFORE the `:id` handlers and the order is load-bearing: Hono matches in registration order, so a static path registered after `:id` is swallowed by it.
 agentSessionRoutes.route('/', agentSessionLifecycleRoutes);
 agentSessionRoutes.route('/', agentSessionInboxRoutes);
+agentSessionRoutes.route('/', agentSessionEventsRoutes);
 
 // Pipeline-session types for the retry endpoint. Mirrors the predicate
 // used by sweeper.ts and the migration backfill.
@@ -555,7 +571,7 @@ agentSessionRoutes.patch(
     const patch = c.req.valid('json');
     const userId = c.get('userId');
 
-    const existing = await loadSessionOr404(id);
+    let existing = await loadSessionOr404(id);
 
     // A CLI runner streams its chat reply back here with a device token. Scope
     // it tightly: a device may write ONLY the session that was dispatched to it.
@@ -568,6 +584,16 @@ agentSessionRoutes.patch(
       assertSessionOwnerOrAdmin(existing, access, userId);
     }
 
+    const transcript = await applyTranscriptPatch({
+      sessionId: id,
+      isDevice: c.get('principal') === 'device',
+      isTerminal: patch.status !== undefined && TERMINAL_SESSION_STATUSES.has(patch.status),
+      patch,
+    });
+    const patchedMessages = transcript.messages;
+    const derivedTranscript = transcript.derived;
+    if (derivedTranscript) existing = await loadSessionOr404(id);
+
     const patchNow = new Date();
     const updates: Record<string, unknown> = { updatedAt: patchNow };
     if (patch.title !== undefined) updates.title = patch.title;
@@ -578,10 +604,15 @@ agentSessionRoutes.patch(
       updates.runtimeState = patch.runtimeState;
     }
     if (patch.repoPath !== undefined) updates.repoPath = patch.repoPath;
-    if (patch.messages !== undefined) updates.messages = patch.messages;
     if (patch.usage !== undefined) updates.usage = patch.usage;
     if (patch.metadata !== undefined) updates.metadata = patch.metadata;
     if (patch.diff !== undefined) updates.diff = patch.diff;
+    // cm:guard the transcript this PATCH persists is the CONVERTED one, never
+    // the array as it arrived: `applyTranscriptPatch` has already rewritten a
+    // daemon-on-the-previous-release's legacy entries into the canonical shape,
+    // and writing `patch.messages` here would put back exactly the entries no
+    // reader left in the product can read.
+    if (patchedMessages !== undefined) updates.messages = patchedMessages;
 
     // cm:guard any worker-side write is a heartbeat signal and CASes queued→running, but a park is NOT activity. `awaiting_input` deliberately does not bump `lastHeartbeatAt` — a session waiting on a human is not progressing, and stamping it healthy is the exact shape `VISION: state-never-lies` forbids. The heartbeat hop exempts the park by READING the state (`jobs/loop-monitor.ts`), never by being told the session is alive.
     const isWorkerActivity =
@@ -649,7 +680,7 @@ agentSessionRoutes.patch(
               ? existing.messages.length
               : 0;
         const unexpanded = detectUnexpandedSkillFailure(
-          patch.messages ?? existing.messages,
+          patchedMessages ?? existing.messages,
           pendingSkillName,
           priorCount,
         );
@@ -670,20 +701,29 @@ agentSessionRoutes.patch(
       updates.metadata = restMeta;
     }
 
-    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/agent_sessions.rs — SessionPatch.tool_call_count; the runner OMITS it when it cannot count, and isBlindScheduleRun turns only a reported 0 into a failure
-    if (patch.toolCallCount !== undefined && c.get('principal') === 'device') {
+    // cm:guard the TRANSCRIPT answers where there is one, and the runner's own
+    // count only where there is not. A daemon on this release stopped counting —
+    // `count_tool_uses` existed in `chat.rs` solely because the transcript could
+    // not answer, and it is deleted — so a session whose lines core folded reads
+    // its own record. One on the previous release still reports, under the same
+    // amnesty as `messages`.
+    // cm:edge contract -> packages/runner/crates/forge-runner-core/src/transport/agent_sessions.rs — SessionPatch no longer carries `tool_call_count`; the field on `patchSchema` is what a daemon below that release still sends.
+    const reportedToolCalls = derivedTranscript
+      ? countTranscriptToolCalls(existing.messages)
+      : patch.toolCallCount;
+    if (reportedToolCalls !== undefined && c.get('principal') === 'device') {
       const metaBase =
         (updates.metadata as Record<string, unknown> | undefined) ??
         existingMetaForSkillCheck ??
         {};
-      updates.metadata = { ...metaBase, toolCallCount: patch.toolCallCount };
+      updates.metadata = { ...metaBase, toolCallCount: reportedToolCalls };
     }
     if (
       isBlindScheduleRun({
         resolvedStatus: (updates.status as AgentSessionStatus | undefined) ?? patch.status,
         metadata:
           (updates.metadata as Record<string, unknown> | undefined) ?? existingMetaForSkillCheck,
-        toolCallCount: patch.toolCallCount,
+        toolCallCount: reportedToolCalls,
         principal: c.get('principal'),
       })
     ) {
@@ -700,7 +740,7 @@ agentSessionRoutes.patch(
       patch.status === 'failed' && !isUserCancelled && existing.failureReason !== 'user_cancelled'
         ? await finalizeScheduleSessionFailure({
             sessionId: id,
-            messages: patch.messages ?? existing.messages,
+            messages: patchedMessages ?? existing.messages,
             note: null,
             baseMetadata:
               (updates.metadata as Record<string, unknown> | undefined) ??
@@ -737,9 +777,13 @@ agentSessionRoutes.patch(
         .where(eq(agentSessions.id, id))
         .returning();
       if (!row) throw notFound('agent session not found');
+      // cm:edge lockstep -> packages/core/src/agent-sessions/session-events.ts — the carrier's record of a transcript written past it
+      if (transcript.snapshot && patchedMessages) {
+        await recordReportedTranscript(tx, id, patchedMessages, patchNow);
+      }
       if (!messagesPatched) return { updated: row, sync: null };
       const prevMessages = Array.isArray(existing.messages) ? existing.messages : [];
-      const nextMessages = Array.isArray(patch.messages) ? patch.messages : [];
+      const nextMessages = patchedMessages ?? [];
       const result = await syncTurnsWithMessages(row.id, prevMessages, nextMessages, tx);
       return { updated: row, sync: result };
     });
@@ -781,7 +825,7 @@ agentSessionRoutes.patch(
       reportedStatus: patch.status,
       persistedStatus: updated.status,
       isUserCancelled,
-      messages: patch.messages ?? existing.messages,
+      messages: patchedMessages ?? existing.messages,
     });
 
     // cm:guard the bridges read the REPORTED `patch.status` while everything above reads the PERSISTED `updated.status`. The split is deliberate and is NOT a bug fix — every rewrite core performs today maps one terminal status onto another (ISS-733 skill-not-synced, `audit_ran_blind`), so the two agree and no test can tell them apart. It is priced as hardening in one direction: a `...Once` bridge that fires on a status core did not accept sends a duplicate room reply, while a revoke that does kills the credential of a session still running. `writeBackScheduleLastStatus` above already reads the persisted value for its own version of this reason. The condition that would end the split is a rewrite mapping a terminal report onto a NON-terminal status — none exists, and if one is added it belongs here first.

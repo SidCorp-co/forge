@@ -262,7 +262,7 @@ describe('reasoning becomes one thinking block', () => {
 
 // cm:guard the coalescing window is ONE constant, and this test is the only thing that keeps it
 // one. It scans the directory rather than importing the two callers, because the failure it defends
-// against is a third caller nobody thought to import: `run-turn.ts` and `conversation-progress.ts`
+// against is a third caller nobody thought to import: `conversation-progress.ts`
 // each held their own `= 120` for one commit, with a comment on one of them saying to raise or
 // lower both or neither. A comment is not a constraint. The decision that fixed the window stated
 // its undo as raising or lowering a single shared constant, so a second declaration of one IS the

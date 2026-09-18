@@ -5,11 +5,12 @@
 // knows the pair `(adapter, externalId)` that names it and the handle that
 // gives it its scope.
 
-import { and, desc, eq, gte, lte, sql } from 'drizzle-orm';
+import { and, asc, desc, eq, gte, inArray, like, lte, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { db as defaultDb } from '../db/client.js';
 import type { ConversationWindowDecision } from '../db/schema-conversations.js';
 import {
+  type ConversationAdapter,
   type ConversationMessageRole,
   conversationMessages,
   conversations,
@@ -39,6 +40,7 @@ export {
   listConversationsInProject,
   renameConversation,
   setConversationArchived,
+  setConversationPresence,
   settleConversationMode,
 } from './rooms.js';
 
@@ -66,6 +68,8 @@ export interface StoredConversationMessage {
   authorLabel: string | null;
   /** The transport's own id for whoever spoke, where it named one. */
   authorKey: string | null;
+  /** The transport's own id for the message this one replies to or quotes, where it named one (ISS-1087). */
+  replyToExternalId: string | null;
   content: string;
   /** Ordered canonical blocks, or null on a row written through the text-only door. */
   blocks: ContentBlock[] | null;
@@ -160,7 +164,7 @@ export interface AppendMessageArgs {
    * The row's id, where the caller must know it BEFORE the insert; the column
    * default mints one otherwise.
    */
-  // cm:guard this exists so a streamed transcript entry and the row it becomes share ONE identity. `POST /api/chat` emits the entry as it grows, and a client keyed by `id` must reduce those frames and the final one to a single turn — with the id minted here at insert time, the growing frames carried one and the settled frame another, and a reducer saw two assistant turns for one answer (ISS-1029 review, F1, confirmed on beta: 19 frames under one id, the 20th under the row's).
+  // cm:guard this exists so a streamed transcript entry and the row it becomes share ONE identity. the socket emits the entry as it grows, and a client keyed by `id` must reduce those frames and the final one to a single turn — with the id minted here at insert time, the growing frames carried one and the settled frame another, and a reducer saw two assistant turns for one answer (ISS-1029 review, F1, confirmed on beta: 19 frames under one id, the 20th under the row's).
   id?: string | undefined;
   role: ConversationMessageRole;
   content: string;
@@ -168,6 +172,7 @@ export interface AppendMessageArgs {
   authorLabel?: string | null;
   authorKey?: string | null;
   externalId?: string | null;
+  replyToExternalId?: string | null;
   images?: readonly ConversationImage[] | undefined;
   /** Ordered canonical blocks for this row; omit on a caller that has only text. */
   blocks?: readonly ContentBlock[] | null | undefined;
@@ -249,6 +254,7 @@ export async function appendMessagesIn(
           authorKey: m.authorKey ?? null,
           content: m.content,
           externalId: m.externalId ?? null,
+          replyToExternalId: m.replyToExternalId ?? null,
           images: (m.images && m.images.length > 0 ? [...m.images] : null) as never,
           // cm:guard an EMPTY blocks array is written as null, not as `[]`: `[]` would say "this
           // turn produced nothing", which is a claim, while null says "this row carries its answer
@@ -278,9 +284,17 @@ export async function appendMessagesIn(
 // cm:guard the range is applied in SQL and BEFORE the limit, never by filtering the newest rows afterwards: a window claimed while its successor collects can have its whole contents pushed out of the newest `cap` rows, and the filter would then find nothing and close a person's question `unreachable` for good (ISS-1004, review pass 1 F4).
 export async function readMessagesInRange(
   conversationId: string,
-  range: { firstSeq: number; lastSeq: number; limit: number },
+  range: {
+    firstSeq: number;
+    lastSeq: number;
+    limit: number;
+    /** Which end of the range `limit` keeps; the newest, absent. */
+    // cm:guard the router asks for the OLDEST, because a window that collected more than a turn may carry is answered from its head and its tail is split off to the successor: keeping the newest here is how the first fifty messages of a busy room vanished without a row saying so (ISS-1086 criterion 10). Every other reader wants the newest and says nothing.
+    order?: 'newest-first' | 'oldest-first';
+  },
   tx: Executor = defaultDb,
 ): Promise<StoredConversationMessage[]> {
+  const oldestFirst = range.order === 'oldest-first';
   const rows = await tx
     .select()
     .from(conversationMessages)
@@ -291,9 +305,9 @@ export async function readMessagesInRange(
         lte(conversationMessages.seq, range.lastSeq),
       ),
     )
-    .orderBy(desc(conversationMessages.seq))
+    .orderBy(oldestFirst ? asc(conversationMessages.seq) : desc(conversationMessages.seq))
     .limit(range.limit);
-  return rows.reverse().map(toStored);
+  return (oldestFirst ? rows : rows.reverse()).map(toStored);
 }
 
 /** The last `limit` turns, oldest first. */
@@ -309,6 +323,38 @@ export async function readMessages(
     .orderBy(desc(conversationMessages.seq))
     .limit(limit);
   return rows.reverse().map(toStored);
+}
+
+/**
+ * Which of these transport ids name a message one of THESE handles delivered on this adapter.
+ */
+// cm:guard scoped by the HANDLES' user ids and never by this conversation's rows alone: a Rocket.Chat thread is a conversation of its own, and the message a person quotes from inside it is the root the handle posted in the ROOM's conversation, so the row is found wherever the handle wrote it. Scoped by handle and not adapter-wide, because a quote of a message some OTHER handle posted in another room addresses nobody in this one (ISS-1087 criteria 13, 14; whole-set review F3). The join through `conversations` keeps one transport's ids from being read against another's.
+export async function assistantSentExternalIds(
+  adapter: ConversationAdapter,
+  handleUserIds: readonly string[],
+  ids: readonly string[],
+  venueScope: string | null = null,
+  tx: Executor = defaultDb,
+): Promise<Set<string>> {
+  if (ids.length === 0 || handleUserIds.length === 0) return new Set();
+  // cm:guard `venueScope` is the prefix the transport says every venue on the same SERVER shares, and the rows are read within it: a message id is unique within one installation only, so a handle bound on two servers must not have its message on one answer for an id quoted on the other (whole-set review F2, recheck). Null is one server, and no filter.
+  const withinScope = venueScope
+    ? [like(conversations.externalId, `${venueScope.replace(/[\\%_]/g, '\\$&')}%`)]
+    : [];
+  const rows = await tx
+    .select({ externalId: conversationMessages.externalId })
+    .from(conversationMessages)
+    .innerJoin(conversations, eq(conversations.id, conversationMessages.conversationId))
+    .where(
+      and(
+        eq(conversations.adapter, adapter),
+        ...withinScope,
+        eq(conversationMessages.role, 'assistant'),
+        inArray(conversationMessages.authorUserId, [...handleUserIds]),
+        inArray(conversationMessages.externalId, [...ids]),
+      ),
+    );
+  return new Set(rows.flatMap((r) => (r.externalId ? [r.externalId] : [])));
 }
 
 /**
@@ -378,6 +424,7 @@ function toStored(row: typeof conversationMessages.$inferSelect): StoredConversa
     authorKey: row.authorKey,
     content: row.content,
     externalId: row.externalId,
+    replyToExternalId: row.replyToExternalId,
     blocks: asBlocks(row.blocks),
     images: asImages(row.images),
     deliveryProof: row.deliveryProof ?? null,

@@ -11,6 +11,7 @@ import * as matchers from "@testing-library/jest-dom/matchers";
 import { QueryClient, QueryClientProvider } from "@tanstack/react-query";
 import { act, cleanup, fireEvent, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import { parseMessages } from "@/features/session/types";
 
 expect.extend(matchers);
 
@@ -537,11 +538,13 @@ describe("ConversationChat \u00b7 a question the server has filed but not yet an
     });
   });
 
-  // cm:guard watched on a local walk in Chrome, 2026-09-17: the placeholder sat under the reply as it
-  // was being typed, saying the turn had produced nothing directly beneath the words it had produced.
-  // It is the thing streaming REPLACES, so it goes the moment frames arrive — and stays for the gap
-  // before the first one, which is the only time it is telling the truth.
-  it("drops the Agent is working placeholder once frames are arriving", async () => {
+  // cm:guard watched on a local walk in Chrome, 2026-09-17: the mascot placeholder sat under the
+  // reply as it was being typed, saying the turn had produced nothing directly beneath the words it
+  // had produced. ISS-1078 answered that by silencing it the moment frames arrived, which left the
+  // rest of the turn saying nothing at all. ISS-1083 replaces it with a line that says which stage
+  // the turn is in — so this case now asserts the deliberately changed behaviour: the placeholder
+  // is gone from this surface entirely, and the line REMAINS through the frames instead of going.
+  it("says which stage the turn is in, from the gap before the first frame through the prose", async () => {
     let answer: (v: unknown) => void = () => undefined;
     send.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
 
@@ -556,8 +559,10 @@ describe("ConversationChat \u00b7 a question the server has filed but not yet an
     });
     await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
 
-    // Before the first frame the turn has produced nothing, and the placeholder says so.
-    expect(screen.getByText("Agent is working…")).toBeInTheDocument();
+    // Criterion 15: before the first frame the turn has produced nothing, and says so.
+    expect(screen.queryByText("Agent is working…")).toBeNull();
+    const line = screen.getByTestId("turn-stage");
+    expect(line).toHaveTextContent("Working…");
 
     await act(async () => {
       routeEvent(
@@ -576,7 +581,56 @@ describe("ConversationChat \u00b7 a question the server has filed but not yet an
     });
 
     expect(screen.getByText("Sure — let me look")).toBeInTheDocument();
-    expect(screen.queryByText("Agent is working…")).toBeNull();
+    // Criterion 17, on the surface rather than in isolation: the line a person was already looking
+    // at is the SAME element, holding one position, now reading the stage the turn moved to.
+    expect(screen.getByTestId("turn-stage")).toBe(line);
+    expect(line).toHaveTextContent("Responding…");
+
+    await act(async () => {
+      answer({ conversationId: "c1", windowId: "w1", seq: 0, decision: "answered", messages: [], windows: [] });
+    });
+  });
+
+  // cm:guard criterion 20, and the pairing IS the assertion: the working line is on screen while
+  // `parseMessages` yields NOTHING for the same entry. A stage drawn as a transcript block would
+  // pass the first half and fail the second, and it would be a claim no producer emitted — the
+  // defect ISS-1079 refused when it declined to invent thinking blocks on the Claude Code path.
+  it("says a turn with nothing in it is working without inventing a block for it", async () => {
+    let answer: (v: unknown) => void = () => undefined;
+    send.mockImplementation(() => new Promise((resolve) => { answer = resolve; }));
+
+    const qc = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    render(
+      <QueryClientProvider client={qc}>
+        <ConversationChat projectId="p1" />
+      </QueryClientProvider>,
+    );
+    await act(async () => {
+      fireEvent.click(screen.getByRole("button", { name: "send" }));
+    });
+    await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
+
+    const entry = { id: "a1", type: "assistant" as const, timestamp: 1, content: "" };
+    await act(async () => {
+      routeEvent(
+        {
+          event: "conversation.progress",
+          data: { conversationId: "c1", rev: 1, entry },
+          timestamp: "2026-09-17T12:00:00.000Z",
+        },
+        qc,
+      );
+      flushInvalidations();
+    });
+
+    expect(screen.getByTestId("turn-stage")).toHaveTextContent("Working…");
+    expect(parseMessages([entry])).toEqual([]);
+    // Nothing of the transcript is drawn, because there is nothing in it. The two testids are the
+    // ones a tool card and a thinking line ALWAYS carry — `tool-result-summary` is on every card in
+    // both of its arms — so a synthesized block of either kind fails here rather than passing on a
+    // name no element uses.
+    expect(screen.queryByTestId("tool-result-summary")).toBeNull();
+    expect(screen.queryByTestId("thinking-line")).toBeNull();
 
     await act(async () => {
       answer({ conversationId: "c1", windowId: "w1", seq: 0, decision: "answered", messages: [], windows: [] });

@@ -3,6 +3,7 @@ import { HTTPException } from 'hono/http-exception';
 import { db } from '../db/client.js';
 import {
   agentSessions,
+  isRunnerLessScheduleKind,
   pipelineRuns,
   projects,
   type ScheduleKind,
@@ -163,7 +164,13 @@ export async function listScheduleRuns(id: string, actorUserId: string, limit?: 
   const access = await loadProjectAccess(schedule.projectId, actorUserId);
   assertProjectRole(access, 'viewer', 'not a project member');
 
-  if (schedule.kind === 'script') {
+  // cm:guard the test is the runner-less SET, never one kind. Every kind that executes inside core
+  // writes `schedule_runs` and starts NO agent session, so the agent-sessions query below answers
+  // `{ runs: [] }` for it — which is what `release_batch` did from the day it shipped until
+  // ISS-1085 slice 3 found it: every outcome it ever recorded was unreadable through the one
+  // endpoint that exists to show them. A kind added to `RUNNER_LESS_SCHEDULE_KINDS` is covered here
+  // by construction; one added only to `scheduleKinds` is the silence again.
+  if (isRunnerLessScheduleKind(schedule.kind)) {
     const scriptRows = await db
       .select()
       .from(scheduleRuns)

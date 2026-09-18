@@ -10,7 +10,8 @@ import { index, jsonb, pgTable, text, timestamp, uuid } from 'drizzle-orm/pg-cor
 import { users } from './schema.js';
 
 /** How a handle behaves in a group room it was not summoned into. */
-export const answerInGroupModes = ['window', 'mention'] as const;
+// cm:guard `tool` is a third mode and not a flag on the other two: in it the turn runs on every settled window as `window` does, and the room hears nothing unless the model calls `room_send` — the guards still run first, and a turn that never calls it is a named silence (ISS-1087).
+export const answerInGroupModes = ['window', 'mention', 'tool'] as const;
 export type AnswerInGroupMode = (typeof answerInGroupModes)[number];
 
 /**

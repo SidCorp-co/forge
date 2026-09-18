@@ -19,7 +19,6 @@ vi.mock('../../config/env.js', () => ({
     DATABASE_URL: 'postgres://test',
   },
 }));
-
 const selectLimit = vi.fn();
 const selectWhere = vi.fn(() => ({ limit: selectLimit }));
 const selectFrom = vi.fn(() => ({ where: selectWhere }));
@@ -35,7 +34,6 @@ vi.mock('../../db/client.js', () => ({
     transaction: async (fn: (tx: unknown) => unknown) => fn({}),
   },
 }));
-
 const runExternalChatTurn = vi.fn();
 vi.mock('../../assistant/external-chat.js', () => ({
   runExternalChatTurn: (...args: unknown[]) => runExternalChatTurn(...args),
@@ -52,6 +50,7 @@ vi.mock('../../assistant/tools/external-mcp.js', () => ({
 vi.mock('./context.js', () => ({
   buildConversationContext: async () => '',
   buildRocketChatHistoryToolset: () => ({ tools: [], execute: async () => ({ content: [] }) }),
+  buildRocketChatQuoteContextToolset: () => ({ tools: [], execute: async () => ({ content: [] }) }),
 }));
 
 const startEscalation = vi.fn();
@@ -150,6 +149,7 @@ vi.mock('../../conversations/store.js', () => ({
     row.mode ?? 'assistant',
   readMessages: async () => collected,
   readMessagesInRange: async () => collected,
+  assistantSentExternalIds: async () => new Set<string>(),
   deliveredDecisionUnderKey: async () => null,
   appendMessagesIn: async (_tx: unknown, args: { messages: Array<Record<string, unknown>> }) => {
     const rows = args.messages.map((msg, i) => ({

@@ -333,6 +333,8 @@ function CommentItem({
               body={node.body}
               format={node.format}
               nodes={node.nodes}
+              record={node.record}
+              recordLens={node.record?.lens ?? "product"}
               renderArtifact={(id) => {
                 const row = node.attachments.find((a) => a.id === id);
                 return row ? <AttachmentList rows={[row]} /> : null;

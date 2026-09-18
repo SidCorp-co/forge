@@ -242,6 +242,7 @@ export function CostCell({ value }: { value: number | undefined }) {
   return <Stat icon="dollar">{text}</Stat>;
 }
 
+// cm:guard the stale weight and colour come from `.fg-caption-stale` in styles/tokens.css and NEVER from Tailwind utilities on this span: `fg-caption` is unlayered and every utility sits in `@layer utilities`, so `font-semibold` and `text-[color:var(--amber-600)]` written here are swallowed and the row renders identical to a fresh one — that is what shipped and what beta served at d0389485c. `text-muted` is gone for the same reason: it never applied, and a class that does nothing reads as a colour somebody chose.
 /** How long the row has sat where it is. A settled row renders a dash rather
  *  than a figure, and a row past the stale threshold is told apart by its
  *  colour and its icon before the number is read at all. */
@@ -250,13 +251,13 @@ export function WaitingCell({
 }: {
   waited: { label: string; stale: boolean } | null;
 }) {
-  if (!waited) return <span className="fg-caption text-muted">—</span>;
+  if (!waited) return <span className="fg-caption">—</span>;
   return (
     <span
       className={
         waited.stale
-          ? "fg-caption inline-flex items-center gap-1 font-semibold text-[color:var(--amber-600)] tabular-nums"
-          : "fg-caption inline-flex items-center gap-1 text-muted tabular-nums"
+          ? "fg-caption fg-caption-stale inline-flex items-center gap-1 tabular-nums"
+          : "fg-caption inline-flex items-center gap-1 tabular-nums"
       }
       title={
         waited.stale

@@ -20,7 +20,7 @@ import {
   type ExternalMcpToolsets,
 } from '../../assistant/tools/external-mcp.js';
 import { type ConversationVenue, codeAuthored } from '../../conversations/ports.js';
-import type { WindowTurnInputs } from '../../conversations/route-window.js';
+import type { WindowCut, WindowTurnInputs } from '../../conversations/route-window.js';
 import type { TurnInputs, TurnReply } from '../../conversations/turn-runner.js';
 import { db } from '../../db/client.js';
 import { projects } from '../../db/schema.js';
@@ -72,6 +72,8 @@ export interface RocketChatTurnArgs {
   connectionId: string;
   shape: RoomShape;
   webBaseUrl: string | undefined;
+  /** Why the window stopped collecting — a turn cut before quiet is told so in its persona (ISS-1086). */
+  cut: WindowCut;
   /**
    * Make this turn's right to answer durable before a dispatch somebody else finishes.
    */
@@ -137,6 +139,7 @@ export function rocketChatTurn(args: RocketChatTurnArgs): RocketChatTurn {
         projectSlug: route.projectSlug,
         webBaseUrl: args.webBaseUrl,
         botName: bot.botName,
+        cut: args.cut.reason,
       }),
     };
     return seed;

@@ -26,7 +26,7 @@ function turn(over: Partial<TurnRow> & { id: string; turnIndex: number; role: Tu
 describe("parseTurns", () => {
   it("maps a user turn to an editable prompt item", () => {
     const items = parseTurns([
-      turn({ id: "t0", turnIndex: 0, role: "user", content: { value: { role: "user", content: "fix the bug" } } }),
+      turn({ id: "t0", turnIndex: 0, role: "user", content: { value: { type: "user", content: "fix the bug" } } }),
     ]);
     expect(items).toHaveLength(1);
     expect(items[0]).toMatchObject({ kind: "prompt", text: "fix the bug", turnId: "t0" });
@@ -40,12 +40,12 @@ describe("parseTurns", () => {
         role: "assistant",
         content: {
           value: {
-            role: "assistant",
-            contentBlocks: [
+            type: "assistant",
+            blocks: [
               { type: "text", text: "Editing now" },
               {
-                type: "tool_use",
-                tool: {
+                type: "tool",
+                toolCall: {
                   id: "tc1",
                   name: "Edit",
                   input: { file_path: "a.ts", old_string: "x", new_string: "y" },
@@ -71,10 +71,10 @@ describe("parseTurns", () => {
         role: "assistant",
         content: {
           value: {
-            role: "assistant",
-            contentBlocks: [
-              { type: "tool_use", tool: { id: "a", name: "TodoWrite", input: { todos: [{ content: "one", status: "pending" }] } } },
-              { type: "tool_use", tool: { id: "b", name: "TodoWrite", input: { todos: [{ content: "two", status: "completed" }] } } },
+            type: "assistant",
+            blocks: [
+              { type: "tool", toolCall: { id: "a", name: "TodoWrite", input: { todos: [{ content: "one", status: "pending" }] } } },
+              { type: "tool", toolCall: { id: "b", name: "TodoWrite", input: { todos: [{ content: "two", status: "completed" }] } } },
             ],
           },
         },
@@ -85,7 +85,7 @@ describe("parseTurns", () => {
     expect(todos[0]).toMatchObject({ type: "todos", todos: [{ content: "two", status: "completed" }] });
   });
 
-  it("derives blocks from legacy toolCalls + content when contentBlocks absent", () => {
+  it("derives blocks from bare toolCalls + content when a turn carries no ordered blocks", () => {
     const items = parseTurns([
       turn({
         id: "t3",
@@ -93,7 +93,7 @@ describe("parseTurns", () => {
         role: "assistant",
         content: {
           value: {
-            role: "assistant",
+            type: "assistant",
             content: "done",
             toolCalls: [{ id: "r", name: "Read", input: { file_path: "b.ts" } }],
           },
@@ -105,8 +105,8 @@ describe("parseTurns", () => {
 
   it("unwraps a flat entry (no { value } wrapper) and drops empty turns", () => {
     const items = parseTurns([
-      turn({ id: "flat", turnIndex: 0, role: "user", content: { role: "user", content: "hi" } as never }),
-      turn({ id: "empty", turnIndex: 1, role: "assistant", content: { value: { role: "assistant" } } }),
+      turn({ id: "flat", turnIndex: 0, role: "user", content: { type: "user", content: "hi" } as never }),
+      turn({ id: "empty", turnIndex: 1, role: "assistant", content: { value: { type: "assistant" } } }),
     ]);
     expect(items).toHaveLength(1);
     expect(items[0].text).toBe("hi");
@@ -320,10 +320,10 @@ describe("file diffs", () => {
         role: "assistant",
         content: {
           value: {
-            role: "assistant",
-            contentBlocks: [
-              { type: "tool_use", tool: { id: "a", name: "Edit", input: { file_path: "same.ts", old_string: "x", new_string: "y" } } },
-              { type: "tool_use", tool: { id: "b", name: "Edit", input: { file_path: "same.ts", old_string: "p", new_string: "q" } } },
+            type: "assistant",
+            blocks: [
+              { type: "tool", toolCall: { id: "a", name: "Edit", input: { file_path: "same.ts", old_string: "x", new_string: "y" } } },
+              { type: "tool", toolCall: { id: "b", name: "Edit", input: { file_path: "same.ts", old_string: "p", new_string: "q" } } },
             ],
           },
         },
@@ -486,5 +486,56 @@ describe("parseMessages over an assistant conversation row", () => {
     ]);
     expect(items.map((i) => i.kind)).toEqual(["prompt", "agent"]);
     expect(items[0]?.text).toBe("how many open issues?");
+  });
+});
+
+// cm:guard the two v1 paths reach a card through `toToolCallData` like the canonical one does. They
+// used to hand their calls through untouched, which was invisible while the card only previewed
+// `result` — a CLI-derived entry carries its output on `output`, so `result` was undefined and the
+// card drew nothing. Since ISS-1083 an absent result reads `Running…`, and a settled turn in
+// history claiming a call is still out is worse than drawing nothing.
+describe("every tool call is decoded, whichever shape the entry is in", () => {
+  it("decodes a v1 toolCalls entry's output instead of leaving it unread", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        content: "done",
+        toolCalls: [
+          { id: "t1", name: "Read", input: {}, output: '{"a":1,"b":2}' },
+        ],
+      } as never,
+    ]);
+    const block = item?.blocks.find((b) => b.type === "tool");
+    expect(block).toBeDefined();
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.result).toEqual({ a: 1, b: 2 });
+  });
+
+  it("decodes an ordered block's tool output too", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        content: "done",
+        blocks: [
+          { type: "tool", toolCall: { id: "t2", name: "Read", input: {}, output: "[]" } },
+        ],
+      } as never,
+    ]);
+    const block = item?.blocks.find((b) => b.type === "tool");
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.result).toEqual([]);
+  });
+
+  it("leaves a v1 call's own `result` exactly as it stands", () => {
+    const [item] = parseMessages([
+      {
+        type: "assistant",
+        content: "done",
+        toolCalls: [{ id: "t3", name: "Read", input: {}, result: "plain words" }],
+      } as never,
+    ]);
+    const block = item?.blocks.find((b) => b.type === "tool");
+    if (block?.type !== "tool") throw new Error("expected a tool block");
+    expect(block.tool.result).toBe("plain words");
   });
 });

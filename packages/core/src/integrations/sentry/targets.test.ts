@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { renderSentryTargetsLine, resolveSentryTargets } from './targets.js';
+import { renderSentryTargetsLine, resolveSentryTarget, resolveSentryTargets } from './targets.js';
 import type { SentryConfig } from './types.js';
 
 const base = (over: Partial<SentryConfig>): SentryConfig =>
@@ -87,5 +87,59 @@ describe('renderSentryTargetsLine', () => {
 
   it('returns empty string for no targets', () => {
     expect(renderSentryTargetsLine([])).toBe('');
+  });
+});
+
+describe('resolveSentryTarget (ISS-1085)', () => {
+  const targets = [
+    { label: 'forge-core', organizationSlug: 'canawan', projectSlug: 'forge-core' },
+    { label: 'forge-web', organizationSlug: 'canawan', projectSlug: 'forge-web' },
+  ];
+
+  it('returns the named target', () => {
+    expect(resolveSentryTarget({ host: 'h', targets }, 'forge-web')).toEqual({
+      label: 'forge-web',
+      organizationSlug: 'canawan',
+      projectSlug: 'forge-web',
+    });
+  });
+
+  it('resolves the ISS-524 legacy single-slug config as the `default` target', () => {
+    expect(
+      resolveSentryTarget({ host: 'h', organizationSlug: 'canawan', projectSlug: 'forge-core' }),
+    ).toEqual({ label: 'default', organizationSlug: 'canawan', projectSlug: 'forge-core' });
+  });
+
+  it('carries the environment through when the target declares one', () => {
+    expect(
+      resolveSentryTarget({
+        host: 'h',
+        targets: [{ label: 'forge-core', organizationSlug: 'canawan', environment: 'prod' }],
+      }),
+    ).toMatchObject({ environment: 'prod' });
+  });
+
+  it('refuses an unknown label rather than guessing a Sentry project', () => {
+    expect(() => resolveSentryTarget({ host: 'h', targets }, 'forge-mobile')).toThrow(
+      'sentry: no target labelled "forge-mobile" — this binding declares: forge-core, forge-web',
+    );
+  });
+
+  it('refuses an absent label where several targets are declared', () => {
+    expect(() => resolveSentryTarget({ host: 'h', targets })).toThrow(
+      'sentry: no target label was named and this binding declares 2: forge-core, forge-web',
+    );
+  });
+
+  it('refuses a target carrying no organizationSlug, naming it', () => {
+    expect(() => resolveSentryTarget({ host: 'h', targets: [{ label: 'forge-core' }] })).toThrow(
+      'sentry: target "forge-core" declares no organizationSlug',
+    );
+  });
+
+  it('refuses a binding declaring no targets at all', () => {
+    expect(() => resolveSentryTarget({ host: 'h' })).toThrow(
+      'sentry: this binding declares no targets',
+    );
   });
 });
