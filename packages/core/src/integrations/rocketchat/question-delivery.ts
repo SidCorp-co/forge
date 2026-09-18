@@ -158,7 +158,12 @@ async function claimRound(owed: OwedRound, now: Date): Promise<number | null> {
       set: {
         status: 'claimed',
         attempts,
-        nextAttemptAt: sql`${now.toISOString()}::timestamptz + (${RETRY_BACKOFF_MS} * ${attempts}) * interval '1 millisecond'`,
+        // cm:guard the interpolated increment is PARENTHESISED. `attempts` expands to
+        // `coalesce(attempts, 0) + 1`, so `60000 * ${attempts}` is `(60000 * coalesce(...)) + 1` and
+        // a round on its second attempt gets 60,001ms of backoff instead of 120,000 — early enough
+        // for another instance to reclaim it while this one is still posting, which is the very race
+        // this column exists to stop (whole-set review, F1).
+        nextAttemptAt: sql`${now.toISOString()}::timestamptz + (${RETRY_BACKOFF_MS} * (${attempts})) * interval '1 millisecond'`,
         updatedAt: now,
       },
       setWhere: sql`${rocketchatQuestionDeliveries.status} <> 'delivered' and (${rocketchatQuestionDeliveries.nextAttemptAt} is null or ${rocketchatQuestionDeliveries.nextAttemptAt} <= ${now.toISOString()}::timestamptz)`,

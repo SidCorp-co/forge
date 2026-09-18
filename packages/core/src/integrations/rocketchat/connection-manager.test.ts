@@ -8,6 +8,11 @@
  */
 // cm:ignore CM013 — the one frozen comment left in this file is an `i18n-allow` pragma the language gate reads; deleting it to pay the drain reds that gate instead.
 
+// cm:guard a mock screen ADMITS the segments it was shown, rather than returning a bare `ok`:
+// since ISS-978 a verdict carries what it was passed over, and a fake one that records nothing
+// mints no proof — so a mock that merely says "it passed" silently turns every delivery in this
+// file into a fallback.
+import { admitted } from '../../messaging/screen.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { claimedWindowFor } from './claimed-window.fixture.js';
 
@@ -283,7 +288,9 @@ describe('connection-manager escalation wiring', () => {
     startEscalation.mockReset();
     startAgentChat.mockReset();
     screenRoomReply.mockReset();
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
+      admitted(input.segments),
+    );
   });
 
   it('posts the ACK and invokes startEscalation when the model calls escalate(); skips the normal reply', async () => {
@@ -392,7 +399,9 @@ describe('connection-manager ISS-727 answer-mode routing', () => {
     runExternalChatTurn.mockReset();
     startAgentChat.mockReset();
     screenRoomReply.mockReset();
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
+      admitted(input.segments),
+    );
   });
 
   it("mode='agent' routes to startAgentChat, skips the fast turn, and sends NO synchronous ack", async () => {

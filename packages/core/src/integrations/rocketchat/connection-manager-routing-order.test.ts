@@ -10,6 +10,11 @@
  * `connection-manager-shapes.test.ts` to keep both inside the size budget.
  */
 
+// cm:guard a mock screen ADMITS the segments it was shown, rather than returning a bare `ok`:
+// since ISS-978 a verdict carries what it was passed over, and a fake one that records nothing
+// mints no proof — so a mock that merely says "it passed" silently turns every delivery in this
+// file into a fallback.
+import { admitted } from '../../messaging/screen.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('../../config/env.js', () => ({
@@ -274,7 +279,9 @@ describe('connection-manager routing order', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     selectLimit.mockResolvedValue([{ agentConfig: null, repoPath: null }]);
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
+      admitted(input.segments),
+    );
     resolveRoomShape.mockResolvedValue('group');
     loggerError.mockReset();
   });

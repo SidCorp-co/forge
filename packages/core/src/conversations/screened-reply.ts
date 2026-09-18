@@ -110,9 +110,14 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
           ? ({ ok: true } as MessageVerdict)
           : { ok: false, refusals: [EMPTY_RETRY] };
       }
+      // cm:guard the TRIMMED text is what is screened, because it is what is sent: `screened()` below
+      // is called with `result.reply.trim()`, and since ISS-978 a proof is minted only where the
+      // verdict was passed over that exact string. Screening the untrimmed segment and posting the
+      // trimmed one is the same "the screen read something else" gap F5 names, two whitespace
+      // characters wide (whole-set review F2).
       return screenReplyAtDoor(args.door, {
         projectId: args.projectId,
-        segments: [segments[0] ?? ''],
+        segments: [text],
         toolCalls: result.toolCalls,
         progress: result.progress,
       });

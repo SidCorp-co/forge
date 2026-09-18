@@ -8,6 +8,11 @@
  * subjects the `cm:why` above its second one names.
  */
 
+// cm:guard a mock screen ADMITS the segments it was shown, rather than returning a bare `ok`:
+// since ISS-978 a verdict carries what it was passed over, and a fake one that records nothing
+// mints no proof — so a mock that merely says "it passed" silently turns every delivery in this
+// file into a fallback.
+import { admitted } from '../../messaging/screen.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 // cm:guard this stub stays, and stays ABOVE the subject's import: `config/env.js` validates eagerly
@@ -131,7 +136,9 @@ describe(`the room transcript after an escalated answer`, () => {
       reply: 'the synthesized answer',
       toolCalls: [],
     });
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
+      admitted(input.segments),
+    );
   });
 
   const escalated = () =>

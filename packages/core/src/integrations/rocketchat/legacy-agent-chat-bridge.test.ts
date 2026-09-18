@@ -1,3 +1,8 @@
+// cm:guard a mock screen ADMITS the segments it was shown, rather than returning a bare `ok`:
+// since ISS-978 a verdict carries what it was passed over, and a fake one that records nothing
+// mints no proof — so a mock that merely says "it passed" silently turns every delivery in this
+// file into a fallback.
+import { admitted } from '../../messaging/screen.js';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 /**
@@ -144,7 +149,9 @@ describe('deliverLegacyAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('Here is the final answer.');
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
+      admitted(input.segments),
+    );
 
     await deliverLegacyAgentChatReplyOnce(makeSession());
 
@@ -168,7 +175,9 @@ describe('deliverLegacyAgentChatReplyOnce', () => {
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('Created ISS-42 for you.');
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
+      admitted(input.segments),
+    );
 
     await deliverLegacyAgentChatReplyOnce(
       makeSession({
@@ -238,7 +247,9 @@ describe('deliverLegacyAgentChatReplyOnce: the room is read again before the pos
     resolveRoomPostAuth.mockReset();
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     screenRoomReply.mockReset();
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
+      admitted(input.segments),
+    );
     sendFixedReply.mockReset();
     extractFinalAssistantText.mockReset();
     extractFinalAssistantText.mockReturnValue('answer');
@@ -430,7 +441,9 @@ describe('deliverLegacyAgentChatReplyOnce: which failures earn a redispatch', ()
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('answer');
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
+      admitted(input.segments),
+    );
 
     await deliverLegacyAgentChatReplyOnce(
       makeSession({
@@ -460,7 +473,9 @@ describe('deliverLegacyAgentChatReplyOnce: which failures earn a redispatch', ()
     claimRoomReplyDelivery.mockResolvedValue(true);
     resolveRoomPostAuth.mockResolvedValue(AUTH);
     extractFinalAssistantText.mockReturnValue('answer');
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(async (_door: unknown, input: { segments: readonly string[] }) =>
+      admitted(input.segments),
+    );
     sendFixedReply.mockRejectedValue(new Error('network error'));
 
     await expect(deliverLegacyAgentChatReplyOnce(makeSession())).resolves.toBeUndefined();

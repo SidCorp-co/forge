@@ -10,7 +10,7 @@
 
 import type { DoorId, MessageVerdict } from './contract.js';
 import type { MessageFacts } from './facts.js';
-import { screenAtDoor } from './screen.js';
+import { judgedSegments, screenAtDoor } from './screen.js';
 
 declare const admittedByADoor: unique symbol;
 
@@ -50,17 +50,27 @@ export function wholeAgentText(text: string): RoomMessage {
 /**
  * The one mint. `null` on anything but an `ok` verdict.
  */
-// cm:guard the verdict cannot be forged either — `MessageVerdict`'s `ok` arm is nominal since ISS-978,
-// so reaching this function with a passing verdict means a screen ran. Before that, `proven(door, msg,
+// cm:guard the verdict cannot be forged — `MessageVerdict`'s `ok` arm is nominal since ISS-978, so
+// reaching this function with a passing verdict means a screen ran. Before that, `proven(door, msg,
 // { ok: true })` would have compiled anywhere in the tree and this mint would have been decoration.
+// cm:guard and the verdict must have been passed over THESE segments, which the nominal flag alone
+// cannot say: a genuine verdict for one string would otherwise mint a proof for another — screen A,
+// call `proven(door, wholeAgentText(B), verdictForA)`, and B goes out under A's screening with no cast
+// anywhere. That is the ISS-978 F5 pairing moved rather than closed, and this comparison is what
+// closes it (whole-set review F2).
 export function proven(
   door: DoorId,
   message: RoomMessage,
   verdict: MessageVerdict,
 ): ProvenMessage | null {
   if (!verdict.ok) return null;
+  const judged = judgedSegments(verdict);
+  if (!judged || !sameSegments(judged, message.screened)) return null;
   return { text: message.text, door } as ProvenMessage;
 }
+
+const sameSegments = (a: readonly string[], b: readonly string[]): boolean =>
+  a.length === b.length && a.every((s, i) => s === b[i]);
 
 /**
  * The same admitted text inside a frame this codebase wrote.

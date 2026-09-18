@@ -184,6 +184,29 @@ describe('a claim that overlaps another one', () => {
     expect((await deliveries(q.id))[0]?.attempts).toBe(2);
   });
 
+  // cm:guard the count and the BACKOFF are separate assertions, because the count can be right while
+  // the schedule it feeds is wrong: `60000 * ${attempts}` where `attempts` expands to
+  // `coalesce(attempts, 0) + 1` parses as `(60000 * coalesce(...)) + 1`, which gives a second attempt
+  // 60,001ms of backoff instead of 120,000. The count reads 2 either way, so the test above passes
+  // over it (whole-set review, F1).
+  it('backs a reclaimed round off by its own attempt number, not by one millisecond more', async () => {
+    await bindRoom();
+    postThrows = new Error('rocket.chat is down');
+    const q = await ask();
+
+    const derived = onlyOwed(await delivery.owedRounds());
+    const t0 = Date.now();
+    await delivery.deliverOwedRound({ ...derived }, new Date(t0));
+
+    const reclaimedAt = t0 + 2 * 60_000;
+    await delivery.deliverOwedRound({ ...derived }, new Date(reclaimedAt));
+
+    const [row] = await deliveries(q.id);
+    expect(row?.attempts).toBe(2);
+    // Attempt two, so two backoffs: the retry is 120s after the claim that wrote it.
+    expect(new Date(row?.nextAttemptAt ?? 0).getTime() - reclaimedAt).toBe(2 * 60_000);
+  });
+
   // The consequence, and the reason F2 is not merely untidy: the exhaustion branch ISS-978 added is
   // the one thing that tells anybody a question will not be asked, and it is read off this count.
   it('still reaches the attempts cap, so an exhausted round is settled rather than left claimed', async () => {
