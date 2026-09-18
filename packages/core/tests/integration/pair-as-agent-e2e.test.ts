@@ -92,11 +92,7 @@ async function init(): Promise<string> {
 }
 
 /** What the browser posts. `agent_id` is omitted exactly as the screen omits it. */
-async function approve(
-  code: string,
-  approverId: string,
-  agentUserId?: string,
-): Promise<Response> {
+async function approve(code: string, approverId: string, agentUserId?: string): Promise<Response> {
   return app.request('/api/devices/login/approve', {
     method: 'POST',
     headers: {

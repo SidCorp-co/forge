@@ -112,10 +112,8 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
-- **A machine can be given an identity of its own, from the browser.** Make an agent in Settings →
-  Agents, name the projects it works on, and pick it when you approve a pairing. Whatever that box
-  does is filed as the agent, and its credential reaches those projects and no others. Before this
-  the only way to run a box was to hand it your own account.
+- **A machine can be given an identity of its own.** Make an agent in Settings → Agents, name its
+  projects, and pick it when you approve a pairing. What that box does is then filed as the agent.
 
 - **Cutting a runner release is one thing Forge does, not eight by hand.** Name a version; Forge
   checks the commit agrees, tags it as itself, hears how the build went, and names what is on the
