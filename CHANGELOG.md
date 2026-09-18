@@ -3008,6 +3008,10 @@
   receipt, naming the exact wording it passed, and the door to your chat room refuses a message
   carrying any other.
 
+- **A runner installed under a path with a space now actually reports.** The hook command
+  interpolated the executable unquoted, so a shell split it; the install still succeeded, and the
+  job was failed for silence two minutes later.
+
 - **A release job no longer reads as running when nobody asked its agent anything.** The box beat
   `running` on a schedule, so a pane holding an unsubmitted prompt looked like one working. It now
   reports only what it can prove.
