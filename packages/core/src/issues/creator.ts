@@ -111,8 +111,15 @@ export async function hydrateCreatorsForIssues(
 // tighter binding turns into a filter that also returns every agent-filed row of every other status.
 // The predicate it replaced was an `AND` chain and needed none, which is exactly why this is easy to
 // drop while copying.
+// cm:guard the `IS TRUE` makes this TWO-valued, and that is the whole of what it is for. Without it
+// a pre-column row — `creator_agency` NULL with `created_via` `web` or NULL, which is every row a
+// webhook wrote and every row older than this column — evaluates to SQL NULL rather than false, so
+// `NOT (...)` is NULL too and the row falls out of BOTH filters while the list happily labels it
+// with its creator's address. `creatorIsAgent` is total in TypeScript and this must be its exact
+// mirror in SQL; three-valued logic is the one way they can disagree without either one looking
+// wrong (ISS-1093, review finding F1).
 export function creatorIsAgentCondition(): SQL {
-  return sql`(${issues.creatorAgency} = 'agent' OR (${issues.creatorAgency} IS NULL AND ${issues.createdVia} IS NOT NULL AND ${issues.createdVia} <> 'web'))`;
+  return sql`((${issues.creatorAgency} = 'agent' OR (${issues.creatorAgency} IS NULL AND ${issues.createdVia} IS NOT NULL AND ${issues.createdVia} <> 'web')) IS TRUE)`;
 }
 
 /**

@@ -363,15 +363,53 @@ describe('a stored agency outranks the channel, in the label and in the filter',
     const byAgent = await createIssueWith(token, 'agent filed');
     const byPerson = await createIssueWith(await signUserToken(personId), 'person filed');
     const humanOnMcp = await humanOnAnAgentChannel();
+    const preColumnWeb = await asIfPreColumn(token, 'pre-column on web', 'web');
+    const preColumnNoChannel = await asIfPreColumn(token, 'pre-column, no channel', null);
 
     const rows = await listAs(token);
     const labelledAgent = new Set(rows.filter((r) => r.creatorIsAgent).map((r) => r.id));
     const labelledPerson = new Set(rows.filter((r) => !r.creatorIsAgent).map((r) => r.id));
     expect(labelledAgent).toEqual(new Set([byAgent]));
-    expect(labelledPerson).toEqual(new Set([byPerson, humanOnMcp]));
+    expect(labelledPerson).toEqual(
+      new Set([byPerson, humanOnMcp, preColumnWeb, preColumnNoChannel]),
+    );
 
     expect(new Set(await search(token, 'agent'))).toEqual(labelledAgent);
     expect(new Set(await search(token, personId))).toEqual(labelledPerson);
+  });
+
+  /**
+   * A row as it stands before this column exists: no stored agency, and a channel
+   * that is not an agent channel. Every row a webhook or an intake wrote is one.
+   */
+  async function asIfPreColumn(
+    token: string,
+    title: string,
+    createdVia: string | null,
+  ): Promise<string> {
+    const id = await createIssueWith(token, title);
+    await harness.db.execute(
+      sql`UPDATE issues SET creator_agency = NULL, created_via = ${createdVia} WHERE id = ${id}`,
+    );
+    return id;
+  }
+
+  // cm:guard the predicate is TWO-valued, asserted against Postgres rather than read off the
+  // string. Both halves of `creatorIsAgentCondition` are NULL-producing for this row, so an
+  // unguarded version returns SQL NULL and its negation returns NULL too — the row then belongs
+  // to neither filter while the list shows it under its creator's address. The label assertion
+  // alone stays green through that, which is why the two filters are counted here as well
+  // (ISS-1093, review finding F1).
+  it('keeps a row written before the column in its creator’s filter, on either channel', async () => {
+    const token = await personPat();
+    for (const channel of ['web', null]) {
+      const id = await asIfPreColumn(token, `pre-column ${channel ?? 'null'}`, channel);
+      const row = await rowOnList(token, id);
+      expect(row.creatorIsAgent).toBe(false);
+
+      expect(await search(token, personId)).toContain(id);
+      expect(await search(token, 'agent')).not.toContain(id);
+    }
   });
 
   async function search(token: string, createdBy: string): Promise<string[]> {

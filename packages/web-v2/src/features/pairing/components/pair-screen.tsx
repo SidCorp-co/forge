@@ -138,14 +138,15 @@ export function PairScreen() {
                 </span>
               </div>
 
-              {isOrgAdmin && agents.length > 0 && (
+              {isOrgAdmin && (
                 <Field
                   label="Pair this device as"
-                  hint="An agent's credential reaches that agent's projects. Yours reaches what you can reach."
+                  hint="Paired as an agent, the box reaches that agent's projects. Paired as you, it reaches none — it can run the daemon and nothing project-scoped."
                 >
                   <Select
                     value={asAgent}
                     onChange={setAsAgent}
+                    disabled={agentsQ.isLoading}
                     options={[
                       { value: AS_MYSELF, label: `Me — ${user?.email ?? "this account"}` },
                       ...agents.map((a) => ({
@@ -157,14 +158,44 @@ export function PairScreen() {
                 </Field>
               )}
 
+              {/* cm:guard a query that is LOADING or FAILED is said so, and never rendered as the
+                  picker simply having no agents to offer. Those three states look identical once
+                  the data is read as `?? []` — the control disappears, approving stays available,
+                  and an admin pairs the box as themselves believing their organization has no
+                  agent to choose (ISS-1093, review finding F5). */}
+              {isOrgAdmin && agentsQ.isError && (
+                <Banner
+                  tone="danger"
+                  action={
+                    <Button variant="secondary" onClick={() => agentsQ.refetch()}>
+                      Try again
+                    </Button>
+                  }
+                >
+                  The agents of this organization could not be loaded, so there is nothing to pick
+                  from yet. Approving now pairs the box as you.
+                </Banner>
+              )}
+              {isOrgAdmin && !agentsQ.isLoading && !agentsQ.isError && agents.length === 0 && (
+                <Banner tone="info">
+                  This organization has no agents yet. Make one in Settings → Agents to give a box
+                  an identity of its own.
+                </Banner>
+              )}
+
               {/* cm:guard the identity is stated in WORDS before the button, not left to be read off
                   a dropdown's selected row. Approving is what hands a machine an identity for as
                   long as it holds the token, and the whole reason `resolveApprovableAgent` demands
                   org admin is that this is not a preference — it is a grant (ISS-1093 criterion 31). */}
+              {/* cm:guard what a PERSON's box reaches is "no project", and that is the literal fence
+                  `devices/credential.ts:issueDeviceCredential` mints for it (`projectIds: []`).
+                  This line used to promise the approver's own reach, which is the opposite of what
+                  the token carries, and it is the sentence somebody chooses an identity from
+                  (ISS-1093, review finding F4). */}
               <Banner tone={chosen ? "attention" : "info"}>
                 {chosen
-                  ? `This box will act as ${agentLabel(chosen)} (${agentAddress(chosen)}) and reach ${chosen.projects.length} project(s) — not as you.`
-                  : "This box will act as you, and reach what you reach."}
+                  ? `This box will act as ${agentLabel(chosen)} (${agentAddress(chosen)}) — not as you — and reach that agent's ${chosen.projects.length} project(s).`
+                  : "This box will act as you. Its credential reaches no project: it can run the daemon, not read or write a project's work."}
               </Banner>
 
               {approve.isError && <Banner tone="danger">{formatApiError(approve.error)}</Banner>}

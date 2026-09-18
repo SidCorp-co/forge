@@ -9,12 +9,12 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
 import { mintPat } from '../auth/pat.js';
 import { patIsLive } from '../auth/pat-live.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import {
   organizationMembers,
   type ProjectMemberRole,
@@ -206,11 +206,38 @@ export function fenceFor(projectIds: string[]): AgentCredentialFence {
 }
 
 /**
+ * Serialize everything that decides a fence for ONE agent, against everything
+ * that rewrites its fences.
+ *
+ * Reading the memberships and inserting the token are two statements, and
+ * `setAgentProjects` re-fences only the tokens that EXIST when it runs. Between
+ * those two statements a project set can be widened and committed, and the token
+ * then lands carrying the old, narrower fence with no further update coming —
+ * which on the box is the "I added the project and it still 404s" shape this
+ * whole re-fence exists to remove. A transaction-scoped advisory lock keyed on
+ * the agent makes either order correct: mint first and the re-fence catches the
+ * new token, re-fence first and the mint reads the new set.
+ */
+// cm:guard the key is the AGENT and not a global one, so two admins working on two agents never wait on each other; and it is `_xact_`, so it is released by commit or rollback and no failure path can leak it. Every reader of `agentCredentialFence` that goes on to WRITE a token must be inside this, which is why the two mint paths call it and the plain read does not.
+export async function withAgentFenceLock<T>(
+  agentUserId: string,
+  run: (tx: Tx) => Promise<T>,
+): Promise<T> {
+  return db.transaction(async (tx) => {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtextextended(${agentUserId}, 0))`);
+    return run(tx);
+  });
+}
+
+/**
  * The fence a credential for this agent must carry right now, read from its
  * memberships. Refuses an agent that is a member of nothing.
  */
-export async function agentCredentialFence(agentUserId: string): Promise<AgentCredentialFence> {
-  const rows = await db
+export async function agentCredentialFence(
+  agentUserId: string,
+  tx: Tx = db,
+): Promise<AgentCredentialFence> {
+  const rows = await tx
     .select({ projectId: projectMembers.projectId })
     .from(projectMembers)
     .where(eq(projectMembers.userId, agentUserId));
@@ -334,10 +361,16 @@ export async function mintAgentCredential(
   // returned first and fenced the credential to it — a silent substitution that reads on
   // the box as "this project is gone" (a foreign-project PAT answers NOT_FOUND, which is
   // deliberately existence-hiding) rather than as a credential minted for the wrong reach.
-  const fence = await agentCredentialFence(agentUserId);
-
-  const minted = await mintDistinctlyNamed(agent.id, `agent:${agent.handle ?? agent.id}`, fence);
-  return { plaintext: minted, fence };
+  return withAgentFenceLock(agentUserId, async (tx) => {
+    const fence = await agentCredentialFence(agentUserId, tx);
+    const minted = await mintDistinctlyNamed(
+      agent.id,
+      `agent:${agent.handle ?? agent.id}`,
+      fence,
+      tx,
+    );
+    return { plaintext: minted, fence };
+  });
 }
 
 /**
@@ -353,12 +386,21 @@ async function mintDistinctlyNamed(
   userId: string,
   base: string,
   fence: AgentCredentialFence,
+  tx: Tx = db,
 ): Promise<string> {
   const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
   const names = [base, `${base} ${stamp}`, `${base} ${randomBytes(4).toString('hex')}`];
   for (const name of names) {
     try {
-      const minted = await mintPat({ userId, name, scopes: ['read', 'write'], ...fence });
+      // cm:guard each attempt is its own SAVEPOINT (drizzle spells a nested transaction that
+      // way), because this loop now runs INSIDE the fence lock's transaction: a unique violation
+      // aborts the enclosing transaction whole, so an unnested retry would fail on every
+      // remaining name with `current transaction is aborted` rather than on the constraint. That
+      // is the price of minting under the lock, and it is paid here rather than by dropping the
+      // retry (ISS-1093, review finding F2).
+      const minted = await tx.transaction((sp) =>
+        mintPat({ userId, name, scopes: ['read', 'write'], ...fence }, sp),
+      );
       return minted.plaintext;
     } catch (err) {
       if (!isUniqueViolation(err) || uniqueViolationConstraint(err) !== 'pat_user_name_uniq') {
@@ -412,13 +454,29 @@ export async function setAgentProjects(
   }
 
   const fence = fenceFor(wanted);
-  const refenced = await db.transaction(async (tx) => {
+  const refenced = await withAgentFenceLock(agentUserId, async (tx) => {
+    // cm:guard a project the agent ALREADY works on keeps the role it already holds. Rewriting
+    // every row as `member` is what this did, and it made a set operation a silent permission
+    // change in both directions: a `viewer` agent was promoted and an `admin` one demoted by a
+    // PUT that named the very same projects. `member` is the default for a project being ADDED
+    // and nothing else — the sentence below this one says no role is raised here, and this is
+    // what makes that true (ISS-1093, review finding F3).
+    const held = new Map(
+      (
+        await tx
+          .select({ projectId: projectMembers.projectId, role: projectMembers.role })
+          .from(projectMembers)
+          .where(eq(projectMembers.userId, agentUserId))
+      ).map((r) => [r.projectId, r.role]),
+    );
     await tx.delete(projectMembers).where(eq(projectMembers.userId, agentUserId));
-    await tx
-      .insert(projectMembers)
-      .values(
-        wanted.map((projectId) => ({ userId: agentUserId, projectId, role: 'member' as const })),
-      );
+    await tx.insert(projectMembers).values(
+      wanted.map((projectId) => ({
+        userId: agentUserId,
+        projectId,
+        role: held.get(projectId) ?? ('member' as const),
+      })),
+    );
     const rows = await tx
       .update(personalAccessTokens)
       .set({ boundProjectId: fence.boundProjectId, projectIds: fence.projectIds })

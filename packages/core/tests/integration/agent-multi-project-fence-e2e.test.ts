@@ -224,6 +224,31 @@ describe('changing which projects an agent works on', () => {
     expect(await restReaches(plaintext, projectB)).toBe(true);
   });
 
+  // cm:guard the ROLE on a retained project, not just its presence. The rewrite this replaced
+  // set every row to `member`, so a PUT naming the identical set promoted a viewer and demoted
+  // an admin — a permission change nobody asked for, made by an operation whose whole subject is
+  // which projects an agent works on (ISS-1093, review finding F3). Asserting only the project
+  // ids stays green through it.
+  it('leaves the role on a project the agent already works on exactly as it was', async () => {
+    const { agent } = await accounts.createAgentAccount({
+      orgId,
+      projectIds: [projectA, projectB],
+      handle: handle(),
+      projectRole: 'admin',
+    });
+
+    await accounts.setAgentProjects(orgId, agent.userId, [projectA, projectB, projectC]);
+
+    const rows = await harness.db.execute<{ project_id: string; role: string }>(
+      sql`SELECT project_id, role FROM project_members WHERE user_id = ${agent.userId}`,
+    );
+    const byProject = new Map(rows.map((r) => [r.project_id, r.role]));
+    expect(byProject.get(projectA)).toBe('admin');
+    expect(byProject.get(projectB)).toBe('admin');
+    // The project being ADDED is the only one that takes the default.
+    expect(byProject.get(projectC)).toBe('member');
+  });
+
   it('narrows every live credential when a project is taken away', async () => {
     const { agent, plaintext } = await accounts.createAgentAccount({
       orgId,
@@ -261,6 +286,57 @@ describe('changing which projects an agent works on', () => {
     await accounts.setAgentProjects(orgId, agent.userId, [projectA, projectB]);
 
     expect(await restReaches(boxToken, projectB)).toBe(true);
+  });
+});
+
+describe('minting a credential while the project set is being changed', () => {
+  /**
+   * The window this closes: `agentCredentialFence` READS the memberships, argon2
+   * hashing takes a good fraction of a second, and only then is the token INSERTED
+   * — while `setAgentProjects` re-fences only the tokens that exist when it runs.
+   * A widening committed inside that gap leaves the new token on the old, narrower
+   * fence with nothing coming to correct it.
+   *
+   * The interleaving is forced rather than hoped for: the mint is started, the
+   * widening is fired while the mint is provably still in flight, and the test
+   * refuses to judge anything if the mint finished first.
+   */
+  // cm:guard the assertion is what the credential REACHES afterwards, and never which order won.
+  // Both orders are correct once the two are serialized — mint first and the re-fence catches the
+  // new row, re-fence first and the mint reads the new set — so an order-sensitive assertion would
+  // fail the fix rather than the bug. What may never happen is a live credential a project short
+  // of the set that was committed (ISS-1093, review finding F2).
+  it('never leaves the box a project short of the set that was committed', async () => {
+    const { agent } = await accounts.createAgentAccount({
+      orgId,
+      projectIds: [projectA],
+      handle: handle(),
+    });
+    const deviceId = randomUUID();
+    await harness.db.execute(
+      sql`INSERT INTO devices (id, owner_id, name, platform) VALUES (${deviceId}, ${agent.userId}, 'a box', 'linux')`,
+    );
+
+    let minted = false;
+    const minting = credential
+      .issueDeviceCredential({ deviceId, holderUserId: agent.userId, holderIsAgent: true })
+      .then((t) => {
+        minted = true;
+        return t;
+      });
+
+    await new Promise((r) => setTimeout(r, 40));
+    // cm:guard the test is void if the mint already finished — the two never overlapped and a
+    // green would say nothing about the window. Stated as a failure rather than a skip so a
+    // machine fast enough to close the gap reports it instead of quietly proving nothing.
+    expect(minted).toBe(false);
+
+    await accounts.setAgentProjects(orgId, agent.userId, [projectA, projectB]);
+    const token = await minting;
+
+    expect(await restReaches(token, projectA)).toBe(true);
+    expect(await restReaches(token, projectB)).toBe(true);
+    expect(await restReaches(token, projectC)).toBe(false);
   });
 });
 

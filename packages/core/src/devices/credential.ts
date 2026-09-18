@@ -16,7 +16,7 @@ import { deviceTokenNameFor } from '../auth/pat-format.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
 import { personalAccessTokens } from '../db/schema.js';
-import { agentCredentialFence } from '../orgs/agent-accounts.js';
+import { agentCredentialFence, withAgentFenceLock } from '../orgs/agent-accounts.js';
 
 // cm:guard pinned rather than inherited from `RULES.patRead`/`RULES.patWrite`: those defaults are operator knobs (`RATE_LIMIT_PAT_READ_MAX`, `RATE_LIMIT_PAT_WRITE_MAX`) and the read one is sized for a whole box of sessions, which a single box credential is not. A box does not degrade under a 429, it stops claiming. A daemon heartbeats, polls the pool for every binding and streams job events on one token, so it is the noisiest credential in the fleet and the least able to ask for another.
 const DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE = 600;
@@ -61,29 +61,44 @@ export async function issueDeviceCredential(args: {
       ),
     );
 
-  const { plaintext } = await mintPat({
+  // cm:guard the fence is NEVER `null` on either branch, and `null` is the bug both branches
+  // exist to prevent: it means "its holder's projects", which for a person is the whole
+  // account and is the `device.ownerId` fiction returning in a new shape.
+  //
+  // A PERSON's box keeps `[]` — no project at all (`effectiveProjectRole` returns null for
+  // every id). That is right because the surfaces a person's box legitimately needs go
+  // through `requireDevice`, which resolves the DEVICE and never consults this fence.
+  //
+  // An AGENT's box is fenced to that agent's own projects, and this is not a widening of
+  // the line above: the same credential is written into every job's `.mcp.json`
+  // (`forge-runner-core/src/mcp/config.rs`), so under `[]` a box paired as an agent could
+  // run the daemon plane and not make a single project-scoped call — which is why
+  // forge-vm was holding a person's PAT in the first place (ISS-1093). The agent's reach
+  // is its memberships either way; this only stops the token being wider than they are.
+  const common = {
     userId: args.holderUserId,
     name,
     scopes: ['read', 'write'],
-    // cm:guard the fence is NEVER `null` on either branch, and `null` is the bug both branches
-    // exist to prevent: it means "its holder's projects", which for a person is the whole
-    // account and is the `device.ownerId` fiction returning in a new shape.
-    //
-    // A PERSON's box keeps `[]` — no project at all (`effectiveProjectRole` returns null for
-    // every id). That is right because the surfaces a person's box legitimately needs go
-    // through `requireDevice`, which resolves the DEVICE and never consults this fence.
-    //
-    // An AGENT's box is fenced to that agent's own projects, and this is not a widening of
-    // the line above: the same credential is written into every job's `.mcp.json`
-    // (`forge-runner-core/src/mcp/config.rs`), so under `[]` a box paired as an agent could
-    // run the daemon plane and not make a single project-scoped call — which is why
-    // forge-vm was holding a person's PAT in the first place (ISS-1093). The agent's reach
-    // is its memberships either way; this only stops the token being wider than they are.
-    ...(args.holderIsAgent ? await agentCredentialFence(args.holderUserId) : { projectIds: [] }),
     deviceId: args.deviceId,
     rateLimitMax: DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE,
+  };
+
+  // cm:guard an AGENT's box reads its fence and inserts its token inside the agent's fence
+  // lock, on one connection. This is the credential that actually files the work, so a project
+  // set widened between the read and the insert would leave the box a project short of what the
+  // admin committed, with no later re-fence coming for a row that did not exist yet — the exact
+  // "I added the project and it still 404s" shape `setAgentProjects` exists to remove
+  // (ISS-1093, review finding F2). A PERSON's box takes no lock: its fence is the constant `[]`
+  // and nothing re-fences it.
+  if (!args.holderIsAgent) {
+    const { plaintext } = await mintPat({ ...common, projectIds: [] });
+    return plaintext;
+  }
+  return withAgentFenceLock(args.holderUserId, async (tx) => {
+    const fence = await agentCredentialFence(args.holderUserId, tx);
+    const { plaintext } = await mintPat({ ...common, ...fence }, tx);
+    return plaintext;
   });
-  return plaintext;
 }
 
 /**

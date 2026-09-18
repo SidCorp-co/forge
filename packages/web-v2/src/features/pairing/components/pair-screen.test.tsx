@@ -23,6 +23,8 @@ Element.prototype.scrollIntoView = vi.fn();
 const mutate = vi.fn();
 let agents: unknown[] = [];
 let orgRole = "admin";
+let queryState: { isLoading: boolean; isError: boolean } = { isLoading: false, isError: false };
+const refetch = vi.fn();
 
 vi.mock("next/navigation", () => ({
   useSearchParams: () => new URLSearchParams("code=ABC-1234"),
@@ -31,7 +33,11 @@ vi.mock("../hooks", () => ({
   useApproveDevice: () => ({ mutate, data: undefined, isError: false, isPending: false }),
 }));
 vi.mock("@/features/agent-accounts/hooks", () => ({
-  useAgentAccounts: (orgId: string | null) => ({ data: orgId ? agents : undefined }),
+  useAgentAccounts: (orgId: string | null) => ({
+    data: orgId && !queryState.isError ? agents : undefined,
+    ...queryState,
+    refetch,
+  }),
 }));
 vi.mock("@/features/orgs/active-org", () => ({
   useActiveOrg: () => ({ activeOrg: { id: "org-1", name: "Acme", role: orgRole } }),
@@ -42,7 +48,9 @@ vi.mock("@/providers/auth-provider", () => ({
 
 beforeEach(() => {
   mutate.mockClear();
+  refetch.mockClear();
   orgRole = "admin";
+  queryState = { isLoading: false, isError: false };
   agents = [
     {
       userId: "agent-1",
@@ -105,7 +113,9 @@ describe("choosing the identity a box will carry (ISS-1093)", () => {
     renderScreen();
     expect(screen.getByText(/will act as you/)).toBeInTheDocument();
     chooseTheAgent();
-    expect(screen.getByText(/will act as The box \(@forge-vm\) and reach 2 project/)).toBeInTheDocument();
+    expect(
+      screen.getByText(/will act as The box \(@forge-vm\) — not as you — and reach that agent's 2 project/),
+    ).toBeInTheDocument();
   });
 
   it("shows no picker to a member who is not an org admin", () => {
@@ -116,9 +126,38 @@ describe("choosing the identity a box will carry (ISS-1093)", () => {
     expect(mutate).toHaveBeenCalledWith({ pairingCode: "ABC-1234", agentUserId: null });
   });
 
-  it("shows no picker when the organization has no agents", () => {
+  // cm:guard the sentence names what a person's box actually reaches, which is NO project — the
+  // fence `issueDeviceCredential` mints for it is the empty array. The screen used to promise the
+  // approver's own reach, and it is the line somebody picks an identity from (finding F4).
+  it("does not promise a person's box the person's own project reach", () => {
+    renderScreen();
+    const said = screen.getByText(/will act as you/).textContent ?? "";
+    expect(said).toMatch(/reaches no project/i);
+    expect(said).not.toMatch(/reach what you reach/i);
+  });
+
+  // cm:guard three states that render identically once the data is read as `?? []`: an org with
+  // no agents, a query still loading, and a query that failed. Only the first may read as "there
+  // is nothing to choose" (finding F5).
+  it("says an organization has no agents rather than just hiding the choice", () => {
     agents = [];
     renderScreen();
-    expect(screen.queryByLabelText("Pair this device as")).not.toBeInTheDocument();
+    expect(screen.getByText(/no agents yet/i)).toBeInTheDocument();
+  });
+
+  it("does not present a failed agent query as an organization with no agents", () => {
+    queryState = { isLoading: false, isError: true };
+    renderScreen();
+    expect(screen.queryByText(/no agents yet/i)).not.toBeInTheDocument();
+    expect(screen.getByText(/could not be loaded/i)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Try again/ }));
+    expect(refetch).toHaveBeenCalled();
+  });
+
+  it("does not present a pending agent query as an organization with no agents", () => {
+    agents = [];
+    queryState = { isLoading: true, isError: false };
+    renderScreen();
+    expect(screen.queryByText(/no agents yet/i)).not.toBeInTheDocument();
   });
 });
