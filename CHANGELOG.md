@@ -2980,6 +2980,16 @@
 
 ### Fixed
 
+- **Six background checks that got slower as the tables grew now answer at a steady speed.** Each
+  read a whole table to find a handful of rows. Same answers, with the shortcuts to reach them.
+
+- **A permanently failed delivery is no longer stepped over every second.** A status change that
+  runs out of retries is kept for a person to read. It is now out of the queue the reader polls.
+
+- **Stored notes are being tidied up again.** The nightly pass that files away notes nobody has
+  read, and clears long-filed ones, had failed on its first step every night since it was written.
+  It never removed anything.
+
 - **A master that comes back after a crash can now say what became of the work it was holding, and
   must.** There was no command for it, and ending the work counted as an answer.
 

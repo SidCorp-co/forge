@@ -1709,6 +1709,15 @@ export const memories = pgTable(
     ),
     textSearchIdx: index('memories_text_search_idx').using('gin', t.textSearch),
     identSearchIdx: index('memories_ident_search_idx').using('gin', t.identSearch),
+    // cm:guard ISS-1021 — the PREDICATE is the whole index, not the key. `memory/embedding-backfill.ts`
+    // runs `WHERE embedding IS NULL ORDER BY updated_at LIMIT 50` every 5 minutes, and the steady
+    // state of this table is zero null-embedding rows, so the unindexed form sorts the entire table
+    // to return nothing (live beta 2026-09-17: 14,246 sequential scans). Keep the predicate byte-equal
+    // to that query's own `isNull(memories.embedding)` — a predicate the planner cannot prove implied
+    // silently drops back to the seq scan with no error anywhere.
+    embeddingBackfillIdx: index('memories_embedding_backfill_idx')
+      .on(t.updatedAt)
+      .where(sql`embedding IS NULL`),
   }),
 );
 
@@ -1785,6 +1794,14 @@ export const knowledgeEntries = pgTable(
     ),
     textSearchIdx: index('knowledge_entries_text_search_idx').using('gin', t.textSearch),
     identSearchIdx: index('knowledge_entries_ident_search_idx').using('gin', t.identSearch),
+    // cm:guard ISS-1021 — carries `archived_at IS NULL` because `backfillKnowledge` does: the query's
+    // predicate must IMPLY the index's, and an index predicated on `embedding IS NULL` alone is
+    // implied by a query that also demands `archived_at IS NULL`, but this narrower one is the
+    // smaller index and still matches. Dropping the second term here would widen the index without
+    // serving any reader.
+    embeddingBackfillIdx: index('knowledge_entries_embedding_backfill_idx')
+      .on(t.updatedAt)
+      .where(sql`embedding IS NULL AND archived_at IS NULL`),
   }),
 );
 

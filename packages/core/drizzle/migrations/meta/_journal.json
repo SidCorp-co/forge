@@ -1879,6 +1879,13 @@
       "breakpoints": true
     },
     {
+      "idx": 281,
+      "version": "7",
+      "when": 1802995200000,
+      "tag": "0281_index_served_predicates",
+      "breakpoints": true
+    },
+    {
       "idx": 285,
       "version": "7",
       "when": 1804723200000,
