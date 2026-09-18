@@ -15,6 +15,23 @@
 //! asserts the frame it received is the one the daemon's own `Request` names,
 //! so a gate that spoke a shape the daemon cannot read fails here rather than
 //! at three in the morning on a box.
+//!
+//! # The one platform this file cannot speak for
+//!
+//! The door IS a unix socket, so this file stands the daemon up on one and
+//! cannot run where there is none. That is a named limitation, not a narrowing
+//! to reach green: what Windows does is covered, ungated, in `cmd::gate`'s own
+//! tests. `control::request_dispatch_gate` has a `#[cfg(not(unix))]` arm
+//! returning `Err(no_socket())`, so on Windows EVERY dispatch takes the
+//! no-socket path, and `no_control_socket_opens_the_gate_and_leaves_a_mark`
+//! asserts that path allows the tool call and writes a degraded mark on every
+//! platform this crate builds for.
+
+// cm:guard the gate goes on the FILE and names the socket as its reason. Widening it — cfg-ing out
+// the tests instead of the thing that needs a unix socket — would leave the refusal that is this
+// issue's whole deliverable untested on two of three CI legs while `ci-passed` reported green,
+// which is the exact shape ISS-1094 exists to refuse (ISS-1094).
+#![cfg(unix)]
 
 use std::io::{BufRead, BufReader, Write};
 use std::os::unix::net::UnixListener;
@@ -31,13 +48,45 @@ const DISPATCH_PAYLOAD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105
 
 struct Scratch(PathBuf);
 
+/// The `sockaddr_un.sun_path` budget. macOS gives 104 bytes where Linux gives 108, and a unix
+/// socket whose path does not fit fails at `bind` with `InvalidInput`, before a single assertion in
+/// this file runs.
+const SUN_LEN: usize = 104;
+
 impl Scratch {
+    /// A directory short enough to hold a unix socket, and unique enough for these tests to run at
+    /// once.
+    ///
+    // cm:guard the base is `/tmp` and NOT `std::env::temp_dir()`. On macOS that helper answers
+    // `/var/folders/<hash>/<hash>/T/` — about 49 bytes before this test has named anything — and
+    // the full test name after it put every socket here past `SUN_LEN`. The whole file then failed
+    // at `bind` on the macos leg while ubuntu passed, which is the platform-shaped version of a
+    // green that means nothing (ISS-1094). The name is a hash rather than the test's own so the
+    // length cannot drift back over the line as tests are added.
     fn new(name: &str) -> Self {
-        let p = std::env::temp_dir().join(format!(
-            "forge-door-{name}-{}-{:?}",
-            std::process::id(),
-            std::thread::current().id()
-        ));
+        let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+        for b in name
+            .as_bytes()
+            .iter()
+            .chain(format!("{:?}", std::thread::current().id()).as_bytes())
+        {
+            h ^= u64::from(*b);
+            h = h.wrapping_mul(0x0000_0100_0000_01b3);
+        }
+        let base = if Path::new("/tmp").is_dir() {
+            PathBuf::from("/tmp")
+        } else {
+            std::env::temp_dir()
+        };
+        let p = base.join(format!("fgd-{}-{h:x}", std::process::id()));
+        let sock = p.join("control.sock");
+        assert!(
+            sock.as_os_str().len() < SUN_LEN,
+            "this test's socket path is {} bytes and must be under {SUN_LEN}, or `bind` refuses it \
+             with InvalidInput before any assertion here runs: {}",
+            sock.as_os_str().len(),
+            sock.display()
+        );
         let _ = std::fs::remove_dir_all(&p);
         std::fs::create_dir_all(&p).expect("scratch");
         Self(p)

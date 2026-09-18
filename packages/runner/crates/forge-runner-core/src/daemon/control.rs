@@ -736,9 +736,6 @@ fn bind_or_release(
     }
 }
 
-/// A subagent that started under a shipped role with nothing declared for it.
-// cm:guard the role set is read here again rather than passed in from the gate: this path runs when the gate did not, which is precisely when a value carried from it would be missing.
-#[cfg(unix)]
 /// What a `SubagentStart` with no pending declaration turned out to be.
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) enum StartKind {
@@ -764,6 +761,12 @@ pub(crate) fn classify_start(read: Result<Option<String>, String>) -> StartKind 
     }
 }
 
+// cm:guard `#[cfg(unix)]` binds to the NEXT item, so anything inserted between one and the function
+// it was written for silently re-gates the wrong thing. That is how this file shipped `StartKind`
+// as unix-only and `undeclared_child` as unconditional in one edit: every local gate was green,
+// because `cfg(unix)` is true on the box, and only ci.yml's windows leg could see it. Add an item
+// here by writing its own attribute, never by landing above someone else's (ISS-1094).
+#[cfg(unix)]
 fn unreadable_ledger(ctl: &Arc<Control>, child: &str, e: &str) {
     let detail = format!("could not read the declared runs when subagent {child} started: {e}");
     tracing::warn!("[control] {detail} — this box knows neither that the work was declared nor that it was not");
@@ -772,6 +775,9 @@ fn unreadable_ledger(ctl: &Arc<Control>, child: &str, e: &str) {
     }
 }
 
+/// A subagent that started under a shipped role with nothing declared for it.
+// cm:guard the role set is read here again rather than passed in from the gate: this path runs when the gate did not, which is precisely when a value carried from it would be missing.
+#[cfg(unix)]
 fn undeclared_child(ctl: &Arc<Control>, child: &str, agent_type: Option<&str>) {
     let Some(role) = agent_type else {
         tracing::debug!("[control] subagent {child} answers to no declared run");

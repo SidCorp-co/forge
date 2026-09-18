@@ -201,13 +201,37 @@ mod tests {
     /// runs on one box cannot take each other's, and removed on the way out.
     struct Scratch(std::path::PathBuf);
 
+    /// The `sockaddr_un.sun_path` budget: 104 bytes on macOS against 108 on Linux.
+    const SUN_LEN: usize = 104;
+
     impl Scratch {
+        // cm:guard the base is `/tmp` and NOT `std::env::temp_dir()`, because a socket binds under
+        // this directory. On macOS that helper answers `/var/folders/<hash>/<hash>/T/`, and the
+        // old form here came to 100 bytes against a limit of 104 — it was passing the macos leg by
+        // four characters, and the next test name one word longer would have failed at `bind` with
+        // `InvalidInput` before any assertion ran. The sibling door test crossed that line for
+        // real on 2026-09-18 (ISS-1094).
         fn new(name: &str) -> Self {
-            let p = std::env::temp_dir().join(format!(
-                "forge-{name}-{}-{:?}",
-                std::process::id(),
-                std::thread::current().id()
-            ));
+            let mut h: u64 = 0xcbf2_9ce4_8422_2325;
+            for b in name
+                .as_bytes()
+                .iter()
+                .chain(format!("{:?}", std::thread::current().id()).as_bytes())
+            {
+                h ^= u64::from(*b);
+                h = h.wrapping_mul(0x0000_0100_0000_01b3);
+            }
+            let base = if std::path::Path::new("/tmp").is_dir() {
+                std::path::PathBuf::from("/tmp")
+            } else {
+                std::env::temp_dir()
+            };
+            let p = base.join(format!("fgg-{}-{h:x}", std::process::id()));
+            assert!(
+                p.join("control.sock").as_os_str().len() < SUN_LEN,
+                "a socket under this scratch would not fit in sun_path ({SUN_LEN}): {}",
+                p.display()
+            );
             let _ = std::fs::remove_dir_all(&p);
             std::fs::create_dir_all(&p).expect("scratch");
             Self(p)
@@ -387,6 +411,13 @@ mod tests {
     /// Criteria 14, 15, 17. A socket that exists and answers nothing useful is
     /// the shape a wedged or half-started daemon presents, and it must cost the
     /// master the bound and nothing more.
+    // cm:guard gated `unix` because it BINDS a unix socket, and for no wider reason. What Windows
+    // actually does is not skipped with it: `request_dispatch_gate` has a `#[cfg(not(unix))]` arm
+    // returning `Err(no_socket())`, so on Windows every dispatch takes the no-socket path — which
+    // `no_control_socket_opens_the_gate_and_leaves_a_mark` asserts, ungated, on every platform.
+    // A `cfg` that hid the gate's behaviour rather than one socket call would leave this issue's
+    // whole deliverable untested on two of three legs while CI reported pass (ISS-1094).
+    #[cfg(unix)]
     #[tokio::test]
     async fn a_daemon_that_never_answers_opens_the_gate_within_the_bound() {
         let dir = Scratch::new("gateverb-2");
