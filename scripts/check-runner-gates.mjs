@@ -13,9 +13,9 @@
 // a local gate stricter than CI teaches contributors to ignore it.
 //
 // Scoped to a diff like the CI job is (`packages/runner/**` paths filter), so
-// core-only work never pays for a Rust build. Skips with an explicit line when
-// cargo is absent, because a contributor with no Rust toolchain must still be able
-// to run `pnpm verify` on a TypeScript change.
+// core-only work never pays for a Rust build — a contributor with no Rust toolchain
+// working on TypeScript scopes to zero files and exits 0 without ever looking for
+// cargo. A crate change with no cargo to measure it is the opposite case and exits 2.
 
 import { spawnSync } from 'node:child_process';
 import { dirname, resolve } from 'node:path';
@@ -85,17 +85,27 @@ if (changed !== null && changed.size === 0) {
   process.exit(0);
 }
 
-// cm:guard skip LOUDLY and exit 0, never exit 2. Exit 2 means "the gate could not run" and would fail `pnpm verify` for every contributor without a Rust toolchain working on TypeScript — which would get the whole check deleted rather than fixed.
-const cargo = spawnSync('cargo', ['--version'], { encoding: 'utf8' });
-if (cargo.error || cargo.status !== 0) {
-  console.log('runner-gates: skipped — cargo not available locally, CI runs it');
-  process.exit(0);
-}
-
 // cm:guard always print a NUMBER: verify.mjs parses this line and does `Number(m[1])`, so a word like `all` becomes NaN and the run displays a file count nobody can check.
 const count = changed
   ? changed.size
   : (git(['ls-files', '--', 'packages/runner']) ?? '').split('\n').filter(Boolean).length;
+
+// cm:guard exit 2, and the empty-scope exit ABOVE is what makes that safe: reaching this line means there IS a crate change and this box measured none of it. The guard here used to say the opposite — skip and exit 0, or every contributor without a Rust toolchain fails `pnpm verify` on a TypeScript change — and that fear cannot happen, because such a change scopes to 0 files and exits 0 several lines earlier. What the skip actually covered was the one case that matters: on 2026-09-18, the first branch in a while with crate files in scope, `pnpm verify` printed `skip` and exited 0 over six changed crate files, on the axis where the `#[cfg]` misbinding, the `sun_path` limit and the `dirs_next` divergence all lived (ISS-1096).
+// cm:why this is a REFUSAL and not a failure: nothing here says the crate is wrong, only that nobody read it. verify.mjs turns exit 2 into `n/a` + `could not run` for exactly that reason, and its own words are that a gate which did not run is not a pass.
+const cargo = spawnSync('cargo', ['--version'], { encoding: 'utf8' });
+if (cargo.error || cargo.status !== 0) {
+  console.error(
+    `runner-gates: ${count} crate file(s) changed and cargo is not on PATH, so this box measured none of them.`,
+  );
+  console.error(
+    'Install Rust (https://rustup.rs) or put cargo on PATH, then run `pnpm verify` again.',
+  );
+  console.error(
+    'CI runs the same four gates on three platforms — but not before you push, which is the whole',
+  );
+  console.error('reason this check exists: 0.7.6 was verified 13/13 and took the release down.');
+  process.exit(2);
+}
 // cm:guard print the scope BEFORE running the gates, and word it as scope rather than as a verdict. verify.mjs needs this line to prove the scope was computed; printed only on success it is absent exactly when a gate fails, and verify then reports a real violation as exit 2 `could not run` — which is the code this repo reserves for a gate that is not measuring anything.
 console.log(`runner-gates: ${count} crate file(s) in scope`);
 

@@ -3008,6 +3008,16 @@
   receipt, naming the exact wording it passed, and the door to your chat room refuses a message
   carrying any other.
 
+- **A release job no longer reads as running when nobody asked its agent anything.** The box beat
+  `running` on a schedule, so a pane holding an unsubmitted prompt looked like one working. It now
+  reports only what it can prove.
+
+- **A box that cannot hear its agents reports nothing about them.** After a restart, or where the
+  daemon hosts no control socket, it sends no run state and never fails such a job for silence.
+
+- **`pnpm verify` no longer exits 0 over a gate it did not run.** The Rust gates skipped when no
+  toolchain was present, which only happened where there were Rust changes to measure.
+
 - **Three checks on the dispatch gate could not fail, so they said nothing.** Two fail-open paths
   went unexercised and one test rebuilt the code it judged instead of calling it. Each is now
   proven by watching it go red.

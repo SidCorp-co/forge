@@ -1031,6 +1031,10 @@ async fn take_pool_job(
     let fallback = resolve_repo(served, cfg, &runner.project_id)
         .ok()
         .map(|r| r.repo_path);
+    // cm:guard the SAME map the control socket resolves frames against, and a box that cannot
+    // resolve it still claims: what is lost is only this box's ability to tell a job whose agent
+    // never started from one that is working, which `open_channel` says by name.
+    let tokens = session_tokens::default_path().map(session_tokens::SessionTokens::at);
     let took = pool_jobs::take_one(
         &pool_jobs::CorePool { client, limit: 20 },
         &pool_jobs::TmuxPanes,
@@ -1041,6 +1045,7 @@ async fn take_pool_job(
         job_panes.session_id(),
         fallback.as_deref(),
         bound,
+        tokens.as_ref(),
     )
     .await;
     if let pool_jobs::Took::AtBound = took {
