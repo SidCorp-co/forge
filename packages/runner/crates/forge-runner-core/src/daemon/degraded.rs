@@ -82,13 +82,22 @@ fn trim(path: &Path) {
 }
 
 /// What one kind of mark amounts to, for an operator reading it back.
+// cm:guard `count` is what the FILE still holds and is never a lifetime total, because the file is
+// capped: past the cap the oldest half goes, so a box degrading steadily shows a number that falls
+// while the failures keep coming. Every reader has to say "retained" and print the window, or an
+// operator reads a shrinking number as an improving box (ISS-1094, review F7).
 #[derive(Debug, Default, PartialEq, Eq)]
 pub struct Tally {
+    /// How many marks of this kind the file still holds — not how many ever happened.
     pub count: usize,
     /// The most recent detail, which is what says WHY rather than how often.
     pub last: Option<String>,
     /// Milliseconds since the epoch, the same clock every other mark on this box uses.
     pub last_at: Option<i64>,
+    /// The oldest mark of this kind the file still holds, so a reader can see the window.
+    pub first_at: Option<i64>,
+    /// Whether older marks have been dropped, which makes `count` a floor rather than a total.
+    pub trimmed: bool,
 }
 
 /// Read both tallies back.
@@ -113,8 +122,15 @@ pub fn tally(config_dir: &Path) -> (Tally, Tally) {
             .get("detail")
             .and_then(serde_json::Value::as_str)
             .map(str::to_string);
-        slot.last_at = v.get("at").and_then(serde_json::Value::as_i64);
+        let at = v.get("at").and_then(serde_json::Value::as_i64);
+        slot.last_at = at;
+        if slot.first_at.is_none() {
+            slot.first_at = at;
+        }
     }
+    let trimmed = body.lines().count() >= MAX_LINES / 2;
+    degraded.trimmed = trimmed && degraded.count > 0;
+    undeclared.trimmed = trimmed && undeclared.count > 0;
     (degraded, undeclared)
 }
 
@@ -199,6 +215,10 @@ mod tests {
         assert!(
             body.contains(&format!("line {}", MAX_LINES + 39)),
             "the newest line is the one that must survive"
+        );
+        assert!(
+            tally(dir.path()).1.trimmed,
+            "a capped file must say so, or its count reads as a lifetime total that went down"
         );
     }
 }

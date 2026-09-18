@@ -167,9 +167,20 @@ pub struct Control {
     /// Where this box's marks and its plugin clones live.
     // cm:guard resolved ONCE, at construction, and carried — the same rule `mcp/config.rs` states for the credential and for the same reason: a second resolution is how one path on a box starts reading a different directory from another. It is also the seam the tests need, since a handler resolving it itself would write this daemon's marks into the operator's real config directory during `cargo test`.
     pub config_dir: Option<PathBuf>,
-    /// Which tool call each declared run has been promised to, this boot only.
+    /// What the gate has decided this daemon lifetime, promises and answers both.
     // cm:guard in MEMORY and therefore boot-scoped, which is the same scope `unbound_run_for_master` already has: a row from a previous boot is invisible to that query, so a promise that outlived the daemon would be a promise about a run nothing can find. The replay guarantee is bounded to one boot and that bound is stated rather than engineered around (ISS-1094 criteria 41, 42) — after a restart a dispatch is REFUSED and told to declare again, which is the loud direction; a stored promise that let one through would be the silent one.
-    pub promises: std::sync::Mutex<std::collections::HashMap<String, String>>,
+    pub promises: std::sync::Mutex<GateMemory>,
+}
+
+/// What the declaration gate remembers for as long as this daemon runs.
+// cm:guard the two maps are under ONE lock, and that is what makes single-use hold. Reading the promise and writing it under separate locks is a check followed by a create: two dispatches racing on one declaration both read no promise and both are allowed, which is the invariant this was built to defend arriving through the back door (ISS-1094, review F2).
+#[derive(Default)]
+pub struct GateMemory {
+    /// Which tool call each pending declaration has been promised to.
+    promised: std::collections::HashMap<String, String>,
+    /// Tool calls this daemon has already allowed.
+    // cm:guard OUTLIVES the promise on purpose. The promise is released when the subagent binds, but the hook that asked may be replayed after that — the harness promises nothing about delivering once — and a replay finding its promise gone would either be refused or would eat the master's NEXT declaration. Criterion 6's guarantee is for the whole daemon lifetime, not until the bind (ISS-1094, review F4).
+    allowed: std::collections::HashSet<String>,
 }
 
 /// Serve until `cancel` flips.
@@ -529,24 +540,52 @@ fn dispatch_gate_reply(
 
     let dir = ctl.config_dir.clone();
     let roles = dir.as_deref().and_then(dispatch_gate_roles);
-    let pending = {
-        let mut held = ctl.ledger.lock().expect("ledger poisoned");
-        match held.as_mut() {
-            Some(led) => led
-                .unbound_run_for_master(session_id, &ctl.boot_id)
-                .ok()
-                .flatten()
-                .map(|r| r.run_id),
-            None => None,
+
+    // cm:guard the ledger lock is taken BEFORE the gate memory and never the other way round, the
+    // same order `bind_or_release` takes them in. Two orders on two locks is a deadlock that only
+    // appears under the concurrency this critical section exists to survive.
+    let mut held = ctl.ledger.lock().expect("ledger poisoned");
+    let pending = match held.as_mut() {
+        // cm:guard a ledger ERROR is not "nothing is declared". Collapsing the two refuses a
+        // master because this box could not read its own registry, which is an uncertain state
+        // answered with a certain denial — the shape this whole issue is about, inverted
+        // (ISS-1094, review F5).
+        Some(led) => match led.unbound_run_for_master(session_id, &ctl.boot_id) {
+            Ok(run) => run.map(|r| r.run_id),
+            Err(e) => {
+                let why = "this box's own registry of declared runs could not be read";
+                tracing::error!("[control] the dispatch gate could not decide: {why}: {e}");
+                if let Some(dir) = dir.as_deref() {
+                    crate::daemon::degraded::mark(
+                        dir,
+                        crate::daemon::degraded::Kind::Degraded,
+                        why,
+                    );
+                }
+                return gate_allows(Some(why));
+            }
+        },
+        None => {
+            let why = "this box holds no registry of declared runs";
+            if let Some(dir) = dir.as_deref() {
+                crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Degraded, why);
+            }
+            return gate_allows(Some(why));
         }
     };
-    let promised = pending.as_deref().and_then(|run| {
-        ctl.promises
-            .lock()
-            .expect("promises poisoned")
-            .get(run)
-            .cloned()
-    });
+    let mut memory = ctl.promises.lock().expect("promises poisoned");
+
+    // A tool call this daemon has already answered gets that answer again, whether
+    // or not its declaration has since been bound.
+    if let Some(tool_use) = d.tool_use_id.as_deref() {
+        if memory.allowed.contains(tool_use) {
+            return gate_allows(None);
+        }
+    }
+
+    let promised = pending
+        .as_deref()
+        .and_then(|run| memory.promised.get(run).cloned());
     let verdict = decide(
         &d,
         &Facts {
@@ -556,28 +595,17 @@ fn dispatch_gate_reply(
         },
     );
     match verdict {
-        Verdict::NotOurs | Verdict::Replay { .. } => ClaimReply {
-            ok: true,
-            job_id: None,
-            agent_session_id: None,
-            issue_key: None,
-            reason: None,
-        },
+        Verdict::NotOurs => gate_allows(None),
+        Verdict::Replay { .. } => gate_allows(None),
         Verdict::Covered { run_id } => {
             if let Some(tool_use) = d.tool_use_id.clone() {
-                ctl.promises
-                    .lock()
-                    .expect("promises poisoned")
-                    .insert(run_id.clone(), tool_use);
+                memory.promised.insert(run_id.clone(), tool_use.clone());
+                memory.allowed.insert(tool_use);
             }
             tracing::info!("[control] run {run_id} is promised to this dispatch");
-            ClaimReply {
-                ok: true,
-                job_id: Some(run_id),
-                agent_session_id: None,
-                issue_key: None,
-                reason: None,
-            }
+            let mut reply = gate_allows(None);
+            reply.job_id = Some(run_id);
+            reply
         }
         Verdict::Undeclared => {
             tracing::warn!(
@@ -590,14 +618,19 @@ fn dispatch_gate_reply(
                 crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Degraded, why);
             }
             tracing::error!("[control] the dispatch gate could not decide: {why}");
-            ClaimReply {
-                ok: true,
-                job_id: None,
-                agent_session_id: None,
-                issue_key: None,
-                reason: Some(why.to_string()),
-            }
+            gate_allows(Some(why))
         }
+    }
+}
+
+/// The gate's "go ahead", with an optional reason it could not do better.
+fn gate_allows(why: Option<&str>) -> ClaimReply {
+    ClaimReply {
+        ok: true,
+        job_id: None,
+        agent_session_id: None,
+        issue_key: None,
+        reason: why.map(str::to_string),
     }
 }
 
@@ -641,6 +674,7 @@ fn bind_or_release(
                         ctl.promises
                             .lock()
                             .expect("promises poisoned")
+                            .promised
                             .remove(&run.run_id);
                         tracing::info!("[control] run {} is subagent {child}", run.run_id)
                     }
@@ -650,6 +684,17 @@ fn bind_or_release(
                     ),
                     Err(e) => tracing::warn!("[control] cannot bind {child}: {e}"),
                 },
+                // cm:limit a child is correlated to a declaration by MASTER SESSION and by nothing
+                // else, which is ISS-1050's model and not this change's to replace: measured
+                // against claude 2.1.276, a `SubagentStart` payload carries `agent_id`,
+                // `agent_type`, `session_id`, `cwd`, `prompt_id` and `transcript_path` — and
+                // `prompt_id` is per TURN, so two dispatches in one turn share it. There is no key
+                // in what the harness gives that names the tool call a child came from. The
+                // consequence has one narrow shape: where a daemon restart let two dispatches
+                // through on one declaration (ISS-1094 criteria 41, 42) AND the master declares
+                // again between the first child binding and the second starting, the second binds
+                // the new row instead of being named here. Closing it needs a correlation key the
+                // payloads do not carry; it is bounded on the issue rather than papered over.
                 // cm:guard the two cases here are NOT one, and reading them as one is what left
                 // sid-desk with four issues nobody was working. A master runs subagents this box
                 // knows nothing about — a search, a review — and those are the ordinary case and
@@ -1038,7 +1083,7 @@ mod tests {
                 ))),
                 boot_id: "boot-a".into(),
                 config_dir: Some(dir),
-                promises: std::sync::Mutex::new(std::collections::HashMap::new()),
+                promises: std::sync::Mutex::new(GateMemory::default()),
             }),
             token,
         )
@@ -1084,7 +1129,7 @@ mod tests {
         };
         let promised = pending
             .as_deref()
-            .and_then(|run| ctl.promises.lock().unwrap().get(run).cloned());
+            .and_then(|run| ctl.promises.lock().unwrap().promised.get(run).cloned());
         let v = decide(
             d,
             &Facts {
@@ -1095,7 +1140,11 @@ mod tests {
         );
         if let crate::daemon::dispatch_gate::Verdict::Covered { run_id } = &v {
             if let Some(t) = d.tool_use_id.clone() {
-                ctl.promises.lock().unwrap().insert(run_id.clone(), t);
+                ctl.promises
+                    .lock()
+                    .unwrap()
+                    .promised
+                    .insert(run_id.clone(), t);
             }
         }
         v
@@ -1151,7 +1200,7 @@ mod tests {
             "sess-a",
         );
         assert!(
-            !ctl.promises.lock().unwrap().contains_key(&run_id),
+            !ctl.promises.lock().unwrap().promised.contains_key(&run_id),
             "a bound run must not stay promised, or the next declaration is refused on a free row"
         );
         assert_eq!(
@@ -1161,15 +1210,16 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
     }
 
-    /// Criteria 41, 42. The replay guarantee is bounded to one boot, and the
-    /// bound is a refusal rather than a silent pass.
-    // cm:guard the direction is the assertion. A daemon restart with the pane still alive could have been made to allow — the promise stored, the boot ignored — and this test exists to say that was chosen against: a false refusal costs a master one declaration, a false allow is the undeclared run this whole issue is about.
+    /// Criteria 41, 42, corrected. What a daemon restart with the pane still
+    /// alive actually does, measured rather than assumed.
+    // cm:guard this test used to mint a different `boot_id` and call that a restart. It is not one: `runner::inflight::boot_identity` reads the OS boot identity (`/proc/sys/kernel/random/boot_id` on linux), which a daemon restart does NOT change — only rebooting the machine does. So a declaration made before the restart is still pending afterwards, and that is right: the master declared it, nothing consumed it, and refusing would force a second row for work already declared. The criteria were written against a wrong model of that function and are corrected on the issue rather than the behaviour being bent to match them (ISS-1094, review F1).
+    // cm:guard what single-use actually rests on is the BIND, not the gate. `ledger::bind_agent` updates only where `agent_id IS NULL`, so two dispatches allowed across a restart still produce exactly one bound row — and the second child is denounced by `undeclared_child`, loudly and countably. The gate is the early refusal; the ledger is the invariant.
     #[test]
-    fn a_daemon_restart_refuses_rather_than_reusing_a_previous_boots_declaration() {
+    fn a_daemon_restart_leaves_the_declaration_standing_and_the_second_child_is_named() {
         use crate::daemon::dispatch_gate::Verdict;
-        let dir = box_with_roles(&["runner"]);
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
-        let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
+        let dir = ship_roles(&ctl, &["runner"]);
+        let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
             .job_id
             .expect("declared");
         assert!(matches!(
@@ -1177,8 +1227,8 @@ mod tests {
             Verdict::Covered { .. }
         ));
 
-        // The daemon restarts: a new boot id, an empty promise map, the same
-        // pane and the same ledger file underneath.
+        // A daemon restart: a new process, the same OS boot, the same ledger
+        // file, the same pane. Only what was held in memory is gone.
         let restarted = Arc::new(Control {
             tokens: SessionTokens::at(
                 std::env::temp_dir().join(format!("ct-restart-{}.json", uuid::Uuid::new_v4())),
@@ -1186,22 +1236,106 @@ mod tests {
             activity: ctl.activity.clone(),
             masters: ctl.masters.clone(),
             ledger: ctl.ledger.clone(),
-            boot_id: "boot-b".into(),
+            boot_id: ctl.boot_id.clone(),
             config_dir: ctl.config_dir.clone(),
-            promises: std::sync::Mutex::new(std::collections::HashMap::new()),
+            promises: std::sync::Mutex::new(GateMemory::default()),
         });
 
+        // The declaration is still the master's, so the dispatch is allowed.
         assert_eq!(
-            gate_on(&restarted, &dir, &asking("runner", "toolu_1"), "sess-a"),
-            Verdict::Undeclared,
-            "the replay guarantee ends at the boot, and ending it must refuse rather than allow"
+            gate_on(&restarted, &dir, &asking("runner", "toolu_2"), "sess-a"),
+            Verdict::Covered {
+                run_id: run_id.clone()
+            },
+            "a declaration nothing consumed is still pending after a daemon restart"
         );
+
+        // Both dispatches were allowed, so two children may start. Exactly one
+        // binds, and the other is named rather than quietly losing its work.
+        for child in ["child-1", "child-2"] {
+            bind_or_release(
+                &restarted,
+                crate::daemon::agent_activity::Event::SubagentStarted,
+                Some(child),
+                Some("runner"),
+                "sess-a",
+            );
+        }
+        let held = restarted.ledger.lock().unwrap();
+        let bound = held.as_ref().unwrap().run_for_agent("child-1").unwrap();
+        drop(held);
+        assert!(
+            bound.is_some(),
+            "the first child binds the one declared row"
+        );
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
         assert_eq!(
-            gate_on(&restarted, &dir, &asking("runner", "toolu_9"), "sess-a"),
-            Verdict::Undeclared,
-            "no dispatch may reuse a declaration from a boot this daemon no longer has"
+            undeclared.count, 1,
+            "the child with no row left to bind is the one that must break loudly: {undeclared:?}"
         );
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(undeclared.last.unwrap_or_default().contains("child-2"));
+    }
+
+    /// Criterion 6, across the bind, which is where it was broken.
+    // cm:guard the replay is asked AFTER the subagent has started, because that is the case the promise map cannot answer: it is released at the bind, and a hook replayed a moment later would have found nothing and either been refused or eaten the master's next declaration (ISS-1094, review F4).
+    #[test]
+    fn a_replayed_hook_gets_its_answer_back_even_after_its_subagent_started() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner"]);
+        let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
+            .job_id
+            .expect("declared");
+        let ask = crate::daemon::dispatch_gate::Dispatch {
+            agent_id: None,
+            subagent_type: Some("runner".into()),
+            tool_use_id: Some("toolu_1".into()),
+        };
+        assert!(dispatch_gate_reply(&ctl, ask.clone(), "sess-a").ok);
+
+        bind_or_release(
+            &ctl,
+            crate::daemon::agent_activity::Event::SubagentStarted,
+            Some("child-1"),
+            Some("runner"),
+            "sess-a",
+        );
+
+        assert!(
+            dispatch_gate_reply(&ctl, ask.clone(), "sess-a").ok,
+            "the same tool call must get the same answer for this daemon's whole life"
+        );
+
+        // and it must not have eaten the next declaration.
+        let next = run_declare(&ctl, "proj-1", &["ISS-8".into()], "/w/eight", "sess-a")
+            .job_id
+            .expect("declared");
+        let mem = ctl.promises.lock().unwrap();
+        assert!(
+            !mem.promised.contains_key(&next),
+            "a replay must reserve nothing: {:?}",
+            mem.promised
+        );
+    }
+
+    /// Criterion 14. An uncertain box does not deny.
+    // cm:guard the ledger being absent is not "nothing is declared". This is the inversion that would have turned a box with an unreadable registry into a box that refuses every master on it, which is a certain answer given to an uncertain question (ISS-1094, review F5).
+    #[test]
+    fn a_box_that_cannot_read_its_own_registry_allows_and_marks() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        *ctl.ledger.lock().unwrap() = None;
+
+        let reply = dispatch_gate_reply(
+            &ctl,
+            crate::daemon::dispatch_gate::Dispatch {
+                agent_id: None,
+                subagent_type: Some("runner".into()),
+                tool_use_id: Some("toolu_1".into()),
+            },
+            "sess-a",
+        );
+        assert!(reply.ok, "an uncertain box must not refuse: {reply:?}");
+        assert_eq!(crate::daemon::degraded::tally(&dir).0.count, 1);
     }
 
     /// Put a plugin clone shipping these roles inside this Control's own config

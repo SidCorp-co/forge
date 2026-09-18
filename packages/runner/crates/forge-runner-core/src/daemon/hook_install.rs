@@ -18,8 +18,12 @@ const SETTINGS: &str = ".claude/settings.local.json";
 
 /// How a managed command is recognised on a later pass.
 // cm:guard identity is the VERB, never the exe path: the path changes under an update and a marker keyed on it would leave the old entry behind, so every restart would add one more copy of every hook and a pane would report each boundary as many times as this daemon had ever been installed.
-// cm:guard `--event` alone, so it recognises BOTH this daemon's verbs — `hook` and `gate`. Keyed on `hook --event` it would leave a stale `gate` entry behind on every pane spawn, which is the multiplying-hooks failure this marker exists to prevent, arriving through the newer verb.
-const MANAGED_MARKER: &str = "--event";
+// cm:guard BOTH of this daemon's verbs are listed, and the flag alone is never the marker. Keyed on `hook --event` a stale `gate` entry survives every pane spawn and the hooks multiply; keyed on `--event` alone, an operator's own `audit-hook --event PreToolUse` is classified as ours and silently deleted on the next spawn — a pane spawn that removes somebody's automation, which is the failure the merge exists to prevent (ISS-1094, review F6).
+// cm:guard each marker carries its LEADING SPACE, which is the boundary between the exe path and
+// the verb. Without it `audit-hook --event PreToolUse` — an operator's own command — contains
+// `hook --event` and is deleted as ours on the next pane spawn. Measured by the test below, which
+// went red against the first version of this fix.
+const MANAGED_MARKERS: [&str; 2] = [" hook --event ", " gate --event "];
 
 fn command_for(exe: &str, event: Event) -> String {
     format!("{exe} hook --event {}", event.wire())
@@ -43,7 +47,7 @@ fn is_managed(entry: &Value) -> bool {
             hs.iter().any(|h| {
                 h.get("command")
                     .and_then(Value::as_str)
-                    .is_some_and(|c| c.contains(MANAGED_MARKER))
+                    .is_some_and(|c| MANAGED_MARKERS.iter().any(|m| c.contains(m)))
             })
         })
 }
@@ -213,6 +217,39 @@ mod tests {
         assert_eq!(entries.len(), 1);
         let cmd = entries[0]["hooks"][0]["command"].as_str().unwrap();
         assert!(cmd.starts_with("/new/path/"), "{cmd}");
+    }
+
+    /// Review F6. An operator's own command that happens to take `--event`.
+    // cm:guard the damage this prevents is silent and total: a pane spawn deletes somebody's automation and the only symptom is their hook stopping. The marker exists to recognise THIS daemon's entries, and a flag is not a signature.
+    #[test]
+    fn an_operators_own_event_taking_hook_is_not_mistaken_for_ours() {
+        let theirs = serde_json::to_string(&json!({
+            "hooks": {
+                "PreToolUse": [
+                    { "matcher": "*", "hooks": [{ "type": "command", "command": "audit-hook --event PreToolUse" }] },
+                    { "matcher": "*", "hooks": [{ "type": "command", "command": "/old/fr gate --event PreToolUse" }] }
+                ],
+                "Stop": [{ "hooks": [{ "type": "command", "command": "/old/fr hook --event Stop" }] }]
+            }
+        }))
+        .unwrap();
+        let hooks = hooks_of(&merged(Some(&theirs), "/bin/fr").unwrap());
+        let pre = hooks["PreToolUse"].as_array().unwrap();
+        assert!(
+            pre.iter()
+                .any(|e| e["hooks"][0]["command"] == "audit-hook --event PreToolUse"),
+            "an operator's own hook is theirs: {pre:?}"
+        );
+        assert_eq!(
+            pre.iter()
+                .filter(|e| e["hooks"][0]["command"]
+                    .as_str()
+                    .is_some_and(|c| c.contains("gate --event")))
+                .count(),
+            1,
+            "our own stale entry is replaced, not joined: {pre:?}"
+        );
+        assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
     }
 
     // cm:guard a user's own hooks are theirs. Without this, every pane spawn silently deletes whatever somebody configured on that checkout, and the only symptom is their hook stopping.

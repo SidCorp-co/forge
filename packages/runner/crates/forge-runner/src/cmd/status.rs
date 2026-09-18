@@ -79,8 +79,9 @@ fn gate_lines(degraded: &Tally, undeclared: &Tally) -> Vec<String> {
     let mut out = vec!["gate".to_string()];
     if undeclared.count > 0 {
         out.push(format!(
-            "  undeclared {} hand-off(s) reached a subagent with nothing declared for them",
-            undeclared.count
+            "  undeclared {} hand-off(s) reached a subagent with nothing declared for them{}",
+            undeclared.count,
+            since(undeclared)
         ));
         if let Some(last) = undeclared.last.as_deref() {
             out.push(format!("             last: {last}"));
@@ -88,14 +89,34 @@ fn gate_lines(degraded: &Tally, undeclared: &Tally) -> Vec<String> {
     }
     if degraded.count > 0 {
         out.push(format!(
-            "  degraded   {} dispatch(es) went through because the gate could not decide",
-            degraded.count
+            "  degraded   {} dispatch(es) went through because the gate could not decide{}",
+            degraded.count,
+            since(degraded)
         ));
         if let Some(last) = degraded.last.as_deref() {
             out.push(format!("             last: {last}"));
         }
     }
     out
+}
+
+/// The window a count covers, and whether it is a floor rather than a total.
+// cm:guard the word "kept" is load-bearing. The marks file is capped, so past the cap the number goes DOWN while the failures continue, and an operator reading a lifetime total would read that as the box recovering (ISS-1094, review F7).
+fn since(t: &Tally) -> String {
+    let when = t
+        .first_at
+        .map(|ms| format!(" since {}", stamp(ms)))
+        .unwrap_or_default();
+    if t.trimmed {
+        format!(" kept{when}, older ones dropped")
+    } else {
+        when
+    }
+}
+
+fn stamp(ms: i64) -> String {
+    let secs = ms / 1000;
+    format!("epoch+{secs}s")
 }
 
 #[cfg(test)]
@@ -107,6 +128,8 @@ mod tests {
             count,
             last: Some(last.into()),
             last_at: Some(0),
+            first_at: Some(0),
+            trimmed: false,
         }
     }
 
@@ -122,6 +145,19 @@ mod tests {
         assert!(out.contains("degraded   3"), "{out}");
         assert!(out.contains("child c1 as runner"), "{out}");
         assert!(!out.contains('5'), "the two must never be summed: {out}");
+    }
+
+    /// Criterion 19, the half an operator would otherwise misread.
+    // cm:guard a falling number must not read as a recovering box. The file is capped, so a box degrading steadily shows fewer marks than it did an hour ago; the line has to say the count is what was kept.
+    #[test]
+    fn a_capped_count_says_it_is_what_was_kept_and_not_a_total() {
+        let mut t = tally(250, "roles unreadable");
+        t.trimmed = true;
+        let out = gate_lines(&t, &Tally::default()).join("\n");
+        assert!(
+            out.contains("kept") && out.contains("older ones dropped"),
+            "a trimmed count read as a lifetime total says the box is recovering: {out}"
+        );
     }
 
     // cm:guard a working gate prints NOTHING. A reassuring row on every box is a row an operator learns to skip past, including on the box where it later matters — the same reason `doctor` prints nothing for a project that declares no MCP servers.

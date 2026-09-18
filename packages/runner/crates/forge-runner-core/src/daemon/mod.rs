@@ -725,7 +725,7 @@ pub async fn run(
             ledger: ctl_ledger,
             boot_id: crate::runner::inflight::boot_identity().unwrap_or_default(),
             config_dir: control::config_dir(),
-            promises: std::sync::Mutex::new(std::collections::HashMap::new()),
+            promises: std::sync::Mutex::new(control::GateMemory::default()),
         });
         let cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {

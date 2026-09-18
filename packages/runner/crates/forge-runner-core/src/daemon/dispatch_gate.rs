@@ -109,15 +109,22 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
 /// rather than as knowing there are none.
 // cm:guard READ from disk and never a list written here. Hardcoding the five roles this fleet ships today means forge-plugin adding a sixth reopens the hole in silence — the same shape as ISS-1080 updating one copy of the master's guide and missing the other, which is the defect this issue exists to close.
 // cm:edge contract -> packages/runner/crates/forge-runner-core/src/workspace/plugin_sync.rs — `marketplace_clone_dir` is what puts a clone at this path, and the layout read here (`<clone>/plugin/agents/<role>.md`) is that clone's, not this module's to choose.
+// cm:guard a PARTIAL scan answers `None`, and this is the same inversion as the empty case one line further down. One plugin clone readable and another not yields a non-empty set that looks complete, and every role belonging to the unreadable clone is then classified `NotOurs` — no refusal, no mark, nothing said. A set this function is not sure of is not a set (ISS-1094, review F3).
 pub fn shipped_roles(config_dir: &Path) -> Option<BTreeSet<String>> {
     let mut out = BTreeSet::new();
     for clone in std::fs::read_dir(config_dir.join("marketplaces")).ok()? {
-        let Ok(clone) = clone else { continue };
-        let Ok(agents) = std::fs::read_dir(clone.path().join("plugin").join("agents")) else {
+        // A directory entry this box could not read leaves the inventory
+        // incomplete, and an incomplete inventory is indistinguishable from a
+        // complete one at every reader.
+        let clone = clone.ok()?;
+        let agents = clone.path().join("plugin").join("agents");
+        if !agents.is_dir() {
+            // A marketplace holding no agents directory ships no roles, which is
+            // knowledge rather than a gap: `codemap` is one of them on this box.
             continue;
-        };
-        for agent in agents.flatten() {
-            let path = agent.path();
+        }
+        for agent in std::fs::read_dir(agents).ok()? {
+            let path = agent.ok()?.path();
             if path.extension().and_then(|e| e.to_str()) != Some("md") {
                 continue;
             }
@@ -285,6 +292,43 @@ mod tests {
             "an unreadable role set must be UNKNOWN, not a silent pass: {v:?}"
         );
         assert_ne!(v, Verdict::NotOurs);
+    }
+
+    /// Review F3. A scan that could not finish is not a smaller answer.
+    // cm:guard the failing half is a directory this process cannot read, not an absent one: an absent `plugin/agents` means that marketplace ships no roles, which IS knowledge. Conflating the two either blinds the gate or refuses every box holding a marketplace that is not a plugin.
+    #[test]
+    fn a_role_scan_that_could_not_finish_is_not_a_partial_answer() {
+        let dir = Scratch::new("partialroles");
+        let good = dir.path().join("marketplaces/a__plugin/plugin/agents");
+        std::fs::create_dir_all(&good).expect("tree");
+        std::fs::write(good.join("runner.md"), "---\n").expect("agent");
+
+        // A second clone whose agents directory exists and cannot be read.
+        let bad = dir.path().join("marketplaces/b__plugin/plugin/agents");
+        std::fs::create_dir_all(&bad).expect("tree");
+        let mut perms = std::fs::metadata(&bad).expect("meta").permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o000);
+        }
+        std::fs::set_permissions(&bad, perms).expect("chmod");
+
+        let found = shipped_roles(dir.path());
+        // Restore before asserting, so a failure does not leave an unreadable tree.
+        let mut perms = std::fs::metadata(&bad).expect("meta").permissions();
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            perms.set_mode(0o755);
+        }
+        let _ = std::fs::set_permissions(&bad, perms);
+
+        assert_eq!(
+            found, None,
+            "a half-read inventory looks complete at every reader, and every role in the half \
+             that was not read is then classified as not ours — silently"
+        );
     }
 
     /// Criterion 10, the empty half: a directory that reads and holds nothing is not knowledge.

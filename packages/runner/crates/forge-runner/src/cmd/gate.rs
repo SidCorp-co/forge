@@ -122,12 +122,18 @@ async fn answer(dir: Option<&Path>, d: &Dispatch) -> String {
         Err(_) => open_because("the daemon did not answer within the bound"),
         Ok(Err(e)) => open_because(&format!("the daemon could not be reached: {e}")),
         Ok(Ok(reply)) if reply.ok => ALLOW.to_string(),
-        Ok(Ok(reply)) => deny(
-            reply
-                .reason
-                .as_deref()
-                .unwrap_or(forge_runner_core::daemon::dispatch_gate::REFUSAL),
-        ),
+        // cm:guard the ONLY refusal that denies is the declaration's own. This socket answers
+        // `ok:false` for an unknown token, an op it cannot decode, a session it cannot name — every
+        // one of them an uncertain state, and denying on them turns a daemon this pane could not
+        // authenticate to into a master that cannot dispatch anything. Certainty about the
+        // declaration is what earns a denial; nothing else does (ISS-1094, review F5).
+        Ok(Ok(reply)) => match reply.reason.as_deref() {
+            Some(r) if r == forge_runner_core::daemon::dispatch_gate::REFUSAL => deny(r),
+            Some(other) => {
+                open_because(&format!("the daemon refused the question itself: {other}"))
+            }
+            None => open_because("the daemon refused the question itself and said nothing"),
+        },
     }
 }
 
