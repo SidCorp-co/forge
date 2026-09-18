@@ -1,4 +1,4 @@
--- Undo 0286_runner_releases (ISS-1075).
+-- Undo 0287_runner_releases (ISS-1075).
 --
 -- The table is a RECORD of an operation and never the release itself: the
 -- release is the GitHub Release the `runner-v*` tag produces, and
