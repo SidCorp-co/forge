@@ -118,10 +118,24 @@ describe('refuseAgentConfigRecord', () => {
     expect(messages).toHaveLength(3);
   });
 
-  it('says how to clear a value when the record is null', () => {
-    const messages = refusalsFor(null);
+  // cm:guard the bodies that carry NO key, which a per-key walk answers with nothing: `{}` and `[]` reached `updateProjectSchema`, were stripped, and left a 200 with the field dropped — the silent discard this refusal exists to remove, arrived at by the one shape that names nothing. Found by review of ISS-1070 rather than by a case, which is why each is its own row here.
+  it.each([
+    ['null', null],
+    ['an empty record', {}],
+    ['a list', []],
+    ['a string', 'plugins'],
+  ])('refuses agentConfig given as %s, which names no key at all', (_label, record) => {
+    const messages = refusalsFor(record);
     expect(messages).toHaveLength(1);
-    expect(messages[0]).toContain('cleared through its own door');
+    expect(messages[0]).toContain('no longer a field on PATCH /api/projects/:id');
+    expect(messages[0]).toContain('Clear each value through its own door');
+  });
+
+  // cm:guard the clearing guide names `pipelineConfig` as the one value with NO clear, because its door merges a patch onto the stored document and no request removes a key from it (measured on beta for ISS-1076). A message that promised a null-clear for every key would send the operator from this refusal to another one.
+  it('does not promise a clear that pipelineConfig has no door for', () => {
+    const message = refusalsFor(null)[0] ?? '';
+    expect(message).toContain('`pipelineConfig` is the one value with no clear');
+    expect(message).not.toMatch(/send .*`pipelineConfig`.* as null/);
   });
 
   it('skips a key whose message the caller already added', () => {

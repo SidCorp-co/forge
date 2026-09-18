@@ -97,6 +97,17 @@ export function agentConfigDoorMessage(key: AgentConfigKey): string {
   return `agentConfig is no longer a field on PATCH /api/projects/:id — every value it held has a door of its own, so a wholesale record can no longer overwrite a sibling key a concurrent write just set. Write \`${key}\` through ${AGENT_CONFIG_DOORS[key]}.`;
 }
 
+/**
+ * How each value is cleared, for a caller who reached for `agentConfig: null` to do it.
+ *
+ * `pipelineConfig` is named as the exception rather than folded into the list, because its door
+ * MERGES a patch onto the stored document and has no representable request that removes a key —
+ * measured on beta for ISS-1076, where `{"githubIntake": null}` answers 400 and `{}` answers 400.
+ * Promising a clear this product does not have would send the operator from one refusal to another.
+ */
+export const AGENT_CONFIG_CLEAR_GUIDE =
+  'agentConfig is no longer a field on PATCH /api/projects/:id, and it cannot be cleared wholesale. Clear each value through its own door instead: send `personaStyle`, `systemPrompt`, `rocketChatAnswerMode` or `categories` as null on PATCH /api/projects/:id, or `plugins` as null on PATCH /api/projects/:id/plugins. `pipelineConfig` is the one value with no clear — its door merges a patch onto the stored document, so a key already stored there cannot be removed through it at all.';
+
 /** The message a raw `agentConfig` record carrying a key nothing declares is refused with. */
 export function agentConfigUndeclaredMessage(key: string): string {
   return `agentConfig.${key} is not a key this project's configuration declares, so nothing would ever read it. The declared keys are ${AGENT_CONFIG_KEYS.join(', ')}, each written through its own door. Refused by name rather than stored, and rather than answered 200 and dropped.`;
@@ -122,24 +133,22 @@ export function refuseAgentConfigRecord(
   alreadyNamed: ReadonlySet<string> = new Set(),
 ): void {
   if (raw === null || raw === undefined) {
+    ctx.addIssue({ code: 'custom', path, message: AGENT_CONFIG_CLEAR_GUIDE });
+    return;
+  }
+  if (typeof raw !== 'object' || Array.isArray(raw)) {
     ctx.addIssue({
       code: 'custom',
       path,
-      message:
-        'agentConfig is no longer a field on PATCH /api/projects/:id. It cannot be cleared wholesale either — each value is cleared through its own door by sending that field as null.',
+      message: `agentConfig is no longer a field on PATCH /api/projects/:id, and what arrived is a ${Array.isArray(raw) ? 'list' : typeof raw} rather than a document in any case. ${AGENT_CONFIG_CLEAR_GUIDE}`,
     });
     return;
   }
-  if (typeof raw !== 'object') {
-    ctx.addIssue({
-      code: 'custom',
-      path,
-      message: agentConfigUndeclaredMessage('<not an object>'),
-    });
-    return;
-  }
+  // cm:guard an EMPTY record has no key to answer, and a walk that only speaks per key would answer `{"name":"x","agentConfig":{}}` with a 200 and drop the field — the silent discard this whole refusal exists to remove, reached by the one body that carries no key. So the field is refused for being present whenever no key of it was, and a key the CALLER named counts as spoken for.
+  let spoke = false;
   const declared = new Set<string>(AGENT_CONFIG_KEYS);
   for (const key of Object.keys(raw as Record<string, unknown>)) {
+    spoke = true;
     if (alreadyNamed.has(key)) continue;
     const retired = RETIRED_AGENT_CONFIG_KEYS[key];
     if (retired) {
@@ -160,4 +169,5 @@ export function refuseAgentConfigRecord(
       message: agentConfigUndeclaredMessage(key),
     });
   }
+  if (!spoke) ctx.addIssue({ code: 'custom', path, message: AGENT_CONFIG_CLEAR_GUIDE });
 }

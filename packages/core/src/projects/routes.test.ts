@@ -1045,7 +1045,7 @@ describe('PATCH /api/projects/:id · retired keys and the agentConfig doors', ()
     [
       'a null agentConfig, which used to clear the whole column',
       { agentConfig: null },
-      'cleared through its own door',
+      'Clear each value through its own door',
     ],
   ];
 

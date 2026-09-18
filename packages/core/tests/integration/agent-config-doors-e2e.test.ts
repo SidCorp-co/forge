@@ -167,6 +167,32 @@ describe('the raw agentConfig record is refused by name', () => {
     expect(res.text).toContain(names as string);
     expect(await storedConfig()).toEqual(before);
   });
+
+  // cm:guard the key-less bodies, sent BESIDE a field that would otherwise succeed: without the field-level refusal the walk speaks for no key, `updateProjectSchema` strips `agentConfig`, and the operator gets a 200 with the name changed and the record dropped — which is the silent discard, reached by the one shape that names nothing.
+  it.each([
+    ['an empty record', {}],
+    ['a list', []],
+    ['null', null],
+  ])(
+    'refuses agentConfig given as %s even beside a field that would have succeeded',
+    async (_label, agentConfig) => {
+      const before = await storedConfig();
+      const res = await call('PATCH', `/api/projects/${projectId}`, {
+        name: 'A New Name',
+        agentConfig,
+      });
+      expect(res.status).toBe(400);
+      expect(res.text).toContain('no longer a field on PATCH /api/projects/:id');
+      expect(await storedConfig()).toEqual(before);
+
+      const [row] = await harness.db
+        .select({ name: mods.projects.name })
+        .from(mods.projects)
+        .where(eq(mods.projects.id, projectId))
+        .limit(1);
+      expect(row?.name).not.toBe('A New Name');
+    },
+  );
 });
 
 describe('a wholesale write cannot lose a sibling key', () => {
