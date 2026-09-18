@@ -16,7 +16,9 @@
 import { readFileSync } from 'node:fs';
 import { dirname, resolve as resolvePath } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { getTableName, isTable } from 'drizzle-orm';
 import { describe, expect, it, vi } from 'vitest';
+import * as dbSchema from '../db/schema.js';
 import { FORGE_GUIDES } from '../guides/registry.js';
 import { ALWAYS_INJECT_ENFORCEMENT_NOTE, ALWAYS_INJECT_GUARANTEE_NOTE } from './project-facts.js';
 
@@ -98,9 +100,30 @@ describe('ALWAYS_INJECT_ENFORCEMENT_NOTE — the detail the screen has no room f
     expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('recorded nowhere');
   });
 
-  it('names the one obligation on this deployment that does have a readback', () => {
-    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('ux_contract_rules');
-    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('ux_findings');
+  // cm:guard ISS-1068 — this note used to close by naming the UX Contract's two tables as the
+  // deployment's one obligation with a readback. Both are gone, so the FIRST assertion is the
+  // general one: any snake_case name the note carries has to be a table this schema still
+  // declares. The dead names are deliberately not written here either, because this file is under
+  // the same sweep the retirement is judged by. A sentence that names a dropped table is what CLAUDE.md calls a document worse than
+  // silence, and the note is interpolated into an MCP tool description and a guide body, so a
+  // stale name reaches an agent as fact.
+  it('names no database table this deployment does not have', () => {
+    const liveTables = new Set<string>(
+      Object.values(dbSchema)
+        .filter((value) => isTable(value))
+        .map((table) => getTableName(table)),
+    );
+    const tableShaped = ALWAYS_INJECT_ENFORCEMENT_NOTE.match(/\b[a-z]+(?:_[a-z]+)+\b/g) ?? [];
+
+    expect(tableShaped.filter((name) => !liveTables.has(name))).toEqual([]);
+  });
+
+  it('says the readback is gone, and what retired it', () => {
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain(
+      'No obligation on this deployment has a readback today',
+    );
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('ISS-1068 retired it');
+    expect(ALWAYS_INJECT_ENFORCEMENT_NOTE).toContain('cited back zero times');
   });
 });
 

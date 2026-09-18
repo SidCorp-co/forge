@@ -42,15 +42,13 @@ beforeAll(async () => {
   process.env.CORS_ORIGINS ??= 'http://localhost:3000';
   process.env.NODE_ENV ??= 'test';
 
-  const [health, charter, targets, batch, ux, collab, pin, uxw, jwt, err] = await Promise.all([
+  const [health, charter, targets, batch, collab, pin, jwt, err] = await Promise.all([
     import('../../src/health/routes.js'),
     import('../../src/skills/divergence-charter-routes.js'),
     import('../../src/integrations/postman/target-routes.js'),
     import('../../src/release-batch/routes.js'),
-    import('../../src/projects/ux-contract-routes.js'),
     import('../../src/projects/collaborators-routes.js'),
     import('../../src/skills/pin-routes.js'),
-    import('../../src/ux-findings/write-routes.js'),
     import('../../src/auth/jwt.js'),
     import('../../src/middleware/error.js'),
   ]);
@@ -62,11 +60,9 @@ beforeAll(async () => {
   app.route('/api/me', health.opsHealthMeRoutes);
   app.route('/api/me', collab.collaboratorsMeRoutes);
   app.route('/api/projects', pin.skillPinRoutes);
-  app.route('/api/projects', uxw.uxFindingWriteRoutes);
   app.route('/api/projects', charter.divergenceCharterRoutes);
   app.route('/api/projects', targets.integrationTargetRoutes);
   app.route('/api/projects', batch.releaseBatchRoutes);
-  app.route('/api/projects', ux.uxContractProjectRoutes);
   app.onError(err.errorHandler);
 }, 60_000);
 
@@ -347,30 +343,5 @@ describe('release batch lifecycle — replaces forge_release_batch', () => {
     expect(run[0]).toMatchObject({ status: 'cancelled' });
     const job = await harness.db.execute(sql`SELECT status FROM jobs WHERE id = ${jobId}`);
     expect(job[0]).toMatchObject({ status: 'cancelled' });
-  });
-});
-
-describe('ux-improver — the REST route the deleted tool duplicated', () => {
-  it('reads candidates as a member and refuses to propose as one', async () => {
-    const { project } = await seed();
-    const { token } = await seedNonAdminMember(project);
-    const candidates = await call(`/api/projects/${project.id}/ux-improver/candidates`, token);
-    expect(candidates.status).toBe(200);
-
-    const propose = await call(`/api/projects/${project.id}/ux-improver/propose`, token, {
-      method: 'POST',
-      body: JSON.stringify({ keys: [] }),
-    });
-    expect(propose.status).toBe(403);
-  });
-
-  it('an admin proposing nothing still succeeds — that call is what refreshes the inbox', async () => {
-    const { project, token } = await seed();
-    const res = await call(`/api/projects/${project.id}/ux-improver/propose`, token, {
-      method: 'POST',
-      body: JSON.stringify({ keys: [] }),
-    });
-    expect(res.status).toBe(200);
-    expect((await res.json()) as { outcomes: unknown[] }).toEqual({ outcomes: [] });
   });
 });

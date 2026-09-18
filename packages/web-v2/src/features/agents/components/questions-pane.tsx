@@ -116,7 +116,7 @@ export function QuestionsPane({ scope, focusQuestionId }: QuestionsPaneProps) {
     );
   }
 
-  // cm:guard a failed read and an empty queue are two different screens. Collapsed into one, a decision somebody owes disappears behind "nothing is waiting" with nothing to retry (project ux-contract §2).
+  // cm:guard a failed read and an empty queue are two different screens. Collapsed into one, a decision somebody owes disappears behind "nothing is waiting" with nothing to retry. The rule: a failed read renders as an error with a retry, never as an empty state.
   if (isError) {
     return (
       <div className="grid min-h-[40vh] place-items-center p-4">

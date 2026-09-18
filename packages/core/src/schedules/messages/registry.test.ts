@@ -67,7 +67,7 @@ describe('improvementMessages registry', () => {
     expect(msg!.rationale).toBeTruthy();
   });
 
-  it('registry contains the standing templates (steward + drift-check + product-map-refresh + feedback-digest + ux-improver)', () => {
+  it('registry contains the standing templates (steward + drift-check + product-map-refresh + feedback-digest)', () => {
     const keys = listImprovementMessages().map((m) => m.key);
     expect(keys).toEqual(
       expect.arrayContaining([
@@ -75,10 +75,9 @@ describe('improvementMessages registry', () => {
         'knowledge-drift-check',
         'product-map-refresh',
         'feedback-triage-digest',
-        'ux-contract-improve',
       ]),
     );
-    expect(listImprovementMessages()).toHaveLength(5);
+    expect(listImprovementMessages()).toHaveLength(4);
   });
 
   it('all registry entries are standing', () => {
@@ -89,7 +88,6 @@ describe('improvementMessages registry', () => {
         'optimize-skills',
         'product-map-refresh',
         'feedback-triage-digest',
-        'ux-contract-improve',
       ].sort(),
     );
   });

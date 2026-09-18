@@ -35,7 +35,6 @@ describe('resolveTemplatePrompt', () => {
       'knowledge-drift-check',
       'product-map-refresh',
       'feedback-triage-digest',
-      'ux-contract-improve',
       'optimize-skills',
     ];
     const prompts = keys.map(
@@ -45,20 +44,20 @@ describe('resolveTemplatePrompt', () => {
     expect(new Set(prompts).size).toBe(keys.length);
   });
 
-  it('ux-contract-improve gets the improver prompt, not the steward fallback', () => {
-    const improver = resolveTemplatePrompt(schedule({ templateKey: 'ux-contract-improve' }));
+  it('product-map-refresh gets its own builder, not the steward fallback', () => {
+    const refresh = resolveTemplatePrompt(schedule({ templateKey: 'product-map-refresh' }));
     const steward = resolveTemplatePrompt(schedule({ templateKey: 'optimize-skills' }));
 
-    expect(improver?.standing).toBe(true);
-    expect(improver?.prompt).toContain('UX-contract improver');
-    expect(improver?.prompt).not.toBe(steward?.prompt);
+    expect(refresh?.standing).toBe(true);
+    expect(refresh?.prompt).toContain('Current mode:');
+    expect(refresh?.prompt).not.toBe(steward?.prompt);
   });
 
   it('ignores appliedMessageVersions for a standing key — every cadence tick dispatches', () => {
     const result = resolveTemplatePrompt(
       schedule({
-        templateKey: 'ux-contract-improve',
-        appliedMessageVersions: { 'ux-contract-improve': 1 },
+        templateKey: 'product-map-refresh',
+        appliedMessageVersions: { 'product-map-refresh': 1 },
       }),
     );
 
@@ -68,14 +67,14 @@ describe('resolveTemplatePrompt', () => {
 
   it("falls back to the template's own default mode when the schedule has none", () => {
     const defaulted = resolveTemplatePrompt(
-      schedule({ templateKey: 'ux-contract-improve', mode: null }),
+      schedule({ templateKey: 'product-map-refresh', mode: null }),
     );
     const explicit = resolveTemplatePrompt(
-      schedule({ templateKey: 'ux-contract-improve', mode: 'auto' }),
+      schedule({ templateKey: 'product-map-refresh', mode: 'propose' }),
     );
 
-    expect(defaulted?.prompt).toContain('Mode: propose');
-    expect(explicit?.prompt).toContain('Mode: auto');
+    expect(defaulted?.prompt).toContain('Current mode: **auto**');
+    expect(explicit?.prompt).toContain('Current mode: **propose**');
   });
 
   it('returns null for a ONE-SHOT template already applied at its current version', () => {
