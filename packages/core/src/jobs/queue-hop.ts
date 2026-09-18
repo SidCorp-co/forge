@@ -110,8 +110,8 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
    *
    * It takes `heartbeatMs` rather than `queueMs` because it is the quiet-clock
    * proposition and not the queue one: the row is bounded by silence, exactly
-   * as the `running` hop below is, and the only thing separating the two is
-   * which status the box went quiet in. That is also what keeps it out of a
+   * as the heartbeat hop in `loop-monitor.ts` is, and the only thing separating
+   * the two is which status the box went quiet in. That is also what keeps it out of a
    * race with the runner's own first-turn window (`turn_evidence.rs`,
    * ISS-1096), which fires while the box is ALIVE and beating — a condition
    * this arm requires the negation of. Where the two do overlap (a live box
@@ -120,7 +120,7 @@ export async function reapQueueHop(input: QueueHopInput): Promise<QueueHopResult
    * box's own sentence onto `turn_never_reported` through `CAUSE_RULES`.
    */
   // cm:guard the cause names what CORE observed and deliberately not what it usually means: this hop cannot see the pane, so silence proves no turn was REPORTED and never that none ran. `agent_never_started` would be the same over-assertion `events-routes.ts` was just stopped from making, one column over.
-  // cm:guard no `awaiting_input` exemption here, unlike the `running` hop below, and the asymmetry is deliberate: a park implies a turn ran, so a park on a QUEUED session is a contradiction the record should not be allowed to sit in forever — `park-deadline.ts`'s two clocks both read `running` and would never reach it.
+  // cm:guard no `awaiting_input` exemption here, unlike `loop-monitor.ts`'s heartbeat hop, and the asymmetry is deliberate: a park implies a turn ran, so a park on a QUEUED session is a contradiction the record should not be allowed to sit in forever — `park-deadline.ts`'s two clocks both read `running` and would never reach it.
   const neverReportedFailed = await applyKernelTransition(db, {
     entity: 'session',
     returning: SWEEP_SESSION_COLUMNS,
