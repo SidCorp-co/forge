@@ -36,7 +36,9 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { detectStrandedIssues } = await import('./stranded-issues.js');
+const { detectStrandedIssues, detectOwedCloses, STRANDED_SCAN_LIMIT } = await import(
+  './stranded-issues.js'
+);
 const { resetSweepCursorsForTest } = await import('./sweep-cursor.js');
 
 function strand(projectId: string, i: number) {
@@ -79,5 +81,78 @@ describe('detectStrandedIssues resolves each project once per pass (ISS-1021)', 
     // Every project on the page reaches that one call — a batch that dropped one would leave its
     // strands with no admin, which this pass reports as `unreachable` rather than as an error.
     expect(adminsFor.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(['p1', 'p2', 'p3']));
+  });
+});
+
+// ISS-1021 criteria 2, 3 and 6, for the half of this module nothing reached. Measured while
+// re-judging on 2026-09-18: every assertion above is about `detectStrandedIssues`, and
+// `detectOwedCloses` — which carries the same memo, the same bound and the same truncation warn —
+// had no unit coverage at all, while `tests/integration/owed-close-e2e.test.ts` seeds one row per
+// case and so reaches none of the three. The page-filled warn had no assertion on either detector.
+describe('detectOwedCloses carries the same memo and bound (ISS-1021)', () => {
+  beforeEach(() => {
+    adminsFor.mockClear();
+    emitNotification.mockClear();
+    resetSweepCursorsForTest();
+  });
+
+  it('asks for the admin set ONCE however many rows the page holds', async () => {
+    rows.value = [strand('p1', 1), strand('p2', 2), strand('p1', 3), strand('p3', 4)];
+
+    await detectOwedCloses();
+
+    // Four rows, one question. With the per-row lookup back in this detector, this is 4 — and
+    // nothing else in the module would have moved.
+    expect(adminsFor).toHaveBeenCalledTimes(1);
+    expect(adminsFor.mock.calls[0]?.[0]).toEqual(expect.arrayContaining(['p1', 'p2', 'p3']));
+  });
+
+  it('reads no more than its bound in one pass', async () => {
+    rows.value = Array.from({ length: STRANDED_SCAN_LIMIT }, (_, i) => strand('p1', i + 1));
+
+    const result = await detectOwedCloses();
+
+    // The stub resolves whatever `.limit()` is handed, so this asserts the detector CONSUMED a
+    // bounded page rather than that the database applied one; the bound reaching SQL is what
+    // `tests/integration/sweep-fair-traversal-e2e.test.ts` proves for the sibling detector.
+    expect(result.detected).toBe(STRANDED_SCAN_LIMIT);
+  });
+});
+
+describe('a stranded pass that fills its page says so (ISS-1021 criterion 6)', () => {
+  beforeEach(() => {
+    adminsFor.mockClear();
+    emitNotification.mockClear();
+    resetSweepCursorsForTest();
+  });
+
+  // Both detectors, because they carry separate copies of the same block and a single case would
+  // leave whichever one it did not name free to lose it silently.
+  const detectors: Array<[string, () => Promise<unknown>, RegExp]> = [
+    ['waiting-park', () => detectStrandedIssues(), /waiting-park scan filled its page/],
+    ['owed-close', () => detectOwedCloses(), /owed-close scan filled its page/],
+  ];
+
+  it.each(detectors)('%s names the bound and the count it examined', async (_n, run, message) => {
+    const { logger } = await import('../logger.js');
+    vi.mocked(logger.warn).mockClear();
+    rows.value = Array.from({ length: STRANDED_SCAN_LIMIT }, (_, i) => strand('p1', i + 1));
+
+    await run();
+
+    const warn = vi.mocked(logger.warn).mock.calls.find((c) => message.test(String(c[1])));
+    expect(warn?.[0]).toMatchObject({ limit: STRANDED_SCAN_LIMIT, examined: STRANDED_SCAN_LIMIT });
+  });
+
+  it.each(detectors)('%s says nothing on a page that did not fill', async (_n, run, message) => {
+    const { logger } = await import('../logger.js');
+    vi.mocked(logger.warn).mockClear();
+    rows.value = [strand('p1', 1), strand('p1', 2)];
+
+    await run();
+
+    expect(
+      vi.mocked(logger.warn).mock.calls.find((c) => message.test(String(c[1]))),
+    ).toBeUndefined();
   });
 });

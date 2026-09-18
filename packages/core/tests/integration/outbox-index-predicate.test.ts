@@ -16,6 +16,7 @@
  * a transition would sit undelivered.
  */
 
+import type { SQL } from 'drizzle-orm';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, describe, expect, it } from 'vitest';
 import { setupTestDatabase, type TestDatabase } from '../helpers/index.js';
@@ -81,16 +82,25 @@ describe('idx_outbox_unprocessed agrees with the outbox claim', () => {
     // from what the index HOLDS, so `Actual Rows: 1` with `Heap Fetches: 0` is the statement that
     // the dead-lettered row is not in there — and under 0070's predicate `attempts` is not in the
     // index at all, so the plan cannot be index-only and the node type alone goes red.
-    const [{ id: userId }] = await harness.db.execute<{ id: string }>(
+    const insertedId = async (statement: SQL): Promise<string> => {
+      const rows = await harness.db.execute<{ id: string }>(statement);
+      const id = rows[0]?.id;
+      // A missing id here means the INSERT did not return one, which would make every assertion
+      // below run against a row that is not there. Refuse rather than carry an undefined onward.
+      if (!id) throw new Error('seed INSERT returned no id');
+      return id;
+    };
+
+    const userId = await insertedId(
       sql`INSERT INTO users (email) VALUES ('outbox-index@example.test') RETURNING id`,
     );
-    const [{ id: orgId }] = await harness.db.execute<{ id: string }>(
+    const orgId = await insertedId(
       sql`INSERT INTO organizations (name, slug, created_by) VALUES ('Outbox Org', 'outbox-org', ${userId}) RETURNING id`,
     );
-    const [{ id: projectId }] = await harness.db.execute<{ id: string }>(
+    const projectId = await insertedId(
       sql`INSERT INTO projects (org_id, slug, name, created_by) VALUES (${orgId}, 'outbox-proj', 'Outbox Project', ${userId}) RETURNING id`,
     );
-    const [{ id: issueId }] = await harness.db.execute<{ id: string }>(
+    const issueId = await insertedId(
       sql`INSERT INTO issues (project_id, title, created_by_id) VALUES (${projectId}, 'Outbox issue', ${userId}) RETURNING id`,
     );
 
