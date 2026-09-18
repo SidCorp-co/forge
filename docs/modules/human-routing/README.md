@@ -29,6 +29,7 @@ flowchart LR
 | The pull surface | `core/src/me/attention-routes.ts` (response + mapping), `core/src/me/attention-buckets.ts` (the bucket queries) |
 | Stop-and-ask | `schema.ts:waitingKinds`, `issues.reason`, status `needs_info` |
 | A structured question, and answering it from chat | `core/src/questions/`, `core/src/integrations/rocketchat/question-delivery.ts` |
+| Asking a room about its own past | `core/src/conversations/transcript-index.ts` cuts the retained transcript into bounded source-linked passages and `assistant/conversation-index-drain.ts` keeps them caught up on a tick; `transcript-search.ts` is the one retrieval door and takes `assistant/conversation-access.ts:readableConversation` as its first act, so a caller outside the room's scope is refused by name rather than served a narrowed set; `transcript-search-tool.ts` is the one bounded tool a turn reaches it through |
 | Mentions and delivery | `core/src/notifications/` — `deliver.ts` decides whether anybody is told; `kinds.ts` says what a type IS |
 | UI | web `features/attention/`, `notifications/`, `operator/` |
 

@@ -138,13 +138,19 @@ describe('identifier-aware keyword search (ISS-907)', () => {
     });
   });
 
-  it('the four tables carry a generated ident_search column with a GIN index', async () => {
+  // cm:guard the set is FROZEN and a fifth name here is a decision rather than a formality: every
+  // table on it pays `forge_identifier_words` on write and a GIN index on storage, and the function
+  // is IMMUTABLE precisely because a generated column may not be recomputed. `conversation_passages`
+  // joined it in ISS-1090 — a room's past is full of identifiers the english dictionary stems into
+  // words no query matches, which is the same argument `memories` was admitted on.
+  it('the five tables carry a generated ident_search column with a GIN index', async () => {
     const cols = (await harness.db.execute(sql`
       SELECT table_name FROM information_schema.columns
       WHERE column_name = 'ident_search' AND is_generated = 'ALWAYS' ORDER BY table_name`)) as unknown as {
       table_name: string;
     }[];
     expect(cols.map((c) => c.table_name)).toEqual([
+      'conversation_passages',
       'issues',
       'knowledge_entries',
       'memories',
@@ -155,6 +161,7 @@ describe('identifier-aware keyword search (ISS-907)', () => {
       tablename: string;
     }[];
     expect(idx.map((i) => i.tablename)).toEqual([
+      'conversation_passages',
       'issues',
       'knowledge_entries',
       'memories',

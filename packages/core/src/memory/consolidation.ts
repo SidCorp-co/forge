@@ -386,7 +386,13 @@ async function consolidate(projectId: string): Promise<ConsolidationResult> {
   }
 
   const counts = `created ${created}, updated ${updated}, archived ${archived}${skippedAsRecorded.length > 0 ? `, skipped ${skippedAsRecorded.length} already recorded` : ''}`;
-  const summary = typeof actions.summary === 'string' && actions.summary ? actions.summary : counts;
+  // cm:guard the model's own `summary` is prose it composed, so it passes the SAME check `create`
+  // and `update` pass — it reaches `memories` through the receipt below and comes back from an
+  // unfiltered `forge_memory_search`, which is the surface a refused `create` is kept out of. The
+  // guard was twelve lines above this line and did not stand at this door.
+  const proposed =
+    typeof actions.summary === 'string' && actions.summary ? actions.summary : counts;
+  const summary = guard.refuse(proposed, 'summary') ? counts : proposed;
 
   // cm:guard the ref must stay unique PER RUN — the natural key is (projectId, source, sourceRef), and while this read `consolidation:<date>` a same-day second run REPLACED the first receipt, losing a run with no trace; a timestamp is not enough either, two runs can share a second
   // cm:why archived refs are named rather than counted — "archived 3" identifies nothing, so a reader cannot check what went or put it back
