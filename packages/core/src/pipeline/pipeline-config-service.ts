@@ -84,11 +84,11 @@ function assertMergedConfigValid(
  * — both REST (`PATCH /projects/:id/pipeline-config`) and MCP
  * (`forge_config` action=`update`) gate on owner before invoking this.
  *
- * ISS-232 Phase 3 — the sibling `runnerFallback` field was removed; the
- * v2 selector picks primary → standby deterministically with no type-
- * chain fallback. `agentConfig.runnerFallback` rows that survived from
- * v1 are left alone (no destructive migration), but they no longer feed
- * the dispatcher.
+ * ISS-232 Phase 3 removed the sibling `runnerFallback` field; the v2 selector picks
+ * primary → standby deterministically with no type-chain fallback. ISS-1070 finished the
+ * retirement: `agentConfig.runnerFallback` is refused by name on every door and migration
+ * `0285_agent_config_shadow_keys.sql` removed the surviving v1 rows, so it is not a key a reader
+ * of this file can still find in the column.
  */
 export async function updatePipelineConfig(
   input: UpdatePipelineConfigInput,

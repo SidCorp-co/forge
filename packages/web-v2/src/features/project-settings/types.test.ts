@@ -168,11 +168,29 @@ describe("the two retired knobs", () => {
     expect(exported).toEqual([]);
   });
 
-  // cm:guard this one reads the SOURCE because the type system cannot represent the failure: `PipelineStateConfig` and `ProjectAgentConfig` both end in `[key: string]: unknown`, so a restored `skillName?: string` or `stateContext?: StateContextEntry` typechecks everywhere and a `@ts-expect-error` placed on it would be the thing that goes red, by being unused. A declared field is what invites the next editor control, which is the knob ISS-1000 removed.
+  // cm:guard this one reads the SOURCE because the type system cannot represent the failure: `PipelineStateConfig` still ends in `[key: string]: unknown`, so a restored `skillName?: string` or `stateContext?: StateContextEntry` typechecks everywhere and a `@ts-expect-error` placed on it would be the thing that goes red, by being unused. A declared field is what invites the next editor control, which is the knob ISS-1000 removed. `ProjectAgentConfig` lost its own index signature in ISS-1070 and is held by the case below instead.
   it("declares neither retired field, nor the type that described one", () => {
     const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "types.ts"), "utf8");
     for (const gone of [/\bskillName\b/, /\bstateContext\b/, /\bStateContextEntry\b/, /\bSTATE_CONTEXT_JOB_TYPES\b/]) {
       expect(source).not.toMatch(gone);
     }
+  });
+
+  it("offers no agentConfig on the update payload", () => {
+    // @ts-expect-error ISS-1070 — `PATCH /api/projects/:id` no longer takes a raw `agentConfig`
+    // record and refuses a body carrying one, naming the door for each key. A payload type that
+    // still offered the field would compile a request that can only answer 400. This directive goes
+    // unused, and the build red, if the field comes back.
+    const payload: ProjectUpdateInput = { agentConfig: { plugins: [] } };
+    expect(payload).toBeDefined();
+  });
+
+  // cm:guard the declared shape, asserted on the SOURCE for the same reason as the case above: an index signature makes every undeclared key typecheck, so a `@ts-expect-error` on one would go red by being unused rather than by the key being wrong. `ProjectAgentConfig` mirrors core's `agentConfigSchema`, which is strict, and a screen that could name a key core refuses is a screen that compiles a save answering 400.
+  it("declares ProjectAgentConfig as a closed key set", () => {
+    const source = readFileSync(join(dirname(fileURLToPath(import.meta.url)), "types.ts"), "utf8");
+    const block = /export interface ProjectAgentConfig \{([\s\S]*?)\n\}/.exec(source)?.[1] ?? "";
+    expect(block).not.toMatch(/\[key: string\]/);
+    expect(block).toMatch(/systemPrompt\?: string;/);
+    expect(block).toMatch(/categories\?: string\[\];/);
   });
 });

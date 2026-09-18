@@ -1891,6 +1891,13 @@
       "when": 1803427200000,
       "tag": "0282_room_transcript_index",
       "breakpoints": true
+    },
+    {
+      "idx": 285,
+      "version": "7",
+      "when": 1804723200000,
+      "tag": "0285_agent_config_shadow_keys",
+      "breakpoints": true
     }
   ]
 }
