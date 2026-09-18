@@ -55,8 +55,7 @@ use dispatch::resolve_repo;
 
 /// How often this box checks on the pool jobs it is running.
 // cm:guard comfortably inside core's `RESULT_QUIET_MINUTES` (60), because this tick is what keeps `jobs/loop-monitor.ts:reapResultMisses` off a healthy release: that hop fails a `dispatched` job whose newest evidence is older than the hour, and a release runs longer than that. It is deliberately not tighter — each tick is one `POST /api/jobs/:id/events` per live job, and the value it carries is liveness, not detail.
-pub(crate) const POOL_SUPERVISE_INTERVAL: std::time::Duration =
-    std::time::Duration::from_secs(60);
+pub(crate) const POOL_SUPERVISE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
 
 /// RAII counter for in-flight work (pipeline jobs + interactive chat turns).
 /// Incremented when a unit of work is spawned, decremented on drop — so the

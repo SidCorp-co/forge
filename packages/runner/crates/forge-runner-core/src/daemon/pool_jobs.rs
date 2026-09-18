@@ -60,8 +60,13 @@ pub trait Records: Send + Sync {
 /// The pane a job runs in.
 #[async_trait::async_trait]
 pub trait Panes: Send + Sync {
-    async fn open(&self, name: &str, cwd: &Path, prompt: &str, env: &[(String, String)])
-        -> Result<()>;
+    async fn open(
+        &self,
+        name: &str,
+        cwd: &Path,
+        prompt: &str,
+        env: &[(String, String)],
+    ) -> Result<()>;
     async fn alive(&self, name: &str) -> bool;
     async fn kill(&self, name: &str) -> Result<()>;
     /// Every job pane on this box right now, by name.
@@ -499,7 +504,10 @@ pub async fn supervise(
                 continue;
             }
         }
-        match report.progress(&live.job_id, evidence.runtime_state()).await {
+        match report
+            .progress(&live.job_id, evidence.runtime_state())
+            .await
+        {
             Ok(true) => {}
             Ok(false) => {
                 // cm:guard kill the pane once core says the job is terminal, and the transcript is not what is lost: core holds the job's events and its `agent_sessions` row, which is where a person reads it. An idle TUI pane left standing counts against the bound for ever and accumulates one per release — the same reasoning `master.rs:retire_if_idle` applies to a master with nothing to do.
@@ -1197,7 +1205,8 @@ mod tests {
             Some(prepared("j1", Some("go"))),
             None,
         );
-        w.registry.note("already", "forge-job-already", Watch::Unhooked);
+        w.registry
+            .note("already", "forge-job-already", Watch::Unhooked);
 
         assert_eq!(take(&w, 1).await, Took::AtBound);
 
@@ -1361,7 +1370,8 @@ mod tests {
     async fn inside_the_window_the_beat_says_starting_and_not_working() {
         let w = world(vec![], None, None);
         w.panes.alive.lock().unwrap().push("forge-job-j1".into());
-        w.registry.note("j1", "forge-job-j1", hooked("sess-1", 1_000));
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", 1_000));
 
         supervise(
             &w.panes,
@@ -1629,6 +1639,7 @@ mod tests {
             "master-session",
             None,
             2,
+            Some(&w.tokens),
         )
         .await;
 

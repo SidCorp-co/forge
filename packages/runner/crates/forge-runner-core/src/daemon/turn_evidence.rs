@@ -205,7 +205,10 @@ mod tests {
     #[test]
     fn an_unhooked_pane_silent_for_a_day_is_unproven_and_not_never_started() {
         let a_day = 24 * 60 * 60 * 1000;
-        assert_eq!(read(&Watch::Unhooked, None, NOW + a_day), Evidence::Unproven);
+        assert_eq!(
+            read(&Watch::Unhooked, None, NOW + a_day),
+            Evidence::Unproven
+        );
     }
 
     #[test]
