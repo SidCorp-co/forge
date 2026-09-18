@@ -63,10 +63,12 @@ beforeAll(async () => {
   ({ reapZombieSessions, getLoopThresholds } = await import('../../src/jobs/loop-monitor.js'));
   ({ alarmZombieSessions } = await import('../../src/pipeline/sweeper.js'));
   const { jobLifecycleDeviceRoutes } = await import('../../src/jobs/lifecycle-routes.js');
+  const { jobEventsRoutes } = await import('../../src/jobs/events-routes.js');
   const { errorHandler } = await import('../../src/middleware/error.js');
   const { requestId } = await import('../../src/middleware/request-id.js');
   app = new Hono();
   app.use('*', requestId());
+  app.route('/api/jobs', jobEventsRoutes as never);
   app.route('/api/jobs', jobLifecycleDeviceRoutes as never);
   app.onError(errorHandler);
 }, 60_000);
@@ -352,5 +354,129 @@ describe('core and the box agree on the reason, in either order', () => {
       status: 'failed',
       reason: 'turn_never_reported',
     });
+  });
+});
+
+/*
+ * ISS-1101 — the two halves composed, on the one scenario the issue names.
+ *
+ * Everything above tests one half: the ingest file plants frames and reads the
+ * row, this file plants rows and runs the reaper. Neither can fail on the claim
+ * that actually matters — that a box beating `starting` every tick is neither
+ * read as running NOR failed, however long its first turn takes. That claim
+ * spans both, so it is asserted across both, through the real route and the
+ * real reaper, with the real `getLoopThresholds` numbers and no stub between.
+ */
+describe('a box that keeps saying `starting` is neither flipped nor failed', () => {
+  /** What `Evidence::Delivered` and `Evidence::NeverStarted` beat (`turn_evidence.rs`). */
+  const starting = { kind: 'progress', data: { source: 'pool_jobs', runtimeState: 'starting' } };
+
+  async function beat(jobId: string, events: unknown[]): Promise<Response> {
+    return app.request(`/api/jobs/${jobId}/events`, {
+      method: 'POST',
+      headers: { authorization: `Bearer ${deviceToken}`, 'content-type': 'application/json' },
+      body: JSON.stringify({ events }),
+    });
+  }
+
+  async function seedWithJob(dispatchedAgo: number): Promise<{ sessionId: string; jobId: string }> {
+    const sessionId = await queuedSession({ dispatchedAgo, heardAgo: null });
+    const runRows = await harness.db.execute<{ pipeline_run_id: string }>(
+      sql`SELECT pipeline_run_id FROM agent_sessions WHERE id = ${sessionId}`,
+    );
+    const jobId = randomUUID();
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET device_id = ${deviceId} WHERE id = ${sessionId}
+    `);
+    await harness.db.execute(sql`
+      INSERT INTO jobs (id, project_id, pipeline_run_id, agent_session_id, device_id, created_by,
+                        type, status, acked_at, payload)
+      VALUES (${jobId}, ${projectId}, ${runRows[0]?.pipeline_run_id}, ${sessionId}, ${deviceId},
+              ${ownerId}, 'code', 'running', now(), '{}'::jsonb)
+    `);
+    return { sessionId, jobId };
+  }
+
+  async function rowOf(
+    id: string,
+  ): Promise<{ status: string; reason: string | null; state: string | null }> {
+    const rows = await harness.db.execute<{
+      status: string;
+      failure_reason: string | null;
+      runtime_state: string | null;
+    }>(sql`SELECT status, failure_reason, runtime_state FROM agent_sessions WHERE id = ${id}`);
+    const r = rows[0];
+    return {
+      status: r?.status ?? 'gone',
+      reason: r?.failure_reason ?? null,
+      state: r?.runtime_state ?? null,
+    };
+  }
+
+  // cm:guard THE case the issue names, and it needs BOTH halves to pass: the flip must not happen
+  // (`events-routes.ts`) and the queue arm must not fire on the row that leaves (`queue-hop.ts`).
+  // The dispatch age is ten times the queue threshold and the beats run past it, which is what makes
+  // this a statement about the two clocks rather than about one tick.
+  it('is still queued, and unfailed, after beating past ten times the queue threshold', async () => {
+    const { sessionId, jobId } = await seedWithJob(QUEUE() * 10);
+
+    // Four beats spread across the whole window the old queue arm would have fired inside.
+    for (let i = 0; i < 4; i++) {
+      expect((await beat(jobId, [starting])).status).toBe(200);
+    }
+    expect(await rowOf(sessionId)).toEqual({
+      status: 'queued',
+      reason: null,
+      state: 'starting',
+    });
+
+    await reapZombieSessions(NOW);
+
+    expect(await rowOf(sessionId)).toEqual({
+      status: 'queued',
+      reason: null,
+      state: 'starting',
+    });
+  });
+
+  // cm:guard the other direction on the same row: once the beats STOP it is bounded, and by the
+  // reason that is true of it. Without this the case above is only half a claim — "never failed" and
+  // "never failed for the right reason" are different, and a row nothing ever reaps is the wedged
+  // session `VISION: state-never-lies` forbids just as much as a row reaped wrongly.
+  it('is failed as turn_never_reported once the beats stop, never as queue_timeout', async () => {
+    const { sessionId, jobId } = await seedWithJob(QUEUE() * 10);
+    expect((await beat(jobId, [starting])).status).toBe(200);
+
+    // The box goes silent: its last report ages past the quiet cutoff.
+    await harness.db.execute(sql`
+      UPDATE agent_sessions SET last_heartbeat_at = ${ago(QUIET() + 1_000)}::timestamptz
+      WHERE id = ${sessionId}
+    `);
+    await reapZombieSessions(NOW);
+
+    const after = await rowOf(sessionId);
+    expect(after.status).toBe('failed');
+    expect(after.reason).toBe('turn_never_reported');
+  });
+
+  // cm:guard the flip is not merely delayed — a turn REPORTED after all that silence still earns it,
+  // and `started_at` is stamped then and not at dispatch. A rule that just refused `starting` for
+  // ever would pass both cases above and leave every session queued for its whole life.
+  it('flips the moment a turn is reported, however long the starting beats ran', async () => {
+    const { sessionId, jobId } = await seedWithJob(QUEUE() * 10);
+    for (let i = 0; i < 3; i++) {
+      expect((await beat(jobId, [starting])).status).toBe(200);
+    }
+    expect((await rowOf(sessionId)).status).toBe('queued');
+
+    expect(
+      (await beat(jobId, [{ kind: 'progress', data: { runtimeState: 'working' } }])).status,
+    ).toBe(200);
+
+    expect(await rowOf(sessionId)).toMatchObject({ status: 'running', reason: null });
+    const stamped = await harness.db.execute<{ started_at: string | null }>(
+      sql`SELECT started_at::text AS started_at FROM agent_sessions WHERE id = ${sessionId}`,
+    );
+    expect(stamped[0]?.started_at).not.toBeNull();
   });
 });
