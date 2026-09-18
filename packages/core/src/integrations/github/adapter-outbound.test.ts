@@ -41,7 +41,24 @@ vi.mock('./contract-check.js', async (importOriginal) => {
   };
 });
 
+const mergeStoredPullRequest = vi.fn<(...args: unknown[]) => Promise<unknown>>(async () => ({
+  kind: 'merged',
+  deliveryId: 'delivery-3',
+  commitSha: 'e45b4ec',
+  mergedAt: new Date(),
+  stamped: true,
+}));
+vi.mock('./merge.js', async (importOriginal) => {
+  const actual = (await importOriginal()) as Record<string, unknown>;
+  return {
+    ...actual,
+    mergeStoredPullRequest: (...args: unknown[]) => mergeStoredPullRequest(...args),
+  };
+});
+
 const { CHECK_PUBLISH_EVENT } = await import('./contract-check.js');
+const { MERGE_EVENT } = await import('./merge.js');
+const { NonRetryableDispatchError } = await import('../types.js');
 const { githubIntegration } = await import('./adapter.js');
 const { __resetRegistry, dispatchThrough, registerIntegration } = await import('../registry.js');
 
@@ -154,5 +171,71 @@ describe('what it reports back', () => {
     });
     expect(result).toMatchObject({ deliveryId: 'delivery-3' });
     expect(result?.externalId).toBeUndefined();
+  });
+});
+
+/**
+ * ISS-1073 — the merge verb's own door: what it refuses before calling anything,
+ * and what shape its refusal takes on the way out.
+ */
+describe('the merge verb', () => {
+  const merge = (payload: Record<string, unknown>) =>
+    dispatch()?.(ctx, { eventName: MERGE_EVENT, payload });
+
+  it('carries the binding the context authorised into the merge', async () => {
+    await merge({ pullRequestId: PR_ID, requestedBy: 'user:alice' });
+    expect(mergeStoredPullRequest).toHaveBeenCalledWith(
+      expect.objectContaining({ pullRequestId: PR_ID, requestedBy: 'user:alice' }),
+      'binding-1',
+    );
+  });
+
+  // cm:guard the planted set for the wrong-input rule. Merging is kernel input, where
+  // `VISION: kernel-hard-policy-soft` allows no normalisation at all — so a present-but-invalid
+  // field is refused by name and an ABSENT one still takes the default. Read the two as one and
+  // either every optional field becomes required or a typo silently lands a different shape of
+  // history on the base branch.
+  it.each([
+    ['a misspelled merge method', { method: 'sqaush' }, /is not a merge method/],
+    ['a merge method that is not a string', { method: 7 }, /is not a merge method/],
+    ['an expected head that is not a sha', { expectedHeadSha: 'not-a-sha' }, /must be a git sha/],
+    [
+      'an expected head that is not a string',
+      { expectedHeadSha: { sha: 'x' } },
+      /must be a git sha/,
+    ],
+  ])('refuses %s by name, before anything is called', async (_what, over, says) => {
+    await expect(
+      merge({ pullRequestId: PR_ID, requestedBy: 'user:alice', ...over }),
+    ).rejects.toThrow(says);
+    expect(mergeStoredPullRequest).not.toHaveBeenCalled();
+  });
+
+  it('still takes the defaults when the optional fields are absent', async () => {
+    await merge({ pullRequestId: PR_ID, requestedBy: 'user:alice' });
+    const sent = mergeStoredPullRequest.mock.calls[0]?.[0] as Record<string, unknown>;
+    expect(sent).not.toHaveProperty('method');
+    expect(sent).not.toHaveProperty('expectedHeadSha');
+  });
+
+  // cm:guard a refused merge throws a TERMINAL error, and this is the assertion that keeps it one.
+  // The queue retries a thrown error five times with exponential backoff, so a plain Error here
+  // would re-send a merge refused for a failing check an hour later — after the condition that
+  // refused it may have changed, which is ISS-1073's third rule broken by the transport.
+  it('throws a terminal refusal, so the queue does not send it again', async () => {
+    mergeStoredPullRequest.mockResolvedValue({
+      kind: 'refused',
+      deliveryId: 'd1',
+      reason: 'required-check',
+      detail: 'the base branch requires the check `ci-passed`',
+    });
+    await expect(merge({ pullRequestId: PR_ID, requestedBy: 'user:alice' })).rejects.toBeInstanceOf(
+      NonRetryableDispatchError,
+    );
+  });
+
+  it('needs a pull request id, naming the verb that asked for one', async () => {
+    await expect(merge({ requestedBy: 'user:alice' })).rejects.toThrow(/pull_request\.merge/);
+    expect(mergeStoredPullRequest).not.toHaveBeenCalled();
   });
 });

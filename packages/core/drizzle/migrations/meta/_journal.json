@@ -1877,6 +1877,13 @@
       "when": 1802563200000,
       "tag": "0280_retire_ux_contract",
       "breakpoints": true
+    },
+    {
+      "idx": 284,
+      "version": "7",
+      "when": 1804291200000,
+      "tag": "0284_merged_commit_sha_is_evidence",
+      "breakpoints": true
     }
   ]
 }

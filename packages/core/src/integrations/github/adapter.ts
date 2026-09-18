@@ -38,6 +38,7 @@ import {
   type InboundDispatchInput,
   type InboundDispatchResult,
   type IntegrationAdapterMethods,
+  NonRetryableDispatchError,
   type OutboundDispatchInput,
   type OutboundDispatchResult,
 } from '../types.js';
@@ -49,6 +50,46 @@ import { GITHUB_BINDING_CONFIG_KEYS, githubConfigBase, githubSecretsSchema } fro
 import { GITHUB_API_BASE, type GitHubConfig, type GitHubSecrets } from './types.js';
 
 const PROBE_TIMEOUT_MS = 8000;
+
+/**
+ * The merge payload, or the sentence saying what is wrong with it.
+ *
+ * An ABSENT optional field and a PRESENT invalid one are different things and are
+ * answered differently: the first takes the default, the second is refused by
+ * name. Merging is kernel input, where `VISION: kernel-hard-policy-soft` allows
+ * no normalisation at all — a `method: "sqaush"` quietly read as `merge` is a
+ * merge commit on a repository whose owner asked for a squash, arrived at by a
+ * typo nobody was told about.
+ */
+// cm:guard the refusal names the field, the value and the legal set, because the caller here is a job payload or a route body and neither has a schema of its own to read. What it must never do is drop the value and carry on: an `expectedHeadSha` silently dropped removes the one thing making the merge conditional on the head that was judged.
+function readMergePayload(
+  payload: Record<string, unknown>,
+): { requestedBy: string; expectedHeadSha?: string; method?: MergeMethod } | { refusal: string } {
+  const requestedBy = typeof payload.requestedBy === 'string' ? payload.requestedBy : '';
+  const out: { requestedBy: string; expectedHeadSha?: string; method?: MergeMethod } = {
+    requestedBy,
+  };
+  if (payload.expectedHeadSha !== undefined) {
+    if (
+      typeof payload.expectedHeadSha !== 'string' ||
+      !/^[0-9a-f]{7,64}$/i.test(payload.expectedHeadSha)
+    ) {
+      return {
+        refusal: `github: \`expectedHeadSha\` must be a git sha — 7 to 64 hex characters — and this call sent ${JSON.stringify(payload.expectedHeadSha)}. It is the head the merge is conditional on, so it is refused rather than dropped.`,
+      };
+    }
+    out.expectedHeadSha = payload.expectedHeadSha;
+  }
+  if (payload.method !== undefined) {
+    if (!isMergeMethod(payload.method)) {
+      return {
+        refusal: `github: \`${String(payload.method)}\` is not a merge method — GitHub has ${MERGE_METHODS.map((m) => `\`${m}\``).join(', ')}. It is refused rather than defaulted, because a mistyped method lands a different shape of history on the base branch.`,
+      };
+    }
+    out.method = payload.method;
+  }
+  return out;
+}
 
 /** A merge method GitHub has, refused by name rather than defaulted from anything else. */
 function isMergeMethod(value: unknown): value is MergeMethod {
@@ -243,17 +284,10 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
     // caller's authorisation and the repository written to are resolved independently, and a
     // dispatch for one project's binding could publish — or MERGE — on another's.
     if (input.eventName === MERGE_EVENT) {
-      const requestedBy = typeof payload.requestedBy === 'string' ? payload.requestedBy : '';
+      const read = readMergePayload(payload);
+      if ('refusal' in read) throw new Error(read.refusal);
       const merged = await mergeStoredPullRequest(
-        {
-          pullRequestId,
-          requestedBy,
-          runId: input.runId ?? null,
-          ...(typeof payload.expectedHeadSha === 'string'
-            ? { expectedHeadSha: payload.expectedHeadSha }
-            : {}),
-          ...(isMergeMethod(payload.method) ? { method: payload.method } : {}),
-        },
+        { pullRequestId, runId: input.runId ?? null, ...read },
         ctx.bindingId,
       );
       if (!merged) {
@@ -261,8 +295,16 @@ const githubAdapterMethods: IntegrationAdapterMethods<GitHubConfig, GitHubSecret
           `github: no stored pull request ${pullRequestId} — nothing on this project's projection has that id`,
         );
       }
-      // cm:guard a REFUSED merge throws rather than returning a result, and that is the difference from the check publish beside it. A skipped publish is Forge deciding not to write; a refused merge is a caller's merge that did not happen, and returning it as a dispatch RESULT would let a worker mark the job done. The delivery row carries the sentence either way.
-      if (merged.kind === 'refused') throw new Error(merged.detail);
+      // cm:guard a REFUSED merge throws a TERMINAL error, and both halves of that matter. It throws
+      // because a caller's merge that did not happen must not come back as a dispatch result a
+      // worker can mark done, which is what a skipped check publish legitimately is. It is terminal
+      // because the queue retries a thrown error five times with exponential backoff, and a merge
+      // refused for conflicting or for a failing check, re-sent an hour later, lands after the
+      // condition that refused it changed — which is ISS-1073's third rule broken by the transport
+      // rather than by this file.
+      if (merged.kind === 'refused') {
+        throw new NonRetryableDispatchError(merged.detail, merged.reason);
+      }
       return {
         deliveryId: merged.deliveryId,
         durationMs: Date.now() - startedAt,

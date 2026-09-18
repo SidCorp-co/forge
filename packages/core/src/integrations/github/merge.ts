@@ -265,30 +265,24 @@ export async function mergeStoredPullRequest(
     throw err;
   }
 
-  let decision: ReturnType<typeof decideMerge>;
   let pull: Awaited<ReturnType<typeof readPullRequest>>;
   try {
     pull = await readPullRequest(client, row.number);
-    const [protection, headChecks] = await Promise.all([
-      readProtection(client, pull.baseRef),
-      readHeadChecks(client, pull.headSha),
-    ]);
-    decision = decideMerge({
-      pull,
-      protection,
-      headChecks,
-      ...(req.expectedHeadSha ? { expectedHeadSha: req.expectedHeadSha } : {}),
-    });
   } catch (err) {
     const refusal: MergeCallRefusal = describeMergeRefusal(err, row.number);
     return refuse(deliveryId, refusal.cause, refusal.message);
   }
 
-  // cm:guard the already-merged arm comes before anything is sent and is the whole of this path's recovery. A merge whose response was lost, or whose transaction failed after GitHub took it, is repaired by calling this verb again: GitHub answers `merged: true`, the evidence is written, and no second `PUT` goes out.
-  if (decision.kind === 'already-merged') {
+  // cm:guard the already-merged arm is decided from the PULL REQUEST ALONE and before the protection
+  // and check reads, which is not an optimisation. This arm is the whole of this path's recovery: a
+  // merge whose response was lost, or whose transaction failed after GitHub took it, is repaired by
+  // calling this verb again. Reading the checks first put that recovery behind two more calls that
+  // can time out or hit a rate limit — so an issue holding every piece of evidence it needs went
+  // unstamped because a check-runs request for a pull request nobody is going to merge failed.
+  if (pull.merged) {
     const commitSha = pull.mergeCommitSha;
     const mergedAt = pull.mergedAt ? new Date(pull.mergedAt) : null;
-    if (!commitSha || !mergedAt) {
+    if (!commitSha || !mergedAt || Number.isNaN(mergedAt.getTime())) {
       return refuse(
         deliveryId,
         'merged-without-evidence',
@@ -305,6 +299,34 @@ export async function mergeStoredPullRequest(
     return { kind: 'already-merged', deliveryId, commitSha, mergedAt, stamped };
   }
 
+  let decision: ReturnType<typeof decideMerge>;
+  try {
+    const [protection, headChecks] = await Promise.all([
+      readProtection(client, pull.baseRef),
+      readHeadChecks(client, pull.headSha),
+    ]);
+    decision = decideMerge({
+      pull,
+      protection,
+      headChecks,
+      ...(req.expectedHeadSha ? { expectedHeadSha: req.expectedHeadSha } : {}),
+    });
+  } catch (err) {
+    const refusal: MergeCallRefusal = describeMergeRefusal(err, row.number);
+    return refuse(deliveryId, refusal.cause, refusal.message);
+  }
+
+  // cm:guard `already-merged` is unreachable from here — `pull.merged` was answered above — and the
+  // arm stays for the compiler rather than being narrowed away, because the decision function is the
+  // one place the answer is defined and a caller that stopped handling one of its cases is a caller
+  // that will stop handling the next one somebody adds.
+  if (decision.kind === 'already-merged') {
+    return refuse(
+      deliveryId,
+      'merged-without-evidence',
+      `GitHub reported #${row.number} as not merged and then as merged within one decision — nothing here can say which is true`,
+    );
+  }
   if (decision.kind === 'refuse') return refuse(deliveryId, decision.reason, decision.detail);
 
   let answer: MergeAnswer;
@@ -333,7 +355,32 @@ export async function mergeStoredPullRequest(
     );
   }
 
-  const mergedAt = new Date();
+  // cm:guard the merge TIME is read back from GitHub and is never this box's clock. The `PUT` answers
+  // a sha and no timestamp, so `new Date()` was the obvious filler and it is wrong twice: it differs
+  // from GitHub's `merged_at` by the round trip and by whatever the clocks disagree by, and the
+  // evidence predicate then stops the `pull_request.closed` delivery from ever correcting it. The
+  // row would permanently contradict the one thing this whole path promises — that the time on it is
+  // the time the merge happened.
+  let mergedAt: Date;
+  try {
+    const after = await readPullRequest(client, row.number);
+    const reported = after.mergedAt ? new Date(after.mergedAt) : null;
+    if (!reported || Number.isNaN(reported.getTime())) {
+      throw new Error(`GitHub reported no \`merged_at\` for #${row.number} after merging it`);
+    }
+    mergedAt = reported;
+  } catch (err) {
+    // cm:guard loud, and in the same shape as a failed transaction: the merge HAPPENED, and what
+    // could not be established is when. Writing the server clock here to get past it is the silent
+    // substitution — it would look identical to a correct record and could never be corrected.
+    throw new Error(
+      `github: pull request #${row.number} MERGED at ${answer.sha}, and reading back when GitHub ` +
+        `merged it failed — the commit is on the base branch and Forge's record of it is not. The ` +
+        `\`pull_request.closed\` delivery, or another call to this verb, writes the same evidence ` +
+        `without merging again. Underlying failure: ${err instanceof Error ? err.message : String(err)}`,
+      { cause: err },
+    );
+  }
   const { stamped } = await writeEvidence({ row, commitSha: answer.sha, mergedAt });
   await updateDelivery(deliveryId, {
     status: 'ok',

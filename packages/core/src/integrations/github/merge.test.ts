@@ -1,11 +1,11 @@
 /**
  * ISS-1073 — what the merge path sends, what it refuses, and what it records.
  *
- * Driven against a recording client rather than grepped: every assertion about
- * the App credential, the absence of a bypass parameter and the number of `PUT`s
- * is read off the requests the stub actually received. A grep for `enforce_admin`
- * would go green on a file that never mentions it and sends one anyway through a
- * variable; the recorder cannot.
+ * Driven against a recording client rather than grepped: the App credential, the
+ * absence of a bypass parameter and the number of `PUT`s are read off the requests
+ * the stub received. A grep for `enforce_admin` goes green on a file that sends one
+ * through a variable; the recorder cannot. The same path over a real Postgres and a
+ * loopback GitHub is `tests/integration/github-merge-kernel-e2e.test.ts`.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -17,10 +17,34 @@ vi.mock('../../config/env.js', () => ({
 
 const HEAD = 'c0ffee1234567890c0ffee1234567890c0ffee12';
 const LANDED = 'e45b4ecf596c58e10135c25af4f7279a0a804802';
+/** GitHub's own merge time, deliberately not this box's clock. */
+const GITHUB_MERGED_AT = '2026-09-18T06:30:01.449Z';
 const PR_ID = '11111111-1111-4111-8111-111111111111';
 const PROJECT_ID = '22222222-2222-4222-8222-222222222222';
 const ISSUE_ID = '33333333-3333-4333-8333-333333333333';
 const RUN_ID = '44444444-4444-4444-8444-444444444444';
+
+/** GitHub's answer for this pull request, with only what a case varies spelled out. */
+const openPull = (over: Record<string, unknown> = {}) => ({
+  number: 481,
+  state: 'open',
+  draft: false,
+  merged: false,
+  mergeable: true,
+  mergeable_state: 'clean',
+  head: { sha: HEAD },
+  base: { ref: 'main' },
+  ...over,
+});
+const mergedPull = () =>
+  openPull({
+    state: 'closed',
+    merged: true,
+    merge_commit_sha: LANDED,
+    merged_at: GITHUB_MERGED_AT,
+    mergeable: null,
+    mergeable_state: 'unknown',
+  });
 
 let storedRow: Record<string, unknown> | undefined;
 let runRow: { projectId: string } | undefined;
@@ -86,10 +110,11 @@ interface Sent {
   method: string;
   path: string;
   body?: unknown;
-  authorization: string;
 }
 
 let sent: Sent[] = [];
+/** Whether the stub has taken a merge, so the read back after one answers as GitHub would. */
+let merged = false;
 /** What the stub answers, by the path fragment that identifies the call. */
 let answers: Record<string, unknown> = {};
 let throwsOnMerge: unknown = null;
@@ -106,12 +131,13 @@ vi.mock('./client.js', async (importOriginal) => {
       fullName: 'SidCorp-co/forge',
       get: async () => ({}),
       publish: async (args: { op: string; method: string; path: string; body?: unknown }) => {
-        // cm:guard the recorder stands in for `client.ts`'s OWN header block, which mints an
-        // installation token per call and sends it as the Authorization. The point of recording it
-        // is criterion 27/28: a person's credential reaching this path would arrive here as a
-        // different string, and nothing else in the suite would notice.
-        sent.push({ ...args, authorization: 'Bearer ghs_installation_token' });
+        // cm:guard this recorder cannot say ANYTHING about the credential: it stands in for
+        // `buildRepoClient`, so the identity it would carry is the thing that was stubbed out.
+        // Criteria 27/28 are settled in `tests/integration/github-merge-kernel-e2e.test.ts`, where
+        // the JWT is signed for real and the installation token is minted over HTTP.
+        sent.push(args);
         if (args.method === 'PUT') {
+          merged = true;
           if (throwsOnMerge) throw throwsOnMerge;
           return answers.merge ?? { merged: true, sha: LANDED };
         }
@@ -127,18 +153,15 @@ vi.mock('./client.js', async (importOriginal) => {
             }
           );
         }
-        return (
-          answers.pull ?? {
-            number: 481,
-            state: 'open',
-            draft: false,
-            merged: false,
-            mergeable: true,
-            mergeable_state: 'clean',
-            head: { sha: HEAD },
-            base: { ref: 'main' },
-          }
-        );
+        if (answers.pull) return answers.pull;
+        // cm:guard the stub REMEMBERS that it merged, because the subject reads the pull request
+        // back after the `PUT` to take GitHub's own `merged_at`. A stub answering `merged: false`
+        // forever would make that read-back look like a bug in the subject.
+        if (merged) {
+          if (answers.pullAfterMerge !== undefined) return answers.pullAfterMerge;
+          return mergedPull();
+        }
+        return openPull();
       },
     }),
   };
@@ -158,6 +181,7 @@ const puts = () => sent.filter((s) => s.method === 'PUT');
 beforeEach(() => {
   vi.clearAllMocks();
   sent = [];
+  merged = false;
   answers = {};
   throwsOnMerge = null;
   transactionThrows = false;
@@ -188,12 +212,6 @@ describe('the merge itself', () => {
   it('sends the head sha and the merge method and nothing else', async () => {
     await ask();
     expect(puts()[0]?.body).toEqual({ sha: HEAD, merge_method: 'merge' });
-  });
-
-  it('carries the App credential on every call it makes', async () => {
-    await ask();
-    expect(sent.length).toBeGreaterThan(1);
-    for (const call of sent) expect(call.authorization).toBe('Bearer ghs_installation_token');
   });
 
   it('writes the issue stamp and the projection row in one transaction', async () => {
@@ -231,6 +249,29 @@ describe('the merge itself', () => {
     await ask({ method: 'squash' });
     expect(puts()[0]?.body).toEqual({ sha: HEAD, merge_method: 'squash' });
   });
+
+  // cm:guard the planted violation for the time. Replace the read-back with `new Date()` — the
+  // obvious filler, since the `PUT` answers no timestamp — and this goes red: the row would then
+  // carry this box's clock, and the evidence predicate would stop the `pull_request.closed` delivery
+  // from ever correcting it.
+  it("records GitHub's own merge time and not this box's clock", async () => {
+    const outcome = await ask();
+    expect(outcome?.kind === 'merged' && outcome.mergedAt.toISOString()).toBe(GITHUB_MERGED_AT);
+    expect(recordIssueMerge).toHaveBeenCalledWith(
+      expect.anything(),
+      expect.objectContaining({
+        evidence: expect.objectContaining({ mergedAt: new Date(GITHUB_MERGED_AT) }),
+      }),
+    );
+  });
+
+  it('raises naming the commit when the time cannot be read back', async () => {
+    answers = { pullAfterMerge: { number: 481, state: 'closed', merged: true, merged_at: null } };
+    await expect(ask()).rejects.toThrow(
+      new RegExp(`MERGED at ${LANDED}, and reading back when GitHub merged it failed`),
+    );
+    expect(puts()).toHaveLength(1);
+  });
 });
 
 describe('a merge nobody is named for', () => {
@@ -264,32 +305,12 @@ describe('a pre-flight refusal reaches GitHub with no merge request', () => {
   const refusals: Array<{ what: string; answers: Record<string, unknown>; reason: string }> = [
     {
       what: 'a conflict',
-      answers: {
-        pull: {
-          number: 481,
-          state: 'open',
-          merged: false,
-          mergeable: false,
-          mergeable_state: 'dirty',
-          head: { sha: HEAD },
-          base: { ref: 'main' },
-        },
-      },
+      answers: { pull: openPull({ mergeable: false, mergeable_state: 'dirty' }) },
       reason: 'conflicting',
     },
     {
       what: 'a head behind its base',
-      answers: {
-        pull: {
-          number: 481,
-          state: 'open',
-          merged: false,
-          mergeable: true,
-          mergeable_state: 'behind',
-          head: { sha: HEAD },
-          base: { ref: 'main' },
-        },
-      },
+      answers: { pull: openPull({ mergeable_state: 'behind' }) },
       reason: 'behind',
     },
     {
@@ -308,32 +329,12 @@ describe('a pre-flight refusal reaches GitHub with no merge request', () => {
     },
     {
       what: 'a protection that is not satisfied',
-      answers: {
-        pull: {
-          number: 481,
-          state: 'open',
-          merged: false,
-          mergeable: true,
-          mergeable_state: 'blocked',
-          head: { sha: HEAD },
-          base: { ref: 'main' },
-        },
-      },
+      answers: { pull: openPull({ mergeable_state: 'blocked' }) },
       reason: 'protected-branch',
     },
     {
       what: 'a mergeability GitHub has not computed',
-      answers: {
-        pull: {
-          number: 481,
-          state: 'open',
-          merged: false,
-          mergeable: null,
-          mergeable_state: 'unknown',
-          head: { sha: HEAD },
-          base: { ref: 'main' },
-        },
-      },
+      answers: { pull: openPull({ mergeable: null, mergeable_state: 'unknown' }) },
       reason: 'mergeability-uncomputed',
     },
   ];
@@ -350,6 +351,24 @@ describe('a pre-flight refusal reaches GitHub with no merge request', () => {
       'delivery-1',
       expect.objectContaining({ status: 'failed', response: { reason: c.reason } }),
     );
+  });
+
+  // cm:guard the already-merged reading is decided from the pull request ALONE, before the
+  // protection and check reads, and this is what says so: both of those fail, and the evidence is
+  // still recorded. Put them back in front of it and an issue holding every piece of evidence it
+  // needs goes unstamped because a check-runs request for a pull request nobody is going to merge
+  // hit a rate limit.
+  it('records an already-merged pull request even when the checks cannot be read', async () => {
+    const { GitHubPublishError } = await import('./client.js');
+    answers = {
+      pull: mergedPull(),
+      protection: new GitHubPublishError({ op: 'lookup', status: 403, message: 'forbidden' }),
+    };
+    const outcome = await ask();
+    expect(outcome?.kind).toBe('already-merged');
+    expect(sent.filter((c) => c.path.includes('/check-runs'))).toHaveLength(0);
+    expect(sent.filter((c) => c.path.includes('/protection'))).toHaveLength(0);
+    expect(puts()).toHaveLength(0);
   });
 
   it('refuses when Forge cannot read what the base branch requires', async () => {
@@ -406,19 +425,7 @@ describe('a merge GitHub itself refuses', () => {
 });
 
 describe('a merge that has already happened', () => {
-  const merged = {
-    pull: {
-      number: 481,
-      state: 'closed',
-      merged: true,
-      merge_commit_sha: LANDED,
-      merged_at: '2026-09-18T06:30:01.449Z',
-      mergeable: null,
-      mergeable_state: 'unknown',
-      head: { sha: HEAD },
-      base: { ref: 'main' },
-    },
-  };
+  const merged = { pull: mergedPull() };
 
   // cm:guard this arm IS the recovery path, and its test is the one that proves a lost response or a
   // failed transaction cannot become a second merge. Take it away and the only way back from either
@@ -433,7 +440,7 @@ describe('a merge that has already happened', () => {
       expect.objectContaining({
         evidence: expect.objectContaining({
           commitSha: LANDED,
-          mergedAt: new Date('2026-09-18T06:30:01.449Z'),
+          mergedAt: new Date(GITHUB_MERGED_AT),
         }),
       }),
     );
