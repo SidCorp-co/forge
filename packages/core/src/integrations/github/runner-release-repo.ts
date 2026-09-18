@@ -212,17 +212,18 @@ export async function readTagRef(
       refuse(err, 'lookup', subject);
     }
   }
-  if (target.type === 'tag') {
+  // cm:guard the final type must be `commit` and not merely "no longer a tag". Git lets a ref point at a tree or a blob, and both are legal objects this peel would otherwise hand back as the commit the tag points at — a sha that is real, is not a commit, and is recorded under `tag_commit_sha` and printed as one. The release is refused either way; what is at stake is whether its record says something true.
+  if (target.type !== 'commit' || !target.sha) {
+    const named =
+      target.type === 'tag'
+        ? `is a chain of more than 5 tag objects and reaches no commit`
+        : `points at a \`${target.type ?? 'nameless'}\` object rather than at a commit`;
     throw new RunnerReleaseRepoError(
-      describePublishThrown(
-        new Error(`\`${tag}\` is a chain of more than 5 tag objects and reaches no commit`),
-        'lookup',
-        subject,
-      ),
+      describePublishThrown(new Error(`\`${tag}\` ${named}`), 'lookup', subject),
       true,
     );
   }
-  return { sha: target.sha ?? object.sha };
+  return { sha: target.sha };
 }
 
 /**

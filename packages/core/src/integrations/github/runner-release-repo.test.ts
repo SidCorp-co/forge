@@ -334,6 +334,23 @@ describe('a 404 that is not the thing being absent', () => {
     expect(await readTagRef(client, 'runner-v0.14.0')).toEqual({ sha: 'abc1234' });
   });
 
+  // cm:guard git lets a ref point at a tree or a blob, and both are legal objects this peel would hand back as "the commit the tag points at" — a sha that is real, is not a commit, and is stored under `tag_commit_sha` and printed as one. The release is refused either way; what is at stake is whether the record says something true.
+  it('refuses a tag pointing at a tree rather than calling it a commit', async () => {
+    const { client } = stubClient(() => ({ object: { sha: 'treeaaa', type: 'tree' } }));
+    await expect(readTagRef(client, 'runner-v0.14.0')).rejects.toThrow(
+      /points at a `tree` object rather than at a commit/,
+    );
+  });
+
+  it('refuses an annotated tag whose own target is a blob', async () => {
+    const { client } = stubClient((call) =>
+      call.path.includes('/git/ref/tags/')
+        ? { object: { sha: 'tagA', type: 'tag' } }
+        : { object: { sha: 'blobaaa', type: 'blob' } },
+    );
+    await expect(readTagRef(client, 'runner-v0.14.0')).rejects.toThrow(/`blob` object/);
+  });
+
   it('refuses a tag chain that never reaches a commit rather than naming an object', async () => {
     const { client } = stubClient((call) =>
       call.path.includes('/git/ref/tags/')
