@@ -5505,6 +5505,18 @@
 
 ### Changed
 
+- **Background checks for stuck work handle a fixed amount per pass, and say when there was more.**
+  Nothing is skipped: each pass resumes where the last stopped, so a busy minute costs a short
+  delay rather than a missed alert.
+
+- **Status-change announcements are picked up in batches, and the check waits longer while there
+  is nothing to pick up.** It backs off to eight seconds when idle and returns to one second the
+  moment anything appears.
+
+- **Session lists no longer read every transcript just to count it.** The length comes from the
+  turn record instead. Sessions older than July show no length rather than zero, because zero
+  would call them empty when they are not.
+
 - **A migration may now clear a sibling branch's timestamp.** The journal gate demanded exactly
   one day above the last, so every open branch derived the same number and whichever merged first
   silently skipped the rest. Whole days now pass.

@@ -18,8 +18,6 @@ import { buildListEnvelope, overfetch } from '../mcp/tools/list-envelope.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { listAgentSessionsForMcp, readAgentSession } from './service.js';
 
-const MESSAGE_TAIL = 20;
-
 const paramSchema = z.object({ id: z.uuid() });
 const sessionParamSchema = z.object({ id: z.uuid(), sessionId: z.uuid() });
 
@@ -95,13 +93,10 @@ agentSessionProjectReadRoutes.get(
       });
     }
 
-    const allMessages = Array.isArray(row.messages) ? (row.messages as unknown[]) : [];
-    return c.json({
-      session: {
-        ...row,
-        messages: allMessages.slice(-MESSAGE_TAIL),
-        totalMessages: allMessages.length,
-      },
-    });
+    // cm:guard ISS-1023 — `row.messages` IS the tail already and `row.totalMessages` the real
+    // length, both computed by the database. Do not reintroduce a JS `slice` here: it would read
+    // as harmless while quietly requiring the whole transcript to be transferred again for it to
+    // have anything to slice.
+    return c.json({ session: row });
   },
 );

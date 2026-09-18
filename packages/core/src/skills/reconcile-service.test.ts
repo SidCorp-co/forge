@@ -324,8 +324,8 @@ describe('spawnReconcileRun — refusal events', () => {
 describe('reconcile gate notifications (ISS-807)', () => {
   const adminRows = new Map<unknown, unknown[]>([
     [projects, [{ id: 'proj-1', orgId: 'org-1', name: 'Acme' }]],
-    [projectMembers, [{ userId: 'admin-1' }]],
-    [organizationMembers, [{ userId: 'org-admin-1' }]],
+    [projectMembers, [{ projectId: 'proj-1', userId: 'admin-1' }]],
+    [organizationMembers, [{ orgId: 'org-1', userId: 'org-admin-1' }]],
   ]);
 
   beforeEach(() => {

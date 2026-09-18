@@ -1,7 +1,7 @@
 import crypto from 'node:crypto';
 import { and, desc, eq, gte, inArray, isNull, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { activityLog, comments, issues, memories } from '../db/schema.js';
+import { activityLog, comments, issues, memories, projects } from '../db/schema.js';
 import { EmbeddingUnavailableError, embed } from '../embeddings/index.js';
 import { canonicalIssueKey, issueRefFormatter } from '../issues/issue-prefix-read.js';
 import { BASE_MERGE_STATE } from '../issues/merged-at.js';
@@ -418,10 +418,27 @@ export async function runConsolidationSweep(): Promise<{
   durationMs: number;
 }> {
   const t0 = Date.now();
+  // cm:guard ISS-1021 — driven off `projects` with an index-served EXISTS, not a DISTINCT over
+  // `memories`. The candidate set is deliberately IDENTICAL to the one the distinct scan produced
+  // — a project with no consolidatable row is still not swept, which is what this function's name
+  // promises — but the question is now asked once per project against
+  // `memories_project_source_idx` instead of by reading every memory row in the table to find 20
+  // distinct ids. Do not "simplify" this to iterating every project: that would sweep projects
+  // with nothing to consolidate and spend a model call on each.
   const projectRows = await db
-    .selectDistinct({ projectId: memories.projectId })
-    .from(memories)
-    .where(and(inArray(memories.source, [...CONSOLIDATABLE_SOURCES]), isNull(memories.archivedAt)));
+    .select({ projectId: projects.id })
+    .from(projects)
+    .where(
+      sql`EXISTS (
+        SELECT 1 FROM memories m
+        WHERE m.project_id = "projects"."id"
+          AND m.archived_at IS NULL
+          AND m.source IN (${sql.join(
+            CONSOLIDATABLE_SOURCES.map((source) => sql`${source}`),
+            sql`, `,
+          )})
+      )`,
+    );
 
   for (const { projectId } of projectRows) {
     try {

@@ -24,6 +24,7 @@ import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { emitPipelineWedge, type WedgeHop } from '../pipeline/wedge.js';
 import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
+import { JOB_AXIS_SCAN_LIMIT, reportHopPage } from './hop-bounds.js';
 import {
   isKillEpisodeLive,
   type KillableJobRef,
@@ -342,6 +343,7 @@ export async function reapAckMisses(
         SELECT 1 FROM job_events e WHERE e.job_id = j.id
       )
       ${projectClause}
+    ORDER BY j.dispatched_at ASC LIMIT ${sql.raw(String(JOB_AXIS_SCAN_LIMIT))}
   `);
 
   const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
@@ -376,7 +378,7 @@ export async function reapAckMisses(
   if (result.reaped > 0) {
     logger.info({ reaped: result.reaped }, 'loop-monitor: ack-hop misses reaped to failed');
   }
-  return result;
+  return reportHopPage('ack', candidates.length, result);
 }
 
 /**
@@ -603,6 +605,7 @@ export async function reapSessionLostJobs(
       AND s.status IN ('failed', 'cancelled_stale')
       AND ${RESULT_GUARD}
       ${projectClause}
+    ORDER BY j.dispatched_at ASC NULLS FIRST LIMIT ${sql.raw(String(JOB_AXIS_SCAN_LIMIT))}
   `);
 
   const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
@@ -630,7 +633,7 @@ export async function reapSessionLostJobs(
   if (result.reaped > 0) {
     logger.info({ reaped: result.reaped }, 'loop-monitor: session-lost jobs reconciled to failed');
   }
-  return result;
+  return reportHopPage('session-lost', candidates.length, result);
 }
 
 /**
@@ -645,11 +648,14 @@ export async function reapSessionLostJobs(
  * query measures the likeness, and stays green while the shape the sweeper
  * actually runs drifts away from it.
  */
-export function resultMissCandidateQuery(scope: LoopScope = {}): SQL {
+// cm:guard `limit` is the reaper's alone; `jobs/hop-bounds.ts` says why the alarm keeps the
+// unbounded shape.
+export function resultMissCandidateQuery(scope: LoopScope = {}, limit?: number): SQL {
   return quietJobCandidateQuery({
     columns: KILL_GATE_CANDIDATE_COLUMNS,
     quietMinutes: RESULT_QUIET_MINUTES,
     scope,
+    limit,
   });
 }
 
@@ -657,7 +663,8 @@ export async function reapResultMisses(
   _now: Date = new Date(),
   scope: LoopScope = {},
 ): Promise<JobAxisReapResult> {
-  const candidates = await db.execute<KillGateCandidateRow>(resultMissCandidateQuery(scope));
+  const query = resultMissCandidateQuery(scope, JOB_AXIS_SCAN_LIMIT);
+  const candidates = await db.execute<KillGateCandidateRow>(query);
 
   const STALE_REASON = `runner stale (no progress / no started event for >${RESULT_QUIET_MINUTES}min)`;
   const result: JobAxisReapResult = { reaped: 0, killRequested: 0, awaitingKill: 0 };
@@ -690,7 +697,7 @@ export async function reapResultMisses(
   if (result.reaped > 0) {
     logger.info({ reaped: result.reaped }, 'loop-monitor: result-hop misses reaped to failed');
   }
-  return result;
+  return reportHopPage('result', candidates.length, result);
 }
 
 /**

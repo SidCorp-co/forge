@@ -149,10 +149,16 @@ describe('forge_agent_sessions.get', () => {
     };
   }
 
-  it('truncates messages to last 20 and exposes totalMessages', async () => {
+  // cm:guard ISS-1023 — the tail and the total are computed by POSTGRES now, so this case can only
+  // prove that the tool returns what the query handed it. It deliberately does NOT assert a length
+  // of 20 against a 35-message stub any more: with the slicing in SQL the stub decides the answer,
+  // so such an assertion would pass whatever the query did and could never go red for the thing it
+  // names. The claim that the database really returns the last 20 and the true total is proved
+  // where the SQL runs — `tests/integration/agent-session-tail.test.ts`.
+  it('returns the tail and total the query produced, adding nothing of its own', async () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
-    const messages = Array.from({ length: 35 }, (_, i) => ({ role: 'user', content: `m${i}` }));
-    selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages }]);
+    const tail = Array.from({ length: 20 }, (_, i) => ({ role: 'user', content: `m${i + 15}` }));
+    selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages: tail, totalMessages: 35 }]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     const result = (await tool.handler({ sessionId: SESSION_ID })) as {
@@ -165,9 +171,13 @@ describe('forge_agent_sessions.get', () => {
     expect(result.session.messages[19]?.content).toBe('m34');
   });
 
-  it('handles non-array messages gracefully', async () => {
+  // cm:guard the empty-transcript shape is the QUERY's answer now — both expressions coalesce, so
+  // a session with a null `messages` comes back as `[]` and `0` rather than as nulls the tool has
+  // to repair. Asserted here as pass-through, and against a real null column in
+  // `tests/integration/agent-session-tail.test.ts`.
+  it('passes an empty transcript through as [] and 0', async () => {
     const tool = forgeAgentSessionsGetTool(makeDeviceCtx());
-    selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages: null }]);
+    selectLimit.mockResolvedValueOnce([{ ...baseSessionRow, messages: [], totalMessages: 0 }]);
     selectLimit.mockResolvedValueOnce([{ orgId: 'org-1', memberRole: 'member', orgRole: null }]);
 
     const result = (await tool.handler({ sessionId: SESSION_ID })) as {
