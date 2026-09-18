@@ -2964,6 +2964,9 @@
 
 ### Fixed
 
+- **A master that comes back after a crash can now say what became of the work it was holding, and
+  must.** There was no command for it, and ending the work counted as an answer.
+
 - **A finished release no longer holds a job slot.** Two ended release batches held a runner's
   whole pane budget for four hours, stopping every project on that box. The box now learns when a
   job is over.
