@@ -60,7 +60,12 @@ vi.mock('./contract-check.js', () => ({
   publishForStoredPullRequest: (...a: unknown[]) => publishForStoredPullRequest(...(a as [])),
 }));
 
-const { applyProjectedEvent } = await import('./projection-events.js');
+const applyWorkflowRunEvent = vi.fn(async () => 1);
+vi.mock('./runner-release-events.js', () => ({
+  applyWorkflowRunEvent: (...a: unknown[]) => applyWorkflowRunEvent(...(a as [])),
+}));
+
+const { applyProjectedEvent, PROJECTED_EVENTS } = await import('./projection-events.js');
 
 const ctx = {
   bindingId: 'b',
@@ -97,6 +102,36 @@ describe('the pull_request arm publishes', () => {
     findRowByNumber.mockResolvedValue(null);
     await applyProjectedEvent(ctx, 'pull_request', pullRequest('opened'));
     expect(publishForStoredPullRequest).not.toHaveBeenCalled();
+  });
+});
+
+// cm:guard ISS-1075 criterion 8 — the build's outcome reaches a release through THIS door and no
+// other. `runner-release-events.test.ts` calls `applyWorkflowRunEvent` directly, which says the arm
+// works and says nothing about whether a delivery ever reaches it: `workflow_run` could be dropped
+// from `PROJECTED_EVENTS` and every case in that file would still pass, because the door is what
+// resolves a delivery to its binding, its config and its credential and the arm is handed all three.
+describe('the workflow_run arm is on the same door as the rest', () => {
+  it('admits a `workflow_run` delivery at all', () => {
+    expect(PROJECTED_EVENTS).toContain('workflow_run');
+  });
+
+  it('hands it to the runner-release arm with the delivery`s own binding and payload', async () => {
+    const payload = {
+      action: 'completed',
+      workflow_run: { id: 77, head_branch: 'runner-v0.13.3' },
+    };
+    const moved = await applyProjectedEvent(ctx, 'workflow_run', payload);
+    expect(applyWorkflowRunEvent).toHaveBeenCalledWith(ctx, payload);
+    expect(moved).toBe(1);
+  });
+
+  it('publishes no check run for it, and moves no pull request row', async () => {
+    await applyProjectedEvent(ctx, 'workflow_run', {
+      action: 'completed',
+      workflow_run: { id: 77 },
+    });
+    expect(publishForStoredPullRequest).not.toHaveBeenCalled();
+    expect(applyPullRequestEvent).not.toHaveBeenCalled();
   });
 });
 
