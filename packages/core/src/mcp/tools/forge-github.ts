@@ -103,8 +103,9 @@ export const forgeGithubTool: ContextScopedMcpToolFactory = (ctx) => ({
     'returned. Do NOT shell out to `gh`: that runs under whoever configured the box, which is ' +
     "unattributable and unrevocable. Cloning, committing and pushing are still git's job and are " +
     'not here. ' +
-    'NOTHING HERE MERGES. Merging a pull request is a kernel transition on the dispatch face, where ' +
-    'the same operation that merges also stamps the issue as landed; naming `merge`, `close` or ' +
+    'NOTHING HERE MERGES. Merging a pull request is a kernel transition on the dispatch face, served ' +
+    'there as the outbound verb `pull_request.merge`, where the same operation that merges also ' +
+    'stamps the issue as landed with the commit it landed at; naming `merge`, `close` or ' +
     '`delete-branch` is refused with that sentence rather than silently doing something near it. ' +
     "list: the project's GitHub bindings — { bindingId, repository, installed, bindingActive, " +
     'connectionActive, agentGranted, lastHealthStatus }. It contacts GitHub not at all and answers ' +

@@ -24,7 +24,11 @@ const selectFrom = vi.fn(() => ({
   innerJoin: dependentsInnerJoin,
 }));
 
-const updateReturning = vi.fn();
+// cm:guard the default is an EMPTY ARRAY and never `undefined`. Drizzle's `.returning()` resolves to
+// a row array whatever the WHERE matched, and a double answering `undefined` is a double the real
+// thing cannot produce — `merge-record.ts` destructures the first row, so a test that got away with
+// it was passing against a runtime that could not represent the shape it was asserting about.
+const updateReturning = vi.fn(async () => [] as unknown[]);
 const updateWhere = vi.fn(() => ({ returning: updateReturning }));
 const updateSet = vi.fn((_values: Record<string, unknown>) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));

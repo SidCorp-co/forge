@@ -183,6 +183,18 @@ const CHECKS = [
     needs: ['deps'],
     unit: 'providers',
   },
+  // cm:guard this holds a property that is invisible in a green run too, and of the same kind: a
+  // SECOND writer of `issues.merged_at` breaks nothing the day it lands. It breaks the first time it
+  // disagrees with the first writer, which reads as a `blocks` dependent dispatched against code
+  // that is not there (ISS-1073). Three writers is what the repository had, and no test could see
+  // them because each was correct on its own.
+  {
+    axis: 'relations',
+    label: 'merged-at-writers',
+    // cm:edge naming -> scripts/check-merged-at-writers.mjs — parses that script's success line
+    cmd: ['node', 'scripts/check-merged-at-writers.mjs', '--all'],
+    scanned: /^merged-at-writers: (\d+) file\(s\) scanned/m,
+  },
   // cm:guard this holds a property that is invisible in a green run: `config/env.ts` and `db/client.ts`
   // are lazy, and one new module-scope read of `env` or `db` restores the import-time side effect for
   // every module downstream of the file that does it — breaking nothing that day. The failure it
@@ -274,6 +286,7 @@ const CI_COVERAGE = {
   'node scripts/check-provider-literals.mjs --all': 'verify',
   'node scripts/check-integration-declarations.mjs --all': 'verify',
   'node scripts/check-lazy-module-init.mjs --all': 'verify',
+  'node scripts/check-merged-at-writers.mjs --all': 'verify',
   'node scripts/conformance-status.mjs': 'verify',
   'node scripts/conformance-audit.mjs': 'verify',
   'node scripts/verify.mjs --ci-parity': 'verify, as its own final check',

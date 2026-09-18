@@ -40,6 +40,7 @@ const WHERE: Record<GitHubPublishOp, string> = {
   lookup: 'looking up the existing check run',
   create: 'creating the check run',
   update: 'updating the check run',
+  merge: 'merging the pull request',
 };
 
 export type RefusalCause =

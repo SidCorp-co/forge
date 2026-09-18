@@ -1898,6 +1898,13 @@
       "when": 1804723200000,
       "tag": "0285_agent_config_shadow_keys",
       "breakpoints": true
+    },
+    {
+      "idx": 286,
+      "version": "7",
+      "when": 1806451200000,
+      "tag": "0286_merged_commit_sha_is_evidence",
+      "breakpoints": true
     }
   ]
 }

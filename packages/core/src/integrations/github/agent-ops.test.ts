@@ -299,7 +299,12 @@ describe('nothing on this face merges', () => {
 
   it('says where the merge lives rather than that the verb is unknown, quoting the name given', () => {
     const said = kernelVerbRefusal('merge');
-    expect(said).toContain('ISS-1073');
+    // cm:guard the sentence names the verb that EXISTS rather than the issue that was going to
+    // build it. Until ISS-1073 landed it said "is ISS-1073's", which pointed a caller at a tracker
+    // row; now there is a served verb to point at, and a refusal that cites an issue key instead of
+    // the thing a caller can call is a refusal that stops being true the day the work lands.
+    expect(said).toContain('pull_request.merge');
+    expect(said).not.toContain('ISS-1073');
     expect(said).toContain('DISPATCH face');
     expect(said).toContain('merged_at');
     expect(kernelVerbRefusal('merge-pull-request')).toContain('merge-pull-request');

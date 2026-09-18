@@ -112,6 +112,13 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Forge merges pull requests itself, as its own GitHub App, and that merge is what records the
+  work as landed.** No personal account, no machine to set up. A merge it cannot make is refused in
+  plain words, never retried.
+
+- **A merge you make on GitHub records the same landing.** One merge leaves one record, with the
+  commit and the time GitHub reported, however it happened.
+
 - **A room can be asked about its own past by topic.** The assistant searches everything the room
   kept, not only what it answered, replying with the words said and links to them. Anyone who
   cannot open the room is refused.

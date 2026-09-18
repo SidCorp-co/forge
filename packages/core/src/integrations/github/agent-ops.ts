@@ -29,7 +29,7 @@ const DEFAULT_LOG_LINES = 100;
  * a caller as a tool that is missing a verb rather than as a boundary it just met. The refusal IS
  * the deliverable here, so the name is recognised in order to be answered.
  */
-// cm:guard this set exists to be REFUSED, never to grow a branch that does the nearest thing. A merge is a kernel transition on the dispatch face: the same operation merges the pull request and stamps `merged_at`, which is the one-writer-per-truth invariant `db/schema.ts` states the cost of breaking. Adding any of these here would put a second writer of `merged_at` behind a tool an agent calls, which is exactly the defect ISS-1073 exists to close.
+// cm:guard this set exists to be REFUSED, never to grow a branch that does the nearest thing. A merge is a kernel transition on the dispatch face: the same operation merges the pull request and stamps `merged_at`, which is the one-writer-per-truth invariant `issues/merge-record.ts` now holds and `scripts/check-merged-at-writers.mjs` gates. Adding any of these here would put a second writer of `merged_at` behind a tool an agent calls, which is exactly the defect ISS-1073 closed.
 const KERNEL_VERBS = new Set([
   'merge',
   'merge-pull-request',
@@ -48,9 +48,10 @@ export function kernelVerbRefusal(action: string): string {
   return (
     `\`${action}\` is not one of this tool's actions and will not become one. Merging a pull request ` +
     'is a kernel transition on the DISPATCH face, where the same operation that merges also stamps ' +
-    "`merged_at` — one writer for one truth — so it happens without an agent present and is ISS-1073's, " +
-    "not this tool's. What this face carries is the judgement: read the diff, read a failing check " +
-    "run's log, comment, open a pull request, request a review, submit a verdict."
+    '`merged_at` and the commit it landed at — one writer for one truth — so it happens without an ' +
+    'agent present and is recorded whether or not one was. It is served there as the outbound verb ' +
+    '`pull_request.merge`, not here. What this face carries is the judgement: read the diff, read a ' +
+    "failing check run's log, comment, open a pull request, request a review, submit a verdict."
   );
 }
 
