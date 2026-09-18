@@ -1145,18 +1145,6 @@ mod tests {
         )
     }
 
-    /// A scratch directory holding a plugin clone that ships one role, so the
-    /// gate's role set is a fact of the box rather than of the test's wishes.
-    fn box_with_roles(roles: &[&str]) -> std::path::PathBuf {
-        let dir = std::env::temp_dir().join(format!("ct-gate-{}", uuid::Uuid::new_v4()));
-        let agents = dir.join("marketplaces/sidcorp-co__forge-plugin/plugin/agents");
-        std::fs::create_dir_all(&agents).unwrap();
-        for r in roles {
-            std::fs::write(agents.join(format!("{r}.md")), "---\n").unwrap();
-        }
-        dir
-    }
-
     fn asking(role: &str, tool_use: &str) -> crate::daemon::dispatch_gate::Dispatch {
         crate::daemon::dispatch_gate::Dispatch {
             agent_id: None,
@@ -1167,43 +1155,59 @@ mod tests {
 
     /// The facts the handler would assemble, with the role set named rather
     /// than read off whatever this machine happens to hold.
+    /// Ask the gate the way the socket asks it.
+    ///
+    // cm:guard this CALLS `dispatch_gate_reply`. It used to re-implement it — read the ledger,
+    // read the roles, call `decide`, insert the promise — and a faithful reconstruction passes
+    // every review while producing assertions that cannot fail: planting inside the shipped
+    // function left these tests green, which is how ISS-1094's re-judge found it. A helper that
+    // rebuilds its subject is the arm being judged instead of the door, the exact shape ISS-1075
+    // was caught on, rebuilt inside the change meant to have learned from it (ISS-1094).
+    // cm:hack ISS-1096 until:<the platform is a value `open_channel` reads rather than a `cfg`>
+    // PRICED: this gate asserts the declaration rule on UNIX ONLY. `dispatch_gate_reply` is
+    // `#[cfg(unix)]`, so a test that CALLS it cannot compile where it does not exist. What that
+    // costs: the `#[cfg(not(unix))]` stub set in this file — the arm a Windows box actually runs —
+    // stays unexercised by any test here, so on that platform the gate's behaviour is asserted by
+    // nothing. What it does NOT cost: the classification and the payload reading are platform-free
+    // and stay ungated (`classify_start`, `agents_reach`, `dispatch_in`).
+    //
+    // This hole is older than this branch and was INVISIBLE until now: `gate_on` used to
+    // re-implement `dispatch_gate_reply`, so it compiled and passed on Windows while asserting the
+    // rule against a copy of a function whose real Windows implementation is a different code path.
+    // Making the test honest is what exposed it — the same shape as ISS-1094's own C41 finding, one
+    // layer out: not a test that cannot fail, but a platform nothing exercises.
+    //
+    // ENDS WHEN: ISS-1096 makes the platform a value rather than a `cfg` — it is tracing this same
+    // set (`control::socket_path`, `hook_install::install` and `SessionTokens::mint` carry no
+    // platform gate while `control::serve` is `#[cfg(not(unix))] -> Err`, so a Windows box mints a
+    // capability and installs hooks into a channel no frame can reach). That refactor removes this
+    // attribute; this branch deliberately does not attempt it.
+    #[cfg(unix)]
     fn gate_on(
         ctl: &Arc<Control>,
-        dir: &std::path::Path,
         d: &crate::daemon::dispatch_gate::Dispatch,
         session_id: &str,
-    ) -> crate::daemon::dispatch_gate::Verdict {
-        use crate::daemon::dispatch_gate::{decide, shipped_roles, Facts};
-        let roles = shipped_roles(dir);
-        let pending = {
-            let mut held = ctl.ledger.lock().unwrap();
-            held.as_mut()
-                .unwrap()
-                .unbound_run_for_master(session_id, &ctl.boot_id)
-                .unwrap()
-                .map(|r| r.run_id)
-        };
-        let promised = pending
-            .as_deref()
-            .and_then(|run| ctl.promises.lock().unwrap().promised.get(run).cloned());
-        let v = decide(
-            d,
-            &Facts {
-                roles: roles.as_ref(),
-                pending_run: pending.as_deref(),
-                promised_to: promised.as_deref(),
-            },
-        );
-        if let crate::daemon::dispatch_gate::Verdict::Covered { run_id } = &v {
-            if let Some(t) = d.tool_use_id.clone() {
-                ctl.promises
-                    .lock()
-                    .unwrap()
-                    .promised
-                    .insert(run_id.clone(), t);
-            }
-        }
-        v
+    ) -> ClaimReply {
+        dispatch_gate_reply(ctl, d.clone(), session_id)
+    }
+
+    /// Allowed, by the answer the socket actually sends.
+    #[cfg(unix)]
+    fn allowed(r: &ClaimReply) -> bool {
+        r.ok
+    }
+
+    /// Refused, and refused with the declaration's own words rather than any
+    /// other `ok:false` the socket can produce.
+    #[cfg(unix)]
+    fn refused_as_undeclared(r: &ClaimReply) -> bool {
+        !r.ok && r.reason.as_deref() == Some(crate::daemon::dispatch_gate::REFUSAL)
+    }
+
+    /// Which tool call, if any, this run is currently promised to.
+    #[cfg(unix)]
+    fn promised_to(ctl: &Arc<Control>, run_id: &str) -> Option<String> {
+        ctl.promises.lock().unwrap().promised.get(run_id).cloned()
     }
 
     /// Criteria 1, 4, 5, 6, 7 — the whole life of one declaration, in order.
@@ -1217,39 +1221,46 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn one_declaration_authorises_one_dispatch_and_is_freed_when_its_subagent_starts() {
-        use crate::daemon::dispatch_gate::Verdict;
-        let dir = box_with_roles(&["runner", "reviewer"]);
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        ship_roles(&ctl, &["runner", "reviewer"]);
 
-        // 1. Nothing declared: refused.
-        assert_eq!(
-            gate_on(&ctl, &dir, &asking("runner", "toolu_1"), "sess-a"),
-            Verdict::Undeclared
+        // 1. Nothing declared: refused, in the declaration's own words.
+        assert!(
+            refused_as_undeclared(&gate_on(&ctl, &asking("runner", "toolu_1"), "sess-a")),
+            "a hand-off with nothing declared is refused by the socket, not merely by `decide`"
         );
 
-        // 4. Declared: the next dispatch goes through.
+        // 4. Declared: the next dispatch goes through, and the row it reserved is
+        // named — which is what a re-implementation of this path could not show.
         let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
             .job_id
             .expect("declared");
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("runner", "toolu_1"),
+            "sess-a"
+        )));
         assert_eq!(
-            gate_on(&ctl, &dir, &asking("runner", "toolu_1"), "sess-a"),
-            Verdict::Covered {
-                run_id: run_id.clone()
-            }
+            promised_to(&ctl, &run_id).as_deref(),
+            Some("toolu_1"),
+            "the declaration this dispatch rode is the one that was pending"
         );
 
         // 6. The same tool call again is the same answer, and consumes nothing.
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("runner", "toolu_1"),
+            "sess-a"
+        )));
         assert_eq!(
-            gate_on(&ctl, &dir, &asking("runner", "toolu_1"), "sess-a"),
-            Verdict::Replay {
-                run_id: run_id.clone()
-            }
+            promised_to(&ctl, &run_id).as_deref(),
+            Some("toolu_1"),
+            "a replay must not re-reserve, or the second ride is free"
         );
 
         // 5. A DIFFERENT dispatch cannot ride the same declaration.
-        assert_eq!(
-            gate_on(&ctl, &dir, &asking("reviewer", "toolu_2"), "sess-a"),
-            Verdict::Undeclared,
+        assert!(
+            refused_as_undeclared(&gate_on(&ctl, &asking("reviewer", "toolu_2"), "sess-a")),
             "two subagents under one declared row is two units of work with one record"
         );
 
@@ -1262,15 +1273,16 @@ mod tests {
             Some("runner"),
             "sess-a",
         );
-        assert!(
-            !ctl.promises.lock().unwrap().promised.contains_key(&run_id),
+        assert_eq!(
+            promised_to(&ctl, &run_id),
+            None,
             "a bound run must not stay promised, or the next declaration is refused on a free row"
         );
-        assert_eq!(
-            gate_on(&ctl, &dir, &asking("runner", "toolu_3"), "sess-a"),
-            Verdict::Undeclared
-        );
-        let _ = std::fs::remove_dir_all(&dir);
+        assert!(refused_as_undeclared(&gate_on(
+            &ctl,
+            &asking("runner", "toolu_3"),
+            "sess-a"
+        )));
     }
 
     /// Criteria 41, 42, corrected. What a daemon restart with the pane still
@@ -1280,16 +1292,16 @@ mod tests {
     #[cfg(unix)]
     #[test]
     fn a_daemon_restart_leaves_the_declaration_standing_and_the_second_child_is_named() {
-        use crate::daemon::dispatch_gate::Verdict;
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
         let dir = ship_roles(&ctl, &["runner"]);
         let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
             .job_id
             .expect("declared");
-        assert!(matches!(
-            gate_on(&ctl, &dir, &asking("runner", "toolu_1"), "sess-a"),
-            Verdict::Covered { .. }
-        ));
+        assert!(allowed(&gate_on(
+            &ctl,
+            &asking("runner", "toolu_1"),
+            "sess-a"
+        )));
 
         // A daemon restart: a new process, the same OS boot, the same ledger
         // file, the same pane. Only what was held in memory is gone.
@@ -1306,12 +1318,15 @@ mod tests {
         });
 
         // The declaration is still the master's, so the dispatch is allowed.
-        assert_eq!(
-            gate_on(&restarted, &dir, &asking("runner", "toolu_2"), "sess-a"),
-            Verdict::Covered {
-                run_id: run_id.clone()
-            },
+        assert!(
+            allowed(&gate_on(&restarted, &asking("runner", "toolu_2"), "sess-a")),
             "a declaration nothing consumed is still pending after a daemon restart"
+        );
+        assert_eq!(
+            promised_to(&restarted, &run_id).as_deref(),
+            Some("toolu_2"),
+            "and it is the SAME row, reserved again by the restarted daemon from the ledger \
+             rather than from the memory a restart threw away"
         );
 
         // Both dispatches were allowed, so two children may start. Exactly one
