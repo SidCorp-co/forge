@@ -13,6 +13,7 @@
 //
 // Design: docs/proposals/agent-driven-pipeline.md
 
+import { sql } from 'drizzle-orm';
 import {
   index,
   integer,
@@ -87,6 +88,15 @@ export const phaseJournal = pgTable(
     ),
     runStartedIdx: index('phase_journal_run_started_idx').on(t.runId, t.startedAt),
     issueStartedIdx: index('phase_journal_issue_started_idx').on(t.issueId, t.startedAt),
+    // cm:guard ISS-1021 — serves `alarmRejectionStreaks`' verdicts CTE in pipeline/inv7-alarms.ts and
+    // nothing else. Verdicts are a small minority of this table (live beta 2026-09-17: 182 of 10,938
+    // rows) and the alarm reads them once a minute, so the partial predicate is what makes the index
+    // tiny enough for the planner to prefer it over the 45,149 sequential scans measured there. The
+    // two terms are byte-equal to that CTE's own `pj.source = 'runner' AND pj.artifact ->> 'kind' =
+    // 'verdict'`: change either side and Postgres silently stops matching rather than failing.
+    runnerVerdictsIdx: index('phase_journal_runner_verdicts_idx')
+      .on(t.runId, t.startedAt)
+      .where(sql`source = 'runner' AND artifact ->> 'kind' = 'verdict'`),
   }),
 );
 

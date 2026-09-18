@@ -2968,6 +2968,20 @@
 
 ### Fixed
 
+- **Six background checks that got slower every week now stay the same speed as the tables grow.**
+  Each one asked a question the database had no shortcut for, so answering it meant reading every
+  row of a table and throwing nearly all of them away — sessions looked up by the issue or the
+  schedule they belong to, the check that looks for a review sending the same work back over and
+  over, and the five-minute sweep that re-files anything written while search indexing was down.
+  They gave the right answers and simply cost more each month. They now have the shortcuts, and
+  answer in roughly the same time whatever size the tables reach.
+
+- **A transition that has permanently failed to deliver is no longer stepped over eighty-six
+  thousand times a day.** When a status change cannot be delivered after its retries, it is kept
+  rather than discarded so a person can look at it. The queue reader looked past it once a second,
+  every second, for as long as it was kept — the row was first in the line it reads and was never
+  going to be taken. Kept rows are now out of that line entirely, while still being there to read.
+
 - **A master that comes back after a crash can now say what became of the work it was holding, and
   must.** There was no command for it, and ending the work counted as an answer.
 

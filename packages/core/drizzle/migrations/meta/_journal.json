@@ -1870,6 +1870,13 @@
       "when": 1802131200000,
       "tag": "0279_environments",
       "breakpoints": true
+    },
+    {
+      "idx": 281,
+      "version": "7",
+      "when": 1802995200000,
+      "tag": "0281_index_served_predicates",
+      "breakpoints": true
     }
   ]
 }
