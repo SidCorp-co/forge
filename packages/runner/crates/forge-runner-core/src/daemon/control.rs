@@ -703,7 +703,20 @@ fn bind_or_release(
                 // refused that dispatch, so each one here got past it. That is kernel input — a
                 // run with no row — and it breaks loudly and countably rather than into a
                 // `debug!` nobody reads (ISS-1094).
-                Ok(None) => undeclared_child(ctl, child, agent_type),
+                // cm:guard a child that ALREADY has a run is not undeclared, and asking the
+                // ledger is the only way to tell: `unbound_run_for_master` answers `None` both
+                // when nothing was declared and when this child's own declaration has already
+                // been bound and nothing new is pending. The harness makes no promise that a
+                // `SubagentStart` arrives once, so a replay would otherwise raise a false alarm
+                // on the one counter whose whole value is that it moves only when something is
+                // wrong (ISS-1094, review F3).
+                Ok(None) => match led.run_for_agent(child) {
+                    Ok(Some(run)) => tracing::debug!(
+                        "[control] subagent {child} is already run {}, so its start is a replay",
+                        run.run_id
+                    ),
+                    _ => undeclared_child(ctl, child, agent_type),
+                },
                 Err(e) => tracing::warn!("[control] cannot read declared runs: {e}"),
             }
         }
@@ -1397,6 +1410,33 @@ mod tests {
         assert_eq!(
             undeclared.count, 0,
             "a helper is not a hand-off: {undeclared:?}"
+        );
+    }
+
+    /// Review F3. A repeated start for a child that already has its run.
+    // cm:guard no second declaration is made here, which is what separates this from the tests above it: with one pending, a replay binds that instead and the alarm is silent for the wrong reason. With nothing pending, the old code called the child undeclared and moved the operator's counter for a run that was recorded correctly.
+    #[test]
+    fn a_replayed_start_for_an_already_bound_child_raises_no_alarm() {
+        let (ctl, _t) = declaring_control("sess-a", "proj-1");
+        let dir = ship_roles(&ctl, &["runner"]);
+        let _ = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
+            .job_id
+            .expect("declared");
+
+        for _ in 0..3 {
+            bind_or_release(
+                &ctl,
+                crate::daemon::agent_activity::Event::SubagentStarted,
+                Some("child-1"),
+                Some("runner"),
+                "sess-a",
+            );
+        }
+
+        let (_, undeclared) = crate::daemon::degraded::tally(&dir);
+        assert_eq!(
+            undeclared.count, 0,
+            "a replayed start for a child that already has its run is not an undeclared hand-off: {undeclared:?}"
         );
     }
 

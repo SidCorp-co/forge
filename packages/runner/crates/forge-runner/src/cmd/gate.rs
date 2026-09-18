@@ -43,25 +43,38 @@ fn drain() -> Vec<u8> {
     sink
 }
 
+/// What a `PreToolUse` payload turned out to be.
+// cm:guard `Malformed` is its OWN answer and not folded into `NotADispatch`. Both allow the tool call, but one of them is this box failing to read what the harness sent — an uncertain allowance, which criterion 17 says must leave a mark — and the other is an ordinary `Read` that must stay silent or the marks become noise (ISS-1094, review F2).
+pub enum Read {
+    /// An ordinary tool call. Almost all of them; this hook runs in front of every tool.
+    NotADispatch,
+    /// This box could not read the payload at all.
+    Malformed,
+    /// A subagent is about to be dispatched.
+    Dispatch(Dispatch),
+}
+
 /// The dispatch this payload describes, where it describes one.
-///
-/// `None` for every tool call that is not a dispatch, which is almost all of
-/// them — this hook runs in front of every tool a master uses.
 // cm:guard the reading is `tool_input.subagent_type` and NOT `tool_name`. Measured against claude 2.1.276 the dispatch tool is called `Agent`, and it has been called other things; the input names the role whatever the tool is called, so keying on the name would be a fixture that ages into a gate that never fires.
 // cm:guard the whole of this runs BEFORE any socket is touched. `PreToolUse` fires on every tool call on the box, and a round trip per call would put the daemon's latency in front of every read a master makes.
-pub fn dispatch_in(payload: &[u8]) -> Option<Dispatch> {
-    let v = serde_json::from_slice::<serde_json::Value>(payload).ok()?;
+pub fn dispatch_in(payload: &[u8]) -> Read {
+    let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) else {
+        return Read::Malformed;
+    };
     let field = |k: &str| {
         v.get(k)
             .and_then(serde_json::Value::as_str)
             .map(str::to_string)
     };
-    let subagent_type = v
+    let Some(subagent_type) = v
         .get("tool_input")
         .and_then(|t| t.get("subagent_type"))
         .and_then(serde_json::Value::as_str)
-        .map(str::to_string)?;
-    Some(Dispatch {
+        .map(str::to_string)
+    else {
+        return Read::NotADispatch;
+    };
+    Read::Dispatch(Dispatch {
         agent_id: field("agent_id"),
         subagent_type: Some(subagent_type),
         tool_use_id: field("tool_use_id"),
@@ -145,9 +158,23 @@ pub async fn run(args: Args) {
         println!("{ALLOW}");
         return;
     }
-    let Some(d) = dispatch_in(&payload) else {
-        println!("{ALLOW}");
-        return;
+    let d = match dispatch_in(&payload) {
+        Read::Dispatch(d) => d,
+        Read::NotADispatch => {
+            println!("{ALLOW}");
+            return;
+        }
+        Read::Malformed => {
+            if let Some(dir) = config_dir().as_deref() {
+                mark(
+                    dir,
+                    Kind::Degraded,
+                    "a PreToolUse payload this box could not read at all",
+                );
+            }
+            println!("{ALLOW}");
+            return;
+        }
     };
     println!("{}", answer(config_dir().as_deref(), &d).await);
 }
@@ -219,9 +246,16 @@ mod tests {
     const INSIDE_A_CHILD: &str = r#"{"session_id":"d5953edb-97bc-42b8-891d-206e105903d7","agent_id":"acf9b1721de184fa7","agent_type":"general-purpose","hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"echo hi"},"tool_use_id":"toolu_02"}"#;
     const AN_ORDINARY_TOOL_CALL: &str = r#"{"session_id":"d5953edb","hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/x"},"tool_use_id":"toolu_03"}"#;
 
+    fn as_dispatch(payload: &str) -> Dispatch {
+        match dispatch_in(payload.as_bytes()) {
+            Read::Dispatch(d) => d,
+            _ => panic!("expected a dispatch"),
+        }
+    }
+
     #[test]
     fn a_dispatch_is_recognised_by_its_input_and_not_by_the_tools_name() {
-        let d = dispatch_in(DISPATCH.as_bytes()).expect("a dispatch");
+        let d = as_dispatch(DISPATCH);
         assert_eq!(d.subagent_type.as_deref(), Some("general-purpose"));
         assert_eq!(
             d.tool_use_id.as_deref(),
@@ -235,23 +269,37 @@ mod tests {
 
     #[test]
     fn a_tool_call_that_is_not_a_dispatch_never_reaches_the_socket() {
-        assert!(dispatch_in(AN_ORDINARY_TOOL_CALL.as_bytes()).is_none());
+        assert!(matches!(
+            dispatch_in(AN_ORDINARY_TOOL_CALL.as_bytes()),
+            Read::NotADispatch
+        ));
     }
 
     #[test]
     fn a_tool_call_raised_inside_a_child_carries_the_childs_id() {
         // It is not a dispatch either, so it stops one step earlier — but when a
         // child DOES dispatch, the id is what tells the gate whose call it is.
-        assert!(dispatch_in(INSIDE_A_CHILD.as_bytes()).is_none());
+        assert!(matches!(
+            dispatch_in(INSIDE_A_CHILD.as_bytes()),
+            Read::NotADispatch
+        ));
         let v: serde_json::Value = serde_json::from_str(INSIDE_A_CHILD).expect("json");
         assert!(v.get("agent_id").is_some());
     }
 
     /// Criterion 11.
+    // cm:guard the two are told APART here, which is the whole of review F2: both allow the tool call, and only one of them is this box failing to read what it was sent.
     #[test]
-    fn a_payload_that_will_not_parse_yields_no_dispatch_rather_than_a_guess() {
-        assert!(dispatch_in(b"not json at all").is_none());
-        assert!(dispatch_in(b"").is_none());
+    fn a_payload_that_will_not_parse_is_malformed_and_not_merely_not_a_dispatch() {
+        assert!(matches!(dispatch_in(b"not json at all"), Read::Malformed));
+        assert!(matches!(dispatch_in(b""), Read::Malformed));
+        assert!(
+            matches!(
+                dispatch_in(AN_ORDINARY_TOOL_CALL.as_bytes()),
+                Read::NotADispatch
+            ),
+            "an ordinary tool call is not a failure and must leave no mark"
+        );
     }
 
     /// Criterion 2. The deny that reaches the model carries the way forward.
@@ -276,7 +324,7 @@ mod tests {
     #[tokio::test]
     async fn no_control_socket_opens_the_gate_and_leaves_a_mark() {
         let dir = Scratch::new("gateverb-1");
-        let d = dispatch_in(DISPATCH.as_bytes()).expect("a dispatch");
+        let d = as_dispatch(DISPATCH);
         assert_eq!(answer(Some(dir.path()), &d).await, ALLOW);
         let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
         assert_eq!(
@@ -299,7 +347,7 @@ mod tests {
                 std::mem::forget(stream);
             }
         });
-        let d = dispatch_in(DISPATCH.as_bytes()).expect("a dispatch");
+        let d = as_dispatch(DISPATCH);
         let began = std::time::Instant::now();
         assert_eq!(answer(Some(dir.path()), &d).await, ALLOW);
         assert!(
@@ -318,7 +366,7 @@ mod tests {
     /// Criterion 12, where nothing at all is resolvable.
     #[tokio::test]
     async fn a_pane_with_no_config_directory_still_opens_the_gate() {
-        let d = dispatch_in(DISPATCH.as_bytes()).expect("a dispatch");
+        let d = as_dispatch(DISPATCH);
         assert_eq!(answer(None, &d).await, ALLOW);
     }
 }

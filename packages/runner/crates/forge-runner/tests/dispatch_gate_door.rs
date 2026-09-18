@@ -241,3 +241,38 @@ fn status_prints_what_the_gate_could_not_do() {
     );
     assert!(printed.contains("child-9"), "{printed}");
 }
+
+/// Review F2. Malformed stdin is an uncertain allowance and is marked; an
+/// ordinary tool call is not a failure and stays silent. Both run the real
+/// registered command.
+#[test]
+fn a_payload_this_box_cannot_read_is_allowed_and_marked() {
+    let scratch = Scratch::new("malformed");
+    let config_dir = scratch.path().join("forge-runner");
+    std::fs::create_dir_all(&config_dir).expect("config dir");
+
+    let command = registered_gate_command(env!("CARGO_BIN_EXE_forge-runner"));
+    assert_eq!(
+        run_gate(&command, scratch.path(), "{ not json at all"),
+        "{}"
+    );
+    let (degraded, _) = forge_runner_core::daemon::degraded::tally(&config_dir);
+    assert_eq!(
+        degraded.count, 1,
+        "a payload this box could not read is the gate not operating, and must say so"
+    );
+
+    assert_eq!(
+        run_gate(
+            &command,
+            scratch.path(),
+            r#"{"session_id":"s","hook_event_name":"PreToolUse","tool_name":"Read","tool_input":{"file_path":"/x"},"tool_use_id":"t"}"#
+        ),
+        "{}"
+    );
+    let (degraded, _) = forge_runner_core::daemon::degraded::tally(&config_dir);
+    assert_eq!(
+        degraded.count, 1,
+        "an ordinary tool call is not a failure; marking it would bury the ones that are"
+    );
+}

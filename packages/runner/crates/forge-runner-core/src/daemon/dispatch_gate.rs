@@ -90,6 +90,14 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
     let Some(run_id) = f.pending_run else {
         return Verdict::Undeclared;
     };
+    // cm:guard a dispatch with no tool call id cannot be RESERVED, so calling it covered hands the
+    // same declaration to every such dispatch and marks nothing — a silent pass wearing the word
+    // `Covered`. It is the uncertain case and it is answered as one (ISS-1094, review F1).
+    if d.tool_use_id.is_none() {
+        return Verdict::Unknown(
+            "this dispatch carries no tool call id, so no declaration can be promised to it",
+        );
+    }
     match f.promised_to {
         None => Verdict::Covered {
             run_id: run_id.to_string(),
@@ -288,6 +296,20 @@ mod tests {
         let mut d = dispatch("runner", "toolu_1");
         d.agent_id = Some("acf9b1721de184fa7".into());
         assert_eq!(decide(&d, &facts(Some(&r), None, None)), Verdict::NotOurs);
+    }
+
+    /// Review F1. Covered means reserved; a dispatch that cannot be reserved is not covered.
+    // cm:guard two such dispatches would otherwise BOTH read `Covered` against one declaration, and neither would leave a mark — worse than the refusal it replaces, because nothing anywhere says it happened.
+    #[test]
+    fn a_dispatch_with_no_tool_call_id_is_uncertain_rather_than_covered() {
+        let r = roles();
+        let mut d = dispatch("runner", "toolu_1");
+        d.tool_use_id = None;
+        let v = decide(&d, &facts(Some(&r), Some("run-7"), None));
+        assert!(
+            matches!(v, Verdict::Unknown(_)),
+            "an unreservable dispatch described as covered is a silent pass: {v:?}"
+        );
     }
 
     /// Criterion 16. Blind is not the same as permissive, and must not read as it.
