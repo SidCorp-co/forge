@@ -191,14 +191,18 @@ describe('who may author, and what a refusal costs', () => {
     expect(posts).toHaveLength(1);
     expect(posts[0]?.tmid).toBe('root-1');
     expect(posts[0]?.text).toBe(
-      unlinkedMessage({
-        source: 'rocketchat',
-        namespace: 'chat.example.com',
-        externalId: STRANGER,
-        label: 'someone',
-      }),
+      unlinkedMessage(
+        {
+          source: 'rocketchat',
+          namespace: 'chat.example.com',
+          externalId: STRANGER,
+          label: 'someone',
+        },
+        projectId,
+      ),
     );
-    expect(posts[0]?.text).toContain('speaker-links');
+    // The way out is a page the reader can open, and the project is what names it.
+    expect(posts[0]?.text).toContain('/link-chat?');
   });
 
   it('writes no comment for a speaker nobody is linked to', async () => {
