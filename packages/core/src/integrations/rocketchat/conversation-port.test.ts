@@ -178,12 +178,24 @@ describe('resolveSpeaker', () => {
   it('hands the assistant resolver the namespace and the speaker', async () => {
     resolveForgeSpeaker.mockResolvedValue({ linked: true, userId: 'u-forge' });
     await rocketChatConversationPorts.resolveSpeaker(frame());
-    expect(resolveForgeSpeaker).toHaveBeenCalledWith({
-      source: 'rocketchat',
-      namespace: 'chat.example.co',
-      externalId: 'u1',
-      label: 'ana',
-    });
+    expect(resolveForgeSpeaker).toHaveBeenCalledWith(
+      {
+        source: 'rocketchat',
+        namespace: 'chat.example.co',
+        externalId: 'u1',
+        label: 'ana',
+      },
+      expect.anything(),
+    );
+  });
+
+  // The refusal an unlinked speaker reads carries a link to the confirm page, and that
+  // page needs a project to name. The port is the one place that knows it here, so a
+  // frame whose project went missing would degrade the message everywhere silently.
+  it('carries the frame\u2019s project through, so the refusal can name a confirm page', async () => {
+    resolveForgeSpeaker.mockResolvedValue({ linked: true, userId: 'u-forge' });
+    await rocketChatConversationPorts.resolveSpeaker(frame());
+    expect(resolveForgeSpeaker.mock.calls[0]?.[1]).toBe(PROJECT_ID);
   });
 });
 

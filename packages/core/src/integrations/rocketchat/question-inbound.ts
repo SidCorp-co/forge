@@ -7,7 +7,7 @@
 
 import { and, eq } from 'drizzle-orm';
 import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
-import { resolveSpeaker, unlinkedMessage } from '../../assistant/identity/speaker-link.js';
+import { resolveSpeaker } from '../../assistant/identity/speaker-link.js';
 import { db } from '../../db/client.js';
 import { agentQuestions, isChoiceStep } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
@@ -166,15 +166,10 @@ export async function handleQuestionThreadReply(args: {
     externalId: m.userId,
     label: m.username ?? null,
   };
-  const resolution = await resolveSpeaker(ref);
-  // cm:guard an unmapped speaker is refused with ISS-977's own text and not a local rewording: the way out — the two endpoints, and that the person links themselves — is that module's contract, and a second copy of it drifts silently (ISS-978 criterion 12).
+  const resolution = await resolveSpeaker(ref, question.projectId);
+  // cm:guard an unmapped speaker is refused with ISS-977's own text and not a local rewording: the way out — a confirm link where the project is known, the endpoint where it is not, and that the person links themselves either way — is that module's contract, and a second copy of it drifts silently (ISS-978 criterion 12). The projectId is passed IN rather than the message rebuilt out here, so the link travels on every path that knows a project and this file holds no copy of the text.
   if (!resolution.linked) {
-    await say(
-      transport,
-      resolution.refusal.code === 'SPEAKER_UNLINKED'
-        ? unlinkedMessage(ref)
-        : resolution.refusal.message,
-    );
+    await say(transport, resolution.refusal.message);
     return;
   }
 
