@@ -25,8 +25,26 @@ const SETTINGS: &str = ".claude/settings.local.json";
 // went red against the first version of this fix.
 const MANAGED_MARKERS: [&str; 2] = [" hook --event ", " gate --event "];
 
-fn command_for(exe: &str, event: Event) -> String {
-    format!("{exe} hook --event {}", event.wire())
+/// Whether the shell reading these commands quotes the POSIX way.
+// cm:guard a VALUE and not a `#[cfg]` arm inside `shell_quoted`, which is the lesson ISS-1096 already paid for once: every test on this box runs where `cfg(unix)` is true, so an arm behind `cfg(windows)` fires nowhere anybody can run it and its green is worth nothing. As a parameter both arms are reachable from a linux test, and both are asserted below.
+// cm:guard this is NOT `HOOKS_CAN_REPORT`, and the two must not be folded together however alike they read. That one says whether a frame can reach this daemon and gates the pool lane; this one says how a shell reads a string, and the MASTER lane installs hooks on every platform — `master.rs:install_hooks_logged` has no platform gate at all, so a windows master would get POSIX quoting if this were keyed on the other fact.
+pub const POSIX_SHELL: bool = cfg!(unix);
+
+/// One argument of a shell command line, carrying any character a path may hold.
+// cm:guard the command is a SHELL string, so an unquoted `/opt/Forge Runner/forge-runner` invokes `/opt/Forge`. `install` never runs what it writes and still answers Ok, so `pool_jobs::open_channel` reads a channel that can never report and fails the job at the window (ISS-1096 F1).
+// cm:guard POSIX: single quotes, every inner `'` closed, escaped and reopened. Double quotes would expand `$`, `` ` `` and `\` inside a path holding them.
+// cm:guard cmd.exe: double quotes, nothing escaped inside — `"` is not legal in a windows path, so an escaping branch here is one no test could reach.
+// cm:guard what the windows arm's tests assert is the STRING and never its execution: nothing on this fleet runs a hook through cmd.exe, so `%VAR%` in a path — legal on NTFS — is still expanded and unproven here. Unchanged by this fix rather than introduced by it; the unquoted form had it too. A declared hole, not a covered one.
+fn shell_quoted(path: &str, posix: bool) -> String {
+    if posix {
+        format!("'{}'", path.replace('\'', r"'\''"))
+    } else {
+        format!("\"{path}\"")
+    }
+}
+
+fn command_for(exe: &str, event: Event, posix: bool) -> String {
+    format!("{} hook --event {}", shell_quoted(exe, posix), event.wire())
 }
 
 /// The `PreToolUse` entry: the one hook on a pane that ANSWERS rather than reports.
@@ -34,8 +52,8 @@ fn command_for(exe: &str, event: Event) -> String {
 // cm:edge lockstep -> packages/runner/crates/forge-runner/src/cmd/gate.rs — the verb this names and the event it is registered for are one decision; the end-to-end test runs THIS string as a process and feeds it a real payload, so a wrong verb or a wrong event here fails there rather than in silence.
 pub const GATE_EVENT: &str = "PreToolUse";
 
-fn gate_command_for(exe: &str) -> String {
-    format!("{exe} gate --event {GATE_EVENT}")
+fn gate_command_for(exe: &str, posix: bool) -> String {
+    format!("{} gate --event {GATE_EVENT}", shell_quoted(exe, posix))
 }
 
 /// Whether one entry in an event's hook array is ours.
@@ -56,6 +74,11 @@ fn is_managed(entry: &Value) -> bool {
 // cm:guard MERGES and never replaces: a user's own hooks in this file are theirs, and an install that wrote a fresh document would delete them silently on every pane spawn. Only entries this daemon recognises as its own are removed, and only to be replaced.
 // cm:guard unparseable existing content is REFUSED by name rather than overwritten. A corrupt or hand-edited file is somebody's work in an unknown state; the honest outcome is a pane that starts unhooked and says so, not a file this daemon quietly truncated.
 pub fn merged(existing: Option<&str>, exe: &str) -> Result<String> {
+    merged_for(existing, exe, POSIX_SHELL)
+}
+
+/// The same, with the shell named rather than read off this machine.
+pub fn merged_for(existing: Option<&str>, exe: &str, posix: bool) -> Result<String> {
     let mut root: Map<String, Value> = match existing.map(str::trim) {
         None | Some("") => Map::new(),
         Some(text) => serde_json::from_str::<Value>(text)
@@ -81,7 +104,7 @@ pub fn merged(existing: Option<&str>, exe: &str) -> Result<String> {
             .filter(|e| !is_managed(e))
             .collect();
         entries.push(json!({
-            "hooks": [{ "type": "command", "command": command_for(exe, event) }]
+            "hooks": [{ "type": "command", "command": command_for(exe, event, posix) }]
         }));
         hooks.insert(event.wire().to_string(), Value::Array(entries));
     }
@@ -97,7 +120,7 @@ pub fn merged(existing: Option<&str>, exe: &str) -> Result<String> {
     // cm:guard the matcher is `*` and not the dispatch tool's name. Measured on claude 2.1.276 that tool is `Agent`; it has been called other things, and a matcher naming it would turn the gate off on the version that renames it, silently. The verb itself answers in microseconds for every tool call that is not a dispatch.
     gate.push(json!({
         "matcher": "*",
-        "hooks": [{ "type": "command", "command": gate_command_for(exe) }]
+        "hooks": [{ "type": "command", "command": gate_command_for(exe, posix) }]
     }));
     hooks.insert(GATE_EVENT.to_string(), Value::Array(gate));
 
@@ -112,9 +135,16 @@ pub fn settings_path(cwd: &Path) -> PathBuf {
 
 /// Install the hooks into `cwd`, returning the file written.
 pub fn install(cwd: &Path, exe: &Path) -> Result<PathBuf> {
+    // cm:guard REFUSE the one class quoting cannot carry, rather than install a command naming a different file. `to_string_lossy` replaces each invalid UTF-8 byte with U+FFFD and no quoting recovers it, so a runner under a non-UTF-8 path would be registered under a name nothing can exec — and `open_channel`'s reader treats a successful install as a channel that can report. The caller already has the arm for this: an `Err` here starts the pane unhooked and says so, which is the honest reading (ISS-1096, review F1).
+    let Some(exe) = exe.to_str() else {
+        return Err(Error::Other(format!(
+            "the runner's own path is not valid UTF-8 ({}), so a hook command naming it would name a different file",
+            exe.display()
+        )));
+    };
     let path = settings_path(cwd);
     let existing = std::fs::read_to_string(&path).ok();
-    let next = merged(existing.as_deref(), &exe.to_string_lossy())?;
+    let next = merged(existing.as_deref(), exe)?;
     if let Some(dir) = path.parent() {
         std::fs::create_dir_all(dir)
             .map_err(|e| Error::Other(format!("cannot create {}: {e}", dir.display())))?;
@@ -168,7 +198,7 @@ mod tests {
             .filter_map(|e| e["hooks"][0]["command"].as_str())
             .find(|c| c.contains("gate --event"))
             .unwrap_or_else(|| panic!("no gate command among {entries:?}"));
-        assert_eq!(cmd, "/bin/fr gate --event PreToolUse");
+        assert_eq!(cmd, "'/bin/fr' gate --event PreToolUse");
     }
 
     /// Criterion 23. The event argument is part of the door, not decoration.
@@ -176,10 +206,200 @@ mod tests {
     #[test]
     fn the_gate_is_registered_for_the_event_that_runs_before_the_dispatch() {
         assert_eq!(
-            gate_command_for("/bin/fr"),
-            "/bin/fr gate --event PreToolUse"
+            gate_command_for("/bin/fr", true),
+            "'/bin/fr' gate --event PreToolUse"
         );
         assert_ne!(GATE_EVENT, Event::SubagentStarted.wire());
+    }
+
+    /// A runner whose own path holds a space is still the thing the hook runs.
+    // cm:guard this RUNS the string through a shell rather than reading it, which is the only thing that would have caught F1: every structural assertion in this file passed against the unquoted version, because the defect is not in the text, it is in what a shell does with the text. `install` writes the file and never invokes what it wrote, so nothing downstream of it can tell a command that works from one that cannot.
+    // cm:guard `#[cfg(unix)]` is scoping and not an amnesty: there is no hook channel on windows to test. `control::serve` is `#[cfg(not(unix))] -> Err`, `HOOKS_CAN_REPORT` is `cfg!(unix)`, and `pool_jobs::open_channel` reads that value and starts such a pane unhooked, so no frame is ever expected there.
+    #[cfg(unix)]
+    #[test]
+    fn a_runner_under_a_path_with_a_space_is_what_the_hook_actually_invokes() {
+        let (dir, exe) = scratch_runner("forge hooks with spaces");
+        let cmd = reporting_command(&exe);
+
+        let marker = dir.join("it-ran");
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .env("FORGE_HOOK_MARKER", &marker)
+            .output()
+            .expect("sh");
+
+        assert!(
+            marker.exists(),
+            "the shell never reached the runner. command was {cmd:?}, stderr {:?}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// The same, for a path holding the quote character the quoting is made of.
+    #[cfg(unix)]
+    #[test]
+    fn a_runner_under_a_path_holding_a_quote_is_still_invoked() {
+        let (dir, exe) = scratch_runner("forge o'brien hooks");
+        let cmd = reporting_command(&exe);
+
+        let marker = dir.join("it-ran");
+        let out = std::process::Command::new("sh")
+            .arg("-c")
+            .arg(&cmd)
+            .env("FORGE_HOOK_MARKER", &marker)
+            .output()
+            .expect("sh");
+
+        assert!(
+            marker.exists(),
+            "a path holding `'` broke its own quoting. command was {cmd:?}, stderr {:?}",
+            String::from_utf8_lossy(&out.stderr)
+        );
+    }
+
+    /// Quoting must not cost this daemon the ability to recognise its own entries.
+    // cm:guard a STRING contract nothing type-checks, and quoting moved the character before the
+    // verb. Asserted, not reasoned: lose the match and every pane spawn adds another copy.
+    #[test]
+    fn a_quoted_command_is_still_recognised_as_this_daemons_own() {
+        let exe = "/opt/Forge Runner/forge-runner";
+        let once = merged(None, exe).unwrap();
+        let twice = merged(Some(&once), exe).unwrap();
+        let hooks = hooks_of(&twice);
+
+        for event in Event::ALL {
+            let entries = hooks[event.wire()].as_array().unwrap();
+            assert_eq!(
+                entries.len(),
+                1,
+                "{} gained a second copy, so a quoted command is no longer recognised as ours: {entries:?}",
+                event.wire()
+            );
+        }
+    }
+
+    /// And must not start claiming somebody else's.
+    #[test]
+    fn quoting_does_not_widen_what_counts_as_this_daemons_own() {
+        let theirs = serde_json::json!({
+            "hooks": {
+                GATE_EVENT: [{ "hooks": [{ "type": "command", "command": "audit-hook --event PreToolUse" }] }]
+            }
+        })
+        .to_string();
+        let out = merged(Some(&theirs), "/opt/Forge Runner/forge-runner").unwrap();
+        let entries = hooks_of(&out)[GATE_EVENT].as_array().unwrap().clone();
+
+        assert!(
+            entries.iter().any(|e| e["hooks"][0]["command"]
+                .as_str()
+                .is_some_and(|c| c == "audit-hook --event PreToolUse")),
+            "a pane spawn deleted somebody else's automation: {entries:?}"
+        );
+    }
+
+    /// The one class quoting cannot carry is refused by name, not installed lossily.
+    // cm:guard a path is BYTES on unix and `to_string_lossy` replaces each invalid one with U+FFFD, so the command would name a file that does not exist while `install` answered Ok — the same silence F1 is, one layer down and beyond the reach of any quoting. `open_channel` already has the arm for an `Err` here; it needed no new one, and adding one there would have been a branch no plant could reach.
+    #[cfg(unix)]
+    #[test]
+    fn a_runner_under_a_path_that_is_not_utf8_is_refused_by_name() {
+        use std::os::unix::ffi::OsStrExt;
+
+        let dir = scratch_dir("not-utf8");
+        let exe = dir.join(std::ffi::OsStr::from_bytes(b"forge-\xff-runner"));
+        let err = install(&dir, &exe).expect_err("a path this cannot represent must not install");
+
+        let said = err.to_string();
+        assert!(
+            said.contains("not valid UTF-8"),
+            "the refusal must name the CLASS, or it reads as the file system being at fault: {said:?}"
+        );
+        assert!(
+            !settings_path(&dir).exists(),
+            "nothing may be written for a runner this cannot name"
+        );
+    }
+
+    /// The windows arm, asserted from linux because the value makes it reachable.
+    // cm:guard cmd.exe does not read `'` as quoting, so the POSIX form everywhere would REGRESS the
+    // windows master lane — `install_hooks_logged` has no platform gate and installs there too.
+    #[test]
+    fn a_windows_shell_gets_the_quoting_a_windows_shell_understands() {
+        let cmd = command_for(
+            r"C:\Program Files\forge\forge-runner.exe",
+            Event::PromptSubmitted,
+            false,
+        );
+        assert_eq!(
+            cmd,
+            "\"C:\\Program Files\\forge\\forge-runner.exe\" hook --event UserPromptSubmit"
+        );
+    }
+
+    /// And the two arms must not agree by accident.
+    // cm:guard this is what says the parameter is load bearing rather than decorative — the same
+    // assertion `pool_jobs` makes about `hooks_can_report`, and for the same reason.
+    #[test]
+    fn the_shell_is_what_decides_the_quoting_and_nothing_else_differs() {
+        let exe = "/opt/Forge Runner/forge-runner";
+        assert_ne!(
+            command_for(exe, Event::PromptSubmitted, true),
+            command_for(exe, Event::PromptSubmitted, false),
+            "same exe, same event — only the shell differs"
+        );
+    }
+
+    /// Recognition is a string contract and it must hold under BOTH quoting styles.
+    // cm:guard asserted for the windows arm too, because a marker that stopped matching there would
+    // multiply a master's hooks on every pane spawn on that platform and nothing here would say so.
+    #[test]
+    fn a_command_quoted_either_way_is_still_recognised_as_this_daemons_own() {
+        for posix in [true, false] {
+            let exe = "/opt/Forge Runner/forge-runner";
+            let once = merged_for(None, exe, posix).unwrap();
+            let twice = merged_for(Some(&once), exe, posix).unwrap();
+            let entries = hooks_of(&twice)[GATE_EVENT].as_array().unwrap().clone();
+            assert_eq!(
+                entries.len(),
+                1,
+                "posix={posix}: a second copy, so the quoted command is not recognised as ours: {entries:?}"
+            );
+        }
+    }
+
+    fn scratch_dir(label: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "forge-hookq-{label}-{}-{}",
+            std::process::id(),
+            uuid::Uuid::new_v4().simple()
+        ));
+        std::fs::create_dir_all(&dir).expect("scratch");
+        dir
+    }
+
+    /// A directory named `label`, holding a runner that proves it was invoked.
+    #[cfg(unix)]
+    fn scratch_runner(label: &str) -> (PathBuf, PathBuf) {
+        use std::os::unix::fs::PermissionsExt;
+
+        let dir = scratch_dir("run").join(label);
+        std::fs::create_dir_all(&dir).expect("scratch");
+        let exe = dir.join("forge-runner");
+        std::fs::write(&exe, "#!/bin/sh\necho ran > \"$FORGE_HOOK_MARKER\"\n").expect("runner");
+        std::fs::set_permissions(&exe, std::fs::Permissions::from_mode(0o755)).expect("chmod");
+        (dir, exe)
+    }
+
+    /// The command this daemon would install for a reporting event.
+    fn reporting_command(exe: &Path) -> String {
+        let out = merged(None, exe.to_str().unwrap()).unwrap();
+        hooks_of(&out)[Event::PromptSubmitted.wire()]
+            .as_array()
+            .unwrap()[0]["hooks"][0]["command"]
+            .as_str()
+            .unwrap()
+            .to_string()
     }
 
     /// Both of this daemon's verbs are recognised as its own on a later pass.
@@ -216,7 +436,7 @@ mod tests {
         let entries = hooks_of(&new)["Stop"].as_array().unwrap().clone();
         assert_eq!(entries.len(), 1);
         let cmd = entries[0]["hooks"][0]["command"].as_str().unwrap();
-        assert!(cmd.starts_with("/new/path/"), "{cmd}");
+        assert!(cmd.starts_with("'/new/path/"), "{cmd}");
     }
 
     /// Review F6. An operator's own command that happens to take `--event`.
@@ -276,7 +496,7 @@ mod tests {
         assert!(pre.iter().any(|e| e["hooks"][0]["command"] == "lint"));
         assert!(pre
             .iter()
-            .any(|e| e["hooks"][0]["command"] == "/bin/fr gate --event PreToolUse"));
+            .any(|e| e["hooks"][0]["command"] == "'/bin/fr' gate --event PreToolUse"));
         let root: Value = serde_json::from_str(&out).unwrap();
         assert_eq!(
             root["permissions"]["allow"][0], "Bash",
@@ -311,7 +531,7 @@ mod tests {
             .as_str()
             .unwrap()
             .to_string();
-        assert_eq!(cmd, "/bin/fr hook --event UserPromptSubmit");
+        assert_eq!(cmd, "'/bin/fr' hook --event UserPromptSubmit");
     }
 
     #[test]

@@ -171,11 +171,12 @@ fn config_dir_at(root: &Path) -> PathBuf {
     dir
 }
 
+// cm:guard a SHELL, because that is what Claude Code runs a hook command with. Splitting on
+// whitespace modelled the consumer instead of being it, and could not see quoting at all (F1).
 fn run_gate(command: &str, config_home: &Path, payload: &str) -> String {
-    let mut parts = command.split_whitespace();
-    let exe = parts.next().expect("the exe");
-    let mut child = Command::new(exe)
-        .args(parts)
+    let mut child = Command::new("sh")
+        .arg("-c")
+        .arg(command)
         .env(config_home_at(config_home).0, config_home)
         .env("FORGE_CONTROL_TOKEN", "a-token-the-daemon-minted")
         .stdin(Stdio::piped())
