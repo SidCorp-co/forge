@@ -30,12 +30,13 @@ fn drain_and_ack() -> Vec<u8> {
     sink
 }
 
-/// The child and the conversation this payload names, if it names them.
+/// The child, the conversation and the role this payload names, if it names them.
 // cm:guard a payload that will not parse yields NOTHING rather than a guess, and the daemon then records a lead event. Reporting the boundary without a subject is the safe direction: an unattributable child event must void nothing.
 // cm:guard `teammate_name` is an ALTERNATIVE subject and not a fallback for a missing `agent_id`: measured against claude 2.1.257, `TeammateIdle` names its subject there while `SubagentStart`/`SubagentStop` carry `agent_id`, and a LEAD event carries neither — which is what makes absence the discriminator rather than a gap.
-fn named_in(payload: &[u8]) -> (Option<String>, Option<String>) {
+// cm:guard `agent_type` is carried and NOTHING here decides on it. It is read because the daemon cannot tell a hand-off from a search helper without it, and that judgement belongs where the role list is (`daemon/dispatch_gate.rs`). A hook that classified would be a second place the fleet's role set is known, which is the drift this issue exists to end.
+fn named_in(payload: &[u8]) -> (Option<String>, Option<String>, Option<String>) {
     let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) else {
-        return (None, None);
+        return (None, None, None);
     };
     let field = |k: &str| {
         v.get(k)
@@ -45,6 +46,7 @@ fn named_in(payload: &[u8]) -> (Option<String>, Option<String>) {
     (
         field("agent_id").or_else(|| field("teammate_name")),
         field("session_id"),
+        field("agent_type"),
     )
 }
 
@@ -63,13 +65,14 @@ pub async fn run(args: Args) {
     if !sock.exists() {
         return;
     }
-    let (subject, conversation) = named_in(&payload);
+    let (subject, conversation, role) = named_in(&payload);
     let _ = control::request_agent_event(
         &sock,
         &token,
         &args.event,
         subject.as_deref(),
         conversation.as_deref(),
+        role.as_deref(),
     )
     .await;
 }
@@ -115,8 +118,8 @@ mod tests {
 
     #[test]
     fn a_childs_events_name_the_same_child_on_both_sides_of_its_life() {
-        let (start, conv) = named_in(SUBAGENT_START.as_bytes());
-        let (stop, _) = named_in(SUBAGENT_STOP.as_bytes());
+        let (start, conv, role) = named_in(SUBAGENT_START.as_bytes());
+        let (stop, _, _) = named_in(SUBAGENT_STOP.as_bytes());
         assert_eq!(start.as_deref(), Some("acf9b1721de184fa7"));
         assert_eq!(
             start, stop,
@@ -126,19 +129,22 @@ mod tests {
             conv.as_deref(),
             Some("f3115c20-8b4b-4fcd-b27d-fefd1ac163f5")
         );
+        // The role the child was dispatched through, which is what lets the
+        // daemon tell a hand-off from a search helper (ISS-1094 criterion 24).
+        assert_eq!(role.as_deref(), Some("general-purpose"));
     }
 
     // cm:guard THE observed contract: a lead event carries no `agent_id`, so absence is the lead/child discriminator. A build that filled it in — from the session, from the transcript path, from anything — would let every lead `Stop` cancel a live child's claim.
     #[test]
     fn a_lead_event_names_no_child() {
-        let (subject, conv) = named_in(LEAD_STOP.as_bytes());
+        let (subject, conv, _) = named_in(LEAD_STOP.as_bytes());
         assert!(subject.is_none(), "got {subject:?}");
         assert!(conv.is_some(), "the conversation is still named");
     }
 
     #[test]
     fn a_teammates_name_stands_in_as_the_subject() {
-        let (subject, _) = named_in(
+        let (subject, _, _) = named_in(
             br#"{"hook_event_name":"TeammateIdle","teammate_name":"reviewer","session_id":"s1"}"#,
         );
         assert_eq!(subject.as_deref(), Some("reviewer"));
@@ -146,16 +152,16 @@ mod tests {
 
     #[test]
     fn an_unparseable_payload_names_nothing_rather_than_guessing() {
-        assert_eq!(named_in(b"not json at all"), (None, None));
-        assert_eq!(named_in(b""), (None, None));
+        assert_eq!(named_in(b"not json at all"), (None, None, None));
+        assert_eq!(named_in(b""), (None, None, None));
     }
 
     // cm:guard a non-string field is not a subject: `serde_json`'s `as_str` answers None for a number or an object, and coercing one would put a rendered `{}` into a roster key.
     #[test]
     fn a_subject_that_is_not_a_string_is_not_a_subject() {
         assert_eq!(
-            named_in(br#"{"agent_id":42,"session_id":null}"#),
-            (None, None)
+            named_in(br#"{"agent_id":42,"session_id":null,"agent_type":42}"#),
+            (None, None, None)
         );
     }
 }

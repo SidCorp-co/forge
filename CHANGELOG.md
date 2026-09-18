@@ -112,6 +112,11 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **Work handed to a subagent must be declared, and a box now refuses the hand-off rather than
+  advising against it.** Skipping it left that work invisible and its issues never offered again.
+  `forge-runner status` counts what still got through.
+
+
 - **Cutting a runner release is one thing Forge does, not eight by hand.** Name a version; Forge
   checks the commit agrees, tags it as itself, hears how the build went, and names what is on the
   repository if it stops.
@@ -2994,6 +2999,11 @@
   set is now 59.
 
 ### Fixed
+- **The instructions a master is given no longer contradict themselves.** The text typed into its
+  pane disagreed with the guide it works from about what decides whether work gets declared. It now
+  carries only what the guide cannot know.
+
+
 
 - **Six background checks that got slower as the tables grew now answer at a steady speed.** Each
   read a whole table to find a handful of rows. Same answers, with the shortcuts to reach them.
