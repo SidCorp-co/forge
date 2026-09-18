@@ -2,7 +2,7 @@
  * ISS-604 (P2a) — transport-agnostic tool-calling turn loop: one assistant turn,
  * executing and feeding back tools for as long as the model asks for them, up to
  * {@link MAX_TOOL_ITERATIONS}. Shared so neither consumer owns a private copy —
- * `run-turn.ts` (SSE) forwards each event to the browser, `external-chat.ts`
+ * `external-chat.ts`
  * (Rocket.Chat) drains them and sends the final text as one message. NO SSE and
  * NO DB writes here; the caller owns transport and persistence.
  */

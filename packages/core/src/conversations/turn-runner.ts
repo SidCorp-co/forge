@@ -13,7 +13,7 @@
 
 import { type ExternalChatTurnResult, runExternalChatTurn } from '../assistant/external-chat.js';
 import type { ChatStreamEvent } from '../assistant/providers/types.js';
-import type { ChatToolset } from '../assistant/tools/mcp-adapter.js';
+import { type ChatToolset, mergeToolsets } from '../assistant/tools/mcp-adapter.js';
 import type { ImageResolver, TurnImage } from '../assistant/vision.js';
 import type { ContentBlock } from '../lib/agent-stream-parser.js';
 import { logger } from '../logger.js';
@@ -26,7 +26,13 @@ import {
   conversationTransport,
   type ScreenedMessage,
 } from './ports.js';
-import { assertAnswerableDoor, declinedTurn, screenedTurnReply } from './screened-reply.js';
+import { roomSendCapture } from './room-send-tool.js';
+import {
+  assertAnswerableDoor,
+  declinedTail,
+  declinedTurn,
+  screenedTurnReply,
+} from './screened-reply.js';
 import { openConversation } from './store.js';
 import { recordDeliveredReply, recordSilence } from './transcript.js';
 
@@ -119,6 +125,21 @@ export interface ConversationTurnRequest {
    */
   // cm:guard a turn nobody summoned MUST be able to decline, and that is the whole difference between an agent reading its rooms and an agent answering everything it hears: without it the fallbacks below post "sorry, I had trouble" into a room that asked it nothing (ISS-1004).
   mayDecline?: boolean;
+  /**
+   * How the model's answer reaches the venue: as its reply, or only through `room_send`.
+   */
+  // cm:guard `tool` changes WHICH TEXT is the reply and nothing after that point: the captured text takes the model's reply's place before the screen, and the screen, the reservation, `deliver` and the transcript row are the same as in `reply` mode. A second path that delivered from inside the tool would be two live paths, and the one this runner keeps true is the only one there is (ISS-1087 criteria 18-20).
+  sendMode?: 'reply' | 'tool' | undefined;
+  /**
+   * What stands when the turn cannot post its answer: the code-authored apology, or nothing.
+   */
+  // cm:guard `silence` is the GROUP venue's setting and `post` the direct one's, decided by `route-window.ts`: an apology in a room's main stream notifies everybody about an answer nobody got, so a group turn that fails ends as a named silence and the window posts one status into the asker's thread instead; a direct room is one person waiting and is owed the apology as before (ISS-1088 criterion 19). Absent: `post`.
+  fallbacks?: 'post' | 'silence' | undefined;
+  /**
+   * The person this reply answers, by the label the transport shows for them.
+   */
+  // cm:guard handed to `deliver` and never written into the text here: the screen has read the text by then, and the transport is the one that knows how its venue addresses a person — and whether to (ISS-1088 criteria 20, 21).
+  addressee?: string | null | undefined;
   /**
    * The stable key this turn's delivery answers, so a retry of it delivers nothing.
    */
@@ -217,6 +238,11 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
 
   ctx.setPhase('prepare');
   const inputs = (await req.prepare?.(hook)) ?? {};
+  // cm:guard the send tool is merged FIRST so it owns its name whatever an external toolset offers, and it exists only in `tool` mode: a `window` room offered it would let the model post twice, once by the tool and once by its reply.
+  const capture = req.sendMode === 'tool' ? roomSendCapture() : null;
+  const tools = capture
+    ? mergeToolsets(capture.toolset, ...(inputs.tools ? [inputs.tools] : []))
+    : inputs.tools;
 
   ctx.setPhase('turn');
   // cm:guard every turn this runner takes is SCREENED, so it writes the question and never the answer: `question-and-answer` persists the model's first reply before the screen has read it, and a transcript holding text the screen rejected is a record of a conversation nobody had (`external-chat.ts` carries the other half of this rule).
@@ -224,28 +250,59 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     projectId: req.venue.projectId,
     adapter: req.venue.adapter,
     conversationId: ctx.conversationId,
-    record: req.questionAlreadyRecorded ? ('silence-only' as const) : ('question-only' as const),
+    // cm:guard in `tool` mode the model turn persists NOTHING and this runner files the one row the turn earns after it has read the capture: `external-chat.ts` files `empty-reply` on any turn whose prose is empty, which in tool mode is the ordinary shape of a turn that answered through `room_send`, and a transcript holding that row beside the delivered answer says the agent said nothing and also what it said (ISS-1087 criterion 19; whole-set review, round 4 F1).
+    record: capture
+      ? ('nothing' as const)
+      : req.questionAlreadyRecorded
+        ? ('silence-only' as const)
+        : ('question-only' as const),
     userId: req.principalUserId,
     userKey: req.speakerKey,
     speakerUserId,
     speakerLabel: req.speakerKey,
     persona: inputs.persona ?? null,
     conversationContext: inputs.conversationContext ?? null,
-    tools: inputs.tools,
+    tools,
     resolveImage: inputs.resolveImage,
     signal: ctx.abort.signal,
   };
-  const result = await runExternalChatTurn({
+  let result = await runExternalChatTurn({
     ...turn,
     message: req.message,
+    // cm:guard on the FIRST attempt only: the retry's message is a corrective instruction that is in no history, and it must be shown; the window's question is already a row wherever `questionAlreadyRecorded` says so (whole-set review, round 5 F1).
+    questionInHistory: Boolean(req.questionAlreadyRecorded),
     images: inputs.images,
     // cm:guard spread onto THIS call and not onto `turn`, because `turn` is also spread into the
     // retry below — putting it there is what would stream the replacement on top of the draft.
-    ...(req.onTurnEvent ? { onTurnEvent: req.onTurnEvent } : {}),
+    // cm:guard and NOT in `tool` mode: the events carry the model's own prose, which in that mode is never the reply, and a watcher shown it would read a draft the room is never going to hear (ISS-1087 criterion 20; whole-set review F3).
+    ...(req.onTurnEvent && !capture ? { onTurnEvent: req.onTurnEvent } : {}),
   });
 
   const late = await req.divertAfterTurn?.(result, hook);
   if (late) return late;
+
+  // cm:guard in `tool` mode the model's OWN prose is never the reply: what it captured through `room_send` is, and a turn that captured nothing is a named silence rather than an unnamed one — `tool-not-called` is the row a person reads when a room in this mode goes quiet (ISS-1087 criteria 19, 20). A finished turn with no capture is judged before the decline check below, so the sentinel path never sees the model's prose.
+  if (capture) {
+    if (result.terminal !== 'done') {
+      const reason = result.error ?? result.terminal;
+      await recordSilence({
+        conversationId: ctx.conversationId,
+        projectId: req.venue.projectId,
+        reason,
+      });
+      return { send: false, reason, declined: true };
+    }
+    const captured = capture.captured();
+    if (captured === null) {
+      await recordSilence({
+        conversationId: ctx.conversationId,
+        projectId: req.venue.projectId,
+        reason: 'tool-not-called',
+      });
+      return { send: false, reason: 'tool-not-called', declined: true };
+    }
+    result = { ...result, reply: captured };
+  }
 
   // cm:guard the two declines are kept apart because only ONE of them owes a row here: a turn that errored or came back empty is already filed by `external-chat.ts` under its own reason, and a turn that answered the sentinel produced text nothing else will record (ISS-1004 rule 4).
   if (req.mayDecline) {
@@ -253,6 +310,13 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
       return { send: false, reason: result.error ?? 'empty-reply', declined: true };
     }
     if (declinedTurn(result.reply)) {
+      // cm:guard what followed the sentinel is LOGGED and never posted: the judgement was a decline, and the hedge after it is the text the equality test used to hand to the room whole (ISS-1087 criteria 22, 38).
+      const tail = declinedTail(result.reply);
+      if (tail)
+        logger.info(
+          { ...req.log, tail },
+          'conversations: the turn declined with a trailing remark',
+        );
       await recordSilence({
         conversationId: ctx.conversationId,
         projectId: req.venue.projectId,
@@ -262,6 +326,9 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     }
   }
 
+  // cm:guard `silence` and tool mode share the fallback rule and are otherwise separate: tool mode changes WHICH TEXT is the reply, `fallbacks` changes what stands when there is none (ISS-1088 criterion 19).
+  const silent = capture !== null || req.fallbacks === 'silence';
+  let declinedInRetry = false;
   const screenedMessage = await screenedTurnReply({
     door: req.door,
     projectId: req.venue.projectId,
@@ -269,10 +336,44 @@ async function composeReply(ctx: TurnContext): Promise<TurnReply> {
     first: result,
     setPhase: ctx.setPhase,
     ...(req.log ? { log: req.log } : {}),
+    fallback: silent ? 'none' : 'code-authored',
     // cm:guard the retry WRITES nothing: its message is a code-authored instruction, and a persisted one is words the speaker never said, replayed to the model every turn after. It still READS the conversation, which is why it names one (ISS-1001).
-    retry: (instruction) =>
-      runExternalChatTurn({ ...turn, record: 'nothing', message: instruction }),
+    // cm:guard in `tool` mode a corrective retry is CAPTURED like the first attempt, through a capture of its own because the first is already spent: what the retry wrote as prose is not the reply, and a retry that never called `room_send` hands the screen an empty rewrite, which it refuses until the budget is spent and the turn falls silent (ISS-1087 criterion 20; whole-set review F1).
+    retry: async (instruction) => {
+      const again = capture ? roomSendCapture() : null;
+      const retried = await runExternalChatTurn({
+        ...turn,
+        ...(again
+          ? { tools: mergeToolsets(again.toolset, ...(inputs.tools ? [inputs.tools] : [])) }
+          : {}),
+        record: 'nothing',
+        message: instruction,
+      });
+      const text = again ? (again.captured() ?? '') : retried.reply;
+      // cm:guard a retry that DECLINES is a decline and never a rewrite to screen: the sentinel check above ran before this retry existed, so without this a "(nothing to add)" the model answered the corrective instruction with would go to the screen, be admitted, and reach the room as text (ISS-1087 criteria 37, 38; whole-set review F2). The empty reply spends the screen's budget; what the turn is then called is decided below.
+      if (req.mayDecline && declinedTurn(text)) {
+        declinedInRetry = true;
+        return { ...retried, reply: '' };
+      }
+      return { ...retried, reply: text };
+    },
   });
+  if (declinedInRetry) {
+    await recordSilence({
+      conversationId: ctx.conversationId,
+      projectId: req.venue.projectId,
+      reason: 'nothing-to-say',
+    });
+    return { send: false, reason: 'nothing-to-say', declined: true };
+  }
+  if (!screenedMessage) {
+    await recordSilence({
+      conversationId: ctx.conversationId,
+      projectId: req.venue.projectId,
+      reason: 'screen-refused',
+    });
+    return { send: false, reason: 'screen-refused', declined: true };
+  }
   // cm:guard compared against THE FIRST ATTEMPT'S reply, which is the one whose events streamed, and
   // never against the accumulated prose: they are the same thing only on a turn with no tool call.
   // Trimmed, because that is what `screenedTurnReply` returns.
@@ -324,11 +425,21 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     // cm:guard `screenReplaced: true` because this fallback really does replace whatever streamed
     // before the throw — the screen never ran, and a reader watching prose arrive is owed the fact
     // that what they saw is not what went out (ISS-1078).
-    reply = {
-      send: true,
-      message: codeAuthored(errorFallbackReply(req.handleName)),
-      screenReplaced: true,
-    };
+    // cm:guard in `tool` mode the fallback is NOT posted: the room hears only what `room_send` carried, and a turn that died before or during the model's work carried nothing, so it is recorded as a named silence instead (ISS-1087 criterion 19; whole-set review F1). A group venue's `fallbacks: 'silence'` ends here the same way, and the window's status path reads the `turn-failed` decline (ISS-1088 criterion 19).
+    if (req.sendMode === 'tool' || req.fallbacks === 'silence') {
+      await recordSilence({
+        conversationId: conversation.id,
+        projectId: req.venue.projectId,
+        reason: 'turn-failed',
+      });
+      reply = { send: false, reason: 'turn-failed', declined: true };
+    } else {
+      reply = {
+        send: true,
+        message: codeAuthored(errorFallbackReply(req.handleName)),
+        screenReplaced: true,
+      };
+    }
   } finally {
     clearTimeout(timer);
     await req.dispose?.();
@@ -352,7 +463,9 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     // silent substitution this issue's decision rules out. After the delivery guard, so a superseded
     // turn announces no correction for text it never sent (ISS-1078, consult F2).
     req.onSettled?.({ text: reply.message.text, screenReplaced: reply.screenReplaced });
-    receipt = await transport.deliver(req.venue, reply.message);
+    receipt = await transport.deliver(req.venue, reply.message, {
+      addressee: req.addressee ?? null,
+    });
   } catch (err) {
     // cm:guard nothing is recorded when the door refuses: the venue never saw this text, and a transcript row for it would say the opposite. The commonest refusal is a room rebound while the turn ran, which `deliver` names rather than swallows.
     logger.error(
@@ -362,16 +475,26 @@ export async function runConversationTurn(req: ConversationTurnRequest): Promise
     return { kind: 'undeliverable', reason: err instanceof Error ? err.message : String(err) };
   }
 
-  // cm:guard resolved from the DELIVERED text and not from the turn, so a screened replacement is
-  // stored under the identity the browser drew and with blocks that belong to what went out.
-  const entry = req.replyEntry?.(reply.message.text);
-  await recordDeliveredReply({
-    conversationId: conversation.id,
-    projectId: req.venue.projectId,
-    text: reply.message.text,
-    receipt,
-    deliveryKey: req.deliveryKey,
-    ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
-  });
+  // cm:guard once the door has TAKEN the text, nothing after it may turn the answer into a failure: the room holds the reply, and a throw here — the caller's `replyEntry` hook, the transcript — would reach the route's catch and read as a turn that posted nothing, which is the opposite of what happened. Logged, captured, and the outcome stays `delivered` (ISS-1088; whole-set review, pass A F1 recheck).
+  try {
+    // cm:guard resolved from the DELIVERED text and not from the turn, so a screened replacement is
+    // stored under the identity the browser drew and with blocks that belong to what went out.
+    const entry = req.replyEntry?.(reply.message.text);
+    // cm:guard the row holds the text the room was SHOWN: a transport that addressed the reply on the way out says so in `deliveredText`, and a transcript holding the unaddressed text beside a room holding the addressed one is two records of one message (ISS-1088 criterion 22).
+    await recordDeliveredReply({
+      conversationId: conversation.id,
+      projectId: req.venue.projectId,
+      text: receipt.deliveredText ?? reply.message.text,
+      receipt,
+      deliveryKey: req.deliveryKey,
+      ...(entry ? { messageId: entry.id, blocks: entry.blocks } : {}),
+    });
+  } catch (err) {
+    logger.error(
+      { err, ...req.log, adapter: req.venue.adapter, externalId: req.venue.externalId },
+      'conversations: delivered, but recording the reply failed; the outcome stays delivered',
+    );
+    Sentry.captureException(err, { tags: { area: 'conversations', phase: 'record' } });
+  }
   return { kind: 'delivered', messageId: receipt.messageId };
 }

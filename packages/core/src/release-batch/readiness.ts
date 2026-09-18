@@ -17,6 +17,7 @@ import type { ReleaseModel, ReleaseStrategy } from '../db/schema.js';
 import { projects } from '../db/schema.js';
 import { selectAllSlugsFromKnowledge } from '../knowledge/service.js';
 import { missingProjectKnowledge } from '../projects/autonomous-contract.js';
+import { normalizeEnvironments } from '../projects/environments.js';
 import { releaseRunnerLabelOf, resolveReleaseChannels } from './channel.js';
 import { resolveReleaseDeclaration } from './gate.js';
 import type { ReleaseRollback } from './plan.js';
@@ -43,6 +44,8 @@ export interface ReleaseReadiness {
   /** How the declaration was read. `null` means abort-and-comment on failure. */
   rollbackMode: ReleaseRollback['kind'] | null;
   hasVerify: boolean;
+  /** Where each live channel's probes came from, in the same order as `providers`. */
+  verifySources: Array<'binding' | 'environments-live' | 'none'>;
   /** Everything still undeclared. Empty means settings has nothing to say. */
   gaps: ReleaseGapKey[];
 }
@@ -70,6 +73,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
       repoPath: projects.repoPath,
       repoUrl: projects.repoUrl,
       releaseModel: projects.releaseModel,
+      environments: projects.environments,
     })
     .from(projects)
     .where(eq(projects.id, projectId))
@@ -111,6 +115,17 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
       gaps.push('release-runner');
     // cm:edge lockstep -> packages/core/src/release-batch/service.ts — `createReleaseBatch` REFUSES on this, and reporting it here is what gives the operator the gap before a release discovers it. Drop this line and the refusal arrives with nothing in settings having said it was coming.
     if (channels.some((c) => !c.verify)) gaps.push('verify-probes');
+    // cm:guard the LIVE ADDRESS is its own gap and not a restatement of `verify-probes`: a project
+    // may declare probes on its binding and still have nowhere recorded that a person could open,
+    // and — the case ISS-1069 was filed for — a project may have a live deployment nobody can name.
+    // `sidpeak` sat here on 2026-09-17 unable to cut a release at all, because declaring the probe
+    // needed a hostname Forge held no field for and the only copy was in the Coolify UI.
+    // cm:guard NO gap is reported for an absent PREVIEW, and that is the half of this change that
+    // deletes a rule rather than adding one: `preview: null` is a one-box project saying so, and a
+    // project with a null preview must return the same gap set as one with a filled preview.
+    if (normalizeEnvironments(row?.environments).live.commitUrl === null) {
+      gaps.push('live-commit-endpoint');
+    }
     // cm:edge lockstep -> packages/core/src/release-batch/service.ts — the SAME rule as the line
     // above, for `ReleaseMultiChannelUnsupportedError`. A project with two live channels that agree
     // on their runner label and declare every fact has no gap at all by every other measure, so
@@ -136,6 +151,7 @@ export async function loadReleaseReadiness(projectId: string): Promise<ReleaseRe
     rollback: first?.rollback && 'text' in first.rollback ? first.rollback.text : null,
     rollbackMode: first?.rollback?.kind ?? null,
     hasVerify: channels.length > 0 && channels.every((c) => c.verify !== null),
+    verifySources: channels.map((c) => c.verifySource),
     gaps,
   };
 }

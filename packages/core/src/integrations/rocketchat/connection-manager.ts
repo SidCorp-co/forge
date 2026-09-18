@@ -13,6 +13,7 @@
 
 import { and, eq, sql } from 'drizzle-orm';
 import pg from 'pg';
+import { namespaceFromServerUrl } from '../../assistant/identity/directory.js';
 import { env } from '../../config/env.js';
 import { collectInboundMessage } from '../../conversations/collect-inbound.js';
 import { registerConversationTransport } from '../../conversations/ports.js';
@@ -27,10 +28,11 @@ import { startCommentMirrorLoop } from './comment-mirror.js';
 import { type RocketChatFrame, rocketChatConversationPorts } from './conversation-port.js';
 import { RocketChatDdpClient, type RocketChatIncomingMessage } from './ddp-client.js';
 import { createSeenTracker, decideSkip, type SeenTracker } from './inbound-gate.js';
+import { registerLiveConnection, unregisterLiveConnection } from './live-connections.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
 import { startQuestionDrainLoop } from './question-delivery.js';
 import { consumeQuestionThreadReply } from './question-inbound.js';
-import { fetchOwnUsername } from './rest-client.js';
+import { fetchOwnIdentity } from './rest-client.js';
 import { type RoomShape, resolveRoomShape } from './room-shape.js';
 import { buildRoutes, type Route } from './routes.js';
 import { subjectForThread } from './thread-registry.js';
@@ -69,6 +71,9 @@ export interface ActiveConnection {
   botUserId: string;
   /** Capitalized RC handle ("Babo") — the bot's self-reference in replies. */
   botName: string;
+  /** The bot's username and the display name the server may show instead, for the activity stream (ISS-1088). */
+  ownUsername: string | null;
+  displayName: string | null;
   serverUrl: string;
   authToken: string;
   routes: Map<string, Route>;
@@ -174,14 +179,16 @@ class RocketChatConnectionManager {
       authToken: secrets.authToken,
       userId: secrets.userId,
     };
-    const [routes, ownUsername] = await Promise.all([
+    const [routes, identity] = await Promise.all([
       buildRoutes(connectionId),
-      fetchOwnUsername(restAuth),
+      fetchOwnIdentity(restAuth),
     ]);
     const active: ActiveConnection = {
       lockClient,
       botUserId: secrets.userId,
-      botName: capitalize(ownUsername ?? 'bot'),
+      botName: capitalize(identity.username ?? 'bot'),
+      ownUsername: identity.username,
+      displayName: identity.displayName,
       serverUrl: config.serverUrl,
       authToken: secrets.authToken,
       routes,
@@ -230,6 +237,13 @@ class RocketChatConnectionManager {
     try {
       await client.connect();
       ac.reconnectAttempt = 0;
+      // cm:guard registered on EVERY successful dial and under the connection's id: a redial replaces the socket, and the port must find the live one, not the one that closed; a fresh registration also forgets a refusal the previous socket earned (ISS-1088 criteria 25, 27).
+      registerLiveConnection(connectionId, {
+        namespace: namespaceFromServerUrl(ac.serverUrl) ?? ac.serverUrl,
+        client,
+        username: ac.ownUsername,
+        displayName: ac.displayName,
+      });
       this.startRefresh(connectionId);
       logger.info({ connectionId }, 'rocketchat: DDP live');
     } catch (err) {
@@ -362,6 +376,7 @@ class RocketChatConnectionManager {
       speakerKey: m.userId,
       speakerLabel: m.username ?? null,
       externalMessageId: m.id,
+      replyToExternalId: m.replyToId ?? null,
       images: m.images,
       manySpeakersPrincipalUserId: route.principalUserId,
     });
@@ -404,6 +419,7 @@ class RocketChatConnectionManager {
     ac.closing = true;
     if (ac.reconnectTimer) clearTimeout(ac.reconnectTimer);
     if (ac.refreshTimer) clearInterval(ac.refreshTimer);
+    unregisterLiveConnection(connectionId);
     try {
       ac.client?.close();
     } catch {}

@@ -16,7 +16,7 @@ import { withTurnImages } from '../../assistant/tools/turn-images.js';
 import type { ImageResolver, TurnImage } from '../../assistant/vision.js';
 import { logger } from '../../logger.js';
 import type { ChatTurnFacts } from '../../mcp/tools/lib.js';
-import { buildRocketChatHistoryToolset } from './context.js';
+import { buildRocketChatHistoryToolset, buildRocketChatQuoteContextToolset } from './context.js';
 import {
   fetchAttachmentBytes,
   type RocketChatImageRef,
@@ -111,6 +111,7 @@ export async function prepareFastTurn(opts: {
       mergeToolsets(
         buildProjectToolset(ctx),
         buildRocketChatHistoryToolset(opts.restAuth, opts.rid),
+        buildRocketChatQuoteContextToolset(opts.restAuth, opts.rid),
         buildEscalationToolset(),
         ...opts.externalToolsets,
       ),

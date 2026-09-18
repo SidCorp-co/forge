@@ -344,7 +344,9 @@ describe('a project with no bound room', () => {
     );
     expect(notes).toHaveLength(1);
     expect(notes[0]?.user_id).toBe(ownerId);
-    expect(String(notes[0]?.body)).toContain('Bind one');
+    // cm:guard the body must name THE REASON and no longer a fixed sentence about binding a room: since ISS-1091 there are five ways a round is undeliverable, and an operator told to bind a room when the real fault is that the bot was removed from the room the question was asked in is sent to fix something that is not broken.
+    expect(String(notes[0]?.body)).toContain('no Rocket.Chat room is bound to this project');
+    expect(String(notes[0]?.body)).toContain('Nothing was posted anywhere');
     // cm:guard the wording may name no run: since ISS-993 a question is asked on a token too, with nothing parked behind it, and telling the org's creator a run is waiting sends them looking for one that does not exist.
     expect(`${notes[0]?.title} ${notes[0]?.body}`).not.toContain('parked');
   });

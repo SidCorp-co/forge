@@ -21,10 +21,10 @@
 
 use std::path::{Path, PathBuf};
 use std::sync::Arc;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
+use std::time::Duration;
 
 use serde::Deserialize;
-use serde_json::{json, Value};
+use serde_json::Value;
 use tokio::sync::mpsc;
 use uuid::Uuid;
 
@@ -59,6 +59,15 @@ struct StartFrame {
     session_id: String,
     #[serde(default)]
     prompt: Option<String>,
+    // cm:edge contract -> packages/core/src/agent-sessions/chat-turn.ts — core writes
+    // this turn's user entry into `agent_session_events` and hands back the `seq` it
+    // took; this turn's lines are numbered from there. Absent means a core that
+    // predates the raw-line route, and the turn is refused by name rather than
+    // numbered from a guess: numbering from 0 would make turn two's lines collide
+    // with turn one's, and `ON CONFLICT DO NOTHING` would drop the whole turn in
+    // silence.
+    #[serde(default)]
+    event_seq_base: Option<u64>,
     #[serde(default)]
     project_slug: Option<String>,
     #[serde(default)]
@@ -81,6 +90,9 @@ struct SendFrame {
     message: String,
     #[serde(default)]
     claude_session_id: Option<String>,
+    /// See `StartFrame::event_seq_base`.
+    #[serde(default)]
+    event_seq_base: Option<u64>,
     #[serde(default)]
     project_slug: Option<String>,
     #[serde(default)]
@@ -106,6 +118,8 @@ struct Turn {
     /// Temp dir holding this turn's downloaded attachments; removed after the
     /// turn completes. `None` when the turn carried no attachments.
     attachment_dir: Option<PathBuf>,
+    /// The `seq` core's own row for this turn took; this turn's lines follow it.
+    event_seq_base: Option<u64>,
 }
 
 /// Download a turn's attachments to a fresh temp dir, authenticated with the
@@ -248,6 +262,7 @@ pub async fn handle_start(
             resume_id: None,
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
+            event_seq_base: f.event_seq_base,
         },
     )
     .await
@@ -292,6 +307,7 @@ pub async fn handle_send(
             resume_id: f.claude_session_id.filter(|s| !s.is_empty()),
             mcp_servers_override: f.mcp_servers_override,
             attachment_dir,
+            event_seq_base: f.event_seq_base,
         },
     )
     .await
@@ -343,6 +359,18 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
     }
 
     let session_id = turn.session_id.clone();
+    // cm:guard REFUSED BY NAME rather than numbered from a guess. A frame with no
+    // base is a core that predates the raw-line route; numbering this turn from 0
+    // would collide with the previous turn's lines, and core's
+    // `ON CONFLICT DO NOTHING` would then drop the whole turn without a word. Core
+    // ships before the daemons, so this is a misordered rollout and it says so.
+    let Some(event_seq_base) = turn.event_seq_base else {
+        let msg = "[EVENT_SEQ_BASE_MISSING] this turn carried no event sequence base, so its lines cannot be numbered — core is older than this runner release; upgrade core first".to_string();
+        tracing::error!("[chat {session_id}] {msg}");
+        let _ = patch_failed(client, &session_id, None, &msg).await;
+        cleanup_attachments(turn.attachment_dir.as_deref()).await;
+        return Ok(());
+    };
     tracing::info!(
         "[chat {session_id}] turn start (resume={})",
         turn.resume_id.is_some()
@@ -403,7 +431,7 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
     if let Err(e) = started {
         let msg = format!("failed to start chat turn: {e}");
         tracing::error!("[chat {session_id}] {msg}");
-        let _ = patch_failed(client, &session_id, &[], None, &msg, None).await;
+        let _ = patch_failed(client, &session_id, None, &msg).await;
         cleanup_attachments(turn.attachment_dir.as_deref()).await;
         return Ok(());
     }
@@ -411,7 +439,7 @@ async fn run_turn(client: &CoreClient, runner: Arc<ClaudeCodeRunner>, turn: Turn
         .note_head(&session_id, git_state.head_sha.clone())
         .await;
 
-    consume(client, &session_id, rx).await;
+    consume(client, &session_id, event_seq_base, rx).await;
     // Best-effort temp cleanup — runs even on a failed turn (consume always
     // returns). Leaking a temp dir is harmless but we don't want to accumulate.
     cleanup_attachments(turn.attachment_dir.as_deref()).await;
@@ -427,23 +455,27 @@ async fn cleanup_attachments(dir: Option<&std::path::Path>) {
     }
 }
 
-/// Drain the runner event stream for one chat turn, streaming the assistant
-/// reply back via incremental PATCH, then a terminal PATCH that closes the
-/// interactive run.
-async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<RunnerEvent>) {
-    // Baseline = whatever core already persisted (the user turn[s]). We only
-    // ever APPEND assistant messages, and a PATCH replaces the whole array, so
-    // starting from the baseline keeps history intact and never duplicates the
-    // user turn (which core seeds with the clean, un-enriched prompt).
-    let baseline = agent_sessions::get_messages(client, session_id)
-        .await
-        .unwrap_or_default();
-
-    let mut turn_msgs: Vec<Value> = Vec::new();
+/// Drain the runner event stream for one chat turn: deliver its raw stream-json
+/// lines to core in batches, then a terminal PATCH that closes the interactive
+/// run.
+///
+/// Nothing here reads what a line MEANS. `parse_assistant_message` used to live
+/// beside this loop and kept assistant text alone, so a chat session's stored
+/// transcript held no tool call, no todo list, no run total and no pause —
+/// measured on forge-dev, session 5250d5e1: 17 assistant turns over dozens of
+/// tool calls, zero tool frames stored. The lines go to core whole and
+/// `jobs/session-transcript.ts` folds them with the parser every other producer
+/// already goes through.
+async fn consume(
+    client: &CoreClient,
+    session_id: &str,
+    event_seq_base: u64,
+    mut rx: mpsc::Receiver<RunnerEvent>,
+) {
+    let mut seq = event_seq_base;
+    let mut pending: Vec<agent_sessions::LineEvent> = Vec::new();
     let mut claude_sid: Option<String> = None;
     let mut runtime_state: Option<String> = None;
-    let mut tool_calls: u32 = 0;
-    let mut dirty = false;
 
     let mut flush = tokio::time::interval(FLUSH_INTERVAL);
     flush.tick().await;
@@ -457,16 +489,20 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
     loop {
         tokio::select! {
             ev = rx.recv() => match ev {
-                Some(RunnerEvent::ClaudeSessionId(sid)) => { claude_sid = Some(sid); dirty = true; }
-                // cm:guard recorded, NOT flushed on its own — a state change is not new transcript, and marking it dirty would post a whole-transcript PATCH per turn end on top of the terminal one that already carries it.
+                Some(RunnerEvent::ClaudeSessionId(sid)) => { claude_sid = Some(sid); }
+                // cm:guard recorded, NOT flushed on its own — a state change is not new transcript, and posting on it would cost a request per turn end on top of the terminal patch that already carries it.
                 Some(RunnerEvent::StateChanged(state)) => { runtime_state = Some(state.to_string()); }
                 Some(RunnerEvent::Stdout(json)) => {
-                    // cm:guard counting must NOT set `dirty` — a tool-heavy stretch emits no assistant text, so marking it dirty turns a silent period into one full-transcript PATCH every FLUSH_INTERVAL. Session 5250d5e1 (15 min, 17 text turns, dozens of tool calls) would have gone from ~17 writes to ~1200, each carrying the whole growing messages array. The count rides the next text flush and the terminal patch, which always fires; nothing reads the interim value.
-                    tool_calls = tool_calls.saturating_add(count_tool_uses(&json));
-                    if let Some(msg) = parse_assistant_message(&json) {
-                        turn_msgs.push(msg);
-                        dirty = true;
-                    }
+                    // cm:guard EVERY line is numbered and delivered, and the old guard here said the
+                    // opposite for a measured reason: a whole-transcript PATCH per flush turned a
+                    // tool-heavy stretch into ~1200 writes each carrying the growing array, so a
+                    // silent stretch had to stay silent. The reason survives and the mechanism
+                    // inverts. What bounds the write count now is the BATCH — one request per flush
+                    // interval whatever it holds — so every line can matter without costing a write
+                    // each, which is the whole point: the silent stretches were the tool calls.
+                    if is_partial_stream_event(&json) { continue; }
+                    seq += 1;
+                    pending.push(agent_sessions::LineEvent::stdout(seq, json));
                 }
                 Some(RunnerEvent::Done { .. }) => { terminal = Some(Terminal::Done); break; }
                 Some(RunnerEvent::Failed { error, .. }) => { terminal = Some(Terminal::Failed(error)); break; }
@@ -474,36 +510,63 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
                 None => break,
             },
             _ = flush.tick() => {
-                if dirty {
-                    let patch = SessionPatch {
-                        status: Some("running".into()),
-                        messages: Some(merged(&baseline, &turn_msgs)),
-                        claude_session_id: claude_sid.clone(),
-                        tool_call_count: Some(tool_calls),
-                        runtime_state: runtime_state.clone(),
-                    };
-                    if let Err(e) = agent_sessions::patch_session(client, session_id, &patch).await {
-                        if e.to_string().contains("SESSION_TERMINATED") {
-                            tracing::info!("[chat {session_id}] session terminated by user — stopping stream");
-                            return;
-                        }
-                        tracing::warn!("[chat {session_id}] stream patch: {e}");
-                    } else {
-                        dirty = false;
+                if pending.is_empty() { continue; }
+                match agent_sessions::post_events(client, session_id, &pending).await {
+                    Ok(()) => pending.clear(),
+                    Err(e) if e.to_string().contains("SESSION_TERMINATED") => {
+                        tracing::info!("[chat {session_id}] session terminated by user — stopping stream");
+                        return;
+                    }
+                    Err(e) if agent_sessions::is_refused(&e) => {
+                        // cm:guard a refusal ENDS the turn and says which line it was. Core stores a
+                        // refused batch not at all, so carrying on would deliver the rest of this
+                        // turn on the far side of a hole in the seq run — and the fold holds at a
+                        // hole, so the transcript would stop there looking like a turn that simply
+                        // went quiet. A turn that says it stopped recording is recoverable.
+                        // cm:guard the sentence says what is true of the BATCH and not of
+                        // the turn: core stores a refused batch not at all, while chunks
+                        // delivered before it are already committed. `post_events` counts
+                        // them, and the count rides in `{e}`.
+                        let msg = format!(
+                            "[TRANSCRIPT_REFUSED] core refused a batch of this turn's transcript and stored none of that batch: {e}"
+                        );
+                        tracing::error!("[chat {session_id}] {msg}");
+                        let _ = patch_failed(client, session_id, claude_sid.clone(), &msg).await;
+                        return;
+                    }
+                    Err(e) => {
+                        // Transport or 5xx, already retried: keep the batch and try again next tick.
+                        tracing::warn!("[chat {session_id}] stream events: {e}");
                     }
                 }
             }
         }
     }
 
+    // cm:guard the LAST batch is delivered BEFORE the terminal patch, and a turn
+    // that cannot deliver it does not reach `completed`. Patching the status first
+    // would let a turn finish clean while the tail of what it said was never
+    // stored — a transcript that ends early and claims it did not.
+    if !pending.is_empty() {
+        if let Err(e) = agent_sessions::post_events(client, session_id, &pending).await {
+            let msg = format!(
+                "[TRANSCRIPT_INCOMPLETE] this turn's transcript was not delivered in full ({} line(s) pending at the end): {e}",
+                pending.len()
+            );
+            tracing::error!("[chat {session_id}] {msg}");
+            let _ = patch_failed(client, session_id, claude_sid.clone(), &msg).await;
+            return;
+        }
+        pending.clear();
+    }
+
     match terminal {
         Some(Terminal::Done) => {
             let patch = SessionPatch {
                 status: Some("completed".into()),
-                messages: Some(merged(&baseline, &turn_msgs)),
                 claude_session_id: claude_sid.clone(),
-                tool_call_count: Some(tool_calls),
                 runtime_state: runtime_state.clone(),
+                turn_error: None,
             };
             if let Err(e) = agent_sessions::patch_session(client, session_id, &patch).await {
                 tracing::warn!("[chat {session_id}] final patch: {e}");
@@ -512,25 +575,15 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
             }
         }
         Some(Terminal::Failed(err)) => {
-            let _ = patch_failed(
-                client,
-                session_id,
-                &baseline,
-                claude_sid.clone(),
-                &err,
-                Some(tool_calls),
-            )
-            .await;
+            let _ = patch_failed(client, session_id, claude_sid.clone(), &err).await;
             tracing::info!("[chat {session_id}] turn failed: {err}");
         }
         None => {
             let _ = patch_failed(
                 client,
                 session_id,
-                &baseline,
                 claude_sid.clone(),
                 "runner ended without a result",
-                Some(tool_calls),
             )
             .await;
         }
@@ -542,123 +595,51 @@ async fn consume(client: &CoreClient, session_id: &str, mut rx: mpsc::Receiver<R
     // credential per session it has ever served.
 }
 
-/// Final PATCH for a failed turn: append a visible error turn so the chat shows
-/// what went wrong (e.g. `[RESUME_FAILED] …`) instead of sitting silent, and
-/// mark the session `failed` so the interactive run is closed.
+/// The one stream-json frame core does not store, dropped before it is numbered.
+///
+/// cm:guard a DENYLIST of one proven-unread frame, never an allowlist — a frame
+/// kind the CLI adds tomorrow must keep being delivered, and an allowlist would
+/// drop it in silence.
+/// cm:guard it is dropped BEFORE `seq` is assigned, not after. Numbering it and
+/// then withholding it would leave a hole in the seq run, and core's fold holds
+/// at a hole for ever — so filtering after numbering would end the transcript at
+/// the first partial frame.
+/// cm:edge lockstep -> packages/core/src/jobs/events-routes.ts — `isPartialStreamEvent`
+/// drops the same frame on the pipeline path, for the same reason: the parser
+/// answers `{messages:[]}` for one and nothing in core or web reads one. Teaching
+/// any reader to consume a `stream_event` means deleting BOTH of these first,
+/// because the frames it would need were never stored on either path.
+fn is_partial_stream_event(line: &Value) -> bool {
+    line.get("type").and_then(Value::as_str) == Some("stream_event")
+}
+
+/// Final PATCH for a failed turn: report the error so core records it on the
+/// transcript, and mark the session `failed` so the interactive run is closed.
+///
+/// cm:guard the runner reports a STRING and core writes the entry. This used to
+/// append a `system` message to a `messages` array it sent itself, which is
+/// exactly the second producer ISS-1030 removed.
 async fn patch_failed(
     client: &CoreClient,
     session_id: &str,
-    baseline: &[Value],
     claude_sid: Option<String>,
     error: &str,
-    tool_calls: Option<u32>,
 ) -> Result<()> {
-    let mut msgs = baseline.to_vec();
-    msgs.push(json!({
-        "id": Uuid::new_v4().to_string(),
-        "type": "system",
-        "timestamp": now_ms(),
-        "content": error,
-    }));
     let patch = SessionPatch {
         status: Some("failed".into()),
-        messages: Some(msgs),
         claude_session_id: claude_sid,
-        tool_call_count: tool_calls,
+        turn_error: Some(error.to_string()),
         // cm:guard a failed turn reports `closed`, never the park — a session that died is not waiting for anyone, and `awaiting_input` is the one value that exempts a row from the heartbeat hop.
         runtime_state: Some("closed".into()),
     };
     agent_sessions::patch_session(client, session_id, &patch).await
 }
 
-fn merged(baseline: &[Value], turn_msgs: &[Value]) -> Vec<Value> {
-    let mut out = Vec::with_capacity(baseline.len() + turn_msgs.len());
-    out.extend_from_slice(baseline);
-    out.extend_from_slice(turn_msgs);
-    out
-}
-
-fn now_ms() -> u64 {
-    SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_millis() as u64)
-        .unwrap_or(0)
-}
-
-/// Count the `tool_use` blocks on one `stream-json` line.
-///
-/// This is the ONLY record that a chat/schedule turn used a tool. The
-/// transcript is not one: [`parse_assistant_message`] keeps assistant TEXT and
-/// discards every tool frame, so `agent_sessions.messages` contains no
-/// tool_use entry for any run, working or not. Measured 2026-08-26 on
-/// forge-dev: session 5250d5e1 ran 17 assistant turns over dozens of tool
-/// calls and stored zero tool frames, while 98692d6b (2 turns, wrote two
-/// issue comments and a memory note) and b2f63f9c (2 turns, fabricated its
-/// findings) are byte-identical in shape. Core cannot tell those two apart
-/// without this counter.
-fn count_tool_uses(json: &Value) -> u32 {
-    if json.get("type").and_then(Value::as_str) != Some("assistant") {
-        return 0;
-    }
-    let Some(content) = json
-        .get("message")
-        .and_then(|m| m.get("content"))
-        .and_then(Value::as_array)
-    else {
-        return 0;
-    };
-    content
-        .iter()
-        .filter(|b| b.get("type").and_then(Value::as_str) == Some("tool_use"))
-        .count() as u32
-}
-
-/// Turn one `stream-json` assistant line into the `AgentMessage` shape the web
-/// chat UI renders (see `packages/dev/src/lib/types.ts` + `stream-parser.ts`).
-/// Only assistant text turns are surfaced; the `usage`/`model` blocks are
-/// passed through verbatim since claude already emits the field names core
-/// expects. Non-assistant lines (`system`/`result`/tool frames) return `None`.
-fn parse_assistant_message(json: &Value) -> Option<Value> {
-    if json.get("type").and_then(Value::as_str) != Some("assistant") {
-        return None;
-    }
-    let message = json.get("message")?;
-    let content = message.get("content").and_then(Value::as_array)?;
-
-    let mut text = String::new();
-    for block in content {
-        if block.get("type").and_then(Value::as_str) == Some("text") {
-            if let Some(t) = block.get("text").and_then(Value::as_str) {
-                if !text.is_empty() {
-                    text.push('\n');
-                }
-                text.push_str(t);
-            }
-        }
-    }
-    if text.trim().is_empty() {
-        return None;
-    }
-
-    let mut msg = json!({
-        "id": Uuid::new_v4().to_string(),
-        "type": "assistant",
-        "timestamp": now_ms(),
-        "content": text,
-    });
-    if let Some(model) = message.get("model") {
-        msg["model"] = model.clone();
-    }
-    if let Some(usage) = message.get("usage") {
-        msg["usage"] = usage.clone();
-    }
-    Some(msg)
-}
-
 #[cfg(test)]
 mod tests {
     use super::*;
     use crate::config::Binding;
+    use serde_json::json;
     use std::path::PathBuf;
 
     fn turn_for_test() -> Turn {
@@ -672,6 +653,7 @@ mod tests {
             resume_id: None,
             mcp_servers_override: None,
             attachment_dir: None,
+            event_seq_base: Some(1),
         }
     }
 
@@ -685,24 +667,99 @@ mod tests {
     }
 
     #[test]
-    fn parses_assistant_text_into_agent_message() {
+    fn a_line_is_delivered_whole_and_numbered_from_the_base() {
+        // cm:guard the payload is the CLI's own JSON, byte for byte. The moment
+        // this runner reshapes a line it is a second producer again, which is
+        // what stored zero tool frames for every chat session ever run.
         let line = json!({
             "type": "assistant",
-            "message": {
-                "model": "claude-opus-4-8",
-                "content": [
-                    { "type": "text", "text": "Hello" },
-                    { "type": "text", "text": "world" }
-                ],
-                "usage": { "input_tokens": 10, "output_tokens": 5 }
-            }
+            "message": {"content": [
+                {"type": "text", "text": "Let me look."},
+                {"type": "tool_use", "id": "t1", "name": "Read", "input": {}}
+            ]}
         });
-        let msg = parse_assistant_message(&line).expect("assistant message");
-        assert_eq!(msg["type"], "assistant");
-        assert_eq!(msg["content"], "Hello\nworld");
-        assert_eq!(msg["model"], "claude-opus-4-8");
-        assert_eq!(msg["usage"]["output_tokens"], 5);
-        assert!(msg["id"].as_str().is_some());
+        let ev = agent_sessions::LineEvent::stdout(42, line.clone());
+        assert_eq!(ev.seq, 42);
+        assert_eq!(ev.kind, "stdout");
+        assert_eq!(ev.data["line"], line);
+    }
+
+    #[test]
+    fn a_tool_only_turn_is_delivered_rather_than_dropped() {
+        // The case the deleted parser threw away: an assistant line carrying a
+        // tool call and no text. `parse_assistant_message` answered `None` for
+        // exactly this, so the transcript could not say the turn used a tool.
+        let line = json!({
+            "type": "assistant",
+            "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]}
+        });
+        assert!(!is_partial_stream_event(&line));
+        let ev = agent_sessions::LineEvent::stdout(1, line.clone());
+        assert_eq!(ev.data["line"]["message"]["content"][0]["type"], "tool_use");
+    }
+
+    #[test]
+    fn only_the_partial_stream_frame_is_withheld() {
+        // cm:guard the `false` rows are what make this an assertion rather than a
+        // tautology: a predicate that dropped anything it did not recognise would
+        // silently withhold every frame kind the CLI adds next.
+        assert!(is_partial_stream_event(
+            &json!({"type": "stream_event", "event": {}})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "assistant", "message": {}})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "user", "message": {}})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "result", "num_turns": 1})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "system", "subtype": "init"})
+        ));
+        assert!(!is_partial_stream_event(
+            &json!({"type": "a_frame_added_tomorrow"})
+        ));
+        assert!(!is_partial_stream_event(&json!({"no_type_at_all": true})));
+    }
+
+    #[test]
+    fn a_refusal_is_told_apart_from_a_failure_to_deliver() {
+        // cm:guard the second assertion is the one that matters: a predicate
+        // answering true for every error would end a turn on a dropped packet,
+        // and a retry is the right answer to that one.
+        assert!(agent_sessions::is_refused(&Error::Other(
+            "TRANSCRIPT_REFUSED: 400 Bad Request: stream-json line at seq 7 has no `type`".into()
+        )));
+        assert!(!agent_sessions::is_refused(&Error::Other(
+            "post_events transport: connection reset".into()
+        )));
+        assert!(!agent_sessions::is_refused(&Error::Other(
+            "post_events failed after 4 attempts: 503 Service Unavailable".into()
+        )));
+    }
+
+    #[test]
+    fn a_frame_without_a_sequence_base_carries_none_rather_than_a_zero() {
+        // cm:guard `None`, never `Some(0)`. `run_turn` refuses a turn with no
+        // base by name; a default of 0 would number turn two's lines over turn
+        // one's, and core's `ON CONFLICT DO NOTHING` would drop the whole turn in
+        // silence — which is the one outcome this design exists to prevent.
+        let without: SendFrame = serde_json::from_value(json!({
+            "sessionId": "s1",
+            "message": "hi"
+        }))
+        .expect("frame without a base");
+        assert_eq!(without.event_seq_base, None);
+
+        let with: SendFrame = serde_json::from_value(json!({
+            "sessionId": "s1",
+            "message": "hi",
+            "eventSeqBase": 7
+        }))
+        .expect("frame with a base");
+        assert_eq!(with.event_seq_base, Some(7));
     }
 
     #[test]
@@ -722,70 +779,6 @@ mod tests {
         }))
         .expect("frame without model");
         assert_eq!(without.model, None);
-    }
-
-    #[test]
-    fn counts_tool_use_blocks_the_transcript_discards() {
-        let line = json!({
-            "type": "assistant",
-            "message": {"content": [
-                {"type": "text", "text": "Let me look."},
-                {"type": "tool_use", "id": "t1", "name": "Read", "input": {}},
-                {"type": "tool_use", "id": "t2", "name": "Grep", "input": {}}
-            ]}
-        });
-        assert_eq!(count_tool_uses(&line), 2);
-        let msg = parse_assistant_message(&line).expect("text block still surfaces");
-        assert_eq!(msg["content"], json!("Let me look."));
-        assert!(msg.get("toolCalls").is_none());
-    }
-
-    #[test]
-    fn counts_a_tool_only_turn_the_transcript_drops_entirely() {
-        let line = json!({
-            "type": "assistant",
-            "message": {"content": [{"type": "tool_use", "id": "t1", "name": "Read", "input": {}}]}
-        });
-        assert_eq!(count_tool_uses(&line), 1);
-        assert!(parse_assistant_message(&line).is_none());
-    }
-
-    #[test]
-    fn counts_zero_for_a_text_only_reply_and_for_non_assistant_frames() {
-        assert_eq!(
-            count_tool_uses(&json!({
-                "type": "assistant",
-                "message": {"content": [{"type": "text", "text": "Backlog reviewed: 47 issues."}]}
-            })),
-            0
-        );
-        assert_eq!(
-            count_tool_uses(&json!({"type": "result", "num_turns": 1})),
-            0
-        );
-        assert_eq!(count_tool_uses(&json!({"type": "user"})), 0);
-        assert_eq!(count_tool_uses(&json!({"type": "assistant"})), 0);
-    }
-
-    #[test]
-    fn ignores_non_assistant_and_empty_lines() {
-        assert!(parse_assistant_message(&json!({ "type": "result", "is_error": false })).is_none());
-        assert!(parse_assistant_message(&json!({ "type": "system", "subtype": "init" })).is_none());
-        let no_text = json!({
-            "type": "assistant",
-            "message": { "content": [ { "type": "tool_use", "name": "Bash" } ] }
-        });
-        assert!(parse_assistant_message(&no_text).is_none());
-    }
-
-    #[test]
-    fn merged_keeps_baseline_then_turn() {
-        let baseline = vec![json!({ "role": "user", "content": "hi" })];
-        let turn = vec![json!({ "type": "assistant", "content": "hello" })];
-        let out = merged(&baseline, &turn);
-        assert_eq!(out.len(), 2);
-        assert_eq!(out[0]["role"], "user");
-        assert_eq!(out[1]["type"], "assistant");
     }
 
     #[test]

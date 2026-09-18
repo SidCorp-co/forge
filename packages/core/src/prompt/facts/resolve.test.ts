@@ -18,6 +18,7 @@ vi.mock('../../logger.js', () => ({
   logger: { warn: (...a: unknown[]) => warnSpy(...a) },
 }));
 
+const { normalizeEnvironments } = await import('../../projects/environments.js');
 const { renderStageFactsText, renderIntegrations, makeProjectResolver } = await import(
   './resolve.js'
 );
@@ -416,8 +417,7 @@ describe('makeProjectResolver — the branch a skill body is handed', () => {
       liveBranch: 'production',
       releaseModel: 'promote',
       repoPath: '/repo',
-      testingUrls: [],
-      testNotes: null,
+      environments: normalizeEnvironments(null),
       integrations: [],
       ...over,
     });

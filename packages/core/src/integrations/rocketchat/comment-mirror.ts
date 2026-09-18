@@ -25,7 +25,7 @@ import { screenCarriedComment } from './comment-carry.js';
 import { drainOwedAnnouncements } from './comment-inbound.js';
 import { threadRootText } from './comment-render.js';
 import { FIXED_REPLY_CONSTANT, sendFixedReply } from './outbound.js';
-import { type RoomBinding, roomForProject } from './question-delivery.js';
+import { type RoomBinding, roomForProject } from './project-room.js';
 import { type RoomPostAuth, resolveRoomPostAuth } from './room-delivery.js';
 import {
   type IssueThread,

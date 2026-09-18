@@ -10,7 +10,7 @@
 export type AnswerStyle = "default" | "concise" | "detailed" | "bullets";
 
 // cm:edge contract -> packages/core/src/db/schema-agent-selves.ts — `answerInGroupModes`, `PresenceConfig`, and the two `preference_changes` tuples below are that module's; `conversations/presence.ts` holds the bounds and the defaults.
-export type AnswerInGroupMode = "window" | "mention";
+export type AnswerInGroupMode = "window" | "mention" | "tool";
 
 /** What an admin may set about when an agent speaks; every key optional, unset folds to the default. */
 export interface PresenceConfig {

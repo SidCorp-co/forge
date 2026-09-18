@@ -33,10 +33,18 @@ export {
   issuePatchSchema,
 } from './issues/routes.js';
 export {
+  type EnvironmentsConfig,
+  environmentsPatchSchema,
+  type LiveEnvironment,
+  type NormalizedEnvironments,
+  normalizeEnvironments,
+  type PreviewEnvironment,
+  type TestCredential,
+  type TestingUrl,
+} from './projects/environments.js';
+export {
   type CreateProjectInput,
   createProjectSchema,
-  type PreviewDeployConfig,
-  previewDeployPatchSchema,
   type UpdateProjectInput,
   updateProjectSchema,
 } from './projects/routes.js';
