@@ -1522,7 +1522,7 @@ describe('forge_issues tool', () => {
       });
       // loadIssue (merged_at currently null)
       selectLimit.mockResolvedValueOnce([baseIssueRow]);
-      // cm:guard one row back is how `stampIssueMergedAt` says THIS call set the value; queue nothing and the stamp reads as a no-op and the tool answers `already_merged`
+      // cm:guard one row back is how `merge-record.ts:recordIssueMerge` says THIS call set the value; queue nothing and the stamp reads as a no-op and the tool answers `already_merged`
       updateReturning.mockResolvedValueOnce([{ mergedAt: STAMPED }]);
       // membership
       selectLimit.mockResolvedValueOnce([memberAccessRow]);

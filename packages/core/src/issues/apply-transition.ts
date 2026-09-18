@@ -21,7 +21,7 @@ import { expireBlocksEdgesOnDrop, type UnblockedDependent } from './drop-cascade
 import { recordDropUnblock } from './drop-unblock.js';
 import { resolveDeclaredEntryCriteria } from './entry-criteria.js';
 import type { EntryCriterionKey } from './entry-criteria-keys.js';
-import { markMergedIfLeavingBase, markMergedOnClose } from './merged-at.js';
+import { markMergedOnClose } from './merged-at.js';
 import { mintParkQuestion } from './park-question.js';
 import { publishPipelineHealthChanged } from './pipeline-health.js';
 import { resolveAgentCloseTarget } from './release-gate-hold.js';
@@ -552,7 +552,6 @@ async function executeTransitionWrite(input: TransitionWriteInput): Promise<Tran
               updatedAt: issues.updatedAt,
             });
           if (!row) return null;
-          await markMergedIfLeavingBase(t, { issueId: issue.id, fromStatus, toStatus });
           const closeStamp = await markMergedOnClose(t, {
             issueId: issue.id,
             toStatus: requestedStatus,
