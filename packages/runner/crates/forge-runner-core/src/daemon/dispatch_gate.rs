@@ -87,6 +87,12 @@ pub fn decide(d: &Dispatch, f: &Facts<'_>) -> Verdict {
     if !roles.contains(role) {
         return Verdict::NotOurs;
     }
+    // cm:guard this check stands ABOVE the tool-call-id check and the order is load-bearing, not
+    // tidiness: "nothing is declared on this box" is a fact the ledger KNOWS, so it is refused
+    // whatever the payload carries, while "which declaration is this dispatch" is a question a
+    // payload with no tool call id cannot answer, so it is answered as uncertain. Hoisting the id
+    // check above this one turns a knowable refusal into an allow, which is why two tests pin the
+    // order from both sides (ISS-1094, review F1 recheck).
     let Some(run_id) = f.pending_run else {
         return Verdict::Undeclared;
     };
@@ -309,6 +315,38 @@ mod tests {
         assert!(
             matches!(v, Verdict::Unknown(_)),
             "an unreservable dispatch described as covered is a silent pass: {v:?}"
+        );
+    }
+
+    #[test]
+    fn a_dispatch_with_no_tool_call_id_is_still_refused_when_nothing_is_declared() {
+        // The id is missing either way. What differs is whether the ledger KNOWS the answer: with
+        // nothing declared it does, and a fact the box holds is not softened into uncertainty by a
+        // payload that happens to be thin. This pins the id check BELOW the pending-run check --
+        // hoisting it turns this refusal into an allow and every other test here stays green.
+        let r = roles();
+        let mut d = dispatch("runner", "toolu_1");
+        d.tool_use_id = None;
+        let v = decide(&d, &facts(Some(&r), None, None));
+        assert!(
+            matches!(v, Verdict::Undeclared),
+            "nothing declared is a fact this box holds, so it is refused whatever the payload carries: {v:?}"
+        );
+    }
+
+    #[test]
+    fn a_second_ride_on_one_declaration_is_uncertain_rather_than_refused_when_the_id_is_gone() {
+        // A deliberate narrowing of the single-use refusal, named so it is not mistaken for an
+        // oversight: with the promised id present and this dispatch carrying none, the box cannot
+        // tell a replay whose id was stripped from a genuine second ride. It allows and marks, and
+        // whichever child ends up unbound is denounced at SubagentStart instead.
+        let r = roles();
+        let mut d = dispatch("runner", "toolu_1");
+        d.tool_use_id = None;
+        let v = decide(&d, &facts(Some(&r), Some("run-7"), Some("toolu_other")));
+        assert!(
+            matches!(v, Verdict::Unknown(_)),
+            "a dispatch the box cannot match against the promise it holds is uncertain, not refused: {v:?}"
         );
     }
 

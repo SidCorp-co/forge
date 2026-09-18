@@ -45,7 +45,7 @@ fn drain() -> Vec<u8> {
 
 /// What a `PreToolUse` payload turned out to be.
 // cm:guard `Malformed` is its OWN answer and not folded into `NotADispatch`. Both allow the tool call, but one of them is this box failing to read what the harness sent — an uncertain allowance, which criterion 17 says must leave a mark — and the other is an ordinary `Read` that must stay silent or the marks become noise (ISS-1094, review F2).
-pub enum Read {
+pub enum Payload {
     /// An ordinary tool call. Almost all of them; this hook runs in front of every tool.
     NotADispatch,
     /// This box could not read the payload at all.
@@ -57,24 +57,37 @@ pub enum Read {
 /// The dispatch this payload describes, where it describes one.
 // cm:guard the reading is `tool_input.subagent_type` and NOT `tool_name`. Measured against claude 2.1.276 the dispatch tool is called `Agent`, and it has been called other things; the input names the role whatever the tool is called, so keying on the name would be a fixture that ages into a gate that never fires.
 // cm:guard the whole of this runs BEFORE any socket is touched. `PreToolUse` fires on every tool call on the box, and a round trip per call would put the daemon's latency in front of every read a master makes.
-pub fn dispatch_in(payload: &[u8]) -> Read {
+// cm:guard `NotADispatch` is reserved for the shape this box UNDERSTOOD and found ordinary: an
+// object whose `tool_input` is an object carrying no `subagent_type`. Every other shape — a payload
+// that is not an object, a `tool_input` that is not one, a `subagent_type` that is not a string —
+// is a payload this box could not read, and it is marked. Folding those into `NotADispatch` is how
+// a harness that renames or re-types the field turns the gate off across the fleet with the
+// degraded count sitting at zero, which is the same silence F2 was opened on one layer further in
+// (ISS-1094, review F2 recheck).
+pub fn dispatch_in(payload: &[u8]) -> Payload {
     let Ok(v) = serde_json::from_slice::<serde_json::Value>(payload) else {
-        return Read::Malformed;
+        return Payload::Malformed;
     };
+    if !v.is_object() {
+        return Payload::Malformed;
+    }
     let field = |k: &str| {
         v.get(k)
             .and_then(serde_json::Value::as_str)
             .map(str::to_string)
     };
-    let Some(subagent_type) = v
-        .get("tool_input")
-        .and_then(|t| t.get("subagent_type"))
-        .and_then(serde_json::Value::as_str)
-        .map(str::to_string)
-    else {
-        return Read::NotADispatch;
+    let subagent_type = match v.get("tool_input") {
+        None => return Payload::NotADispatch,
+        Some(t) if !t.is_object() => return Payload::Malformed,
+        Some(t) => match t.get("subagent_type") {
+            None => return Payload::NotADispatch,
+            Some(r) => match r.as_str() {
+                None => return Payload::Malformed,
+                Some(r) => r.to_string(),
+            },
+        },
     };
-    Read::Dispatch(Dispatch {
+    Payload::Dispatch(Dispatch {
         agent_id: field("agent_id"),
         subagent_type: Some(subagent_type),
         tool_use_id: field("tool_use_id"),
@@ -159,12 +172,12 @@ pub async fn run(args: Args) {
         return;
     }
     let d = match dispatch_in(&payload) {
-        Read::Dispatch(d) => d,
-        Read::NotADispatch => {
+        Payload::Dispatch(d) => d,
+        Payload::NotADispatch => {
             println!("{ALLOW}");
             return;
         }
-        Read::Malformed => {
+        Payload::Malformed => {
             if let Some(dir) = config_dir().as_deref() {
                 mark(
                     dir,
@@ -248,7 +261,7 @@ mod tests {
 
     fn as_dispatch(payload: &str) -> Dispatch {
         match dispatch_in(payload.as_bytes()) {
-            Read::Dispatch(d) => d,
+            Payload::Dispatch(d) => d,
             _ => panic!("expected a dispatch"),
         }
     }
@@ -271,7 +284,7 @@ mod tests {
     fn a_tool_call_that_is_not_a_dispatch_never_reaches_the_socket() {
         assert!(matches!(
             dispatch_in(AN_ORDINARY_TOOL_CALL.as_bytes()),
-            Read::NotADispatch
+            Payload::NotADispatch
         ));
     }
 
@@ -281,7 +294,7 @@ mod tests {
         // child DOES dispatch, the id is what tells the gate whose call it is.
         assert!(matches!(
             dispatch_in(INSIDE_A_CHILD.as_bytes()),
-            Read::NotADispatch
+            Payload::NotADispatch
         ));
         let v: serde_json::Value = serde_json::from_str(INSIDE_A_CHILD).expect("json");
         assert!(v.get("agent_id").is_some());
@@ -291,15 +304,53 @@ mod tests {
     // cm:guard the two are told APART here, which is the whole of review F2: both allow the tool call, and only one of them is this box failing to read what it was sent.
     #[test]
     fn a_payload_that_will_not_parse_is_malformed_and_not_merely_not_a_dispatch() {
-        assert!(matches!(dispatch_in(b"not json at all"), Read::Malformed));
-        assert!(matches!(dispatch_in(b""), Read::Malformed));
+        assert!(matches!(
+            dispatch_in(b"not json at all"),
+            Payload::Malformed
+        ));
+        assert!(matches!(dispatch_in(b""), Payload::Malformed));
         assert!(
             matches!(
                 dispatch_in(AN_ORDINARY_TOOL_CALL.as_bytes()),
-                Read::NotADispatch
+                Payload::NotADispatch
             ),
             "an ordinary tool call is not a failure and must leave no mark"
         );
+    }
+
+    #[test]
+    fn a_payload_that_parses_but_whose_role_cannot_be_read_is_malformed_too() {
+        // The shapes a harness change actually produces. Each one parses as JSON, so the
+        // serde check alone lets all four through as "ordinary" and the gate goes quiet across
+        // the fleet with the degraded count at zero.
+        for p in [
+            r#"{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"prompt":"go","subagent_type":null},"tool_use_id":"toolu_1"}"#,
+            r#"{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":{"subagent_type":{"name":"runner"}},"tool_use_id":"toolu_1"}"#,
+            r#"{"hook_event_name":"PreToolUse","tool_name":"Agent","tool_input":"{\"subagent_type\":\"runner\"}"}"#,
+            "null",
+            "[]",
+        ] {
+            assert!(
+                matches!(dispatch_in(p.as_bytes()), Payload::Malformed),
+                "a payload this box cannot read the role out of is not an ordinary tool call: {p}"
+            );
+        }
+    }
+
+    #[test]
+    fn the_ordinary_shapes_stay_silent_so_the_marks_keep_meaning_something() {
+        // The other side of the same rule. If these ever start marking, `degraded` counts every
+        // tool call on the box and the number stops being evidence of anything.
+        for p in [
+            AN_ORDINARY_TOOL_CALL,
+            r#"{"hook_event_name":"PreToolUse","tool_name":"Bash","tool_input":{"command":"ls"}}"#,
+            r#"{"hook_event_name":"PreToolUse","tool_name":"Bash"}"#,
+        ] {
+            assert!(
+                matches!(dispatch_in(p.as_bytes()), Payload::NotADispatch),
+                "an understood, ordinary tool call must leave no mark: {p}"
+            );
+        }
     }
 
     /// Criterion 2. The deny that reaches the model carries the way forward.

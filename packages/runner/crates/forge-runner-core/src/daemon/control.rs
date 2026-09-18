@@ -710,12 +710,16 @@ fn bind_or_release(
                 // `SubagentStart` arrives once, so a replay would otherwise raise a false alarm
                 // on the one counter whose whole value is that it moves only when something is
                 // wrong (ISS-1094, review F3).
-                Ok(None) => match led.run_for_agent(child) {
-                    Ok(Some(run)) => tracing::debug!(
-                        "[control] subagent {child} is already run {}, so its start is a replay",
-                        run.run_id
+                Ok(None) => match classify_start(
+                    led.run_for_agent(child)
+                        .map(|r| r.map(|run| run.run_id))
+                        .map_err(|e| e.to_string()),
+                ) {
+                    StartKind::Replay(run_id) => tracing::debug!(
+                        "[control] subagent {child} is already run {run_id}, so its start is a replay"
                     ),
-                    _ => undeclared_child(ctl, child, agent_type),
+                    StartKind::Undeclared => undeclared_child(ctl, child, agent_type),
+                    StartKind::Unreadable(e) => unreadable_ledger(ctl, child, &e),
                 },
                 Err(e) => tracing::warn!("[control] cannot read declared runs: {e}"),
             }
@@ -735,6 +739,39 @@ fn bind_or_release(
 /// A subagent that started under a shipped role with nothing declared for it.
 // cm:guard the role set is read here again rather than passed in from the gate: this path runs when the gate did not, which is precisely when a value carried from it would be missing.
 #[cfg(unix)]
+/// What a `SubagentStart` with no pending declaration turned out to be.
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum StartKind {
+    /// This child already holds an open run, so its start is a repeat of one already handled.
+    Replay(String),
+    /// This box holds no row for this child's work.
+    Undeclared,
+    /// This box could not read its own ledger, so it knows neither of the above.
+    Unreadable(String),
+}
+
+// cm:guard the third case is NOT the second. A failed read of this box's own ledger establishes
+// nothing, and answering it with `UNDECLARED HAND-OFF: ... this box holds no row for that work`
+// asserts a fact nobody measured, on the one counter whose entire value is that it moves only when
+// something is wrong. `dispatch_gate_reply` already carries this rule for the other ledger read in
+// this file — a ledger ERROR is not "nothing is declared" — and the two reads answer it the same
+// way or the file contradicts itself (ISS-1094, review F3 recheck).
+pub(crate) fn classify_start(read: Result<Option<String>, String>) -> StartKind {
+    match read {
+        Ok(Some(run_id)) => StartKind::Replay(run_id),
+        Ok(None) => StartKind::Undeclared,
+        Err(e) => StartKind::Unreadable(e),
+    }
+}
+
+fn unreadable_ledger(ctl: &Arc<Control>, child: &str, e: &str) {
+    let detail = format!("could not read the declared runs when subagent {child} started: {e}");
+    tracing::warn!("[control] {detail} — this box knows neither that the work was declared nor that it was not");
+    if let Some(dir) = ctl.config_dir.as_deref() {
+        crate::daemon::degraded::mark(dir, crate::daemon::degraded::Kind::Degraded, &detail);
+    }
+}
+
 fn undeclared_child(ctl: &Arc<Control>, child: &str, agent_type: Option<&str>) {
     let Some(role) = agent_type else {
         tracing::debug!("[control] subagent {child} answers to no declared run");
@@ -1415,6 +1452,30 @@ mod tests {
 
     /// Review F3. A repeated start for a child that already has its run.
     // cm:guard no second declaration is made here, which is what separates this from the tests above it: with one pending, a replay binds that instead and the alarm is silent for the wrong reason. With nothing pending, the old code called the child undeclared and moved the operator's counter for a run that was recorded correctly.
+    #[test]
+    fn a_ledger_this_box_cannot_read_is_not_an_undeclared_hand_off() {
+        // The shape: a child that IS correctly bound, whose start arrives while the ledger read
+        // fails (SQLITE_BUSY outlasting `PRAGMA busy_timeout`, a corrupt page, a revoked file).
+        // The read establishes nothing, so it may not assert the one thing the undeclared alarm
+        // asserts. It is the same false alarm the replay check removed, coming back through the
+        // error channel.
+        assert_eq!(
+            classify_start(Err("database is locked".to_string())),
+            StartKind::Unreadable("database is locked".to_string()),
+            "a failed read of our own ledger is not evidence that nothing was declared"
+        );
+        assert_eq!(
+            classify_start(Ok(None)),
+            StartKind::Undeclared,
+            "a read that answered `no row` IS the evidence, and it stays loud"
+        );
+        assert_eq!(
+            classify_start(Ok(Some("run-9".to_string()))),
+            StartKind::Replay("run-9".to_string()),
+            "a child that already holds a run is a replay"
+        );
+    }
+
     #[test]
     fn a_replayed_start_for_an_already_bound_child_raises_no_alarm() {
         let (ctl, _t) = declaring_control("sess-a", "proj-1");
