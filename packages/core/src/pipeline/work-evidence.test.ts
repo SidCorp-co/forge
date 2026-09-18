@@ -23,8 +23,13 @@ vi.mock('../logger.js', () => ({
   logger: { info: vi.fn(), warn: vi.fn(), error: vi.fn(), debug: vi.fn() },
 }));
 
-const { collectWorkEvidence, hasCodeEvidence, hasChildIssues, findMissingWorkEvidence } =
-  await import('./work-evidence.js');
+const {
+  collectWorkEvidence,
+  hasCodeEvidence,
+  hasChildIssues,
+  findMissingWorkEvidence,
+  missingWorkEvidenceStrict,
+} = await import('./work-evidence.js');
 
 function setup(...batches: unknown[][]) {
   queue.length = 0;
@@ -220,6 +225,48 @@ describe('findMissingWorkEvidence', () => {
     (db as any).select = () => {
       throw new Error('connection reset');
     };
+    expect(await findMissingWorkEvidence('iss-1')).toBeNull();
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
+    (db as any).select = original;
+  });
+});
+
+/**
+ * ISS-1072 — the same check, letting its own failure out.
+ *
+ * A reader that PUBLISHES this answer cannot use the fail-open one: "the query
+ * raised" and "the evidence is there" are the same value to it, and a check run
+ * saying a criterion is met because a SELECT threw is the silent substitution
+ * this repo forbids — worse here than in the gate, because the gate's answer is
+ * seen by the one agent it refused and this one goes on a pull request.
+ */
+describe('missingWorkEvidenceStrict', () => {
+  it('answers exactly as the fail-open one does when nothing raises', async () => {
+    setup([], [], [], [{ sessionContext: { branch: 'ISS-1-foo' } }]);
+    expect(await missingWorkEvidenceStrict('iss-1')).toBeNull();
+
+    setup([], [], [], [{ sessionContext: null }]);
+    const strict = await missingWorkEvidenceStrict('iss-1');
+    setup([], [], [], [{ sessionContext: null }]);
+    const open = await findMissingWorkEvidence('iss-1');
+    expect(strict).toBe(open);
+  });
+
+  it('returns null for a decompose parent, as the gate does', async () => {
+    setup([{ id: 'edge-1' }]);
+    expect(await missingWorkEvidenceStrict('iss-1')).toBeNull();
+  });
+
+  // cm:guard this is the one difference, and it is the whole reason the function exists. The pair below runs the SAME planted failure through both entry points: the gate answers "met" so a broken check cannot freeze an advance, and the publisher raises so the check run says it could not read rather than that the criterion is satisfied.
+  it('RAISES where the fail-open one answers `met`', async () => {
+    const { db } = await import('../db/client.js');
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
+    const original = (db as any).select;
+    // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
+    (db as any).select = () => {
+      throw new Error('connection reset');
+    };
+    await expect(missingWorkEvidenceStrict('iss-1')).rejects.toThrow('connection reset');
     expect(await findMissingWorkEvidence('iss-1')).toBeNull();
     // biome-ignore lint/suspicious/noExplicitAny: test-only mock override
     (db as any).select = original;

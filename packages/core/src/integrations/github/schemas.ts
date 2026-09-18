@@ -8,6 +8,8 @@ export const githubConfigBase = z.object({
   owner: z.string().min(1).max(200).optional(),
   repo: z.string().min(1).max(200).optional(),
   apiBaseUrl: z.string().url().max(500).optional(),
+  // cm:guard ABSENT means on, and that is the whole of the default. ISS-1072 publishes `forge/issue-contract` on every bound repository; reading an absent key as off would ship a feature that runs nowhere, and nobody finds that out until someone asks why no check ever appeared.
+  contractCheck: z.boolean().optional(),
   ...releaseChannelFields,
 });
 
@@ -23,5 +25,7 @@ export const GITHUB_BINDING_CONFIG_KEYS = [
   'installationId',
   'owner',
   'repo',
+  // cm:guard binding-tier, with the repository it is about. One App serves many installations and many repositories, so a connection-tier switch would turn the check off for every repository an operator wanted it off for one of — and `splitProviderConfig` drops from the binding every key missing from this list, so leaving it out makes the switch silently unsettable.
+  'contractCheck',
   ...RELEASE_CHANNEL_KEYS,
 ] as const;

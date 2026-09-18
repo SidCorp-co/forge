@@ -10,6 +10,7 @@
 
 import { logger } from '../../logger.js';
 import { buildRepoClient, GitHubClientError, type GitHubRepoClient } from './client.js';
+import { publishForStoredPullRequest } from './contract-check.js';
 import {
   applyCheckRunEvent,
   applyPullRequestEvent,
@@ -98,6 +99,8 @@ async function onPullRequest(ctx: DeliveryContext, payload: PullRequestPayload):
   const got = clientFor(ctx);
   if (got.client) await refreshStoredPullRequest(got.client, row.id);
   else await storeRefreshRefusal([row], got.reason);
+  // cm:guard the contract check is published from THIS arm and from no other. A `check_run` delivery must never reach it: Forge's own run comes back through that door, so publishing there is a loop that re-publishes on its own echo forever — and a check run changes nothing the tracker's contract answers, so there is nothing to recompute either way. A `push` does not reach it because a push moves a BASE, and the criteria are about the issue's record rather than about what the head is behind by.
+  await publishForStoredPullRequest(row.id);
   return written;
 }
 

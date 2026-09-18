@@ -10,6 +10,7 @@ import {
 import { actorAgencies, actorTypes } from '../db/schema-activity.js';
 import { refreshModuleKnowledgeForIssue } from '../labels/module-knowledge-refresh.js';
 import { type StepHandoffPayload, stepHandoffSchema } from '../memory/step-handoff-schema.js';
+import { hooks } from './hooks.js';
 
 /**
  * ISS-381 (2.1) — derive the unified verdict column value from a handoff
@@ -140,6 +141,8 @@ export async function writeIssueContext(
         actor: validated.actor,
       });
     }
+    // cm:guard the handoff is what `work-evidence.ts` reads a commit and a file list out of, so writing one can move the `work_evidence` criterion from unmet to met with nothing on the `issues` row changing (ISS-1072). Without this line a check run keeps reporting missing evidence for an issue whose evidence arrived.
+    await announceContractInput(validated.projectId, validated.issueId, 'step handoff written');
     return row;
   }
 
@@ -238,5 +241,18 @@ export async function deleteIssueContext(input: DeleteIssueContextInput): Promis
       ),
     )
     .returning({ id: issueStepContexts.id });
+  // cm:guard the DELETE announces as loudly as the write. Evidence removed moves the answer the other way, and a check run left saying `success` because the only handoff behind it was deleted is a green that is now a claim about nothing — the one direction a stale report is dangerous in.
+  if (result.length > 0) {
+    await announceContractInput(validated.projectId, validated.issueId, 'step handoff deleted');
+  }
   return result.length;
+}
+
+/** ISS-1072 — a handoff moved, so the contract's answer for this issue may have. */
+async function announceContractInput(
+  projectId: string,
+  issueId: string,
+  reason: string,
+): Promise<void> {
+  await hooks.emit('contractInputChanged', { projectId, issueId, reason });
 }
