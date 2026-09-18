@@ -72,7 +72,7 @@ export const FAILURE_CAUSES = [
    *  turn had begun ever arrived. NAMED FOR WHAT WAS OBSERVED and not for what
    *  it usually means: core sees reports, never the pane, so silence past the
    *  quiet threshold establishes that no turn was REPORTED and never that none
-   *  ran. Writers: jobs/loop-monitor.ts (the quiet arm of the queue hop), and
+   *  ran. Writers: jobs/queue-hop.ts (the quiet arm of the queue hop), and
    *  the runner's `turn_evidence::never_started_reason` through `CAUSE_RULES`,
    *  which is the reading that CAN say more because it watches the pane
    *  (ISS-1101, pairing with ISS-1096). New; no live rows by construction. */

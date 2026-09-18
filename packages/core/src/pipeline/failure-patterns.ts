@@ -109,9 +109,10 @@ const re =
  * provider or Forge served it, and guessing is the same error in the other
  * direction.
  *
- * A generic `timeout` deliberately has no rule. The named timeout hops
- * (`queue_timeout`, `heartbeat_timeout`, `no_client_ack`) are written as
- * literals by `jobs/loop-monitor.ts` and never reach this table, so a bare
+ * A generic `timeout` deliberately has no rule. The named session-hop causes
+ * (`queue_timeout` and `turn_never_reported` from `jobs/queue-hop.ts`,
+ * `heartbeat_timeout` and `no_client_ack` from `jobs/loop-monitor.ts`) are
+ * written as literals and never reach this table, so a bare
  * "timed out" here is a cause nobody has diagnosed yet — recording it as
  * `unclassified` is the honest answer and puts it on the counted surface,
  * which is the whole point of the invariant.

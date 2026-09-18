@@ -356,7 +356,8 @@ type SessionAlarmRow = {
 /**
  * DEMOTED (ISS-449) — alarm-only mirror of the loop monitor's session hops
  * (claim queue-timeout / heartbeat-stale / no-client). Detection predicates
- * are kept in lockstep with `reapZombieSessions` (jobs/loop-monitor.ts); a
+ * are kept in lockstep with `reapZombieSessions` (jobs/loop-monitor.ts) and
+ * with the two queue arms it calls (jobs/queue-hop.ts); a
  * match here means the loop missed the row this tick. No terminal writes.
  *
  * For an actual scoped reap (the manual `/agent-sessions/sweep-zombies`
