@@ -9,7 +9,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { and, count, desc, eq, inArray, isNull, sql } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
 import { mintPat } from '../auth/pat.js';

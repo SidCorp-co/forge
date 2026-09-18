@@ -30,7 +30,6 @@ let app: import('hono').Hono<AppVars>;
 let accounts: typeof import('../../src/orgs/agent-accounts.js');
 let credential: typeof import('../../src/devices/credential.js');
 let authz: typeof import('../../src/lib/authz.js');
-let handles: typeof import('../../src/conversations/handles.js');
 
 beforeAll(async () => {
   harness = await setupTestDatabase();
@@ -44,7 +43,6 @@ beforeAll(async () => {
   accounts = await import('../../src/orgs/agent-accounts.js');
   credential = await import('../../src/devices/credential.js');
   authz = await import('../../src/lib/authz.js');
-  handles = await import('../../src/conversations/handles.js');
   ({ app } = (await import('../../src/index.js')) as unknown as {
     app: import('hono').Hono<AppVars>;
   });
