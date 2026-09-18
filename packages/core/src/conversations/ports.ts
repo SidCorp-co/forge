@@ -76,6 +76,12 @@ export interface ConversationTransport {
    */
   // cm:guard declared by the TRANSPORT and never inferred from its name, because the store names no transport: a channel whose room is a chat client's own has a shape the client decided and `assertVenueMatches` holds it to; a room Forge itself owns has nothing outside it to disagree with, and its shape may move with its members (ISS-1034 criteria 41-46).
   shapeFollowsMembership?: boolean;
+  /**
+   * The prefix every venue id on the same server as this one shares, or null
+   * where the transport has one server only. Absent: one server.
+   */
+  // cm:guard declared by the TRANSPORT, because only it knows how its venue ids are built: a Rocket.Chat message id is unique within one installation, so a lookup that asks "did our handle post this id" has to ask it within the server the room is on, and the store reads this prefix rather than parsing an id whose shape is not its business (ISS-1087 criteria 13, 14; whole-set review F2).
+  venueScope?(externalId: string): string | null;
 }
 
 /** The inbound half: typed to the transport's own frame, so it is called where that frame exists. */

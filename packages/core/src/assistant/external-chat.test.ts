@@ -246,6 +246,22 @@ describe('runExternalChatTurn — what a turn writes to the room it reads', () =
     expect(out.reply).toBe('The answer is 42.');
   });
 
+  // cm:guard `questionInHistory` shows the model the window ONCE: the collector wrote it as rows, and a turn that appended `message` again would show the same text twice and spend a slot of the bounded history on the copy (ISS-1087).
+  it('does not append a question that is already in the history, and persists nothing under `nothing`', async () => {
+    persisted.length = 0;
+    selectCall = 0;
+    seenRequests.length = 0;
+    await runExternalChatTurn({
+      ...base,
+      message: 'asked',
+      record: 'nothing',
+      questionInHistory: true,
+    });
+    const messages = seenRequests[0]?.messages as Array<{ role: string; content: string }>;
+    expect(messages.filter((m) => m.role === 'user' && /asked/.test(m.content))).toEqual([]);
+    expect(persisted).toEqual([]);
+  });
+
   it('writes nothing at all under `nothing`, so a corrective retry files no words the speaker never said', async () => {
     persisted.length = 0;
     selectCall = 0;

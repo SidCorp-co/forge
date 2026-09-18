@@ -195,7 +195,7 @@ describe('the PATCH body is refused by name rather than answered with a no-op', 
     const res = await patch(filed.id, {});
     expect(res.status).toBe(400);
     expect(JSON.stringify(await res.json())).toContain(
-      'a PATCH body must carry `title` (a string or null) or `archived` (a boolean), or both',
+      'a PATCH body must carry `title` (a string or null), `archived` (a boolean) or `presence` (an object or null)',
     );
     const back = await store.getConversation(filed.id);
     expect(back?.title).toBe('untouched');

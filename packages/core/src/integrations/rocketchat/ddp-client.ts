@@ -34,6 +34,29 @@ export interface RocketChatIncomingMessage {
   tmid?: string | undefined;
   /** Images uploaded with the message, as absolute credentialed refs. */
   images: RocketChatImageRef[];
+  /**
+   * What this message replies to: the quoted message's id where it quotes one,
+   * else the thread parent, else undefined (ISS-1087).
+   */
+  replyToId?: string | undefined;
+}
+
+// cm:guard the QUOTE wins over the thread parent: a message inside a thread that quotes a specific message is answering that one, and the thread root is where it was said. Rocket.Chat carries a quote only as a `?msg=<id>` link, in `attachments[].message_link` and again in the text, so both are read (ISS-1087 criteria 9-11).
+const QUOTE_LINK_RE = /\?msg=([A-Za-z0-9]+)/;
+export function replyTargetOf(m: {
+  msg?: unknown;
+  tmid?: unknown;
+  attachments?: unknown;
+}): string | undefined {
+  const attachments = Array.isArray(m.attachments) ? m.attachments : [];
+  for (const a of attachments) {
+    const link = (a as { message_link?: unknown })?.message_link;
+    const hit = typeof link === 'string' ? QUOTE_LINK_RE.exec(link) : null;
+    if (hit) return hit[1];
+  }
+  const inText = typeof m.msg === 'string' ? QUOTE_LINK_RE.exec(m.msg) : null;
+  if (inText) return inText[1];
+  return typeof m.tmid === 'string' ? m.tmid : undefined;
 }
 
 export type DdpClientState =
@@ -87,6 +110,7 @@ export function parseStreamMessage(arg: unknown, serverUrl = ''): RocketChatInco
     isEdited: m.editedAt != null,
     tmid: typeof m.tmid === 'string' ? m.tmid : undefined,
     images: extractMessageImages(m as Parameters<typeof extractMessageImages>[0], serverUrl),
+    replyToId: replyTargetOf(m),
   };
 }
 

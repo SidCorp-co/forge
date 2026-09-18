@@ -18,6 +18,7 @@ import {
   type ConversationShape,
   conversationParticipants,
   conversations,
+  type RoomPresence,
 } from '../db/schema-conversations.js';
 import type { Executor } from './db-executor.js';
 
@@ -34,6 +35,8 @@ export interface ConversationRow {
   title: string | null;
   /** Set = archived: out of the default list, every message still readable by id. */
   archivedAt: Date | null;
+  /** The room's own routing thresholds, or null where it set none (ISS-1087). */
+  presence: RoomPresence | null;
 }
 
 export const selection = {
@@ -44,6 +47,7 @@ export const selection = {
   mode: conversations.mode,
   title: conversations.title,
   archivedAt: conversations.archivedAt,
+  presence: conversations.presence,
 };
 
 /** Which side of the archive a list is asking for. */
@@ -161,6 +165,23 @@ export async function renameConversation(
 // archiving a room is not something being said in it — bumping it would float a room to the top of
 // the archived list for having been put there, and drop it to the bottom of the live list on the
 // way back.
+/**
+ * Set or clear the room's own thresholds; the caller validated the shape.
+ */
+// cm:guard the WHOLE value is written and never patched key by key: a room's override is one small object an admin reads back as a unit, and a per-key merge here would leave a key nobody can unset short of sending the others again. Null clears it (ISS-1087 criteria 1, 2).
+export async function setConversationPresence(
+  conversationId: string,
+  presence: RoomPresence | null,
+  tx: Executor = defaultDb,
+): Promise<ConversationRow | null> {
+  const [row] = await tx
+    .update(conversations)
+    .set({ presence, updatedAt: new Date() })
+    .where(eq(conversations.id, conversationId))
+    .returning(selection);
+  return row ?? null;
+}
+
 export async function setConversationArchived(
   conversationId: string,
   archived: boolean,

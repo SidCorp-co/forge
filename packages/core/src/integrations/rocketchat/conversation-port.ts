@@ -148,6 +148,11 @@ function toHistory(
 export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFrame> = {
   adapter: 'rocketchat',
 
+  venueScope(externalId: string): string | null {
+    const parts = parseRocketChatVenueId(externalId);
+    return parts ? `${parts.namespace} ` : null;
+  },
+
   // cm:guard a room whose type cannot be read returns NULL and the caller refuses the message by name; there is no default shape, because `group` makes a direct room need a mention it never gets and `direct` answers unmentioned channel chatter under whoever spoke (ISS-987).
   async resolveVenue(frame: RocketChatFrame): Promise<ConversationVenue | null> {
     const namespace = namespaceFromServerUrl(frame.auth.serverUrl);
@@ -221,7 +226,7 @@ export const rocketChatConversationPorts: ConversationAdapterPorts<RocketChatFra
     const auth = await authForVenue(parts.namespace, parts.rid, venue.projectId);
     if (!auth) return [];
     const messages = parts.tmid
-      ? await fetchThreadMessages(auth, parts.tmid, limit)
+      ? ((await fetchThreadMessages(auth, parts.tmid, limit)) ?? [])
       : await fetchRoomHistory(auth, parts.rid, { count: limit });
     return toHistory(messages, auth.userId);
   },

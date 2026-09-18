@@ -1,6 +1,6 @@
 {
-  "id": "c99b4b18-ab9f-45dd-b992-69eb08275435",
-  "prevId": "5f8f1963-c63f-4870-833f-79e929016900",
+  "id": "61df09c8-ab56-40bd-b6b4-4c0b4d8c59f0",
+  "prevId": "09a9ff74-4e0a-45be-938e-977475248f43",
   "version": "7",
   "dialect": "postgresql",
   "tables": {
@@ -14308,6 +14308,32 @@
       "checkConstraints": {},
       "isRLSEnabled": false
     },
+    "public.backfill_markers": {
+      "name": "backfill_markers",
+      "schema": "",
+      "columns": {
+        "key": {
+          "name": "key",
+          "type": "text",
+          "primaryKey": true,
+          "notNull": true
+        },
+        "completed_at": {
+          "name": "completed_at",
+          "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": true,
+          "default": "now()"
+        }
+      },
+      "indexes": {},
+      "foreignKeys": {},
+      "compositePrimaryKeys": {},
+      "uniqueConstraints": {},
+      "policies": {},
+      "checkConstraints": {},
+      "isRLSEnabled": false
+    },
     "public.session_inbox": {
       "name": "session_inbox",
       "schema": "",
@@ -15402,6 +15428,12 @@
           "primaryKey": false,
           "notNull": false
         },
+        "reply_to_external_id": {
+          "name": "reply_to_external_id",
+          "type": "text",
+          "primaryKey": false,
+          "notNull": false
+        },
         "created_at": {
           "name": "created_at",
           "type": "timestamp with time zone",
@@ -15428,6 +15460,22 @@
             }
           ],
           "isUnique": true,
+          "concurrently": false,
+          "method": "btree",
+          "with": {}
+        },
+        "conversation_messages_external_idx": {
+          "name": "conversation_messages_external_idx",
+          "columns": [
+            {
+              "expression": "external_id",
+              "isExpression": false,
+              "asc": true,
+              "nulls": "last"
+            }
+          ],
+          "isUnique": false,
+          "where": "external_id IS NOT NULL",
           "concurrently": false,
           "method": "btree",
           "with": {}
@@ -15987,6 +16035,12 @@
         "archived_at": {
           "name": "archived_at",
           "type": "timestamp with time zone",
+          "primaryKey": false,
+          "notNull": false
+        },
+        "presence": {
+          "name": "presence",
+          "type": "jsonb",
           "primaryKey": false,
           "notNull": false
         },

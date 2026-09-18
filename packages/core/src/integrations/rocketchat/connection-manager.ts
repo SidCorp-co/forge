@@ -362,6 +362,7 @@ class RocketChatConnectionManager {
       speakerKey: m.userId,
       speakerLabel: m.username ?? null,
       externalMessageId: m.id,
+      replyToExternalId: m.replyToId ?? null,
       images: m.images,
       manySpeakersPrincipalUserId: route.principalUserId,
     });
