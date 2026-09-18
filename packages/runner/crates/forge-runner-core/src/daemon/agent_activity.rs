@@ -130,6 +130,9 @@ pub struct Activity {
     /// Bumped by every accepted event, so a caller can prove a NEW turn began
     /// rather than reading a turn that was already running as its own.
     pub sequence: u64,
+    /// How many prompts this session has ACCEPTED, for the life of the session.
+    // cm:guard monotonic, and the conversation void below deliberately does not touch it. The void drops stale CLAIMS about a turn — a start with no end, a child that never reported back — because those gate a pane forever; a tally of how many turns began is not a claim about anything still running, and resetting it would make a turn taken after a `/clear` read as no turn at all. `master.rs` reads exactly this to tell a nudge that was never picked up from one that was, and that reading must survive a resume.
+    pub prompts: u64,
 }
 
 impl Activity {
@@ -167,6 +170,7 @@ impl Activities {
             conversation: None,
             awaiting_permission: false,
             sequence: 0,
+            prompts: 0,
         });
         // cm:guard a DIFFERENT conversation voids every claim before the event is applied, and this is the backstop for the exits no hook reports: `/clear`, a relaunch and a resume all leave the pane alive with a new `session_id` and emit nothing terminating, so claims from the old conversation would otherwise gate the pane forever. Scoped to claims ABOUT the conversation — this module holds no evidence about OS processes, which is the thing such a void must never take with it.
         if let Some(seen) = r.conversation {
@@ -194,6 +198,7 @@ impl Activities {
             Event::PromptSubmitted => {
                 a.turn_started_at = Some(at);
                 a.awaiting_permission = false;
+                a.prompts += 1;
             }
             // cm:guard a permission wait is cleared by the NEXT boundary and never by a timer: the question stands until the agent moves, and a wait that expired on its own would read as progress nobody made.
             Event::PermissionRequested => a.awaiting_permission = true,

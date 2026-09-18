@@ -224,12 +224,75 @@ struct MasterState {
     name: String,
     /// When this project's pool last held anything at all.
     last_work: Instant,
-    /// The work this master was last nudged about, and when.
-    last_nudge: Option<(u64, Instant)>,
+    /// The work this master was last nudged about, when, and what its own hooks
+    /// had reported by then.
+    last_nudge: Option<Nudge>,
     /// Whether this process has already said that the live pane's MCP
     /// configuration is behind what core resolves.
     // cm:guard in-process ON PURPOSE, and a daemon restart deliberately re-reports once. The alternative is a file, which would have to be swept and could outlive the pane it describes; a duplicate line after a restart costs a reader one glance, while a silence costs the operator the reason their master reaches no tools.
     mcp_stale_reported: bool,
+}
+
+/// One nudge, and the evidence a later sweep judges it by.
+#[derive(Debug, Clone, Copy)]
+struct Nudge {
+    digest: u64,
+    at: Instant,
+    /// The master's accepted-prompt count at the moment it was nudged, or `None`
+    /// where the session had never reported to `agent_activity` at all. A later
+    /// count strictly above this one is the proof that a turn BEGAN after the
+    /// nudge, which is the only thing that makes the nudge answered.
+    prompts: Option<u64>,
+}
+
+/// What the master did with the nudge it was last sent, as its own hooks said.
+// cm:guard every arm here is something the AGENT reported through `forge-runner hook`, never something read off the pane. That distinction is the whole of `agent_activity`'s existence and the whole of ISS-933 criteria 17 and 18: transcript growth, a byte count and a quiet window are all a guess about a process, and a `UserPromptSubmit` frame is the process saying so. Adding an arm derived from anything but a hook frame puts the deleted quiet gate back.
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum SinceNudge {
+    /// This session has never reported anything, so there is no evidence either way.
+    Unreported,
+    /// Not one prompt accepted since the nudge: it is sitting in a composer, or
+    /// the pane never ran it.
+    NoTurn,
+    /// A turn began after the nudge and is still running, or a child of it is.
+    Working,
+    /// A turn began after the nudge and stopped on a question a human owes.
+    AwaitingPermission,
+    /// A turn began after the nudge and ended on an API or model error.
+    Failed,
+    /// A turn began after the nudge and ended.
+    Ran,
+}
+
+/// Read the evidence for one master, off what that session reported.
+fn since_nudge(seen: Option<&agent_activity::Activity>, sent_at: Option<u64>) -> SinceNudge {
+    let (Some(now), Some(then)) = (seen, sent_at) else {
+        return SinceNudge::Unreported;
+    };
+    if now.prompts <= then {
+        return SinceNudge::NoTurn;
+    }
+    match now.doing() {
+        agent_activity::Doing::Working => SinceNudge::Working,
+        agent_activity::Doing::AwaitingPermission => SinceNudge::AwaitingPermission,
+        agent_activity::Doing::Idle => {
+            if now.last_event == agent_activity::Event::StoppedFailed {
+                SinceNudge::Failed
+            } else {
+                SinceNudge::Ran
+            }
+        }
+    }
+}
+
+/// Whether the ceiling owes this master the same work a second time.
+// cm:guard the ceiling itself is NOT deleted and must not be — `9a7c34b99` states why it exists, and the two cases it exists for are both here: a pass lost to a wedged pane is `NoTurn`, and a pass that died on an account limit which has since cleared out of band is `Failed`. What changed in ISS-1100 is only what justifies the repeat. Collapsing this to `true` restores a pass every five minutes for as long as a blocker stands (1,630 in 24h, measured on forge-vm 2026-09-19); collapsing it to `false` abandons both recoveries with no operator anywhere to notice.
+// cm:guard `Unreported` retries, and every unknown must keep doing so: a master whose hooks are not installed, and one this daemon has restarted under, both read that way, and a mistake here has to cost a duplicate pass rather than a missed one.
+fn retry_owed(since: SinceNudge) -> bool {
+    match since {
+        SinceNudge::Unreported | SinceNudge::NoTurn | SinceNudge::Failed => true,
+        SinceNudge::Working | SinceNudge::AwaitingPermission | SinceNudge::Ran => false,
+    }
 }
 
 /// What the master is being asked to look at, as one comparable value.
@@ -251,11 +314,15 @@ fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
 }
 
 /// Whether the master should hear about this pool now.
-// cm:guard TRUE is the safe answer and every unknown returns it: a master with no recorded nudge is nudged, and changed work is nudged immediately rather than waiting out the period. Only the exact case "same ids, seen recently" is held back, so a mistake here costs a duplicate pass, never a missed one.
-fn nudge_due(prev: Option<(u64, Instant)>, digest: u64, now: Instant) -> bool {
+// cm:guard TRUE is the safe answer and every unknown returns it: a master with no recorded nudge is nudged, and changed work is nudged immediately rather than waiting out the period.
+// cm:guard CHANGED work never consults the evidence, and that order is the answer rather than an optimisation: new work is new whatever the pane is doing, and asking `retry_owed` about it would let a master that happens to be mid-turn miss an issue that appeared while it ran.
+fn nudge_due(prev: Option<Nudge>, digest: u64, now: Instant, since: SinceNudge) -> bool {
     match prev {
         None => true,
-        Some((seen, at)) => seen != digest || now.saturating_duration_since(at) >= NUDGE_REFRESH,
+        Some(last) if last.digest != digest => true,
+        Some(last) => {
+            now.saturating_duration_since(last.at) >= NUDGE_REFRESH && retry_owed(since)
+        }
     }
 }
 
@@ -318,16 +385,28 @@ impl Masters {
     ///
     /// One call, because a check that did not record would nudge on every
     /// sweep exactly as before.
-    fn claim_nudge(&self, project_id: &str, digest: u64) -> bool {
+    // cm:guard the activity is read by the CALLER and handed in, rather than this method reaching into `Activities` while it holds the registry lock. Two leaf mutexes taken in one order here and the other order anywhere else is a deadlock that appears under load and never in a test.
+    // cm:guard ONE reading of that activity answers both halves — what the last nudge produced, and the mark the NEXT one is judged against. Reading it twice would let a turn that began between the two reads be counted against a nudge that had not been sent yet.
+    fn claim_nudge(
+        &self,
+        project_id: &str,
+        digest: u64,
+        seen: Option<&agent_activity::Activity>,
+    ) -> bool {
         let mut reg = self.0.lock().expect("masters poisoned");
         let Some(m) = reg.live.get_mut(project_id) else {
             return false;
         };
         let now = Instant::now();
-        if !nudge_due(m.last_nudge, digest, now) {
+        let since = since_nudge(seen, m.last_nudge.and_then(|n| n.prompts));
+        if !nudge_due(m.last_nudge, digest, now, since) {
             return false;
         }
-        m.last_nudge = Some((digest, now));
+        m.last_nudge = Some(Nudge {
+            digest,
+            at: now,
+            prompts: seen.map(|a| a.prompts),
+        });
         true
     }
 
@@ -743,7 +822,19 @@ async fn sweep(
             continue;
         }
 
-        if masters.claim_nudge(&runner.project_id, work_digest(&admissible)) {
+        // cm:guard read through the master's OWN session id, off the shared `Activities` the
+        // control socket writes into — `run_exit` carries the same guard and for the same reason: a
+        // second map here would answer `None` for every session forever, which `retry_owed` reads
+        // as "never reported" and re-nudges on, so the fix would be inert, green, and
+        // indistinguishable from working.
+        let reported = masters
+            .get(&runner.project_id)
+            .and_then(|(session_id, _)| activity.get(&session_id));
+        if masters.claim_nudge(
+            &runner.project_id,
+            work_digest(&admissible),
+            reported.as_ref(),
+        ) {
             nudge_master(masters, &runner.project_id, &resolved.slug).await;
         }
     }
@@ -1881,7 +1972,7 @@ fn nudge() -> String {
 }
 
 /// Tell a master there is something to look at.
-// cm:guard nothing gates this on the master looking idle. Residency used to be policed from outside — transcript growth read as liveness, a quiet window before prompting, a ceiling that killed — and every one of those inferred a process state from a pane's byte count (ISS-933 criteria 17 and 18). `claim_nudge` is NOT that gate and must not become it: it reads the admissible WORK's identity, never the pane, so it cannot be wrong about whether the master is alive or working.
+// cm:guard nothing gates this on the master LOOKING idle. Residency used to be policed from outside — transcript growth read as liveness, a quiet window before prompting, a ceiling that killed — and every one of those inferred a process state from a pane's byte count (ISS-933 criteria 17 and 18). `claim_nudge` is NOT that gate and must not become it. What it reads is the admissible WORK's identity, and — since ISS-1100, and only to decide whether to REPEAT a nudge for work it has already sent — what the master's own hooks reported through `forge-runner hook`. The pane is still never read: a `UserPromptSubmit` frame is the agent saying a turn began, which is the one thing a screen could never tell anybody, and it is why `agent_activity` exists at all.
 // cm:guard an extra nudge costs a full agent pass, NOT a line in a composer — ~$0.18 measured on forge-vm 2026-09-08, where 1,354 unconditional nudges over 95 minutes bought 0 claims and $245. That is why the caller gates on `claim_nudge`; a new call site that skips it reinstates a spend proportional to sweeps.
 async fn nudge_master(masters: &Arc<Masters>, project_id: &str, slug: &str) {
     let Some((_, name)) = masters.get(project_id) else {
@@ -3536,32 +3627,173 @@ mod give_back_tests {
             .expect("admissible fixture")
     }
 
+    /// One session's activity, built by feeding real hook frames through the real
+    /// state machine — `awaiting_permission` is private to `agent_activity`, so a
+    /// struct literal here is not available, and that is the better test anyway.
+    fn reported(events: &[(agent_activity::Event, Option<&str>)]) -> agent_activity::Activity {
+        let acts = agent_activity::Activities::new();
+        let mut last = None;
+        for (event, subject) in events {
+            last = Some(acts.record(
+                "s1",
+                agent_activity::Report {
+                    event: *event,
+                    at: 0,
+                    subject: *subject,
+                    conversation: Some("c1"),
+                },
+            ));
+        }
+        last.expect("a fixture needs at least one event")
+    }
+
+    fn sent(digest: u64, at: Instant, prompts: Option<u64>) -> Option<Nudge> {
+        Some(Nudge {
+            digest,
+            at,
+            prompts,
+        })
+    }
+
+    fn a_while_ago() -> Instant {
+        Instant::now()
+            .checked_sub(NUDGE_REFRESH)
+            .expect("clock older than the refresh window")
+    }
+
     #[test]
     fn a_master_with_no_recorded_nudge_is_nudged() {
-        assert!(nudge_due(None, 7, Instant::now()));
+        assert!(nudge_due(None, 7, Instant::now(), SinceNudge::Ran));
     }
 
     // cm:guard the falsifying case: everything else here passes against the unconditional nudge this replaced.
     #[test]
     fn the_same_work_twice_in_a_row_is_not_nudged_twice() {
         let now = Instant::now();
-        assert!(!nudge_due(Some((7, now)), 7, now));
+        assert!(!nudge_due(sent(7, now, Some(0)), 7, now, SinceNudge::NoTurn));
     }
 
+    // cm:guard NEW work is nudged whatever the pane is doing, and this arm is the one that must not learn to consult the evidence: an issue that appears while the master is mid-turn is still an issue it has not been told about.
     #[test]
     fn changed_work_is_nudged_without_waiting_out_the_period() {
         let now = Instant::now();
-        assert!(nudge_due(Some((7, now)), 8, now));
+        for since in [
+            SinceNudge::Ran,
+            SinceNudge::Working,
+            SinceNudge::AwaitingPermission,
+        ] {
+            assert!(
+                nudge_due(sent(7, now, Some(3)), 8, now, since),
+                "new work must reach the master however {since:?} reads"
+            );
+        }
     }
 
-    // cm:guard the ceiling on silence, and the test that has to fail if anyone turns this backoff into a skip. Unchanged work must STILL reach the master on `NUDGE_REFRESH`, because a pass lost to a wedged pane or a limit cleared out of band is otherwise never retried.
+    // cm:guard the ceiling on silence, and the test that has to fail if anyone turns this backoff into a skip. Unchanged work must STILL reach the master past `NUDGE_REFRESH` where the last nudge produced no completed turn, because a pass lost to a wedged pane or a limit cleared out of band is otherwise never retried (`9a7c34b99`).
     #[test]
-    fn unchanged_work_is_nudged_again_once_the_period_is_up() {
-        let now = Instant::now();
-        let then = now
-            .checked_sub(NUDGE_REFRESH)
-            .expect("clock older than the refresh window");
-        assert!(nudge_due(Some((7, then)), 7, now));
+    fn unchanged_work_is_nudged_again_where_the_last_one_produced_no_turn() {
+        assert!(nudge_due(
+            sent(7, a_while_ago(), Some(4)),
+            7,
+            Instant::now(),
+            SinceNudge::NoTurn
+        ));
+    }
+
+    #[test]
+    fn unchanged_work_is_nudged_again_where_the_master_has_never_reported() {
+        assert!(nudge_due(
+            sent(7, a_while_ago(), None),
+            7,
+            Instant::now(),
+            SinceNudge::Unreported
+        ));
+    }
+
+    // cm:guard the limit-cleared-out-of-band half of the ceiling. Claude Code emits `StopFailure` INSTEAD of `Stop` after a model or API error, so a turn that died on the account's window reads here and nowhere else; without this arm the one thing the ceiling was built for is the one thing it would stop doing.
+    #[test]
+    fn unchanged_work_is_nudged_again_where_the_turn_died_on_an_error() {
+        assert!(nudge_due(
+            sent(7, a_while_ago(), Some(4)),
+            7,
+            Instant::now(),
+            SinceNudge::Failed
+        ));
+    }
+
+    // cm:guard THE case ISS-1100 is about: the pass ran, in full, and decided. Repeating it buys a second identical answer at the price of a full agent pass — 1,630 of them in 24h on forge-vm, 258 to a project whose whole candidate set was blocked.
+    #[test]
+    fn unchanged_work_is_withheld_where_the_last_nudge_produced_a_turn() {
+        for since in [
+            SinceNudge::Ran,
+            SinceNudge::Working,
+            SinceNudge::AwaitingPermission,
+        ] {
+            assert!(
+                !nudge_due(sent(7, a_while_ago(), Some(4)), 7, Instant::now(), since),
+                "a master that {since:?} has answered this work already"
+            );
+        }
+    }
+
+    // cm:guard a permission stop withholds, and the reason is not only cost: `nudge_master` types a line and presses Enter, so a keystroke sent into a pane holding a permission question ANSWERS that question with the pass prompt. The human still owes an answer either way, and nothing here may supply one.
+    #[test]
+    fn a_master_stopped_on_a_permission_question_is_left_alone() {
+        let a = reported(&[
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::PermissionRequested, None),
+        ]);
+        assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::AwaitingPermission);
+        assert!(!retry_owed(SinceNudge::AwaitingPermission));
+    }
+
+    #[test]
+    fn a_session_that_never_reported_reads_as_no_evidence() {
+        assert_eq!(since_nudge(None, Some(3)), SinceNudge::Unreported);
+        let a = reported(&[(agent_activity::Event::Stopped, None)]);
+        assert_eq!(
+            since_nudge(Some(&a), None),
+            SinceNudge::Unreported,
+            "a nudge sent before this session ever reported has no mark to compare against"
+        );
+        assert!(retry_owed(SinceNudge::Unreported));
+    }
+
+    // cm:guard the evidence is a PROMPT accepted, not any hook frame. A child of an earlier pass finishing bumps `sequence` while the nudge still sits unsubmitted in the composer; reading that as a turn would strand the wedged pane this ceiling exists to rescue.
+    #[test]
+    fn a_child_of_an_earlier_pass_is_not_a_turn_the_nudge_produced() {
+        let a = reported(&[
+            (agent_activity::Event::SubagentStarted, Some("child-1")),
+            (agent_activity::Event::SubagentStopped, Some("child-1")),
+        ]);
+        assert!(a.sequence > 0, "the frames were accepted");
+        assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::NoTurn);
+    }
+
+    #[test]
+    fn a_turn_that_began_and_is_still_running_reads_as_working() {
+        let a = reported(&[(agent_activity::Event::PromptSubmitted, None)]);
+        assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::Working);
+    }
+
+    #[test]
+    fn a_turn_that_began_and_ended_reads_as_ran() {
+        let a = reported(&[
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::Stopped, None),
+        ]);
+        assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::Ran);
+        assert!(!retry_owed(SinceNudge::Ran));
+    }
+
+    #[test]
+    fn a_turn_that_ended_on_an_error_reads_as_failed() {
+        let a = reported(&[
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::StoppedFailed, None),
+        ]);
+        assert_eq!(since_nudge(Some(&a), Some(0)), SinceNudge::Failed);
+        assert!(retry_owed(SinceNudge::Failed));
     }
 
     #[test]
@@ -3602,20 +3834,84 @@ mod give_back_tests {
         remember(&masters, "p1", &session);
 
         assert!(
-            masters.claim_nudge("p1", 7),
+            masters.claim_nudge("p1", 7, None),
             "the first sight of work nudges"
         );
         assert!(
-            !masters.claim_nudge("p1", 7),
+            !masters.claim_nudge("p1", 7, None),
             "the same work on the next sweep must not spend another pass"
         );
-        assert!(masters.claim_nudge("p1", 8), "new work nudges at once");
+        assert!(masters.claim_nudge("p1", 8, None), "new work nudges at once");
+    }
+
+    // cm:guard the whole of ISS-1100's box half, end to end through the real registry: the same
+    // work, past the ceiling, with the master's own hooks saying it answered. Delete the evidence
+    // term and this is the assertion that goes red.
+    #[test]
+    fn a_master_that_answered_the_last_nudge_is_not_nudged_again_for_the_same_work() {
+        let masters = Arc::new(Masters::new());
+        let session = master_api::MasterSession {
+            session_id: "s1".into(),
+            name: "forge-master-p1".into(),
+            created: true,
+        };
+        remember(&masters, "p1", &session);
+
+        let before = reported(&[(agent_activity::Event::Stopped, None)]);
+        assert!(masters.claim_nudge("p1", 7, Some(&before)));
+        age_last_nudge(&masters, "p1");
+
+        let answered = reported(&[
+            (agent_activity::Event::Stopped, None),
+            (agent_activity::Event::PromptSubmitted, None),
+            (agent_activity::Event::Stopped, None),
+        ]);
+        assert!(
+            !masters.claim_nudge("p1", 7, Some(&answered)),
+            "the ceiling came round, the work is the same, and the master's own hooks say it ran the pass"
+        );
+
+        let wedged = reported(&[(agent_activity::Event::Stopped, None)]);
+        age_last_nudge(&masters, "p1");
+        assert!(
+            masters.claim_nudge("p1", 7, Some(&wedged)),
+            "no prompt accepted since the nudge is a pass that never ran, and the ceiling exists for exactly that"
+        );
+    }
+
+    /// Push a project's recorded nudge back past the refresh window.
+    fn age_last_nudge(masters: &Arc<Masters>, project_id: &str) {
+        let mut reg = masters.0.lock().expect("masters poisoned");
+        let m = reg.live.get_mut(project_id).expect("no such master");
+        let last = m.last_nudge.as_mut().expect("never nudged");
+        last.at = a_while_ago();
     }
 
     #[test]
     fn a_project_with_no_master_is_never_nudged() {
         let masters = Masters::new();
-        assert!(!masters.claim_nudge("nobody", 7));
+        assert!(!masters.claim_nudge("nobody", 7, None));
+    }
+
+    // cm:guard the repeat decision reads what the AGENT reported and nothing else. The gate ISS-933 deleted read a pane's bytes, and the one thing keeping this from being that gate under a new name is that every input to it comes off a hook frame.
+    #[test]
+    fn the_repeat_decision_reads_only_what_the_agent_reported() {
+        let production = THIS_SOURCE.split("#[cfg(test)]").next().unwrap();
+        let body = production
+            .split("fn since_nudge(")
+            .nth(1)
+            .and_then(|r| r.split("fn work_digest(").next())
+            .expect("the repeat decision is gone");
+        for banned in ["capture", "transcript", "terminal::", "tmux", "len()", "elapsed"] {
+            assert!(
+                !body.contains(banned),
+                "`{banned}` in the repeat decision is the quiet gate coming back with a new name (ISS-933 criteria 17 and 18)"
+            );
+        }
+        assert!(
+            body.contains("agent_activity::"),
+            "every input to this decision is a frame the agent sent through `forge-runner hook`"
+        );
     }
 
     // cm:guard the ratchet on the call SITE, not the helper: `claim_nudge` is worth nothing if a later edit calls `nudge_master` beside it rather than inside it, and that mistake restores a spend proportional to sweeps with every unit test still green.

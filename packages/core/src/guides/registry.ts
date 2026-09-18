@@ -62,13 +62,13 @@ The same shape costs tokens rather than a stall: a stage lands in a checkout who
     slug: 'issue-dependencies',
     title: 'Issue dependencies',
     summary:
-      'How blocks edges gate dispatch, the merged_at unblock signal, how to set an edge without racing the first dispatch, and why splitting an oversized issue is plain work rather than a lifecycle.',
-    version: 6,
+      'How blocks edges gate dispatch, which blocker statuses release a dependent, how to set an edge without racing the first dispatch, and why splitting an oversized issue is plain work rather than a lifecycle.',
+    version: 7,
     body: `## Issue dependencies
 
 ### Relation kinds
 Edges are directional \`fromIssue --kind--> toIssue\`:
-- \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B cannot dispatch until A's code has reached the base branch — normally, until A has \`merged_at\` set. A reopened issue stays a blocker even if its prior merge stamp remains. A closed issue without \`merged_at\` unblocks B only when the project's base branch cannot be stamped structurally. It is **not** gated on A reaching \`released\`: a blocker parked at a manual release gate already unblocks B the instant its \`merged_at\` is stamped.
+- \`blocks\` — **the only kind that affects dispatch.** A → blocks → B means B is held out of the set a master reads until A reaches \`developed\`. The statuses that release B are \`developed\`, \`testing\`, \`awaiting_release\` and \`closed\`; every other status on A, \`in_progress\` and \`on_hold\` and \`needs_info\` included, keeps holding it. A reopened A blocks again. **It is A's STATUS and not A's \`merged_at\`**: a blocker whose code has landed but which is parked short of \`developed\` still holds B, and no gate anywhere in Forge reads \`merged_at\` to release a dependent. What does release B without touching A is retracting the edge — re-send it with \`validUntil\` in the past — and dropping A, which expires its edges for that same reason.
 - \`relates\`, \`duplicates\`, \`parent\` — grouping labels, no dispatch effect.
 - \`decomposes\` — epic → child. ${WORK_EVIDENCE_WAIVER_NOTE} Ordering between the two is still a \`blocks\` edge.
 
