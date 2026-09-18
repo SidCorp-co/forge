@@ -10,26 +10,52 @@ import {
   CardHeader,
   CardTitle,
   EmptyState,
+  Field,
   HelpButton,
   Icon,
   MonoTag,
+  Select,
 } from "@/design";
+import { useAgentAccounts } from "@/features/agent-accounts/hooks";
+import { agentAddress, agentLabel } from "@/features/agent-accounts/label";
+import { useActiveOrg } from "@/features/orgs/active-org";
 import { formatApiError } from "@/lib/api/error";
+import { useAuth } from "@/providers/auth-provider";
 import { useApproveDevice } from "../hooks";
+
+/** The value the picker carries for "this box is mine", which is not an agent id. */
+const AS_MYSELF = "";
 
 /**
  * `/pair` — the browser approval step of the runner device-login flow. The CLI
  * (`forge-runner login`) opens this page with `?code=XXX`; the signed-in user
  * confirms, binding the pending device-login code to their account. After
  * approval the CLI's poll loop receives the device token.
+ *
+ * An org admin may instead pair the box as one of their organization's AGENTS
+ * (ISS-1093): the credential then belongs to the agent account, is fenced to
+ * that agent's projects, and everything the box files is filed as the agent.
  */
 export function PairScreen() {
   const params = useSearchParams();
   const code = params.get("code")?.trim() ?? "";
   const approve = useApproveDevice();
   const [denied, setDenied] = useState(false);
+  const [asAgent, setAsAgent] = useState<string>(AS_MYSELF);
+
+  const { user } = useAuth();
+  const { activeOrg } = useActiveOrg();
+  // cm:guard the agent list is fetched only for an org ADMIN, because `GET /api/orgs/:orgId/agents`
+  // answers 403 to anybody else and a failed query here would render the picker as an empty
+  // dropdown — a screen telling an admin their organization has no agents when it has several.
+  // The server checks admin on the AGENT's org again at approval (`resolveApprovableAgent`); this
+  // is only so an ordinary member is not shown a control every option of which is refused.
+  const isOrgAdmin = activeOrg?.role === "owner" || activeOrg?.role === "admin";
+  const agentsQ = useAgentAccounts(isOrgAdmin ? (activeOrg?.id ?? null) : null);
+  const agents = agentsQ.data ?? [];
 
   const approved = approve.data?.approved === true;
+  const chosen = agents.find((a) => a.userId === asAgent);
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4 px-6 py-8">
@@ -63,6 +89,12 @@ export function PairScreen() {
               <Banner tone="success">
                 Return to your terminal — the runner will finish pairing automatically.
               </Banner>
+              {chosen && (
+                <Banner tone="attention">
+                  Paired as {agentLabel(chosen)} ({agentAddress(chosen)}). Everything this box files
+                  is filed as that agent.
+                </Banner>
+              )}
               {approve.data?.device && (
                 <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-1.5 text-[13px]">
                   <dt className="text-muted">Label</dt>
@@ -106,6 +138,35 @@ export function PairScreen() {
                 </span>
               </div>
 
+              {isOrgAdmin && agents.length > 0 && (
+                <Field
+                  label="Pair this device as"
+                  hint="An agent's credential reaches that agent's projects. Yours reaches what you can reach."
+                >
+                  <Select
+                    value={asAgent}
+                    onChange={setAsAgent}
+                    options={[
+                      { value: AS_MYSELF, label: `Me — ${user?.email ?? "this account"}` },
+                      ...agents.map((a) => ({
+                        value: a.userId,
+                        label: `${agentLabel(a)} (${agentAddress(a)})`,
+                      })),
+                    ]}
+                  />
+                </Field>
+              )}
+
+              {/* cm:guard the identity is stated in WORDS before the button, not left to be read off
+                  a dropdown's selected row. Approving is what hands a machine an identity for as
+                  long as it holds the token, and the whole reason `resolveApprovableAgent` demands
+                  org admin is that this is not a preference — it is a grant (ISS-1093 criterion 31). */}
+              <Banner tone={chosen ? "attention" : "info"}>
+                {chosen
+                  ? `This box will act as ${agentLabel(chosen)} (${agentAddress(chosen)}) and reach ${chosen.projects.length} project(s) — not as you.`
+                  : "This box will act as you, and reach what you reach."}
+              </Banner>
+
               {approve.isError && <Banner tone="danger">{formatApiError(approve.error)}</Banner>}
 
               <div className="flex items-center justify-end gap-2">
@@ -116,7 +177,9 @@ export function PairScreen() {
                   variant="primary"
                   icon="check"
                   loading={approve.isPending}
-                  onClick={() => approve.mutate(code)}
+                  onClick={() =>
+                    approve.mutate({ pairingCode: code, agentUserId: asAgent || null })
+                  }
                 >
                   Approve device
                 </Button>

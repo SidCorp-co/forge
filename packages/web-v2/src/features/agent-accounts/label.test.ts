@@ -1,12 +1,12 @@
 import { describe, expect, it } from "vitest";
-import { agentAddress, agentLabel, reachOf } from "./label";
+import { agentAddress, agentLabel, agentProjectNames, reachOf } from "./label";
 
 const AGENT = {
   displayName: null as string | null,
   handle: "forge-dev",
   email: "forge-dev.a1b2c3d4e5f6@agents.forge.invalid",
   canAct: true,
-  projectId: "p1",
+  projects: [{ id: "p1", role: "member" }],
   activeTokens: 1,
 };
 
@@ -50,17 +50,44 @@ describe("whether an agent can act", () => {
   });
 
   it("names the different remedy when it belongs to no project", () => {
-    const reach = reachOf({ canAct: false, projectId: "", activeTokens: 0 });
+    const reach = reachOf({ canAct: false, projects: [], activeTokens: 0 });
     expect(reach).toMatchObject({ why: "belongs to no project" });
     expect((reach as { remedy: string }).remedy).toContain("give it a credential");
   });
 
   // cm:guard the two project-less rows are NOT one row: an agent that already holds a credential is told to add a project and nothing else, because minting it a second one changes nothing — the token is fenced to a project and the fence resolves to nothing. Collapsed into one message, the screen sends an admin to mint credentials that cannot help, which is the wasted next step this remedy exists to replace.
   it("does not tell an agent that already holds a credential to mint another", () => {
-    const reach = reachOf({ canAct: false, projectId: "", activeTokens: 2 });
+    const reach = reachOf({ canAct: false, projects: [], activeTokens: 2 });
     expect(reach).toMatchObject({ why: "belongs to no project" });
     const remedy = (reach as { remedy: string }).remedy;
     expect(remedy).toContain("Add it to a project");
     expect(remedy).not.toContain("give it a credential");
+  });
+});
+
+describe("the projects an agent works on (ISS-1093)", () => {
+  const names = (id: string) => ({ p1: "Alpha", p2: "Beta" })[id as "p1" | "p2"];
+
+  // cm:guard several names, in the order the server sent them. An agent covering more
+  // than one project is the whole point of ISS-1093 and a helper that printed only the
+  // first would render exactly what the old singular field did — the reach an admin
+  // grants and the reach the screen reports would disagree with nothing to show it.
+  it("prints every project the agent belongs to", () => {
+    expect(
+      agentProjectNames(
+        { projects: [{ id: "p1", role: "member" }, { id: "p2", role: "member" }] },
+        names,
+      ),
+    ).toBe("Alpha, Beta");
+  });
+
+  it("falls back to the id for a project this caller cannot name", () => {
+    expect(agentProjectNames({ projects: [{ id: "p9", role: "member" }] }, names)).toBe("p9");
+  });
+
+  // cm:guard "none" and never "". An empty cell reads as a column that failed to load,
+  // while this row is exactly the one `reachOf` sends an admin to fix.
+  it("says so when the agent belongs to no project", () => {
+    expect(agentProjectNames({ projects: [] }, names)).toBe("none");
   });
 });

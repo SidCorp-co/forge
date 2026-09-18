@@ -19,6 +19,16 @@ export function agentLabel(agent: Pick<AgentAccountRow, "displayName" | "handle"
   return agent.email;
 }
 
+/** Every project this agent works on, as a person reads them. */
+// cm:guard an agent with no project renders as a named ABSENCE and not as an empty cell: "belongs to no project" is the state `reachOf` sends an admin to fix, and a blank there reads as a column that failed to load.
+export function agentProjectNames(
+  agent: Pick<AgentAccountRow, "projects">,
+  nameOf: (projectId: string) => string | undefined,
+): string {
+  if (agent.projects.length === 0) return "none";
+  return agent.projects.map((p) => nameOf(p.id) ?? p.id).join(", ");
+}
+
 /** The address, as it is typed. */
 export function agentAddress(agent: Pick<AgentAccountRow, "handle">): string {
   return agent.handle ? `@${agent.handle}` : "—";
@@ -31,10 +41,10 @@ export type Reach = { canAct: true } | { canAct: false; why: string; remedy: str
  */
 // cm:guard an agent that cannot act is given a REMEDY and not just a badge. The population this screen exists for is the handles a conversation minted — a name in a room with no token, permanently unable to answer — and "no credential" with no next step is the state that went unnoticed long enough to become this issue.
 export function reachOf(
-  agent: Pick<AgentAccountRow, "canAct" | "projectId" | "activeTokens">,
+  agent: Pick<AgentAccountRow, "canAct" | "projects" | "activeTokens">,
 ): Reach {
   if (agent.canAct) return { canAct: true };
-  if (!agent.projectId) {
+  if (agent.projects.length === 0) {
     return {
       canAct: false,
       why: "belongs to no project",

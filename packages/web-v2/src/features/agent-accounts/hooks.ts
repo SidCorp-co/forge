@@ -2,7 +2,7 @@
 
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { agentAccountsApi } from "./api";
-import type { AgentSelfPatch } from "./types";
+import type { AgentSelfPatch, CreateAgentInput } from "./types";
 
 const keys = {
   list: (orgId: string) => ["agent-accounts", orgId] as const,
@@ -14,6 +14,23 @@ export function useAgentAccounts(orgId: string | null) {
     queryKey: keys.list(orgId ?? ""),
     queryFn: () => agentAccountsApi.list(orgId as string),
     enabled: !!orgId,
+  });
+}
+
+export function useCreateAgent(orgId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (input: CreateAgentInput) => agentAccountsApi.create(orgId as string, input),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.list(orgId ?? "") }),
+  });
+}
+
+export function useSetAgentProjects(orgId: string | null) {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: (args: { agentUserId: string; projectIds: string[] }) =>
+      agentAccountsApi.setProjects(orgId as string, args.agentUserId, args.projectIds),
+    onSuccess: () => qc.invalidateQueries({ queryKey: keys.list(orgId ?? "") }),
   });
 }
 
