@@ -72,8 +72,9 @@ const CHECKS = [
     cmd: ['node', 'scripts/check-flow-coverage.mjs', '--all'],
     scanned: /: (\d+) step\(s\) across/,
     unit: 'flow steps',
-    // cm:guard the skip is only legitimate because CI runs this WITH --require-sources after producing the reports, and ci-parity proves that step exists. Drop it there and this becomes a check that never runs anywhere.
+    // cm:guard the skip is only legitimate because CI runs this WITH --require-sources after producing the reports. `coveredBy` is that claim made checkable: `assertEverySkipIsCovered` reads ci.yml and refuses this entry if the step is not there, so dropping it in CI can no longer leave a check that runs nowhere.
     skipIf: /skipped — (no|stale) coverage report/,
+    coveredBy: 'node scripts/check-flow-coverage.mjs --all --require-sources',
   },
   // cm:guard this gate is what makes the PAT permission menu a proof rather than a habit: `PAT_PERMISSION_RESOURCES` declares reachability per-PREFIX while the property it claims is per-ROUTE, so one unfenced route under an admitted prefix is a project-scoped token reading another project with every handler around it looking correct. Measured on its first run: a text search inside the route span reported 80 of 285 routes unfenced and the three sampled were all its own false positives (a file-local `assertMember`, a service layer, two routers sharing a file) — the invariant is call-graph reachability, not a string, and a checker at 95% noise is worse than none because it teaches the reader to skip it.
   {
@@ -238,7 +239,8 @@ const CHECKS = [
     scanned: /^runner-gates: (\d+) crate file\(s\) in scope/m,
     unit: 'crate files',
     scopeMayBeEmpty: true,
-    skipIf: /skipped — cargo not available/,
+    // cm:guard NO `skipIf` here, ever: it matched a line the checker printed ONLY where there was a
+    // crate change and no cargo, so the one case worth catching exited 0 over six files (ISS-1096).
   },
   // cm:why a Dependabot pull request rewrote `forge-plugin`'s resolution to `git@github.com:` and
   // took all six installing jobs down inside `pnpm install` with exit 128, unnamed for two days (ISS-1045)
@@ -324,6 +326,39 @@ function mergeBase() {
   return git(['merge-base', 'origin/main', 'HEAD']);
 }
 
+// cm:guard a `skipIf` is the one mark that exits 0, so the row must NAME the ci.yml step running the
+// same assertion, and that step must be in the workflow on disk — a comment is not a warrant.
+// cm:guard the runner row is where that was learnt: its warrant was the words "CI runs it" in a
+// checker's own output, true of the step and false of the run, and six files exited 0 (ISS-1096).
+// cm:why fail-closed on an unreadable ci.yml rather than letting the skips through: an uncheckable
+// warrant is the state this refuses, and `ciParity()` names the parser problem for whoever fixes it.
+// cm:edge naming -> .github/workflows/ci.yml — `coveredBy` is matched against `ciSteps()`, which
+// reads `- run:` and `- name:` lines verbatim; reword a step there and the warrant stops resolving
+function assertEverySkipIsCovered() {
+  const declared = CHECKS.filter((c) => c.skipIf);
+  if (declared.length === 0) return;
+  const steps = ciSteps();
+  if (steps === null || steps.length === 0) {
+    console.error(
+      'verify: cannot read the steps out of .github/workflows/ci.yml, so no `skipIf` warrant\n' +
+        'can be checked. Exit 2 — a skip whose CI cover cannot be confirmed is not a skip.\n',
+    );
+    process.exit(2);
+  }
+  const unwarranted = declared.filter((c) => !steps.includes(c.coveredBy));
+  if (unwarranted.length === 0) return;
+  console.error(`\nverify: ${unwarranted.length} check(s) may skip on a warrant nothing proves:`);
+  for (const c of unwarranted) {
+    console.error(`  ${c.label}: coveredBy ${c.coveredBy ? `\`${c.coveredBy}\`` : 'not declared'}`);
+  }
+  console.error(
+    '\nA check that skips locally is claiming CI measures it instead. Declare `coveredBy` with\n' +
+      'the ci.yml step that does, word for word — or drop the `skipIf`, because a skip nobody\n' +
+      'can trace to a step that runs is exit 0 over an assertion nothing asserted. Exit 2.\n',
+  );
+  process.exit(2);
+}
+
 // cm:guard the guard above is only a rule while THIS function refuses the entry that breaks it — two entries sat here for a day with no `scanned`, and nothing said so because the rule lived in a comment. A prose invariant with no code behind it is a wish.
 function assertEveryCheckProvesScan() {
   const unproven = CHECKS.filter((c) => !c.scanned).map((c) => c.label);
@@ -356,7 +391,7 @@ function verdict(check, status, out) {
       code: status ?? 0,
       condition: 'skipped',
       out,
-      note: 'skipped — prerequisite absent locally, CI runs it',
+      note: `skipped — not reproducible here; \`${check.coveredBy}\` covers it in CI`,
     };
   }
   if (check.scanned) {
@@ -649,6 +684,7 @@ if (bad.length) {
 }
 
 assertEveryCheckProvesScan();
+assertEverySkipIsCovered();
 
 if (args.includes('--ci-parity')) process.exit(ciParity());
 
