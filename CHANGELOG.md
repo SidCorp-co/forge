@@ -2378,6 +2378,10 @@
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
 ### Removed
+- **The dead second copy of four project settings is gone** — checkout path, base branch,
+  production branch and default device. Nothing you set changes. A save naming a dead copy is now
+  refused, saying which setting owns that value.
+
 - **The second, unused chat endpoint is gone.** The product had two ways to hold a conversation
   with the assistant, and nothing ever called the older one. It has been removed with the switch
   that turned it on; nothing else changed.
@@ -5533,6 +5537,10 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+- **Two project settings saved at once no longer overwrite each other.** Each setting is written on
+  its own now, instead of rewriting the whole configuration; and a save that fails part-way leaves
+  every setting in it untouched.
+
 
 - **Background checks for stuck work handle a fixed amount per pass, and say when there was more.**
   Nothing is skipped: each pass resumes where the last stopped, so a busy minute costs a short

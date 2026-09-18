@@ -364,6 +364,40 @@ describe('a project with no bound room', () => {
     expect(notes).toHaveLength(1);
   });
 
+  // A round that merely records its eighth failure stops being selected by `owedRounds` with
+  // `claimed` still on it and nothing written anywhere — the run stays parked and nobody is told the
+  // question will not be asked. Nothing else in core reads this table, so the row is unreachable
+  // after that (ISS-978).
+  it('settles a round whose retries are exhausted, instead of dropping it out of the query', async () => {
+    await bindRoom();
+    postThrows = new Error('rocket.chat is down');
+    const q = await ask();
+
+    let clock = Date.now();
+    for (let i = 0; i < 8; i++) {
+      await delivery.drainQuestionDeliveries(new Date(clock));
+      clock += 60 * 60_000;
+    }
+
+    const [row] = await deliveries(q.id);
+    expect(row?.attempts).toBe(8);
+    expect(row?.status).not.toBe('claimed');
+    expect(row?.lastError).toContain('rocket.chat is down');
+
+    const notes = await harness.db.execute(
+      sql`SELECT id FROM notifications WHERE project_id = ${projectId}`,
+    );
+    expect(notes).toHaveLength(1);
+
+    // Still reachable: the cause clearing must still deliver it, which is the whole reason the
+    // settled round keeps a flat retry rather than a terminal give-up.
+    postThrows = null;
+    clock += 60 * 60_000;
+    await delivery.drainQuestionDeliveries(new Date(clock));
+    expect(posts).toHaveLength(1);
+    expect((await deliveries(q.id))[0]?.status).toBe('delivered');
+  });
+
   it('keeps owing the round however long the room takes to arrive', async () => {
     const q = await ask();
     await delivery.drainQuestionDeliveries();

@@ -22,9 +22,9 @@
  */
 // cm:guard the authoritative source for `cm:flow release/stamp`. The step moved onto `merge.ts:mergeStoredPullRequest` when ISS-1073 deleted `markMergedIfLeavingBase`, and `check-flow-coverage.mjs` counts a step reached only when the INTEGRATION suite entered the annotated function — so if this file stops calling `mergeStoredPullRequest`, that gate goes red rather than quietly measuring unit coverage.
 
+import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { createServer, type Server } from 'node:http';
 import type { AddressInfo } from 'node:net';
-import { generateKeyPairSync, randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it } from 'vitest';
 import {
@@ -245,9 +245,9 @@ async function projection() {
 
 async function deliveries() {
   const rows = await harness.db.execute<Record<string, unknown>>(sql`
-    SELECT event_name, status, error_message FROM integration_deliveries ORDER BY created_at
+    SELECT event_name, status FROM integration_deliveries ORDER BY created_at
   `);
-  return rows as Array<{ event_name: string; status: string; error_message: string | null }>;
+  return rows as unknown as Array<{ event_name: string; status: string }>;
 }
 
 function merges() {
@@ -309,7 +309,10 @@ describe('one operation writes the stamp, the evidence and the projection', () =
     // admin override to lose, so a protection that admits none changes nothing about it.
     dbl.protection = {
       status: 200,
-      body: { required_status_checks: { contexts: ['ci-passed'] }, enforce_admins: { enabled: true } },
+      body: {
+        required_status_checks: { contexts: ['ci-passed'] },
+        enforce_admins: { enabled: true },
+      },
     };
     const outcome = await mods.mergeStoredPullRequest({
       pullRequestId,

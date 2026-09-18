@@ -12,10 +12,15 @@ import { screenAtDoor } from '../messaging/screen.js';
 
 /** Every agent-authored string in a round, for the screen to read before anything is written. */
 // cm:guard the option LABELS are segments and the facts line rendered beside them is not: `optionFacts` is written by us from the option's own columns, so screening it would have the contract read our render rather than what the agent claimed. The `needed` line of a free-text round IS the agent's (ISS-997).
+// cm:guard `fingerprint` IS a segment and is not the facts line: the line around it is ours, the value inside it is the agent's, and `optionSuffix` interpolates it verbatim into the posted message four lines from this list. It is also the field that makes an option a permission — `bindsTo: 'this_call'` names the call a typed number allows — so a fingerprint carrying a newline or an option-line prefix reshapes the very text that states the scope being granted (ISS-978).
 export function agentAuthoredSegments(step: QuestionStep): string[] {
-  return isChoiceStep(step)
-    ? [step.prompt, ...step.options.map((o) => o.label)]
-    : [step.prompt, step.needed];
+  if (!isChoiceStep(step)) return [step.prompt, step.needed];
+  const segments = [step.prompt];
+  for (const o of step.options) {
+    segments.push(o.label);
+    if (o.fingerprint?.trim()) segments.push(o.fingerprint);
+  }
+  return segments;
 }
 
 /**

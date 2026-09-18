@@ -21,6 +21,13 @@ export interface ProjectUpdateInput {
 	/** ISS-727 — RC bot answer-engine knob; scoped server-side write into
 	 *  `agentConfig.rocketChatAnswerMode`. null clears it (reverts to `fast`). */
 	rocketChatAnswerMode?: "fast" | "agent" | null;
+	/** ISS-1070 — the project's own addition to the assistant system prompt; scoped server-side
+	 *  write into `agentConfig.systemPrompt`. null/'' clears it. No editor on this screen yet; the
+	 *  field exists because the wholesale `agentConfig` record that used to carry it is gone. */
+	systemPrompt?: string | null;
+	/** ISS-1070 — the issue categories this project offers, served by MCP `forge_config`; scoped
+	 *  server-side write into `agentConfig.categories`. `[]` stores an empty list, null clears. */
+	categories?: string[] | null;
 }
 
 /** One `environments.preview.urls` row — mirrors `testingUrlSchema` in core. */
@@ -205,14 +212,23 @@ export interface ReleaseReadiness {
 }
 
 /**
- * The `agentConfig` jsonb blob on a project — read-only surface for plugins
- * (ISS-813). `Project.agentConfig` is untyped jsonb (`unknown`), same reason
- * `environments` needs `EnvironmentsConfig` — cast through this, as
+ * The `agentConfig` jsonb blob on a project. `Project.agentConfig` is untyped jsonb (`unknown`),
+ * same reason `environments` needs `EnvironmentsConfig` — cast through this, as
  * `rocketchat-section.tsx:89` already does for `agentConfig.rocketChatAnswerMode`.
+ *
+ * ISS-1070 — the key set is DECLARED, and the index signature over `unknown` is gone with it. Six
+ * keys survive and each has one write door; this mirrors `agentConfigSchema` in core
+ * `projects/agent-config-schema.ts`, which is where the shape is stated. None of these is written
+ * by sending an `agentConfig` object — `PATCH /api/projects/:id` no longer takes one and refuses a
+ * body carrying one by naming the field or route that writes each key.
  */
 export interface ProjectAgentConfig {
+	pipelineConfig?: PipelineConfig;
 	plugins?: PluginDesignation[];
-	[key: string]: unknown;
+	personaStyle?: string;
+	systemPrompt?: string;
+	rocketChatAnswerMode?: "fast" | "agent";
+	categories?: string[];
 }
 
 /**

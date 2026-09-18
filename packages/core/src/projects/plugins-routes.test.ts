@@ -20,6 +20,7 @@ const selectFrom = vi.fn(() => ({ where: selectWhere }));
 const updateWhere = vi.fn(async () => undefined);
 const updateSet = vi.fn((..._args: unknown[]) => ({ where: updateWhere }));
 const dbUpdate = vi.fn(() => ({ set: updateSet }));
+const dbExecute = vi.fn(async (_statement: unknown): Promise<unknown[]> => []);
 
 vi.mock('../db/client.js', () => ({
   db: {
@@ -29,8 +30,25 @@ vi.mock('../db/client.js', () => ({
     update: dbUpdate,
     delete: vi.fn(),
     insert: vi.fn(),
+    execute: dbExecute,
   },
 }));
+
+// cm:guard the write is ONE statement against ONE key and not a document this route assembled, so the assertion is on what the statement carried. A drizzle `sql` template interleaves literal `StringChunk`s with the raw bound values, and the two values here are the removed-key JSON and the added-key JSON, in that order.
+function agentConfigWrites(): Array<{ removed: string[]; added: Record<string, unknown> }> {
+  return dbExecute.mock.calls.map(([stmt]) => {
+    const chunks = (stmt as unknown as { queryChunks: unknown[] }).queryChunks;
+    const bound: string[] = chunks
+      .filter(
+        (c) => (c as { constructor?: { name?: string } })?.constructor?.name !== 'StringChunk',
+      )
+      .map((c) => String(c));
+    return {
+      removed: JSON.parse(bound[0] ?? '[]') as string[],
+      added: JSON.parse(bound[1] ?? '{}') as Record<string, unknown>,
+    };
+  });
+}
 
 const projectAccess = vi.fn();
 vi.mock('../lib/authz.js', async (importOriginal) => ({
@@ -89,32 +107,31 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     return req(`/${PID}/plugins`, { method: 'PATCH', body: JSON.stringify(body), token });
   }
 
-  // cm:guard the write REPLACES `plugins` and must leave every sibling key of `agentConfig` alone. This is the ISS-767 pattern: a scoped patch that writes the whole blob back is one omitted spread away from wiping `pipelineConfig`, and nothing else in the product would notice until a dispatch.
-  it('replaces the list and preserves every sibling key of agentConfig', async () => {
+  // cm:guard the write REPLACES `plugins` and NAMES NO OTHER KEY. This case used to assert that the whole blob went back with the siblings spread into it — the ISS-767 pattern, one omitted spread from wiping `pipelineConfig`. ISS-1070 removed the spread rather than guarding it: the route reads the blob only to answer 404, and the statement carries `plugins` alone, so a sibling written between the read and the write is not restored because it is never sent.
+  it('replaces the list and names no sibling key of agentConfig', async () => {
     const token = await signUserToken('uuid-owner');
     seed({
       pipelineConfig: { enabled: true },
-      repoPath: '/repo',
+      personaStyle: 'be terse',
       plugins: [{ ...PLUGIN, name: 'old' }],
     });
 
     const res = await patch(token, { plugins: [PLUGIN] });
 
     expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({
-      agentConfig: { pipelineConfig: { enabled: true }, repoPath: '/repo', plugins: [PLUGIN] },
-    });
+    expect(agentConfigWrites()).toEqual([{ added: { plugins: [PLUGIN] }, removed: [] }]);
+    expect(updateSet).not.toHaveBeenCalled();
   });
 
   // cm:guard `null` DELETES the key rather than writing `plugins: null` — `GET /api/devices/me/plugins` unions this list across projects, and a null entry there is a shape its reader does not have.
   it('deletes the key on null rather than writing a null value', async () => {
     const token = await signUserToken('uuid-owner');
-    seed({ repoPath: '/repo', plugins: [PLUGIN] });
+    seed({ personaStyle: 'be terse', plugins: [PLUGIN] });
 
     const res = await patch(token, { plugins: null });
 
     expect(res.status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ agentConfig: { repoPath: '/repo' } });
+    expect(agentConfigWrites()).toEqual([{ added: {}, removed: ['plugins'] }]);
   });
 
   it('accepts an empty list, which is a project that designates nothing', async () => {
@@ -122,7 +139,7 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     seed({ plugins: [PLUGIN] });
 
     expect((await patch(token, { plugins: [] })).status).toBe(200);
-    expect(updateSet).toHaveBeenCalledWith({ agentConfig: { plugins: [] } });
+    expect(agentConfigWrites()).toEqual([{ added: { plugins: [] }, removed: [] }]);
   });
 
   // cm:guard the shape is validated SERVER-side, not only in the form. A device resolves what it installs from this list, so a malformed name or a ref that is not a SHA reaches a box that then fails to install with no operator anywhere near it.
@@ -139,7 +156,7 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
 
       expect(res.status).toBe(400);
     }
-    expect(updateSet).not.toHaveBeenCalled();
+    expect(dbExecute).not.toHaveBeenCalled();
   });
 
   it('403s a project admin who is not an org admin', async () => {
@@ -147,7 +164,7 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     seed({ plugins: [] }, null);
 
     expect((await patch(token, { plugins: [PLUGIN] })).status).toBe(403);
-    expect(updateSet).not.toHaveBeenCalled();
+    expect(dbExecute).not.toHaveBeenCalled();
   });
 
   it('404s when the project row is gone', async () => {
@@ -157,6 +174,6 @@ describe('PATCH /api/projects/:id/plugins (ISS-897)', () => {
     selectLimit.mockResolvedValueOnce([]);
 
     expect((await patch(token, { plugins: [PLUGIN] })).status).toBe(404);
-    expect(updateSet).not.toHaveBeenCalled();
+    expect(dbExecute).not.toHaveBeenCalled();
   });
 });

@@ -173,7 +173,26 @@ async function settle(
     );
 }
 
-async function noteFailure(owed: OwedRound, lastError: string, now: Date): Promise<void> {
+// cm:guard the LAST attempt settles the round instead of recording a failure, because `owedRounds`
+// selects on `attempts < MAX_ATTEMPTS`: a round that merely records its eighth failure stops being
+// selected with `claimed` still on it, no terminal status, no notification and nothing logged at the
+// moment of the drop — it falls out of a `WHERE`. Nothing else reads this table, so nobody is ever
+// told the question will not be asked while the run stays parked on it. That is the contract's "a
+// silence is OURS" (ISS-978). `refuse` is the one place that settles and tells, so exhaustion goes
+// through it like every other cause; `undeliverable` then retries flat and uncapped, which is right
+// here too — a parked run still needs its question asked, and the operator has been told once.
+async function noteFailure(
+  owed: OwedRound,
+  lastError: string,
+  now: Date,
+): Promise<'failed' | 'undeliverable'> {
+  if (owed.attempts + 1 >= MAX_ATTEMPTS) {
+    return refuse(
+      owed,
+      `this round failed ${owed.attempts + 1} times and will not be retried on the ordinary schedule — the last failure was: ${lastError}`,
+      now,
+    );
+  }
   await db
     .update(rocketchatQuestionDeliveries)
     .set({ lastError, updatedAt: now })
@@ -183,6 +202,7 @@ async function noteFailure(owed: OwedRound, lastError: string, now: Date): Promi
         eq(rocketchatQuestionDeliveries.round, owed.round),
       ),
     );
+  return 'failed';
 }
 
 /**
@@ -222,8 +242,11 @@ export async function deliverOwedRound(
       { questionId: owed.questionId, round: owed.round, problems: problemsOf(verdict) },
       'rocketchat.question-delivery: the round was refused by the operator screen; not posted',
     );
-    await noteFailure(owed, `screen refused the round: ${problemsOf(verdict).join('; ')}`, now);
-    return 'failed';
+    return await noteFailure(
+      owed,
+      `screen refused the round: ${problemsOf(verdict).join('; ')}`,
+      now,
+    );
   }
 
   const auth = await resolveRoomPostAuth(destination.connectionId, {
@@ -231,8 +254,7 @@ export async function deliverOwedRound(
     questionId: owed.questionId,
   });
   if (!auth) {
-    await noteFailure(owed, 'the connection carries no usable credentials', now);
-    return 'failed';
+    return await noteFailure(owed, 'the connection carries no usable credentials', now);
   }
 
   const ref = {
@@ -296,16 +318,18 @@ export async function deliverOwedRound(
         now,
       );
     }
-    await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
-    return 'failed';
+    return await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
   }
 
   // cm:guard everything past the post KEEPS the anchor, whatever it does: the round is on the wall of a room, and the retry that follows has to find the same triple rather than race a competitor for it.
   try {
     const tmid = destination.tmid ?? receipt.messageId;
     if (!tmid) {
-      await noteFailure(owed, 'the post named no message id, so no thread can be registered', now);
-      return 'failed';
+      return await noteFailure(
+        owed,
+        'the post named no message id, so no thread can be registered',
+        now,
+      );
     }
     // cm:guard the thread is registered BEFORE the round is marked delivered: a round marked delivered with no thread row is a message in a room whose replies reach nothing, and this order makes that state unreachable rather than merely unlikely (ISS-978 criterion 7).
     await registerThread(
@@ -320,8 +344,7 @@ export async function deliverOwedRound(
       { err, questionId: owed.questionId, round: owed.round, rid: destination.rid },
       'rocketchat.question-delivery: the round was posted and recording it failed',
     );
-    await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
-    return 'failed';
+    return await noteFailure(owed, err instanceof Error ? err.message : String(err), now);
   }
 }
 

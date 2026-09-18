@@ -26,7 +26,7 @@ import {
 } from '../helpers/index.js';
 
 const MIGRATION = fileURLToPath(
-  new URL('../../drizzle/migrations/0284_merged_commit_sha_is_evidence.sql', import.meta.url),
+  new URL('../../drizzle/migrations/0286_merged_commit_sha_is_evidence.sql', import.meta.url),
 );
 
 let harness: TestDatabase;

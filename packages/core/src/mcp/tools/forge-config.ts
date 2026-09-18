@@ -10,7 +10,10 @@ import {
   pluginDesignationsPatchSchema,
   readPluginDesignations,
 } from '../../plugins/designation.js';
-import { patchAgentConfigKey, RETIRED_STATE_CONTEXT_MESSAGE } from '../../projects/agent-config.js';
+import {
+  patchAgentConfigKeys,
+  RETIRED_STATE_CONTEXT_MESSAGE,
+} from '../../projects/agent-config.js';
 import {
   ALWAYS_INJECT_ENFORCEMENT_NOTE,
   ALWAYS_INJECT_GUARANTEE_NOTE,
@@ -116,10 +119,9 @@ export const forgeConfigTool: ContextScopedMcpToolFactory = (ctx) => ({
         }
       }
       if (input.plugins !== undefined) {
-        const plugins = input.plugins;
-        await patchAgentConfigKey(input.projectId, 'plugins', () =>
-          mergePluginDesignations(plugins),
-        );
+        await patchAgentConfigKeys(input.projectId, {
+          plugins: mergePluginDesignations(input.plugins),
+        });
       }
       const row = await readProjectConfig(input.projectId);
       return formatBaseResponse(row);
