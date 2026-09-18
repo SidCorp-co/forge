@@ -298,18 +298,43 @@ fn retry_owed(since: SinceNudge) -> bool {
 
 /// What the master is being asked to look at, as one comparable value.
 ///
-/// Identity only — an issue id, never a title, a priority or a status. Those
-/// change while the decision does not, and a digest that moves on them
-/// re-nudges for nothing.
-// cm:guard ORDER-INDEPENDENT by construction (the ids are sorted before hashing) because the route promises no stable order: `readAdmissibleIssues` runs one query per project, so hashing the sequence would report new work every time two rows swapped.
+/// Every input the master's own eligibility reads, and nothing else: the issue's
+/// identity, its status, and the blocker facts on it. A title or a priority
+/// moving is not new work and a digest that tracked them would nudge on every
+/// edit an operator makes in the UI.
+// cm:guard ORDER-INDEPENDENT by construction (the lines are sorted before hashing) because the route promises no stable order: `readAdmissibleIssues` runs one query per project, so hashing the sequence would report new work every time two rows swapped. The blocker facts of ONE issue are sorted for the same reason — `json_agg` fixes no order either.
+// cm:guard this was identity ALONE until ISS-1100, and widening it is that issue's other half rather than a nicety. Core offers rows the master then refuses — forge-dev admits `developed`, `testing`, `tested` and `awaiting_release`, none of which `TAKEABLE` contains — and it offers a row whose `blocks` edge has expired, which the master's own reading still refuses. In every one of those the refusal LIFTS without the id set moving: the row reaches `reopen`, or the blocker reaches `developed`. Under the clock that was covered by the next refresh; under `retry_owed` it is not, so an identity-only digest strands the work silently and for good. What the master decides on has to be what the digest is taken over.
+// cm:guard and it is still not a `takeable` boolean computed here. The digest says WHETHER the inputs moved, never what they mean — deciding that is the master's, and a box that pre-answered it would be the second opinion `devices/admissible.ts` spent ISS-1100 collapsing into one.
 fn work_digest(admissible: &[AdmissibleIssue]) -> u64 {
     use std::hash::{Hash, Hasher};
-    let mut ids: Vec<String> = Vec::with_capacity(admissible.len());
-    ids.extend(admissible.iter().map(|a| format!("issue:{}", a.issue_id)));
-    ids.sort_unstable();
+    let mut lines: Vec<String> = Vec::with_capacity(admissible.len());
+    for a in admissible {
+        let mut rels: Vec<String> = a
+            .relations
+            .iter()
+            .map(|r| {
+                format!(
+                    "{}|{}|{}|{}|{}",
+                    r.kind,
+                    r.depends_on_key.as_deref().unwrap_or(""),
+                    r.blocker_status.as_deref().unwrap_or(""),
+                    r.blocker_merged_at.as_deref().unwrap_or(""),
+                    r.edge_valid_until.as_deref().unwrap_or(""),
+                )
+            })
+            .collect();
+        rels.sort_unstable();
+        lines.push(format!(
+            "issue:{}|{}|{}",
+            a.issue_id,
+            a.status,
+            rels.join(";")
+        ));
+    }
+    lines.sort_unstable();
     let mut h = std::collections::hash_map::DefaultHasher::new();
-    for id in ids {
-        id.hash(&mut h);
+    for line in lines {
+        line.hash(&mut h);
     }
     h.finish()
 }
@@ -3856,17 +3881,86 @@ mod give_back_tests {
         assert_ne!(one, work_digest(&[]));
     }
 
-    // cm:guard identity ONLY. A title or a priority moving is not new work, and a digest that tracked them would nudge on every edit an operator makes in the UI.
+    // cm:guard a title and a priority moving is not new work, and a digest that tracked them would nudge on every edit an operator makes in the UI.
     #[test]
-    fn the_digest_ignores_everything_but_the_ids() {
+    fn the_digest_ignores_what_the_master_does_not_decide_on() {
         let plain: AdmissibleIssue =
-            serde_json::from_value(serde_json::json!({ "issueId": "i1" })).unwrap();
+            serde_json::from_value(serde_json::json!({ "issueId": "i1", "status": "confirmed" }))
+                .unwrap();
         let dressed: AdmissibleIssue = serde_json::from_value(serde_json::json!({
-            "issueId": "i1", "title": "renamed", "priority": "critical",
-            "status": "in_progress"
+            "issueId": "i1", "status": "confirmed",
+            "title": "renamed", "priority": "critical", "category": "bug",
+            "description": "rewritten", "ageMinutes": 900.0
         }))
         .unwrap();
         assert_eq!(work_digest(&[plain]), work_digest(&[dressed]));
+    }
+
+    fn with_blocker(id: &str, status: &str, blocker: serde_json::Value) -> AdmissibleIssue {
+        serde_json::from_value(serde_json::json!({
+            "issueId": id, "status": status, "relations": [blocker]
+        }))
+        .expect("admissible fixture")
+    }
+
+    // cm:guard THE stranding ISS-1100's review found. Core admits statuses the master does not take
+    // — forge-dev admits `developed`, `testing`, `tested`, `awaiting_release` — so a row can sit in
+    // the set for days being correctly refused. When it reaches one the master DOES take, the id set
+    // has not moved. Under the clock the next refresh picked it up; under `retry_owed` an
+    // identity-only digest never would, and the work is stranded with nothing anywhere saying why.
+    #[test]
+    fn the_digest_moves_when_a_rows_own_status_does() {
+        let held: AdmissibleIssue =
+            serde_json::from_value(serde_json::json!({ "issueId": "i1", "status": "developed" }))
+                .unwrap();
+        let takeable: AdmissibleIssue =
+            serde_json::from_value(serde_json::json!({ "issueId": "i1", "status": "reopen" }))
+                .unwrap();
+        assert_ne!(work_digest(&[held]), work_digest(&[takeable]));
+    }
+
+    // cm:guard the same stranding through the blocker rather than the row. Core hides a row behind
+    // an unsettled blocker, so the ordinary release moves the id set — but core also OFFERS a row
+    // whose edge has expired while the master still refuses it, and that one is released by the
+    // blocker moving with the id set unchanged.
+    #[test]
+    fn the_digest_moves_when_a_blockers_status_does() {
+        let blocked = with_blocker(
+            "i1",
+            "confirmed",
+            serde_json::json!({
+                "kind": "blocks", "dependsOnKey": "ISS-900",
+                "blockerStatus": "needs_info", "blockerMergedAt": null,
+                "edgeValidUntil": "2020-01-01T00:00:00.000Z"
+            }),
+        );
+        let freed = with_blocker(
+            "i1",
+            "confirmed",
+            serde_json::json!({
+                "kind": "blocks", "dependsOnKey": "ISS-900",
+                "blockerStatus": "developed", "blockerMergedAt": null,
+                "edgeValidUntil": "2020-01-01T00:00:00.000Z"
+            }),
+        );
+        assert_ne!(work_digest(&[blocked]), work_digest(&[freed]));
+    }
+
+    // cm:guard order-independence has to survive the widening: `json_agg` promises no order for the
+    // relations of one issue any more than the route promises one for the rows.
+    #[test]
+    fn the_digest_does_not_move_when_two_blockers_swap_places() {
+        let one = serde_json::json!({ "kind": "blocks", "dependsOnKey": "ISS-1", "blockerStatus": "waiting" });
+        let two = serde_json::json!({ "kind": "blocks", "dependsOnKey": "ISS-2", "blockerStatus": "on_hold" });
+        let a: AdmissibleIssue = serde_json::from_value(serde_json::json!({
+            "issueId": "i1", "status": "confirmed", "relations": [one.clone(), two.clone()]
+        }))
+        .unwrap();
+        let b: AdmissibleIssue = serde_json::from_value(serde_json::json!({
+            "issueId": "i1", "status": "confirmed", "relations": [two, one]
+        }))
+        .unwrap();
+        assert_eq!(work_digest(&[a]), work_digest(&[b]));
     }
 
     #[test]

@@ -41,9 +41,11 @@ export const DISPATCH_GATING_KIND: IssueDependencyKind = 'blocks';
 // back, and it is a MIRROR rather than an authorship. The writer of that lane is the contract the
 // master runs on, whose ORDER ends `developed, testing, awaiting_release, closed`, and
 // forge-plugin's `holdsBack` (src/flow/earned.mjs) lets a blocker through only at or past
-// `developed` on it. Core's job is to agree. A status added here that the contract does not call
-// settled makes core HIDE a row the master would take, which is the one direction this may never be
-// wrong in — the reverse costs a nudge and is visible, this one costs work nobody ever sees
+// `developed` on it. Core's job is to agree, and the two directions cost differently. REMOVING a
+// status the contract does call settled is the dangerous edit: `b.status NOT IN (...)` then matches
+// more blockers, core hides more, and it hides a row the master would take — work nobody ever sees.
+// ADDING one the contract does not call settled offers a row the master refuses, which costs a
+// master pass and is visible in the count. Neither is free; only the first is silent
 // (`devices/admissible.ts:readAdmissibleIssues` states the subset rule in full).
 // cm:edge lockstep -> packages/core/src/devices/admissible.ts — its only reader; a second reader owes this list another look, never a copy
 export const BLOCKER_SETTLED_STATUSES: readonly IssueStatus[] = [
