@@ -3,11 +3,15 @@
  *
  * Read the file as one claim: at every point this sequence can stop, the row it
  * leaves says which step stopped it and what is true on the repository — and
- * the three tag states after a failed `cut_tag` are the whole of ISS-1075's
- * third outcome, so they are asserted one by one rather than as a group.
+ * the tag states after a failed `cut_tag` are the whole of ISS-1075's third
+ * outcome, so they are asserted one by one rather than as a group.
+ *
+ * The store and repository doubles are in `runner-release.fixture.ts`: each one
+ * models a statement, and a second copy of a model drifts from it in silence.
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { agreeingFiles, publishError, rows } from './runner-release.fixture.js';
 
 vi.mock('../../config/env.js', () => ({
   env: { JWT_SECRET: 'test-secret-at-least-32-chars-long-abcdef', NODE_ENV: 'test' },
@@ -29,26 +33,6 @@ vi.mock('./client.js', () => ({
   GitHubClientError: FakeClientError,
 }));
 
-/** A Cargo.toml and a Cargo.lock that both say 0.13.3, which is the happy path. */
-const agreeingFiles = async (_c: unknown, path: string): Promise<string> =>
-  path.endsWith('Cargo.toml')
-    ? '[workspace.package]\nversion = "0.13.3"\n'
-    : '[[package]]\nname = "forge-runner"\nversion = "0.13.3"\n\n[[package]]\nname = "forge-runner-core"\nversion = "0.13.3"\n';
-
-class FakeRepoError extends Error {
-  constructor(
-    readonly refusal: {
-      cause: string;
-      op: string;
-      status: number | null;
-      message: string;
-      detail?: string | null;
-    },
-    readonly beforeWrite: boolean,
-  ) {
-    super(refusal.message);
-  }
-}
 const repo = {
   readDefaultBranch: vi.fn(async () => 'main'),
   readCommitSha: vi.fn(async () => 'abc1234'),
@@ -56,92 +40,30 @@ const repo = {
   readFileAtRef: vi.fn<(c: unknown, path: string) => Promise<string>>(agreeingFiles),
   createTagRef: vi.fn(async () => ({ sha: 'abc1234' })),
 };
-vi.mock('./runner-release-repo.js', () => ({
-  readDefaultBranch: (...a: unknown[]) => repo.readDefaultBranch(...(a as [])),
-  readCommitSha: (...a: unknown[]) => repo.readCommitSha(...(a as [])),
-  readTagRef: (...a: unknown[]) => repo.readTagRef(...a),
-  readFileAtRef: (...a: unknown[]) => repo.readFileAtRef(...(a as [unknown, string])),
-  createTagRef: (...a: unknown[]) => repo.createTagRef(...(a as [])),
-  RunnerReleaseRepoError: FakeRepoError,
-  // cm:guard the double reads GitHub's own body, exactly as `runner-release-repo.ts` does. Matching `message` here instead would make every 422 in this file read as a tag that already exists, which is the defect the real function was carrying.
-  saysRefExists: (r: { status: number | null; detail?: string | null }) =>
-    r.status === 422 && /already exists/i.test(r.detail ?? ''),
-  tagRefName: (tag: string) => `refs/tags/${tag}`,
-}));
+vi.mock('./runner-release-repo.js', async () => {
+  const fixture = await import('./runner-release.fixture.js');
+  return {
+    readDefaultBranch: (...a: unknown[]) => repo.readDefaultBranch(...(a as [])),
+    readCommitSha: (...a: unknown[]) => repo.readCommitSha(...(a as [])),
+    readTagRef: (...a: unknown[]) => repo.readTagRef(...a),
+    readFileAtRef: (...a: unknown[]) => repo.readFileAtRef(...(a as [unknown, string])),
+    createTagRef: (...a: unknown[]) => repo.createTagRef(...(a as [])),
+    RunnerReleaseRepoError: fixture.FakeRepoError,
+    saysRefExists: fixture.saysRefExists,
+    tagRefName: (tag: string) => `refs/tags/${tag}`,
+  };
+});
 
-type Row = Record<string, unknown> & {
-  id: string;
-  tag: string;
-  tagState: string;
-  attempt: number;
-};
-const rows = new Map<string, Row>();
-vi.mock('./runner-release-store.js', () => ({
-  openRunnerRelease: async (args: Record<string, unknown>) => {
-    const key = `${args.projectId}:${args.tag}`;
-    const held = rows.get(key);
-    // cm:guard the double of the real statement's WHERE, both halves: a row still in flight is HELD whatever its tag state, and a settled one re-arms only from `unread` or `absent`.
-    if (held && !(held.settledAt && ['unread', 'absent'].includes(held.tagState))) {
-      return { opened: null, held };
-    }
-    if (held) {
-      Object.assign(held, {
-        status: 'preflight',
-        step: 'resolve_repository',
-        tagState: 'unread',
-        failure: null,
-        readings: [],
-        settledAt: null,
-        attempt: (held.attempt as number) + 1,
-      });
-      return { opened: held, held: null };
-    }
-    const row: Row = {
-      id: key,
-      projectId: args.projectId,
-      bindingId: args.bindingId,
-      repository: args.repository,
-      version: args.version,
-      tag: args.tag as string,
-      commitSha: null,
-      status: 'preflight',
-      step: 'resolve_repository',
-      tagState: 'unread',
-      publication: 'unread',
-      publicationDetail: null,
-      failure: null,
-      readings: [],
-      settledAt: null,
-      attempt: 1,
-      startedAt: new Date('2026-09-18T00:00:00.000Z'),
-    };
-    rows.set(key, row);
-    return { opened: row, held: null };
-  },
-  // cm:guard each double carries the same `attempt` fence the statement does, so a case that
-  // re-arms a row proves the sequence is passing the attempt through rather than the double being
-  // forgiving about it.
-  appendReading: async (id: string, attempt: number, line: string) => {
-    const row = rows.get(id);
-    if (row && row.attempt === attempt) (row.readings as string[]).push(line);
-  },
-  advance: async (id: string, attempt: number, patch: Record<string, unknown>) => {
-    const row = rows.get(id);
-    if (!row || row.settledAt || row.attempt !== attempt) return false;
-    Object.assign(row, patch);
-    return true;
-  },
-  settleFailed: async (id: string, attempt: number, patch: Record<string, unknown>) => {
-    const row = rows.get(id);
-    if (!row || row.settledAt || row.attempt !== attempt) return false;
-    const guard = patch.ifUnchanged as { step: string; tagState: string } | undefined;
-    if (guard && (row.step !== guard.step || row.tagState !== guard.tagState)) return false;
-    const { ifUnchanged: _guard, ...sets } = patch;
-    Object.assign(row, sets, { status: 'failed', settledAt: new Date() });
-    return true;
-  },
-  findById: async (id: string) => rows.get(id) ?? null,
-}));
+vi.mock('./runner-release-store.js', async () => {
+  const fixture = await import('./runner-release.fixture.js');
+  return {
+    openRunnerRelease: fixture.openRunnerRelease,
+    appendReading: fixture.appendReading,
+    advance: fixture.advance,
+    settleFailed: fixture.settleFailed,
+    findById: fixture.findById,
+  };
+});
 
 const { startRunnerRelease } = await import('./runner-release.js');
 
@@ -149,20 +71,6 @@ const start = (over: Record<string, unknown> = {}) =>
   startRunnerRelease({ projectId: 'p1', version: '0.13.3', requestedById: null, ...over } as never);
 
 const row = () => rows.get('p1:runner-v0.13.3');
-
-const publishError = (
-  over: Partial<{
-    cause: string;
-    op: string;
-    status: number | null;
-    message: string;
-    detail: string | null;
-  }>,
-) =>
-  new FakeRepoError(
-    { cause: 'unknown', op: 'create', status: null, message: 'refused', detail: null, ...over },
-    over.op === 'lookup',
-  );
 
 // cm:guard the implementations are restored by hand, because `vi.clearAllMocks` clears CALLS and not `mockImplementation` — a Cargo.lock a preflight case rewrote would otherwise leak into every later case and stop the sequence two steps before the one under test, with the failure reading as a bug in `cut_tag`.
 beforeEach(() => {
