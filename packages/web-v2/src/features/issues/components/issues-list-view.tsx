@@ -681,7 +681,8 @@ export function IssuesListView({
                         <TH>Issue</TH>
                         <TH>Module</TH>
                         <TH>Status</TH>
-                        <TH>Waiting</TH>
+                        {/* cm:guard headed for what the figure measures, and NOT "Waiting": the figure is the issue row's last write, and `Waiting` is also the word the STATUS column beside it now prints for the `waiting` kernel status, so the old heading was both untrue and a collision (ISS-1097). */}
+                        <TH>Updated</TH>
                         <TH>Priority</TH>
                         <TH>Complexity</TH>
                         <TH className="text-right">Cost</TH>

@@ -29,7 +29,7 @@ import {
 	priorityLabel,
 	STATUS_LABELS,
 	statusLabel,
-	statusLabelFor,
+	laneLabel,
 	statusToChip,
 	statusToTone,
 	statusesFromParam,
@@ -86,19 +86,25 @@ describe("statusToChip", () => {
 		expect(statusToChip("awaiting_release")).toBe("shipped");
 		expect(statusToChip("closed")).toBe("archived");
 	});
-	// cm:guard ISS-917 AC13 — the bucket is LOSSY on purpose and five statuses share `queued`, so anything rendering a chip must pass `statusLabelFor` as its label. A bare chip told a reader the pipeline had a draft "Queued" when nothing was working it, which is the confusion the pool backlog exists to make legible.
+	// cm:guard ISS-917 AC13 — the bucket is LOSSY on purpose and five statuses share `queued`, so a
+	// chip must carry a LABEL and never be bare: a bare chip told a reader the pipeline had a draft
+	// "Queued" when nothing was working it, which is the confusion the pool backlog exists to make
+	// legible.
+	// cm:guard ISS-1097 restates WHICH label, and the restatement is the point: this guard used to
+	// name `statusLabelFor`, the lane word, which separates only two of the five — `draft` and the
+	// four that read "Running" or "Open". `statusLabel` separates all five. A label that leaves any
+	// status the chip folded still folded has not undone the fold, so the demand is a label total
+	// over the statuses sharing a bucket, and `statusLabel` is the only one in the tree that is.
 	it("folds five distinct statuses onto queued, which is why the label is separate", () => {
-		for (const s of [
-			"draft",
-			"open",
-			"confirmed",
-			"clarified",
-			"approved",
-		] as const) {
+		const folded = ["draft", "open", "confirmed", "clarified", "approved"] as const;
+		for (const s of folded) {
 			expect(statusToChip(s)).toBe("queued");
 		}
-		expect(statusLabelFor("draft")).not.toBe(statusLabelFor("open"));
-		expect(statusLabelFor("draft")).toMatch(/draft/i);
+		const kernel = folded.map(statusLabel);
+		expect(new Set(kernel).size).toBe(folded.length);
+		expect(statusLabel("draft")).toMatch(/draft/i);
+		// The lane word does NOT separate them, which is why it may not label a status chip.
+		expect(new Set(folded.map(laneLabel)).size).toBeLessThan(folded.length);
 	});
 });
 
@@ -328,8 +334,8 @@ describe("bulkAllowedStatuses (ISS-463)", () => {
 describe("label helpers", () => {
 	it("humanizes status / priority / complexity (no raw enum leaks)", () => {
 		expect(statusLabel("in_progress")).toBe("In progress");
-		expect(statusLabelFor("in_progress")).toBe("Running");
-		expect(statusLabelFor("needs_info")).toBe("Needs a human");
+		expect(laneLabel("in_progress")).toBe("Running");
+		expect(laneLabel("needs_info")).toBe("Needs a human");
 
 		expect(statusLabel("needs_info")).toBe("Needs info");
 		expect(priorityLabel("critical")).toBe("Critical");
@@ -338,11 +344,31 @@ describe("label helpers", () => {
 	});
 	// cm:guard ISS-970 — the string this asserts is the one the owner read off the dashboard for an issue that had asked nothing. A pause and a question must not share a label: this is the whole reported defect, on the surface that reported it.
 	it("labels a deliberate pause as paused, never as needing a human", () => {
-		expect(statusLabelFor("on_hold")).toBe("Paused");
-		expect(statusLabelFor("on_hold")).not.toBe("Needs a human");
-		expect(statusLabelFor("waiting")).toBe("Needs a human");
-		expect(statusLabelFor("needs_info")).toBe("Needs a human");
+		expect(laneLabel("on_hold")).toBe("Paused");
+		expect(laneLabel("on_hold")).not.toBe("Needs a human");
+		expect(laneLabel("waiting")).toBe("Needs a human");
+		expect(laneLabel("needs_info")).toBe("Needs a human");
 	});
+	// cm:guard ISS-1097 left the lane vocabulary exactly where nine buckets are what is wanted — the
+	// board's column heads, the tabs, the grouping and the status-move menus — and these are the
+	// words those surfaces read. A change that "finished the job" by pointing them at `statusLabel`
+	// would give the board seventeen columns, which is the thing the lane exists not to be.
+	it("keeps the nine lane words for the surfaces that want nine buckets", () => {
+		expect(laneLabel("in_progress")).toBe("Running");
+		expect(laneLabel("developed")).toBe("Running");
+		expect(laneLabel("releasing")).toBe("Running");
+		expect(laneLabel("waiting")).toBe("Needs a human");
+		expect(laneLabel("needs_info")).toBe("Needs a human");
+		expect(new Set(ISSUE_STATUSES.map(laneLabel)).size).toBe(9);
+	});
+
+	// cm:guard the two are the whole of ISS-1097: one word per status for the surfaces that report
+	// one, nine words for the surfaces that bucket. Each is total over the enum and neither may be
+	// substituted for the other.
+	it("keeps seventeen status words beside the nine lane words", () => {
+		expect(new Set(ISSUE_STATUSES.map(statusLabel)).size).toBe(ISSUE_STATUSES.length);
+	});
+
 	it("renders an em dash for an absent complexity", () => {
 		expect(complexityLabel(null)).toBe("—");
 		expect(complexityLabel(undefined)).toBe("—");

@@ -6,7 +6,7 @@
 
 import { type ReactNode, useState } from "react";
 import { useToast } from "@/providers/toast-provider";
-import { useStatusLabeller } from "../vocabulary";
+import { statusLabel } from "../derive";
 import { useTransitionIssue } from "../hooks";
 import type { IssueStatus, WaitingCause } from "../types";
 import { type ReasonStatus, TransitionReasonDialog } from "./transition-reason-dialog";
@@ -14,6 +14,9 @@ import { type ReasonStatus, TransitionReasonDialog } from "./transition-reason-d
 // cm:edge contract -> packages/core/src/issues/transition-reason.ts — mirrors REASON_REQUIRED_STATUSES; a status added there but not here fires the mutation without a reason and the user sees a 422 they cannot act on
 export const REASON_REQUIRED = new Set<string>(["reopen", "waiting", "needs_info"]);
 
+// cm:guard these three report the ACTION a person just took and deliberately do not name a status,
+// which is why ISS-1097 left them alone while it took the lane word off the default toast below.
+// "Information requested" says what happened; "Moved to Needs info" would say less, not more.
 const REASON_TOAST: Record<ReasonStatus, string> = {
   reopen: "Issue reopened",
   waiting: "Issue parked for a human",
@@ -39,7 +42,6 @@ export interface GuardedTransition {
 export function useGuardedTransition(): GuardedTransition {
   const transition = useTransitionIssue();
   const { toast } = useToast();
-  const statusLabel = useStatusLabeller();
   const [prompt, setPrompt] = useState<
     { id: string; status: ReasonStatus; successMessage: string; onSuccess?: () => void } | null
   >(null);
@@ -64,6 +66,7 @@ export function useGuardedTransition(): GuardedTransition {
     transition.mutate(
       { id, toStatus },
       {
+        // cm:guard the DEFAULT toast names the KERNEL status it moved to, not the lane word: it reported "Moved to Running" for a move to `developed`, `testing` or `releasing` alike until ISS-1097, so the one line confirming what just happened could not say what just happened. A caller's own `successMessage` still wins, and the reason-required branch above keeps its action wording.
         onSuccess: succeed(opts?.successMessage ?? `Moved to ${statusLabel(toStatus)}`, opts?.onSuccess),
       },
     );

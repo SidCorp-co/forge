@@ -45,7 +45,7 @@ import {
   deriveStepOutcomes,
   runningStepOf,
   parseChecklist,
-  statusLabelFor,
+  statusLabel,
   statusToChip,
 } from "../derive";
 import { deriveQueuedStep } from "../waiting";
@@ -318,8 +318,9 @@ export function IssueDetailScreen({
             {/* Issue lifecycle (pill) vs live agent run (squared, agent glyph). */}
             {
           // cm:guard label with the TRUE lifecycle status, never the bucket's own word. `statusToChip` folds `draft`, `open`, `confirmed`, `clarified` and `approved` all onto `queued`, so the bare chip told a reader the pipeline had a draft queued when nothing was working it — the exact confusion ISS-917 admits statuses to a backlog to make legible. Every other issue-domain chip already passes this.
+          // cm:guard and the label is `statusLabel`, not `laneLabel`: the guard above was written when it was, and a later rename to `statusLabelFor` — a name reading as "the label for this status" — put the nine-bucket lane word here instead, so this header demanded the true status in words and printed `in_progress`, `developed`, `testing` and `releasing` all as "Running" (ISS-1097).
         }
-        <StatusChip status={statusToChip(issue.status)} label={statusLabelFor(issue.status)} />
+        <StatusChip status={statusToChip(issue.status)} label={statusLabel(issue.status)} />
             {runChip && (
               <StatusChip
                 status={runChip}

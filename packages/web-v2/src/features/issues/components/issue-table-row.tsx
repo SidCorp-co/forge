@@ -246,27 +246,30 @@ export function CostCell({ value }: { value: number | undefined }) {
 /** How long the row has sat where it is. A settled row renders a dash rather
  *  than a figure, and a row past the stale threshold is told apart by its
  *  colour and its icon before the number is read at all. */
-export function WaitingCell({
-  waited,
+// cm:guard the title says WHAT THE FIGURE IS and names what does and does not move it, on both branches. It read "No movement in 2d" / "Last moved 2h ago" until ISS-1097, and the figure is neither: it is `now - issues.updated_at`, which an agent's claim or lease renewal resets although nothing about the issue changed, and which a comment on the issue never moves at all. A shorter title is not a smaller lie here — the two surprises ARE the reason a reader misreads the number.
+export function LastWriteCell({
+  written,
 }: {
-  waited: { label: string; stale: boolean } | null;
+  written: { label: string; stale: boolean } | null;
 }) {
-  if (!waited) return <span className="fg-caption">—</span>;
+  if (!written) return <span className="fg-caption">—</span>;
+  const measures =
+    "A status move, a field edit, a merge mark or an agent's claim or lease renewal resets this; a comment on its own does not.";
   return (
     <span
       className={
-        waited.stale
+        written.stale
           ? "fg-caption fg-caption-stale inline-flex items-center gap-1 tabular-nums"
           : "fg-caption inline-flex items-center gap-1 tabular-nums"
       }
       title={
-        waited.stale
-          ? `No movement in ${waited.label} — longer than anything else here should take`
-          : `Last moved ${waited.label} ago`
+        written.stale
+          ? `Nothing has been written to this issue in ${written.label}. ${measures}`
+          : `This issue was last written to ${written.label} ago. ${measures}`
       }
     >
-      {waited.stale && <Icon name="clock" size={12} />}
-      {waited.label}
+      {written.stale && <Icon name="clock" size={12} />}
+      {written.label}
     </span>
   );
 }

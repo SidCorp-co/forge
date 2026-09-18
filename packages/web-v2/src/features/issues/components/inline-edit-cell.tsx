@@ -6,10 +6,10 @@
 // the mutation factory, the row value snaps back since nothing is invalidated).
 
 import { Menu, NativeSelect, Select, StatusChip, type MenuItem, type SelectOption } from "@/design";
-import { groupedTransitions, statusToChip, transitionLabels } from "../derive";
+import { groupedTransitions, statusLabel, statusToChip, transitionLabels } from "../derive";
 import { AGENT_HOLDS_MOVE, heldByAgent } from "../edit-lock";
 import { useStatusExits } from "../hooks";
-import { useStatusLabeller } from "../vocabulary";
+import { useLaneLabeller } from "../vocabulary";
 import type { IssueAgentStatus, IssueStatus } from "../types";
 
 interface InlineSelectProps {
@@ -76,9 +76,10 @@ interface StatusEditProps {
  * registry — forward move first, then the bounces, then the discards. A rung
  * with no exit says so rather than opening empty (ISS-982).
  */
+// cm:guard the WORD beside the chip is the kernel status and the MENU ROWS are the lane vocabulary, and that split is deliberate (ISS-1097 over ISS-982): the word answers "what status is this issue at", which only the kernel word can, while a menu row answers "what may I move it to", which ISS-982 decided reads better as nine buckets with the kernel status appended where one word would repeat. Pointing either at the other's labeller undoes one of the two issues.
 // cm:guard the three no-target states are DISTINCT lines and must stay so: "loading", "could not load" and "no exits at all" are three different things for the person holding the mouse, and collapsing them renders ordinary latency as a failure and a terminal issue as a broken menu
 export function StatusEdit({ status, agentStatus, onTransition, disabled, size }: StatusEditProps) {
-  const statusLabel = useStatusLabeller();
+  const laneLabel = useLaneLabeller();
   const { exits, isPending, isError } = useStatusExits();
   const grouped = groupedTransitions(exits, status);
   const held = heldByAgent(status, agentStatus);
@@ -94,7 +95,7 @@ export function StatusEdit({ status, agentStatus, onTransition, disabled, size }
   } else {
     const names = transitionLabels(
       grouped.map((g) => g.to),
-      statusLabel,
+      laneLabel,
     );
     items = grouped.map((g, i) => ({
       label: names[i],

@@ -121,14 +121,18 @@ export const COMPLEXITY_LABELS: Record<IssueComplexity, string> = {
 	xl: "XL",
 };
 
+/** The issue's own status, written out. One word per kernel status, all 17 distinct. */
+// cm:guard this and `laneLabel` below are NOT interchangeable, and the name is the whole defence: every surface that REPORTS what status an issue is at takes this one. `laneLabel` folds seven statuses onto "Running" and two onto "Needs a human", which is what the column headed STATUS printed until ISS-1097 — `releasing` mid-deploy and `approved` with nobody on it were one word in one colour, on the widest surface this app has.
 export const statusLabel = (s: IssueStatus): string => STATUS_LABELS[s] ?? s;
 
 /**
- * Label an issue the way its project reads. `mode` is
- * `agentConfig.pipelineConfig.mode`; anything but `autonomous` is unchanged.
+ * The nine-bucket LANE word, for the surfaces that want nine buckets: the board's
+ * column heads, the tabs, the grouping, the status-move menus. It is lossy by
+ * design and must never label a surface that claims to report the status —
+ * `statusLabel` above is that one.
  */
 // cm:edge contract -> packages/contracts/src/issue-vocabulary.ts — the kernel→label map lives there so web, dev and the MCP surface cannot disagree about what `in_progress` is called
-export const statusLabelFor = (s: IssueStatus): string =>
+export const laneLabel = (s: IssueStatus): string =>
 	LABEL_VIEW[toAutonomousLabel(s)]?.label ?? statusLabel(s);
 export const priorityLabel = (p: IssuePriority): string =>
 	PRIORITY_LABELS[p] ?? p;

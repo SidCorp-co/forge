@@ -15,15 +15,23 @@ import type {
 	WaitingReason,
 } from "./types";
 
-// cm:guard ONE threshold for "this row has sat too long", shared by every surface that grades a row's stillness — a second copy is how two surfaces start disagreeing about which rows are stuck.
+// cm:guard ONE threshold for "no write has reached this row in a long time", shared by every surface that grades it — a second copy is how two surfaces start disagreeing about which rows are still.
+// cm:guard 24 hours grades the figure BELOW, which is the row's last write, and it is not a hang detector: a release batch wedged 30 minutes into a deploy is inside this threshold and always will be. Detecting a hung job is the runner's reading and ISS-1097 puts it out of scope — shortening this number would not buy it, it would only mark every quiet row.
 export const STALE_AFTER_MS = 24 * 60 * 60 * 1000;
 
-// cm:guard a TERMINAL row gets no figure at all, never a zero: an issue closed six months ago has not been waiting six months, and a number that keeps growing on finished work is the live-looking-but-dead reading `VISION: state-never-lies` refuses.
+// cm:guard a TERMINAL row gets no figure at all, never a zero: an issue closed six months ago has not been waiting six months, and a number that keeps growing on finished work is the live-looking-but-dead reading `VISION: state-never-lies` refuses. This is ISS-1033's landed criterion 3 and ISS-1097 left it standing.
 const SETTLED = new Set<IssueStatus>(statusesForLabels("done", "dropped"));
 
-/** How long this row has sat where it is, graded against a caller-held instant
- *  so every row in one render is comparable to the others. */
-export function waitedFor(
+/**
+ * How long since the issue ROW itself was last written, graded against a
+ * caller-held instant so every row in one render is comparable to the others.
+ *
+ * It is NOT how long the issue has been at this status, and it is NOT how long
+ * since anything happened to it. Every surface showing this figure says which
+ * of the three it is, because the three differ by hours on live rows.
+ */
+// cm:guard the name says `last write` and not `waited`, and the copy at every call site says the same, because `issues.updated_at` is `defaultNow()` with NO `$onUpdate` (packages/core/src/db/schema.ts#issues) and moves only where a statement sets it: `issues/apply-transition.ts`, `issues/merge-record.ts`, the PATCH route through `issues/update-service.ts` — which seeds `updatedAt` UNCONDITIONALLY, so an agent's claim or lease renewal resets this figure although no field of the issue changed — `issues/extras-routes.ts`, and `integrations/sentry/intake-issue.ts`. `comments/routes.ts` never writes the issues row, so a row with hours of comment traffic reads untouched. Measured live on ISS-1097: `forge claim` moved it 13:03:19.317Z → 13:19:43.271Z, and a comment posted straight at `POST /api/issues/:id/comments` left it unmoved. Calling this "waiting" or "last moved" is the lie ISS-1097 was filed for.
+export function sinceLastWrite(
 	row: { status: IssueStatus; updatedAt: string },
 	now: number,
 ): { label: string; stale: boolean } | null {

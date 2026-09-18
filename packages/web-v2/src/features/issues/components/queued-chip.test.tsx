@@ -92,15 +92,17 @@ describe("issue list row · queued chip", () => {
   it("adds no session chip while a step is only queued", () => {
     const { container } = render(<StatusCell row={row(health("runner_stale"))} />);
     expect(screen.getByText("No runner online")).toBeInTheDocument();
-    // cm:why one "Running" and not zero — the issue's own lifecycle label, which is true, since it IS at `in_progress`; what must be absent is a SECOND chip claiming a live session
-    expect(screen.getAllByText("Running")).toHaveLength(1);
+    // cm:why the lifecycle word is "In progress" and there is NO "Running" at all: since ISS-1097 the lifecycle chip prints the kernel status, and "Running" in this cell can now only be a session chip — which is exactly what must be absent here
+    expect(screen.getByText("In progress")).toBeInTheDocument();
+    expect(screen.queryAllByText("Running")).toHaveLength(0);
     expect(container.querySelector(".forge-indeterminate")).toBeNull();
   });
 
   it("adds the session chip on a row that IS being worked", () => {
     render(<StatusCell row={row(undefined, "running")} />);
-    // cm:why two — the lifecycle label and the live agent's own session chip beside it, which is the ISS-436 split this row's cell exists to keep
-    expect(screen.getAllByText("Running")).toHaveLength(2);
+    // cm:why one of each rather than two of one — the ISS-436 split this cell exists to keep is now legible in the WORDS: the lifecycle chip says the kernel status and the session chip says the agent is running. Before ISS-1097 both read "Running" and the split was invisible to a reader.
+    expect(screen.getByText("In progress")).toBeInTheDocument();
+    expect(screen.getAllByText("Running")).toHaveLength(1);
     expect(screen.queryByText("Queued")).not.toBeInTheDocument();
   });
 

@@ -38,8 +38,8 @@ import {
 import { groupedTransitions, transitionLabels } from "../derive";
 import { useStatusExits } from "../hooks";
 import { AGENT_HOLDS_EDIT, heldByAgent } from "../edit-lock";
-import { useStatusLabeller } from "../vocabulary";
-import { waitedFor } from "../waiting";
+import { useLaneLabeller } from "../vocabulary";
+import { sinceLastWrite } from "../waiting";
 import {
   ISSUE_COMPLEXITIES,
   ISSUE_PRIORITIES,
@@ -53,7 +53,7 @@ import {
   ModuleCell,
   type RowActions,
   type RowSelection,
-  WaitingCell,
+  LastWriteCell,
 } from "./issue-table-row";
 
 /** ISS-700 — shared row-open behaviour: a pending flag set synchronously
@@ -116,9 +116,9 @@ function AgentChip({
 /** ISS-436 merged status cell: the issue's lifecycle chip, the live agent's chip, and the gate
  *  holding a queued step — three chips, each carrying a fact something recorded. */
 // cm:guard the queued step is derived from `hasLiveAgentSession`, NOT this file's `hasLiveAgent` — the latter counts `failed` as live so the failure chip keeps its tooltip, and a deferred retry's `agentStatus` IS `failed`, so reusing it here hid the gate on the very row ISS-903 was filed about
+// cm:guard the chip's label is `statusLabel` — the KERNEL status — and never `laneLabel`. This one cell is the column headed STATUS on the desktop table and the status line on the mobile card, and until ISS-1097 it printed the lane word: seven statuses read "Running" in one screenshot, four of them mid-deploy at `releasing` and three with nobody on them at `approved`/`confirmed`. The colour was never the problem — `statusToChip` already keys on the kernel status — so a fix that only recoloured would have left the word lying.
 // cm:guard no progress figure belongs in this cell. Until ISS-999 it carried a mini tracker reading "N / 7" over a bar, positioned by a hand-written status→stage map against a seven-stage pipeline ISS-897 had already deleted from the kernel — on every row of every issues table, which is the widest audience any lie in this app had.
 export function StatusCell({ row }: { row: IssueRow }) {
-  const statusLabel = useStatusLabeller();
   const queuedStep = deriveQueuedStep(
     row.pipelineHealth,
     hasLiveAgentSession(row.agentStatus),
@@ -191,7 +191,7 @@ function useRowMenuItems(
   actions: RowActions,
   open: () => void,
 ): MenuItem[] {
-  const statusLabel = useStatusLabeller();
+  const laneLabel = useLaneLabeller();
   const { exits, isPending, isError } = useStatusExits();
   const items: MenuItem[] = [
     { label: "Open issue", icon: "arrowRight", onSelect: open },
@@ -214,7 +214,7 @@ function useRowMenuItems(
   }
   const statusNames = transitionLabels(
     grouped.map((g) => g.to),
-    statusLabel,
+    laneLabel,
   );
   for (const [i, g] of grouped.entries()) {
     items.push({
@@ -349,7 +349,7 @@ export function IssueTableRow({
         <StatusCell row={row} />
       </TD>
       <TD>
-        <WaitingCell waited={waitedFor(row, now)} />
+        <LastWriteCell written={sinceLastWrite(row, now)} />
       </TD>
       <TD>
         <PriorityCell priority={row.priority} />
@@ -433,7 +433,7 @@ export function IssueMobileCard({
 
         <div className="mt-3 flex items-center justify-between gap-2">
           <StatusCell row={row} />
-          <WaitingCell waited={waitedFor(row, now)} />
+          <LastWriteCell written={sinceLastWrite(row, now)} />
         </div>
 
         <div className="mt-3 flex flex-wrap items-center gap-2">
