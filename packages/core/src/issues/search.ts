@@ -30,6 +30,7 @@ import { queryBadRequest } from '../lib/query-strict.js';
 import { type AuthVars, assertEmailVerified, requireAuth } from '../middleware/auth.js';
 import { usageSessionMatch } from '../usage-records/rollup.js';
 import { hydrateAgentSessionsForIssues } from './agent-sessions-hydrator.js';
+import type { ActorAgency } from './actor-agency.js';
 import {
   buildCreatedByCondition,
   buildOriginCondition,
@@ -107,7 +108,7 @@ const searchQuerySchema = z
       .optional()
       .transform(coerceArray),
     assignee: z.uuid().optional(),
-    // cm:why a uuid here means that person's non-agent-channel rows ONLY — see buildCreatedByCondition
+    // cm:why a uuid here means the rows the list shows under that person's own address ONLY — a row an agent filed on their credential displays as Forge Agent, so it is excluded; see buildCreatedByCondition
     createdBy: z.union([z.uuid(), z.literal('agent')]).optional(),
     // cm:why splits unreviewed detector output from work someone chose to do — distinct from createdBy=agent, which is a display concern and counts `mcp` too
     origin: z.enum(['detector', 'human']).optional(),
@@ -422,6 +423,7 @@ searchRoutes.get(
           id: r.id as string,
           createdById: r.createdById as string,
           createdVia: r.createdVia as string | null,
+          creatorAgency: r.creatorAgency as ActorAgency | null,
         })),
       );
       serialized = serialized.map((r) => ({

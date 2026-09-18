@@ -12,6 +12,7 @@
 import { createHash } from 'node:crypto';
 import { and, eq, isNull, sql } from 'drizzle-orm';
 import { mintPat } from '../auth/pat.js';
+import { agentCredentialFence } from '../orgs/agent-accounts.js';
 import { deviceTokenNameFor } from '../auth/pat-format.js';
 import { env } from '../config/env.js';
 import { db } from '../db/client.js';
@@ -39,6 +40,11 @@ export async function issueDeviceCredential(args: {
   deviceId: string;
   /** The principal the box acts as — a person, or an agent (ISS-932). */
   holderUserId: string;
+  /**
+   * True when the holder is an agent account, so the box's credential is fenced to
+   * that agent's projects instead of to none (ISS-1093).
+   */
+  holderIsAgent?: boolean;
 }): Promise<string> {
   const name = deviceTokenNameFor(args.deviceId);
   await db
@@ -59,8 +65,21 @@ export async function issueDeviceCredential(args: {
     userId: args.holderUserId,
     name,
     scopes: ['read', 'write'],
-    // cm:guard an EMPTY allowlist, and it is load-bearing rather than a placeholder. A box's credential is now an ordinary PAT, so without a fence it would reach the whole PAT data plane as its holder — a wider reach than the device token it replaced ever had, and the `device.ownerId` fiction returning in a new shape. `[]` fences it to no project at all (`effectiveProjectRole` returns null for every id), which is exactly right: the surfaces a box legitimately needs go through `requireDevice`, which resolves the DEVICE and never consults this fence. `null` here means "its owner's projects" and is the bug this line prevents.
-    projectIds: [],
+    // cm:guard the fence is NEVER `null` on either branch, and `null` is the bug both branches
+    // exist to prevent: it means "its holder's projects", which for a person is the whole
+    // account and is the `device.ownerId` fiction returning in a new shape.
+    //
+    // A PERSON's box keeps `[]` — no project at all (`effectiveProjectRole` returns null for
+    // every id). That is right because the surfaces a person's box legitimately needs go
+    // through `requireDevice`, which resolves the DEVICE and never consults this fence.
+    //
+    // An AGENT's box is fenced to that agent's own projects, and this is not a widening of
+    // the line above: the same credential is written into every job's `.mcp.json`
+    // (`forge-runner-core/src/mcp/config.rs`), so under `[]` a box paired as an agent could
+    // run the daemon plane and not make a single project-scoped call — which is why
+    // forge-vm was holding a person's PAT in the first place (ISS-1093). The agent's reach
+    // is its memberships either way; this only stops the token being wider than they are.
+    ...(args.holderIsAgent ? await agentCredentialFence(args.holderUserId) : { projectIds: [] }),
     deviceId: args.deviceId,
     rateLimitMax: DEVICE_TOKEN_RATE_LIMIT_PER_MINUTE,
   });

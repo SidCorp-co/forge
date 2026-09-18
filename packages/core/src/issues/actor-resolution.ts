@@ -7,7 +7,7 @@ import { type ActorRef, type ActorType, actorKey, type ResolvedActor } from './a
 
 const UNKNOWN_LABEL = 'Unknown';
 
-// cm:guard `isAgent` here is the TYPE-derived FLOOR, and it stays type-derived. The per-row `actor_agency` read lives in `issues/activity-routes.ts:isAgentForRow`, which ORs it over this value — it belongs there and not here because this resolver's map is keyed on `(type, id)` while agency varies row by row for the same person. Never replace this with a column read: on its own the column drops the agent marker across every row written before migration 0193, which is what the owner's 2026-09-02 deferral was protecting. The writing rules are on `pipeline/activity.ts`.
+// cm:guard `isAgent` here is the PRINCIPAL-derived FLOOR: what this actor IS, never what one row records. Two columns are in play and only one of them belongs here. `users.kind` is a property of the principal, which is exactly the key this resolver's map is built on, so an agent ACCOUNT reads as an agent on every row it ever wrote (ISS-1093) — without it a `users.kind:'agent'` row rendered as an ordinary person wherever the caller had no per-row column to consult. `activity_log.actor_agency` is the other one and it stays OUT: it varies row by row for one id, so folding it in here would let the last row of a batch decide the marker for all of them; its read is `issues/activity-routes.ts:isAgentForRow`, which ORs it over this floor. The floor can only ever ADD agents, never remove one, which is what the owner's 2026-09-02 deferral was protecting. The writing rules are on `pipeline/activity.ts`.
 function unknownActor(type: ActorType, id: string): ResolvedActor {
   return {
     type,
@@ -39,12 +39,21 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
   }
 
   const userEmailById = new Map<string, string>();
+  const agentUserIds = new Set<string>();
   if (userIds.size > 0) {
     const rows = await db
-      .select({ id: users.id, email: users.email, displayName: users.displayName })
+      .select({
+        id: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        kind: users.kind,
+      })
       .from(users)
       .where(inArray(users.id, [...userIds]));
-    for (const r of rows) userEmailById.set(r.id, r.displayName ?? r.email);
+    for (const r of rows) {
+      userEmailById.set(r.id, r.displayName ?? r.email);
+      if (r.kind === 'agent') agentUserIds.add(r.id);
+    }
   }
 
   const deviceById = new Map<string, { name: string; ownerId: string }>();
@@ -64,9 +73,18 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
   }
   if (ownerIdsToFetch.size > 0) {
     const rows = await db
-      .select({ id: users.id, email: users.email, displayName: users.displayName })
+      .select({
+        id: users.id,
+        email: users.email,
+        displayName: users.displayName,
+        kind: users.kind,
+      })
       .from(users)
       .where(inArray(users.id, [...ownerIdsToFetch]));
+    // cm:why the same `kind` fold as the first query and not a shortcut: these ids are fetched as
+    // device OWNERS, but one batch can name the same principal both ways, and a set that is agent
+    // on one path and not the other is the two-readers split this resolver exists to prevent.
+    for (const r of rows) if (r.kind === 'agent') agentUserIds.add(r.id);
     // cm:guard the label prefers `display_name` and falls back to the address, and the fallback is not a stopgap: `display_name` is null until somebody types one, and an activity row for a user who never did must still say something (ISS-1003). What it must NOT do is decide anything — this map feeds rendering only.
     for (const r of rows) userEmailById.set(r.id, r.displayName ?? r.email);
   }
@@ -79,7 +97,7 @@ export async function resolveActors(refs: ActorRef[]): Promise<Map<string, Resol
       result.set(
         key,
         email
-          ? { type: 'user', id: ref.id, displayName: email, isAgent: false }
+          ? { type: 'user', id: ref.id, displayName: email, isAgent: agentUserIds.has(ref.id) }
           : unknownActor('user', ref.id),
       );
     } else {

@@ -50,7 +50,9 @@ vi.mock('../db/client.js', () => ({
   db: {
     select: () => ({
       from: () => ({
-        where: () => ({ limit: () => selectLimit() }),
+        // ISS-1093 — the project lookup reads EVERY id asked for (`inArray`) rather than
+        // one row, so this `where` is awaited directly and has no `.limit` to go through.
+        where: () => Object.assign(selectLimit(), { limit: () => selectLimit() }),
         innerJoin: () => ({ where: () => ({ limit: () => selectLimit() }) }),
       }),
     }),
@@ -76,7 +78,7 @@ beforeEach(() => {
   updated.length = 0;
 });
 
-const args = { orgId: ORG, projectId: PROJECT, handle: 'master' };
+const args = { orgId: ORG, projectIds: [PROJECT], handle: 'master' };
 
 describe('createAgentAccount', () => {
   it.each([['UPPER'], ['a'], ['-lead'], ['trail-'], ['has space'], ['sym$bol']])(
@@ -103,12 +105,67 @@ describe('createAgentAccount', () => {
     expect((err as { status: number }).status).toBe(404);
   });
 
+  // cm:guard ISS-1093 — EVERY id is checked, not the first one. The lookup used to read a
+  // single row, so widening the input without widening the check would enrol an agent into
+  // a project of another org as long as the first id in the list was legitimate. The
+  // refusal must also NAME the offending id: an admin sending eight cannot find the wrong
+  // one from a count.
+  it('refuses when only ONE of several projects is outside the org, and names it', async () => {
+    const STRANGER = '00000000-0000-4000-8000-00000000f999';
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT, orgId: ORG },
+      { id: STRANGER, orgId: 'some-other-org' },
+    ]);
+    const err = await createAgentAccount({ ...args, projectIds: [PROJECT, STRANGER] }).catch(
+      (e) => e,
+    );
+    expect((err as { status: number }).status).toBe(404);
+    expect((err as { message: string }).message).toContain(STRANGER);
+    expect(mintPat).not.toHaveBeenCalled();
+  });
+
+  // cm:guard several projects mint an ALLOWLIST and no bound project, one project mints a
+  // bound project and no allowlist. Mint both and the token is refused by `pat/routes.ts`'s
+  // mutual exclusion; mint neither and it is the account-wide credential `boundProjectId`
+  // exists to prevent. Swap the two shapes and an agent on one project silently loses the
+  // default project a slug-less call resolves to.
+  it('fences an agent on several projects with an allowlist, not a bound project', async () => {
+    const SECOND = '00000000-0000-4000-8000-00000000f001';
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT, orgId: ORG },
+      { id: SECOND, orgId: ORG },
+    ]);
+    await createAgentAccount({ ...args, projectIds: [PROJECT, SECOND] });
+    expect(mintPat).toHaveBeenCalledWith(
+      expect.objectContaining({ boundProjectId: null, projectIds: [PROJECT, SECOND] }),
+    );
+  });
+
+  it('writes one project_members row per project', async () => {
+    const SECOND = '00000000-0000-4000-8000-00000000f001';
+    selectLimit.mockResolvedValueOnce([
+      { id: PROJECT, orgId: ORG },
+      { id: SECOND, orgId: ORG },
+    ]);
+    await createAgentAccount({ ...args, projectIds: [PROJECT, SECOND] });
+    expect(insertedValues(2)).toEqual([
+      { userId: 'agent-1', projectId: PROJECT, role: 'member' },
+      { userId: 'agent-1', projectId: SECOND, role: 'member' },
+    ]);
+  });
+
+  it('refuses an empty project set rather than minting a fence over nothing', async () => {
+    const err = await createAgentAccount({ ...args, projectIds: [] }).catch((e) => e);
+    expect((err.cause as { code: string }).code).toBe('AGENT_NEEDS_A_PROJECT');
+    expect(mintPat).not.toHaveBeenCalled();
+  });
+
   it('creates the user, both memberships and one bound token', async () => {
     selectLimit.mockResolvedValueOnce([{ id: PROJECT, orgId: ORG }]);
     const out = await createAgentAccount(args);
 
     expect(out.plaintext).toBe('forge_pat_dev_deadbeef');
-    expect(out.agent.projectId).toBe(PROJECT);
+    expect(out.agent.projects).toEqual([{ id: PROJECT, role: 'member' }]);
     expect(inserted.map((i) => i.table)).toEqual([
       'users',
       'organization_members',
@@ -144,7 +201,7 @@ describe('createAgentAccount', () => {
   it('takes the project role it was given', async () => {
     selectLimit.mockResolvedValueOnce([{ id: PROJECT, orgId: ORG }]);
     await createAgentAccount({ ...args, projectRole: 'admin' });
-    expect((insertedValues(2) as { role: string }).role).toBe('admin');
+    expect((insertedValues(2) as { role: string }[])[0]?.role).toBe('admin');
   });
 });
 

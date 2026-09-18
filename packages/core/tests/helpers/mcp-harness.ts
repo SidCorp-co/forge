@@ -36,6 +36,13 @@ export async function connectClientAsPat(patPlaintext: string) {
       deviceId: row.deviceId ?? null,
     },
     projectSlug: null,
+    // cm:guard `mcpHandler` lifts `principal.boundProjectId` onto the CONTEXT, and
+    // `resolveEffectiveProjectId` reads it from there — not from the principal. Without this
+    // line the harness built a server for which a bound token had no default project, so
+    // every slug-less call through it answered "project context missing" and no test in the
+    // suite could see the arg > slug > bound precedence at all (found working ISS-1093). The
+    // guard above says this harness mirrors `authenticatePat`; it has to mirror the handler too.
+    boundProjectId: row.boundProjectId ?? null,
   };
   const server = createMcpServer(ctx);
   const [clientTransport, serverTransport] = InMemoryTransport.createLinkedPair();

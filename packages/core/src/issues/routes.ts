@@ -311,7 +311,7 @@ issueProjectRoutes.get(
     const serialized = serializeIssue(issue, await activeIssuePrefix(projectId));
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, [issue.id]);
     const creatorMap = await hydrateCreatorsForIssues([
-      { id: issue.id, createdById: issue.createdById, createdVia: issue.createdVia },
+      { id: issue.id, createdById: issue.createdById, createdVia: issue.createdVia, creatorAgency: issue.creatorAgency },
     ]);
     return c.json({
       ...serialized,
@@ -379,7 +379,7 @@ issueProjectRoutes.get(
     const healthMap = await safeHydratePipelineHealthForIssues(projectId, ids);
     // cm:why no opt-in flag here — every list/detail surface needs the creator fields, unlike withCost/withAgentSessions
     const creatorMap = await hydrateCreatorsForIssues(
-      serialized.map((r) => ({ id: r.id, createdById: r.createdById, createdVia: r.createdVia })),
+      serialized.map((r) => ({ id: r.id, createdById: r.createdById, createdVia: r.createdVia, creatorAgency: r.creatorAgency })),
     );
 
     if (!q.withAgentSessions) {
@@ -451,7 +451,7 @@ issueRoutes.get(
     const agentMap = await hydrateAgentSessionsForIssues(issue.projectId, [issue.id]);
     const agentBucket = agentMap.get(issue.id);
     const creatorMap = await hydrateCreatorsForIssues([
-      { id: issue.id, createdById: issue.createdById, createdVia: issue.createdVia },
+      { id: issue.id, createdById: issue.createdById, createdVia: issue.createdVia, creatorAgency: issue.creatorAgency },
     ]);
     return c.json({
       ...serialized,

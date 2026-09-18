@@ -86,7 +86,7 @@ beforeEach(async () => {
   const { signUserToken } = await import('../../src/auth/jwt.js');
   personToken = (await mintPat({ userId, name: 'a person’s own token' })).plaintext;
   sessionJwt = await signUserToken(userId);
-  agentToken = (await accounts.createAgentAccount({ orgId, projectId, handle: 'peer-agent' }))
+  agentToken = (await accounts.createAgentAccount({ orgId, projectIds: [projectId], handle: 'peer-agent' }))
     .plaintext;
 });
 

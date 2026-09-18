@@ -9,7 +9,7 @@
  */
 
 import { randomBytes } from 'node:crypto';
-import { and, count, desc, eq, isNull } from 'drizzle-orm';
+import { and, count, desc, eq, inArray, isNull } from 'drizzle-orm';
 import { HTTPException } from 'hono/http-exception';
 import { isAgentHandle, synthesizeAgentEmail } from '../auth/agent-account.js';
 import { mintPat } from '../auth/pat.js';
@@ -27,11 +27,28 @@ import { isUniqueViolation, uniqueViolationConstraint } from '../lib/db-errors.j
 
 export interface CreateAgentAccountInput {
   orgId: string;
-  /** The one project this agent works on — option A, one AAT one project. */
-  projectId: string;
+  /**
+   * Every project this agent works on, at least one (ISS-1093). A box serving
+   * several projects holds ONE credential, so an agent that reaches only one
+   * project is a box that has to borrow a person's token instead.
+   */
+  projectIds: string[];
   /** Lowercase handle; becomes the display name and the local part of its address. */
   handle: string;
   projectRole?: ProjectMemberRole;
+}
+
+/**
+ * The fence a credential for this agent is minted behind.
+ *
+ * Two shapes, and the single-project one is not a special case to be tidied away:
+ * `bound_project_id` is BOTH the auth fence and the project a caller that names
+ * none resolves to, so an agent on one project keeps the exact reach and the exact
+ * default it had before this existed.
+ */
+export interface AgentCredentialFence {
+  boundProjectId: string | null;
+  projectIds: string[] | null;
 }
 
 export interface AgentAccount {
@@ -40,8 +57,8 @@ export interface AgentAccount {
   /** The label a person reads, or null where nobody has typed one. */
   displayName: string | null;
   email: string;
-  projectId: string;
-  projectRole: ProjectMemberRole;
+  /** Every project this agent is a member of; empty for an agent that reaches none. */
+  projects: { id: string; role: ProjectMemberRole }[];
   createdAt: Date;
   /** Credentials this account holds that {@link patIsLive} would still accept. */
   activeTokens: number;
@@ -90,14 +107,28 @@ export async function createAgentAccount(
     );
   }
 
-  const [project] = await db
+  const wanted = [...new Set(input.projectIds)];
+  if (wanted.length === 0) {
+    throw badRequest(
+      'projectIds must name at least one project — an agent with no project membership holds a credential fenced to nothing and cannot act',
+      'AGENT_NEEDS_A_PROJECT',
+    );
+  }
+
+  // cm:guard EVERY id is checked against this org, not just the first: a create that
+  // validated one and enrolled the rest would let an org admin give their own agent a
+  // membership in another org's project, which is the one thing a per-org admin gate
+  // cannot otherwise be talked into. The refusal names the ids rather than the count,
+  // because a caller sending eight gets no way to find the wrong one from a number.
+  const found = await db
     .select({ id: projects.id, orgId: projects.orgId })
     .from(projects)
-    .where(eq(projects.id, input.projectId))
-    .limit(1);
-  if (!project || project.orgId !== input.orgId) {
+    .where(inArray(projects.id, wanted));
+  const inThisOrg = new Set(found.filter((p) => p.orgId === input.orgId).map((p) => p.id));
+  const strangers = wanted.filter((id) => !inThisOrg.has(id));
+  if (strangers.length > 0) {
     throw new HTTPException(404, {
-      message: 'project not found in this organization',
+      message: `not a project of organization ${input.orgId}: ${strangers.join(', ')}`,
       cause: { code: 'NOT_FOUND' },
     });
   }
@@ -129,11 +160,9 @@ export async function createAgentAccount(
         role: 'member',
         handle: input.handle,
       });
-      await tx.insert(projectMembers).values({
-        userId: row.id,
-        projectId: input.projectId,
-        role: projectRole,
-      });
+      await tx
+        .insert(projectMembers)
+        .values(wanted.map((projectId) => ({ userId: row.id, projectId, role: projectRole })));
       return row;
     }),
   );
@@ -142,7 +171,7 @@ export async function createAgentAccount(
     userId: created.id,
     name: `agent:${input.handle}`,
     scopes: ['read', 'write'],
-    boundProjectId: input.projectId,
+    ...fenceFor(wanted),
   });
 
   return {
@@ -151,14 +180,47 @@ export async function createAgentAccount(
       handle: input.handle,
       displayName: input.handle,
       email,
-      projectId: input.projectId,
-      projectRole,
+      projects: wanted.map((id) => ({ id, role: projectRole })),
       createdAt: created.createdAt,
       activeTokens: 1,
       canAct: true,
     },
     plaintext: minted.plaintext,
   };
+}
+
+/**
+ * The fence for a set of projects, and the ONE place either shape is chosen.
+ *
+ * Three writers mint for an agent — this module's create and credential routes and
+ * `devices/credential.ts` when a box pairs as one — and a fence decided separately
+ * in each is three chances for one of them to mint the account-wide token that
+ * `boundProjectId` exists to prevent.
+ */
+// cm:guard one project keeps `boundProjectId` and a NULL `projectIds`, and that is not the array shape written shorter. `bound_project_id` is also the project a caller that names none resolves to (`mcp/tools/lib.ts:resolveEffectiveProjectId`), so collapsing the two shapes into one would silently take the default away from every agent that has one — the existing single-project agent whose behaviour ISS-1093 rule 2 holds fixed. Several projects cannot have a default and must not pretend to one: the caller names the project or is refused.
+// cm:guard `projectIds: []` is never this function's answer. An empty array fences a token to NO project, which `devices/credential.ts` uses deliberately for a person's box; reached from here it would be an agent credential that opens nothing, so a set with no members is refused by its callers before they get here.
+export function fenceFor(projectIds: string[]): AgentCredentialFence {
+  const ids = [...new Set(projectIds)];
+  if (ids.length === 1) return { boundProjectId: ids[0] as string, projectIds: null };
+  return { boundProjectId: null, projectIds: ids };
+}
+
+/**
+ * The fence a credential for this agent must carry right now, read from its
+ * memberships. Refuses an agent that is a member of nothing.
+ */
+export async function agentCredentialFence(agentUserId: string): Promise<AgentCredentialFence> {
+  const rows = await db
+    .select({ projectId: projectMembers.projectId })
+    .from(projectMembers)
+    .where(eq(projectMembers.userId, agentUserId));
+  if (rows.length === 0) {
+    throw badRequest(
+      `agent ${agentUserId} is a member of no project, so a credential minted for it would be fenced to nothing; give it a project membership first`,
+      'AGENT_HAS_NO_PROJECT',
+    );
+  }
+  return fenceFor(rows.map((r) => r.projectId));
 }
 
 /**
@@ -194,21 +256,35 @@ export async function listAgentAccounts(orgId: string): Promise<AgentAccount[]> 
     .where(and(eq(organizationMembers.orgId, orgId), eq(users.kind, 'agent')))
     .orderBy(desc(users.createdAt));
 
-  return rows.map((row) => {
+  // cm:guard the `leftJoin` on `project_members` yields ONE ROW PER MEMBERSHIP, so an
+  // agent on three projects arrives here three times and a mapped-not-folded result
+  // lists it three times — each copy naming a different project and every other column
+  // identical, which reads as three agents sharing a name rather than as one agent
+  // (ISS-1093). Folding is not an optimisation here; it is what makes the row count
+  // mean "agents". The `leftJoin` stays a LEFT join because an agent with no project is
+  // exactly the row an admin needs to see in order to fix it.
+  const byAgent = new Map<string, AgentAccount>();
+  for (const row of rows) {
     const activeTokens = row.activeTokens ?? 0;
-    return {
+    const existing = byAgent.get(row.userId);
+    if (existing) {
+      if (row.projectId) existing.projects.push({ id: row.projectId, role: row.projectRole ?? 'member' });
+      existing.canAct = existing.activeTokens > 0 && existing.projects.length > 0;
+      continue;
+    }
+    byAgent.set(row.userId, {
       userId: row.userId,
       handle: row.handle ?? '',
       displayName: row.displayName,
       email: row.email,
-      projectId: row.projectId ?? '',
-      projectRole: row.projectRole ?? 'member',
+      projects: row.projectId ? [{ id: row.projectId, role: row.projectRole ?? 'member' }] : [],
       createdAt: row.createdAt,
       activeTokens,
-      // cm:guard BOTH halves, because a live credential is only half of being able to act: the token is fenced to one project and `effectiveProjectRole` is what answers on the other side, so an agent whose project membership was removed after its token was minted holds a credential that opens nothing. Reported as the credential fact alone, `reachOf`'s "belongs to no project" branch is unreachable and the console tells an admin to mint a second credential that will not help either (ISS-1003 criteria 2, 6, 7).
+      // cm:guard BOTH halves, because a live credential is only half of being able to act: the token is fenced to the agent's projects and `effectiveProjectRole` is what answers on the other side, so an agent whose project memberships were removed after its token was minted holds a credential that opens nothing. Reported as the credential fact alone, `reachOf`'s "belongs to no project" branch is unreachable and the console tells an admin to mint a second credential that will not help either (ISS-1003 criteria 2, 6, 7).
       canAct: activeTokens > 0 && row.projectId != null,
-    };
-  });
+    });
+  }
+  return [...byAgent.values()];
 }
 
 /**
@@ -244,32 +320,23 @@ export async function loadOrgAgent(
  * {@link createAgentAccount} cannot reach because it only ever mints beside a
  * creation.
  */
-// cm:guard the token is bound to the project the agent is a member of, never unbound, because `createAgentAccount` binds the one it mints and an agent credentialed through this route would otherwise reach every project its owner does. An agent with no project membership is refused here rather than given an unbound token: a credential whose fence resolves to nothing is the account-scoped token `boundProjectId` exists to prevent (ISS-497).
+// cm:guard the token is fenced to the projects the agent is a member of, never unfenced, because an agent credentialed through this route would otherwise reach every project its account can see. Both fence shapes are narrow — `bound_project_id` for one, a non-empty `project_ids` allowlist for several — and NEITHER is a NULL pair, which is the account-scoped token `boundProjectId` exists to prevent (ISS-497). An agent with no project membership is refused by `agentCredentialFence` rather than given an unfenced one.
 export async function mintAgentCredential(
   orgId: string,
   agentUserId: string,
-): Promise<{ plaintext: string; boundProjectId: string } | null> {
+): Promise<{ plaintext: string; fence: AgentCredentialFence } | null> {
   const agent = await loadOrgAgent(orgId, agentUserId);
   if (!agent) return null;
 
-  const [membership] = await db
-    .select({ projectId: projectMembers.projectId })
-    .from(projectMembers)
-    .where(eq(projectMembers.userId, agentUserId))
-    .limit(1);
-  if (!membership) {
-    throw badRequest(
-      `agent ${agentUserId} is a member of no project, so a credential minted for it would be fenced to nothing; give it a project membership first`,
-      'AGENT_HAS_NO_PROJECT',
-    );
-  }
+  // cm:guard the whole membership set, never `.limit(1)`. That is what this read used to
+  // be, and against an agent on more than one project it picked whichever row Postgres
+  // returned first and fenced the credential to it — a silent substitution that reads on
+  // the box as "this project is gone" (a foreign-project PAT answers NOT_FOUND, which is
+  // deliberately existence-hiding) rather than as a credential minted for the wrong reach.
+  const fence = await agentCredentialFence(agentUserId);
 
-  const minted = await mintDistinctlyNamed(
-    agent.id,
-    `agent:${agent.handle ?? agent.id}`,
-    membership.projectId,
-  );
-  return { plaintext: minted, boundProjectId: membership.projectId };
+  const minted = await mintDistinctlyNamed(agent.id, `agent:${agent.handle ?? agent.id}`, fence);
+  return { plaintext: minted, fence };
 }
 
 /**
@@ -284,13 +351,13 @@ export async function mintAgentCredential(
 async function mintDistinctlyNamed(
   userId: string,
   base: string,
-  boundProjectId: string,
+  fence: AgentCredentialFence,
 ): Promise<string> {
   const stamp = new Date().toISOString().slice(0, 16).replace('T', ' ');
   const names = [base, `${base} ${stamp}`, `${base} ${randomBytes(4).toString('hex')}`];
   for (const name of names) {
     try {
-      const minted = await mintPat({ userId, name, scopes: ['read', 'write'], boundProjectId });
+      const minted = await mintPat({ userId, name, scopes: ['read', 'write'], ...fence });
       return minted.plaintext;
     } catch (err) {
       if (!isUniqueViolation(err) || uniqueViolationConstraint(err) !== 'pat_user_name_uniq') {
@@ -302,6 +369,62 @@ async function mintDistinctlyNamed(
     `every name this route would give a credential for agent ${userId} is already taken (${names.join(', ')}); ask again and the third name is drawn fresh — revoking will not free one, because a revoked row keeps its name under pat_user_name_uniq`,
     'AGENT_CREDENTIAL_NAME_TAKEN',
   );
+}
+
+/**
+ * Set the whole list of projects an agent works on, and re-fence what it holds.
+ *
+ * The membership write and the credential re-fence are ONE transaction on purpose.
+ * Split them and there is a window where the agent is a member of a project none of
+ * its credentials may reach, which on the box reads as `NOT_FOUND` — the deliberately
+ * existence-hiding refusal a foreign-project token gets — so an operator sees "that
+ * project is gone" rather than "your token has not caught up".
+ */
+// cm:guard EVERY live credential of this agent is re-fenced, including the one `devices/credential.ts:issueDeviceCredential` minted when a box paired as this agent. Narrowing this to the tokens THIS module minted is the obvious reading and it is wrong: the paired box's credential is the one that actually files the work, and leaving it on the old fence is exactly the "I added the project and the box still 404s" shape. Nothing here reads a token's NAME to decide — ISS-932 wave 4 removed name-derived behaviour, and a person's token called `agent:` must stay inert.
+// cm:guard an agent's rights are its MEMBERSHIPS and this writes nothing else: no scope is added, no permission granted, no role raised. An agent reaches a project exactly as a person with the same `project_members` row does (`lib/authz.ts:effectiveProjectRole`), which is ISS-1093 rule 3, and a fence can only ever narrow that further.
+export async function setAgentProjects(
+  orgId: string,
+  agentUserId: string,
+  projectIds: string[],
+): Promise<{ projects: string[]; fence: AgentCredentialFence; refenced: number } | null> {
+  if (!(await loadOrgAgent(orgId, agentUserId))) return null;
+
+  const wanted = [...new Set(projectIds)];
+  if (wanted.length === 0) {
+    throw badRequest(
+      'projectIds must name at least one project — removing the last one would leave a credential fenced to nothing; retire the agent instead',
+      'AGENT_NEEDS_A_PROJECT',
+    );
+  }
+
+  const found = await db
+    .select({ id: projects.id, orgId: projects.orgId })
+    .from(projects)
+    .where(inArray(projects.id, wanted));
+  const inThisOrg = new Set(found.filter((p) => p.orgId === orgId).map((p) => p.id));
+  const strangers = wanted.filter((id) => !inThisOrg.has(id));
+  if (strangers.length > 0) {
+    throw new HTTPException(404, {
+      message: `not a project of organization ${orgId}: ${strangers.join(', ')}`,
+      cause: { code: 'NOT_FOUND' },
+    });
+  }
+
+  const fence = fenceFor(wanted);
+  const refenced = await db.transaction(async (tx) => {
+    await tx.delete(projectMembers).where(eq(projectMembers.userId, agentUserId));
+    await tx
+      .insert(projectMembers)
+      .values(wanted.map((projectId) => ({ userId: agentUserId, projectId, role: 'member' as const })));
+    const rows = await tx
+      .update(personalAccessTokens)
+      .set({ boundProjectId: fence.boundProjectId, projectIds: fence.projectIds })
+      .where(and(eq(personalAccessTokens.userId, agentUserId), patIsLive()))
+      .returning({ id: personalAccessTokens.id });
+    return rows.length;
+  });
+
+  return { projects: wanted, fence, refenced };
 }
 
 /**
