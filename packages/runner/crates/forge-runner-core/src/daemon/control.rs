@@ -1153,8 +1153,6 @@ mod tests {
         }
     }
 
-    /// The facts the handler would assemble, with the role set named rather
-    /// than read off whatever this machine happens to hold.
     /// Ask the gate the way the socket asks it.
     ///
     // cm:guard this CALLS `dispatch_gate_reply`. It used to re-implement it — read the ledger,
@@ -1197,6 +1195,18 @@ mod tests {
         r.ok
     }
 
+    /// Which declaration the socket's own answer named, if any.
+    ///
+    // cm:guard `job_id` is the ONLY thing in the reply that tells `Covered` from `Replay` — both
+    // answer `ok: true`, and a caller reading `ok` alone cannot tell a dispatch that reserved a row
+    // from one told about a row it already held. It was also, until this assertion, written and
+    // read by nothing: planting `reply.job_id = None` left the whole workspace green (ISS-1094,
+    // retrospective review of #518).
+    #[cfg(unix)]
+    fn named_run(r: &ClaimReply) -> Option<String> {
+        r.job_id.clone()
+    }
+
     /// Refused, and refused with the declaration's own words rather than any
     /// other `ok:false` the socket can produce.
     #[cfg(unix)]
@@ -1235,11 +1245,13 @@ mod tests {
         let run_id = run_declare(&ctl, "proj-1", &["ISS-7".into()], "/w/seven", "sess-a")
             .job_id
             .expect("declared");
-        assert!(allowed(&gate_on(
-            &ctl,
-            &asking("runner", "toolu_1"),
-            "sess-a"
-        )));
+        let covered = gate_on(&ctl, &asking("runner", "toolu_1"), "sess-a");
+        assert!(allowed(&covered));
+        assert_eq!(
+            named_run(&covered).as_deref(),
+            Some(run_id.as_str()),
+            "a dispatch that RESERVED a row is answered with that row's id"
+        );
         assert_eq!(
             promised_to(&ctl, &run_id).as_deref(),
             Some("toolu_1"),
@@ -1247,11 +1259,14 @@ mod tests {
         );
 
         // 6. The same tool call again is the same answer, and consumes nothing.
-        assert!(allowed(&gate_on(
-            &ctl,
-            &asking("runner", "toolu_1"),
-            "sess-a"
-        )));
+        let replay = gate_on(&ctl, &asking("runner", "toolu_1"), "sess-a");
+        assert!(allowed(&replay));
+        assert_eq!(
+            named_run(&replay),
+            None,
+            "a replay reserved nothing, so it names no row — the only thing in the reply that \
+             tells it from the dispatch that did"
+        );
         assert_eq!(
             promised_to(&ctl, &run_id).as_deref(),
             Some("toolu_1"),

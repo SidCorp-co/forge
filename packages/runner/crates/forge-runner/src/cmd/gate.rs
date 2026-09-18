@@ -485,12 +485,23 @@ mod tests {
             ALLOW,
             "a pane that cannot authenticate to its own daemon still hands out work"
         );
-        assert_eq!(
-            forge_runner_core::daemon::degraded::tally(dir.path())
-                .0
-                .count,
-            1,
-            "and the box says the gate was not operating when it did"
+        // cm:guard the REASON is asserted and not merely the count. This scratch has no
+        // `control.sock`, so deleting the token arm drops through to the socket-missing arm, which
+        // returns the same `ALLOW` and writes the same single mark: a count-only assertion holds
+        // "some arm above here allowed" rather than this criterion, and stays green with the arm
+        // it names deleted. Measured: `let token = token.unwrap_or("")` kept all 41 tests green
+        // (ISS-1094, retrospective review of #518).
+        let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
+        assert_eq!(degraded.count, 1, "the box says the gate was not operating");
+        assert!(
+            degraded
+                .last
+                .as_deref()
+                .unwrap_or_default()
+                .contains("no control capability"),
+            "the mark must name the CAPABILITY as what was missing, or it cannot be told from \
+             the socket simply not being there: {:?}",
+            degraded.last
         );
     }
 
@@ -529,12 +540,27 @@ mod tests {
             ALLOW,
             "only the declaration's own refusal denies; every other ok:false is uncertainty"
         );
+        // cm:guard the reason is asserted, because the count cannot tell this arm from the one
+        // above it. A stub that writes an empty line instead of its body takes the
+        // `Ok(Err(..))` parse-failure arm, allows, marks once, and this test passed in 0.00s
+        // against it: the gate frame and the daemon's `Request` enum could drift until every
+        // dispatch failed to parse and nothing here would go red (ISS-1094, retrospective review
+        // of #518).
+        let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
         assert_eq!(
-            forge_runner_core::daemon::degraded::tally(dir.path())
-                .0
-                .count,
-            1,
-            "and an allowance the gate did not decide leaves a mark"
+            degraded.count, 1,
+            "an allowance the gate did not decide leaves a mark"
+        );
+        let why = degraded.last.clone().unwrap_or_default();
+        assert!(
+            why.contains("refused the question itself"),
+            "the daemon ANSWERED and its answer was a refusal of the question; a mark that does \
+             not say so cannot be told from one the daemon never received: {why:?}"
+        );
+        assert!(
+            why.contains("unknown session token"),
+            "and the daemon's own words are carried through, so an operator learns WHY it \
+             refused rather than only that it did: {why:?}"
         );
     }
 }
