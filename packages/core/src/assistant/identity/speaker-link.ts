@@ -58,20 +58,17 @@ function speakerPhrase(ref: SpeakerRef): string {
  */
 // cm:guard this string is read by A PERSON IN A CHAT ROOM and by nobody else — `question-inbound.ts`
 // and `comment-inbound.ts` are its only callers, and both hand it straight to `say(transport, …)`.
-// So it leads with the cause in words and names the condition that actually decides the link, which
-// is that the two addresses MATCH: measured 2026-09-18, the one person who hit this was refused
-// because the channel reports `<name>@sidcorp.co` for them while they sign in to Forge as someone
-// else, and the refusal they got never used the word "email" once. It opened with two REST paths and
-// a JSON body instead, to a reader whose whole surface is a message box. The route is still named,
-// last and in one line, because it is the only one that exists until a screen does.
+// Three sentences, and the length is the point: it opened with two REST paths and a JSON body, and
+// the rewrite that fixed that first replaced them with six sentences of prose, which is the same
+// defect wearing better clothes. Cause, the one condition that decides it, the only route there is.
+// The condition is the ADDRESSES MATCHING: measured 2026-09-18, the person who hit this was refused
+// because the channel reports one address for them and they sign in to Forge as another, and the
+// refusal they got never used the word "email".
 export function unlinkedMessage(ref: SpeakerRef): string {
   return [
-    `I can see your message, but ${speakerPhrase(ref)} is not linked to a Forge account yet, so I cannot record an answer as you.`,
-    'Answering exercises a permission — an option can say "admins only" — so Forge has to know whose permission to check, and a chat handle carries none.',
-    'The link is confirmed by matching addresses: sign in to Forge with the SAME email address this chat account uses, then confirm the link yourself.',
-    'It has to be you, not an administrator on your behalf, because the permission checked afterwards is yours.',
-    'If your two addresses differ, make them the same on either side first — that mismatch is the usual reason this refusal appears.',
-    'There is no screen for the confirming step yet: it is POST /api/projects/<projectId>/speaker-links/proposals to see the match, then POST /api/projects/<projectId>/speaker-links to store it, both with {"source","externalId"}.',
+    `${speakerPhrase(ref)} is not linked to a Forge account, so I cannot record an answer as you.`,
+    'Sign in to Forge with the same email this chat account uses and confirm the link — mismatched addresses is the usual cause.',
+    'No screen for it yet: POST /api/projects/<id>/speaker-links.',
   ].join(' ');
 }
 
