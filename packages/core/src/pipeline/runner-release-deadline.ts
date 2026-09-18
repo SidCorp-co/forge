@@ -35,15 +35,17 @@ export interface RunnerReleaseDeadlineResult {
   named: number;
 }
 
-// cm:guard the sentence for a build that never reported names the SUBSCRIPTION, because that is the one cause an operator can act on and the one this change created: `connect.ts`'s manifest only decides the events of Apps created after it, so an App that already exists hears no `workflow_run` until somebody subscribes it by hand, and the symptom is exactly this row — a tag cut, a build running, and Forge told nothing.
+// cm:guard the sentence for a build that never reported names the SUBSCRIPTION AND the permission that gates it, because they are two settings on two pages and either one missing produces this identical row — a tag cut, a build running, and Forge told nothing. `connect.ts`'s manifest only decides Apps created after it, so an App that already exists has neither until somebody sets both by hand; naming only the subscription sends an operator to a page where everything already looks right.
 function leadFor(row: RunnerReleaseRow, now: Date): string {
   const minutes = Math.max(1, Math.round((now.getTime() - row.startedAt.getTime()) / 60_000));
   if (row.step === 'await_build') {
     return (
       `Forge cut \`${row.tag}\` ${minutes} minutes ago and GitHub has reported no build for it. ` +
-      'Forge hears a build on a `workflow_run` delivery and never polls, so the first thing to ' +
-      "check is that this project's GitHub App subscribes to Workflow run — its Permissions & " +
-      'events page, under Subscribe to events.'
+      'Forge hears a build on a `workflow_run` delivery and never polls, so check two things on ' +
+      "this project's GitHub App, both on its Permissions & events page: that Actions is set to " +
+      'Read-only, which is the permission GitHub gates that event on, and that Workflow run is ' +
+      'ticked under Subscribe to events. A permission added to an App also needs approving on ' +
+      'the installation.'
     );
   }
   if (row.step === 'cut_tag') {

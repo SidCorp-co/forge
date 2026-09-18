@@ -246,6 +246,9 @@ describe('the preflights, each naming the step and that nothing was written', ()
     expect(String(row()?.failure)).toContain(
       'already exists on SidCorp-co/forge, pointing at olderco',
     );
+    // cm:guard both commits, labelled, and the truth sentence built from the OBSERVED one. A refusal that names `olderco` in its lead and then says the tag exists at `abc1234` contradicts itself in two consecutive sentences, and the second one is the reading an operator acts on.
+    expect(String(row()?.failure)).toContain('this release resolved abc1234');
+    expect(String(row()?.failure)).toContain('The tag `runner-v0.13.3` exists at olderco');
     expect(repo.createTagRef).not.toHaveBeenCalled();
   });
 
@@ -348,7 +351,9 @@ describe('the three things that can be true after a cut that did not answer', ()
     );
     await start();
     expect(row()?.tagState).toBe('present');
-    expect(String(row()?.failure)).toContain('`runner-v0.13.3` exists at abc1234');
+    // cm:guard the sentence says the tag EXISTS and does not say where. GitHub answering "the ref is already there" is not a reading of what it points at, and naming this attempt's own commit there would be the row asserting, off nothing, that somebody else's tag is at the commit Forge resolved.
+    expect(String(row()?.failure)).toContain('The tag `runner-v0.13.3` exists');
+    expect(String(row()?.failure)).not.toContain('exists at abc1234');
   });
 
   // cm:guard a 5xx is NOT a refusal that proves nothing was written: GitHub can commit the ref and then fall over answering, and `absent` here is what lets the next attempt cut over a tag that is already on the repository.
@@ -439,8 +444,26 @@ describe('what a second attempt at one version may do', () => {
     expect(row()?.tagState).toBe('present');
   });
 
-  it('is refused once the tag exists, naming when the first attempt stopped', async () => {
+  // cm:guard the first start leaves the row at `await_build`, which is a release RUNNING and not one that stopped. The refusal has to send the second caller to it rather than to the next version — advice to cut another version is how a second release gets started beside the first.
+  it('is refused while the first is still running, and sends the caller to it', async () => {
     await start();
+    const again = await start();
+    expect(again).toMatchObject({ started: false, kind: 'already_attempted' });
+    expect('message' in again && again.message).toContain('is already running');
+    expect('message' in again && again.message).toContain('rather than starting a second one');
+    expect('message' in again && again.message).not.toContain('Cut the next version');
+  });
+
+  it('is refused once an attempt has stopped, and names the next version as the way on', async () => {
+    repo.createTagRef.mockRejectedValue(
+      publishError({
+        op: 'create',
+        status: 422,
+        message: 'unprocessable',
+        detail: '{"message":"Reference already exists"}',
+      }),
+    );
+    expect((await start()).started).toBe(false);
     const again = await start();
     expect(again).toMatchObject({ started: false, kind: 'already_attempted' });
     expect('message' in again && again.message).toContain('Cut the next version instead');

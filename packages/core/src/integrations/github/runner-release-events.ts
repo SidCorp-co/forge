@@ -119,6 +119,44 @@ async function attribute(
     );
     return null;
   }
+  return validate(row, run, tag);
+}
+
+/**
+ * The two terms that are NOT attribution: they say whether the build the tag
+ * matched is this release's own.
+ *
+ * A tag names a release; it does not prove the build that ran for it is the one
+ * this release cut. Between Forge reading the tag absent and cutting it,
+ * somebody else can cut the same tag at a different commit, and that build's
+ * completion matches on repository, workflow, tag and status alike. Settling on
+ * it would record this release published over a commit it never cut — the row
+ * saying `commit_sha = A` while everything it reports came from B.
+ *
+ * This is the opposite of matching by commit: a delivery is still FOUND by its
+ * tag and only its tag, and one carrying no `runner-v*` tag settles nothing
+ * (criteria 10 and 11). These terms only reject.
+ */
+// cm:guard `head_sha` appears here and NOWHERE in the lookup. Moving it into `attribute` to find a row would be the fallback criterion 10 refuses — two `runner-v*` tags can point at one commit and picking between them settles the wrong release. Rejecting on it is safe for the same reason it is unsafe to select on: a commit that disagrees is positive evidence, a commit that agrees names nothing.
+function validate(
+  row: RunnerReleaseRow,
+  run: NonNullable<WorkflowRunPayload['workflow_run']>,
+  tag: string,
+): RunnerReleaseRow | null {
+  if (row.step !== 'cut_tag' && row.step !== 'await_build') {
+    logger.error(
+      { releaseId: row.id, tag, step: row.step },
+      'runner-release: a build completed for a tag this release had not cut, so nothing was settled',
+    );
+    return null;
+  }
+  if (!row.commitSha || run.head_sha !== row.commitSha) {
+    logger.error(
+      { releaseId: row.id, tag, delivered: run.head_sha, held: row.commitSha },
+      'runner-release: the build ran at a different commit from the one this release cut, so nothing was settled',
+    );
+    return null;
+  }
   return row;
 }
 

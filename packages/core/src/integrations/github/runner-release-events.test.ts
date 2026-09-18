@@ -289,6 +289,28 @@ describe('the deliveries that settle nothing', () => {
   });
 
   // cm:guard the repository is one of the four terms, so a delivery that does not carry it FAILS that term rather than skipping it. A comparison written as "compare it if it is there" settles a release on three terms whenever GitHub omits or renames the field, and the shape of a delivery is GitHub's to change.
+  // cm:guard a tag names a release; it does not prove the build that ran for it is the one this release cut. Between Forge reading the tag absent and cutting it, somebody else can cut the same tag at another commit — and that build's completion matches on repository, workflow, tag and status alike. Settling on it records this release published over a commit it never cut, with `commit_sha` saying one thing and every reported field coming from another.
+  it('settles nothing when the build ran at a different commit from the one it cut', async () => {
+    expect(await applyWorkflowRunEvent(ctx, delivery({}, { head_sha: 'deadbee' }))).toBe(0);
+    expect(row.settledAt).toBeNull();
+    expect(readReleaseForTag).not.toHaveBeenCalled();
+  });
+
+  // cm:guard a release that has not reached its cut has no build of its own to hear about, so a completed build for its tag is somebody else's. Without this the row is settled at a step it never got to.
+  it('settles nothing for a release that has not cut its tag yet', async () => {
+    row.step = 'check_tag_absent';
+    row.status = 'preflight';
+    expect(await applyWorkflowRunEvent(ctx, delivery())).toBe(0);
+    expect(row.settledAt).toBeNull();
+    expect(readReleaseForTag).not.toHaveBeenCalled();
+  });
+
+  it('settles the release whose own cut the build ran for', async () => {
+    row.step = 'cut_tag';
+    expect(await applyWorkflowRunEvent(ctx, delivery())).toBe(1);
+    expect(row.settledAt).not.toBeNull();
+  });
+
   it('settles nothing when the delivery names no repository at all', async () => {
     const { repository: _dropped, ...withoutRepo } = delivery();
     expect(await applyWorkflowRunEvent(ctx, withoutRepo)).toBe(0);

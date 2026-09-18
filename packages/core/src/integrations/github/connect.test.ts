@@ -69,6 +69,15 @@ describe('buildAppManifest', () => {
     expect((split().default_permissions as Record<string, string>).checks).toBe('write');
   });
 
+  // cm:guard ISS-1075 — an event and the permission that gates it are ONE request, and GitHub gates `workflow_run` on Actions. Subscribing without it produces an App whose settings page lists the event and whose deliveries never carry one, which presents as a release waiting an hour and a half for a build that already finished. Neither `contents` nor `checks` grants it, so this has to be its own key.
+  it('requests `actions: read` for every event it subscribes to that needs it', () => {
+    const m = split();
+    const events = m.default_events as string[];
+    const permissions = m.default_permissions as Record<string, string>;
+    expect(events).toContain('workflow_run');
+    expect(permissions.actions).toBe('read');
+  });
+
   it('states what an operator does to the App that already exists', () => {
     const source = readFileSync(
       join(dirname(fileURLToPath(import.meta.url)), 'connect.ts'),

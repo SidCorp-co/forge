@@ -135,19 +135,36 @@ export async function readFileAtRef(
   }
 }
 
-/** The commit a tag points at, or `null` where the repository holds no such tag. */
+/**
+ * The COMMIT a tag points at, or `null` where the repository holds no such tag.
+ *
+ * An annotated tag's ref points at a tag OBJECT rather than at a commit, so the
+ * sha off the ref alone is not the thing criterion 2 says this refusal names —
+ * and every `runner-v*` tag on this repository is annotated, Forge's own
+ * included. Peeling it is a second read and it is not optional: a refusal that
+ * prints a tag-object sha under the word "commit" sends whoever reads it
+ * looking for a commit that does not exist.
+ */
 export async function readTagRef(
   client: GitHubRepoClient,
   tag: string,
 ): Promise<{ sha: string } | null> {
   const subject = runnerReleaseSubject({ lookup: `looking the tag ${tag} up` });
   try {
-    const ref = await client.publish<{ object?: { sha?: string } }>({
+    const ref = await client.publish<{ object?: { sha?: string; type?: string } }>({
       op: 'lookup',
       method: 'GET',
       path: `${repoPath(client)}/git/ref/tags/${encodeURIComponent(tag)}`,
     });
-    return { sha: ref.object?.sha ?? '(unknown commit)' };
+    const object = ref.object;
+    if (!object?.sha) return { sha: '(unknown commit)' };
+    if (object.type !== 'tag') return { sha: object.sha };
+    const peeled = await client.publish<{ object?: { sha?: string } }>({
+      op: 'lookup',
+      method: 'GET',
+      path: `${repoPath(client)}/git/tags/${encodeURIComponent(object.sha)}`,
+    });
+    return { sha: peeled.object?.sha ?? object.sha };
   } catch (err) {
     if (isAbsent(err)) return null;
     refuse(err, 'lookup', subject);

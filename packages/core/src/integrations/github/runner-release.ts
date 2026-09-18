@@ -142,7 +142,9 @@ async function cutTheTag(
       : err.beforeWrite || rejected
         ? ('absent' as const)
         : ('unknown' as const);
-    const failure = `${refusal.message} ${truthOf({ ...row, commitSha, tagState }, tagState)}`;
+    // cm:guard `present` here came from GitHub saying the ref is already there, which says nothing about WHAT it points at — Forge never read it. Passing this release's own commit into the sentence would have it assert that the tag somebody else cut is at the commit this attempt resolved, off no reading at all. The other two states name the commit legitimately: they are about the create Forge sent.
+    const truthCommit = tagState === 'present' ? null : commitSha;
+    const failure = `${refusal.message} ${truthOf({ ...row, commitSha: truthCommit, tagState }, tagState)}`;
     await settleFailed(row.id, row.attempt, { step: 'cut_tag', failure, tagState });
     await appendReading(row.id, row.attempt, `cut_tag: refused — ${refusal.cause}`);
     logger.warn(
@@ -198,9 +200,11 @@ async function runPreflight(
     const existing = await readTagRef(client, row.tag);
     tagRead = true;
     if (existing) {
+      // cm:guard the sentence names the commit the tag WAS FOUND at and, separately, the commit this release resolved — they are two different facts and only one of them was read off the repository. Describing the existing tag with the requested commit is a row contradicting its own lead sentence, and it is the reading an operator acts on when deciding whether the tag that is there is the one they wanted.
       const failure =
-        `\`${row.tag}\` already exists on ${client.fullName}, pointing at ${existing.sha}. ` +
-        `${truthOf({ ...row, commitSha, tagState: 'present' as const }, 'present')}`;
+        `\`${row.tag}\` already exists on ${client.fullName}, pointing at ${existing.sha}, ` +
+        `and this release resolved ${commitSha}. ` +
+        `${truthOf({ ...row, commitSha: existing.sha, tagState: 'present' as const }, 'present')}`;
       const settled = await settleFailed(row.id, row.attempt, {
         step,
         failure,
@@ -292,14 +296,15 @@ export async function startRunnerRelease(
   });
   if (!open.opened) {
     const held = open.held;
-    return {
-      started: false,
-      kind: 'already_attempted',
-      message:
-        `\`${held.tag}\` was already attempted on ${held.startedAt.toISOString()} and stopped at ` +
-        `\`${held.step}\`. ${truthOf(held)} Cut the next version instead.`,
-      release: held,
-    };
+    // cm:guard a held row is two different situations wearing one refusal, and the advice for them is opposite. A SETTLED row is an attempt that ended, and the way on is the next version. An UNSETTLED one is a release running right now — telling its caller it "stopped" and to cut another version is how a second release gets started beside the first, which is the outcome this refusal exists to prevent.
+    const message =
+      held.settledAt === null
+        ? `\`${held.tag}\` is already running: it was opened on ${held.startedAt.toISOString()} ` +
+          `and is at \`${held.step}\`. Follow that release (${held.id}) rather than starting ` +
+          'a second one for the same tag.'
+        : `\`${held.tag}\` was already attempted on ${held.startedAt.toISOString()} and stopped ` +
+          `at \`${held.step}\`. ${truthOf(held)} Cut the next version instead.`;
+    return { started: false, kind: 'already_attempted', message, release: held };
   }
 
   const row = open.opened;

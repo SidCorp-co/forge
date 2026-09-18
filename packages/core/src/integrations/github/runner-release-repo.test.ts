@@ -89,13 +89,27 @@ describe('the reads', () => {
     );
   });
 
-  it('reads a missing tag as absence and a present one as its commit', async () => {
+  it('reads a missing tag as absence and a lightweight one as its commit', async () => {
     const absent = stubClient(
       () => new GitHubPublishError({ op: 'lookup', status: 404, message: 'no ref' }),
     );
     expect(await readTagRef(absent.client, 'runner-v9.9.9')).toBeNull();
-    const present = stubClient(() => ({ object: { sha: 'abc1234' } }));
+    const present = stubClient(() => ({ object: { sha: 'abc1234', type: 'commit' } }));
     expect(await readTagRef(present.client, 'runner-v0.13.2')).toEqual({ sha: 'abc1234' });
+  });
+
+  // cm:guard every `runner-v*` tag on this repository is annotated, Forge's own now included, and an annotated ref points at a tag OBJECT. Criterion 2 says the refusal names the COMMIT the tag points at, so the object is peeled — without it the refusal prints a sha that is real, is not a commit, and is called one, and whoever reads it goes looking for a commit that does not exist.
+  it('peels an annotated tag to the commit it points at', async () => {
+    const { client, calls } = stubClient((call) =>
+      call.path.includes('/git/ref/tags/')
+        ? { object: { sha: 'tagobj1', type: 'tag' } }
+        : { object: { sha: 'abc1234', type: 'commit' } },
+    );
+    expect(await readTagRef(client, 'runner-v0.14.0')).toEqual({ sha: 'abc1234' });
+    expect(calls.map((c) => c.path)).toEqual([
+      '/repos/SidCorp-co/forge/git/ref/tags/runner-v0.14.0',
+      '/repos/SidCorp-co/forge/git/tags/tagobj1',
+    ]);
   });
 
   it('reads a missing release as absence and a present one as its assets', async () => {

@@ -81,7 +81,7 @@ describe('a build that never reported', () => {
     expect(String(patch?.failure)).toContain('reported no build for it');
   });
 
-  // cm:guard criterion 26, and it is the one cause an operator can act on: `connect.ts`'s manifest only decides the events of Apps created AFTER it, so an App that already exists hears no `workflow_run` until somebody subscribes it by hand — and an unsubscribed event has no 403 to name it with, it simply never arrives.
+  // cm:guard criterion 26, and it is the one cause an operator can act on: `connect.ts`'s manifest only decides the events of Apps created AFTER it, so an App that already exists hears no `workflow_run` until somebody sets it up by hand — and an event that never arrives has no 403 to name it with.
   it('names the workflow_run subscription as the thing to check', async () => {
     overdue = [release()];
     await nameOverdueRunnerReleases(NOW);
@@ -89,6 +89,16 @@ describe('a build that never reported', () => {
     expect(failure).toContain('`workflow_run` delivery');
     expect(failure).toContain('never polls');
     expect(failure).toContain('Subscribe to events');
+  });
+
+  // cm:guard the subscription is HALF the setup and the sentence has to carry both halves: GitHub gates `workflow_run` on the Actions permission, so an App with the event ticked and Actions unset produces this identical row. An operator sent only to the events list finds it already ticked and stops there.
+  it('names the Actions permission the event is gated on, not only the subscription', async () => {
+    overdue = [release()];
+    await nameOverdueRunnerReleases(NOW);
+    const failure = String(settled.get('rel-1')?.failure);
+    expect(failure).toContain('Actions');
+    expect(failure).toContain('Read-only');
+    expect(failure).toContain('approving on the installation');
   });
 
   it('says the tag exists and nothing is published', async () => {
