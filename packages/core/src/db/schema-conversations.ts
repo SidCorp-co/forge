@@ -21,6 +21,7 @@ import {
   uuid,
 } from 'drizzle-orm/pg-core';
 import { projects, users } from './schema.js';
+import type { PresenceConfig } from './schema-agent-selves.js';
 
 // cm:guard the transports a conversation can belong to, and the same list `assistant_speaker_links.source` is an authority over — a speaker linked under a source is linked for that transport alone. Renamed from `chatSessionSources` when the table it was named after was replaced (ISS-1001); adding a member here without an adapter registered in `conversations/ports.ts` gives a venue nothing can deliver to.
 export const conversationAdapters = ['web', 'widget', 'rocketchat', 'telegram'] as const;
@@ -59,6 +60,15 @@ export interface ConversationOrigin {
 }
 
 // cm:guard NO project column, ever: a room's projects are the union of its handle participants' memberships, read at the moment of the read, and a column here is a second copy of that which a revoked role does not reach. The column is what made `chat_sessions` a project's thing rather than a conversation (ISS-1001).
+/**
+ * What a room may set for itself: the five routing keys and nothing else.
+ */
+// cm:guard `Pick` and not the whole `PresenceConfig`, so the type itself cannot carry `heartbeat`; the schema in `presence.ts` refuses it at the edge and this is what refuses it in the code.
+export type RoomPresence = Pick<
+  PresenceConfig,
+  'dormantMs' | 'backoffAfter' | 'loopBounceMs' | 'loopLimit' | 'answerInGroup'
+>;
+
 export const conversations = pgTable(
   'conversations',
   {
@@ -76,6 +86,12 @@ export const conversations = pgTable(
     // out of its count, and every message it holds is still readable by id. A list that hid a room
     // with no way back would be the delete this column exists to avoid (ISS-1028).
     archivedAt: timestamp('archived_at', { withTimezone: true }),
+    /**
+     * This room's own routing thresholds, winning per key over the fold of
+     * its handles' selves (ISS-1087).
+     */
+    // cm:guard NULLABLE and holding only the five ROUTING keys, never `heartbeat`: null is a room that said nothing and takes the fold whole, and a heartbeat is a handle's own clock that `heartbeatOf` resolves per handle — a room that could set one would go on speaking on it after an admin quietened the room. `conversations/presence.ts:roomPresenceSchema` is the one reader and refuses the key by name.
+    presence: jsonb('presence').$type<RoomPresence | null>(),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
@@ -161,7 +177,8 @@ export const conversationMessages = pgTable(
     /**
      * The transport's own id for an inbound message, where it named one.
      */
-    // cm:guard the one thing a collected row loses otherwise: the window routes long after the message arrived, so without this there is no way to tell the room's own history reader which lines it has already been given, and the model is shown the same messages twice — once as seed context and once as its own transcript. Null for anything this codebase wrote (ISS-1004).
+    // cm:guard the one thing a collected row loses otherwise: the window routes long after the message arrived, so without this there is no way to tell the room's own history reader which lines it has already been given, and the model is shown the same messages twice — once as seed context and once as its own transcript (ISS-1004).
+    // cm:guard since ISS-1087 a DELIVERED reply carries the transport's receipt id here too (it used to be null for anything this codebase wrote): a person who quotes or replies to the bot names that id, and the address check needs it indexed. The seed's exclusion reads user rows only, so nothing it protected moved. Null still means the transport named nothing.
     externalId: text('external_id'),
     /**
      * The transport's own id for whoever spoke, where it named one.
@@ -186,10 +203,20 @@ export const conversationMessages = pgTable(
     deliveryProof: jsonb('delivery_proof'),
     // cm:guard why a turn said nothing, written INSTEAD of the text — a silence with no row is indistinguishable from a turn that never ran, which is the state invariant 7 exists to remove.
     silenceReason: text('silence_reason'),
+    /**
+     * The transport's own id for the message this one replies to or quotes,
+     * where it named one (ISS-1087).
+     */
+    // cm:guard a COLUMN and not a predicate over the text: Rocket.Chat hides a quote inside `?msg=` links in the body and its attachments, and a transport whose replies are frame metadata has no text to scan. Null is a message that replied to nothing, which is a fact and not a gap.
+    replyToExternalId: text('reply_to_external_id'),
     createdAt: timestamp('created_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     seqUnique: uniqueIndex('conversation_messages_seq_unique').on(t.conversationId, t.seq),
+    // cm:guard partial, over the rows that carry an id at all: the reply-address check asks "did a handle send the message this replies to" by the transport's id, adapter-wide, and without this every such window scans the transcript table (ISS-1087 criteria 12, 13).
+    externalIdx: index('conversation_messages_external_idx')
+      .on(t.externalId)
+      .where(sql`external_id IS NOT NULL`),
     roleKnown: check(
       'conversation_messages_role_known',
       sql`${t.role} IN ('user','assistant','system')`,
@@ -206,6 +233,13 @@ export const conversationMessages = pgTable(
 /** What opened a window: a message that arrived, or a heartbeat tick re-reading a quiet room (ISS-1034). */
 export const conversationWindowOrigins = ['inbound', 'heartbeat'] as const;
 export type ConversationWindowOrigin = (typeof conversationWindowOrigins)[number];
+
+/**
+ * Why a window stopped collecting when it was claimed (ISS-1086).
+ */
+// cm:guard three and not two: `overflow` is told apart from `deadline` because the turn's instruction is the same but the room's state is not — a deadline cut leaves nothing behind, an overflow cut leaves a collecting successor holding the tail, and a reader of the decision asking "was anything left unanswered here" is owed the difference.
+export const conversationWindowCutReasons = ['quiet', 'deadline', 'overflow'] as const;
+export type ConversationWindowCutReason = (typeof conversationWindowCutReasons)[number];
 
 export const conversationWindowDecisions = [
   'answered',
@@ -238,7 +272,7 @@ export const conversationWindows = pgTable(
     // cm:guard carried on the window rather than joined off the conversation so a drain loop asks for ITS OWN adapter's work in one index scan: a loop that read every open window and then filtered would claim windows for a transport it cannot deliver through.
     adapter: text('adapter', { enum: conversationAdapters }).notNull(),
     openedAt: timestamp('opened_at', { withTimezone: true }).notNull().defaultNow(),
-    // cm:guard the SETTLE clock, moved by every later message: a window closes on quiet rather than on a count, so two messages typed seconds apart are one decision and one cost.
+    // cm:guard the SETTLE clock, moved by every later message: a window closes on quiet rather than on a count, so two messages typed seconds apart are one decision and one cost. Quiet is one of two ways to become due since ISS-1086 — `opened_at` reaching the hold is the other — because a room whose messages never pause moved this clock forever and was never answered.
     extendedAt: timestamp('extended_at', { withTimezone: true }).notNull().defaultNow(),
     firstSeq: integer('first_seq').notNull(),
     lastSeq: integer('last_seq').notNull(),
@@ -250,6 +284,11 @@ export const conversationWindows = pgTable(
     deliveryReservedAt: timestamp('delivery_reserved_at', { withTimezone: true }),
     /** Which core holds it — for the log, never for the claim, which is the conditional UPDATE. */
     claimedBy: text('claimed_by'),
+    /**
+     * Why this window stopped collecting when it was claimed.
+     */
+    // cm:guard stamped ONCE, at the first claim, and never rewritten by a re-claim: a window cut by the hold and re-claimed after its holder died has by then been quiet for the whole lease, and re-deriving the reason there would tell the turn the room had finished speaking when it was cut mid-sentence (ISS-1086 criterion 5). Null on a row claimed before this column existed, which the router reads as quiet and says so in its detail.
+    cutReason: text('cut_reason', { enum: conversationWindowCutReasons }),
     closedAt: timestamp('closed_at', { withTimezone: true }),
     decision: text('decision', { enum: conversationWindowDecisions }),
     decisionDetail: jsonb('decision_detail'),
@@ -268,6 +307,10 @@ export const conversationWindows = pgTable(
     dueIdx: index('conversation_windows_due_idx')
       .on(t.adapter, t.extendedAt)
       .where(sql`closed_at IS NULL`),
+    // cm:guard the hold's own index, because the due predicate is now an OR over two clocks and the settle index cannot serve the second: without it every drain tick reads every unclaimed window of the adapter to find the ones that aged past the hold (ISS-1086).
+    holdIdx: index('conversation_windows_hold_idx')
+      .on(t.adapter, t.openedAt)
+      .where(sql`claimed_at IS NULL`),
     conversationIdx: index('conversation_windows_conversation_idx').on(
       t.conversationId,
       t.closedAt,
@@ -276,6 +319,10 @@ export const conversationWindows = pgTable(
     adapterKnown: check(
       'conversation_windows_adapter_known',
       sql`${t.adapter} IN ('web','widget','rocketchat','telegram')`,
+    ),
+    cutReasonKnown: check(
+      'conversation_windows_cut_reason_known',
+      sql`${t.cutReason} IS NULL OR ${t.cutReason} IN ('quiet','deadline','overflow')`,
     ),
     decisionKnown: check(
       'conversation_windows_decision_known',

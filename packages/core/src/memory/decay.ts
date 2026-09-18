@@ -53,6 +53,11 @@ export interface DecayResult {
 export async function runMemoryDecay(): Promise<DecayResult> {
   const t0 = Date.now();
 
+  // cm:guard ISS-1021 — `rowCount`, not `.returning({ id })`. These two statements exist to
+  // report HOW MANY rows moved, and returning every id materialised the whole archived and purged
+  // sets over the wire for a `.length` call that the command tag already carries. Nothing reads
+  // the ids — if a caller ever needs them, take them deliberately rather than by re-adding a
+  // RETURNING nobody asked for.
   const archivedRows = await db
     .update(memories)
     .set({ archivedAt: sql`now()` })
@@ -78,8 +83,7 @@ export async function runMemoryDecay(): Promise<DecayResult> {
           )
         )`,
       ),
-    )
-    .returning({ id: memories.id });
+    );
 
   const purgedRows = await db
     .delete(memories)
@@ -88,12 +92,11 @@ export async function runMemoryDecay(): Promise<DecayResult> {
         inArray(memories.source, DECAY_SOURCES),
         lt(memories.archivedAt, daysAgo(PURGE_ARCHIVED_AFTER_DAYS)),
       ),
-    )
-    .returning({ id: memories.id });
+    );
 
   return {
-    archived: archivedRows.length,
-    purged: purgedRows.length,
+    archived: archivedRows.count,
+    purged: purgedRows.count,
     durationMs: Date.now() - t0,
   };
 }

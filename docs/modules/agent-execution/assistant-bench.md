@@ -566,7 +566,7 @@ manifest, so a layer edit that unclaims one fails the build.
 - Weight the judge into `pass`, pass^k or the ladder's score; `--judge` annotates, it never scores,
   and a task's `judgeRubric` changes what the judge is asked, never what the rules grade.
 - Print a score without the lowest task beside it; the ladder's row is the unit, not its number.
-- Walk the `POST /api/chat` or Rocket.Chat doors; only the browser's door is benchmarked.
+- Walk the Rocket.Chat door; only the browser's own door is benchmarked.
 - Decide language: the `language` check is a diacritic heuristic (`grade.ts:vietnameseWords`).
   After code spans, URLs and double-quoted spans are removed it counts words carrying a Vietnamese
   letter or tone mark; `vi` needs three, `en` fails at two. A Vietnamese name in an English reply

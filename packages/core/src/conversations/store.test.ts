@@ -55,6 +55,7 @@ function row(over: Record<string, unknown> = {}) {
     id: 'row-1',
     seq: 0,
     externalId: null,
+    replyToExternalId: null,
     role: 'assistant' as const,
     authorUserId: null,
     authorLabel: null,

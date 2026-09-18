@@ -43,6 +43,16 @@ function containsSchemaDdl(sql: string): boolean {
   return SCHEMA_DDL.test(stripNonCode(sql));
 }
 
+/**
+ * How far above the journal's maximum a new head `when` may sit, in days.
+ *
+ * One day is the ordinary value and what a lone branch should take. More than one is for clearing
+ * a sibling branch that has already claimed the day above you — see the guard on the head-entry
+ * test. The bound exists so the number stays derived from the journal: a value 400 days out is
+ * indistinguishable from a typo, and it pushes the floor that far for everyone who follows.
+ */
+const MAX_DAYS_AHEAD = 30;
+
 // cm:why idx 21/36 predate ISS-807; a `when` may only be rewritten if its migration's DDL is idempotent or proven applied nowhere — neither holds for these, so they stay frozen
 const GRANDFATHERED_IDX = new Set([21, 36]);
 
@@ -66,15 +76,44 @@ describe('drizzle migration journal', () => {
     expect(outOfOrder).toEqual([]);
   });
 
-  // cm:guard the NEWEST entry is held to the exact arithmetic, not merely to "greater than" — a real timestamp is always greater than the entry before it and still lands below the highest `created_at` in a database that has been migrated from another branch, which is the shape drizzle skips silently and forever (ISS-807)
-  it('has a head entry at exactly the previous maximum plus one day', () => {
+  // cm:guard the NEWEST entry is held to a SYNTHETIC value strictly above the journal's maximum, not
+  // to a real clock reading: `pnpm db:generate` writes `Date.now()`, which is months BELOW this
+  // journal's floor, and an entry that does not exceed the highest applied `created_at` is skipped
+  // by drizzle silently and forever — the container starts and serves new code on an old schema
+  // (ISS-807: a live 500 on `GET /me/attention` for every signed-in user).
+  // cm:guard it is NOT "exactly the previous maximum plus one day", which is what this asserted
+  // until 2026-09-17. That rule is right read one branch at a time and wrong in aggregate: every
+  // open branch computes it off the same `main` and lands on the SAME number. Measured 2026-09-17
+  // against a main that had not moved — ISS-1068's 0265, ISS-1030's 0266 and ISS-1085's 0268 all
+  // carried 1796083200000, each derived correctly, and whichever merged first would have silently
+  // killed the other two. A branch must be ABLE to clear a sibling's `when`, so the exact
+  // arithmetic is replaced by the invariant CLAUDE.md actually states — "must exceed EVERY
+  // `created_at` already in the target DB" — plus the two properties that made the arithmetic worth
+  // having: a whole number of days (a real `Date.now()` is not day-aligned) and a bounded distance
+  // (so the value stays derived from the journal rather than picked).
+  // cm:edge contract -> packages/core/drizzle/migrations/meta/_journal.json
+  it('has a head entry that is a whole number of days strictly above the previous maximum', () => {
     const journal = JSON.parse(readFileSync(journalPath, 'utf8')) as {
       entries: Array<{ idx: number; when: number; tag: string }>;
     };
     const entries = [...journal.entries].sort((a, b) => a.idx - b.idx);
     const head = entries[entries.length - 1];
     const prevMax = Math.max(...entries.slice(0, -1).map((e) => e.when));
-    expect(`${head?.tag}: ${head?.when}`).toBe(`${head?.tag}: ${prevMax + 86_400_000}`);
+    const ahead = (head?.when ?? 0) - prevMax;
+    const days = ahead / 86_400_000;
+    // One `expect` per property, each naming the head tag, so a red says which rule was broken and
+    // on which entry rather than printing two large integers and leaving the reader to subtract.
+    expect(`${head?.tag}: ahead by ${days} day(s)`).toBe(
+      `${head?.tag}: ahead by ${Math.round(days)} day(s)`,
+    );
+    expect({ tag: head?.tag, clearsPreviousMaximum: ahead >= 86_400_000 }).toEqual({
+      tag: head?.tag,
+      clearsPreviousMaximum: true,
+    });
+    expect({ tag: head?.tag, withinBound: days <= MAX_DAYS_AHEAD }).toEqual({
+      tag: head?.tag,
+      withinBound: true,
+    });
   });
 
   // cm:guard a broken chain does not fail a deploy — it fails `drizzle-kit generate`, so the only symptom is that nobody can author a migration and everyone hand-writes SQL instead. Measured 2026-08-18: `0173` had forked off `0168`, `generate` had been dead long enough that 8 migrations were hand-authored after it, and the forked head snapshot was missing three columns the database already had — so the first `generate` that ever succeeded again would have emitted `ADD COLUMN` for all three and failed on the live database.

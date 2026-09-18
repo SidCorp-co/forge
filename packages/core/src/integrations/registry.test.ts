@@ -33,11 +33,7 @@ import {
   providerNames,
   registerIntegration,
 } from './registry.js';
-import {
-  INTEGRATION_PROVIDERS,
-  type IntegrationDeclaration,
-  type IntegrationProvider,
-} from './types.js';
+import { INTEGRATION_PROVIDERS, type IntegrationDeclaration } from './types.js';
 
 beforeEach(() => {
   __resetRegistry();
@@ -146,10 +142,22 @@ describe('dispatchThrough — the one place an unimplemented dispatch is refused
     );
   });
 
-  it('refuses a name no declaration carries rather than answering undefined', async () => {
-    await expect(
-      dispatchThrough('not-a-provider' as IntegrationProvider, ctx(), input()),
-    ).rejects.toThrow(/not-a-provider implements no outbound dispatch/);
+  // ISS-1085 split this refusal from the one above, because the two are different mistakes and the
+  // caller acts on each differently. A provider that exists and cannot dispatch is told what it
+  // declares; a name that is not a provider at all is told the set that IS one — which it has to
+  // be, now that the callers most needing this door read the name off `integration_bindings.provider`,
+  // a `text` column the type system cannot vouch for.
+  it('refuses a name no declaration carries, naming the set that is declared', async () => {
+    const err = await dispatchThrough('not-a-provider', ctx(), input()).then(
+      () => new Error('dispatchThrough resolved for a name no declaration carries'),
+      (e: Error) => e,
+    );
+    expect(err.message).toMatch(/^not-a-provider is not a provider this deployment declares/);
+    for (const decl of listIntegrations()) {
+      expect(err.message, decl.provider).toContain(decl.provider);
+    }
+    // Not the OTHER refusal: this name declares nothing, so it declares no `canDispatch` either.
+    expect(err.message).not.toMatch(/implements no outbound dispatch/);
   });
 
   it('reports dispatch as implemented exactly where the adapter carries the method', () => {

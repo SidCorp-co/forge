@@ -12,9 +12,11 @@
  */
 
 import { and, asc, desc, eq, gte, inArray, isNotNull, isNull, lte, or, sql } from 'drizzle-orm';
+import { env } from '../config/env.js';
 import { db as defaultDb } from '../db/client.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
 import {
+  type ConversationWindowCutReason,
   type ConversationWindowDecision,
   type ConversationWindowOrigin,
   conversations,
@@ -29,6 +31,20 @@ import type { Executor } from './db-executor.js';
 export const WINDOW_SETTLE_MS = 4000;
 
 /**
+ * How long a window may keep collecting before it is due whether or not it has settled.
+ */
+// cm:guard a second clock beside the settle and not a replacement for it: a room whose messages arrive under `WINDOW_SETTLE_MS` apart moved `extended_at` before the window was ever due, so it was never claimed, never closed, and wrote no decision — the ownerless silence this table exists to remove, reached through the mechanism that removes it (ISS-1086). What the hold promises is ELIGIBILITY: the guards, the model's own decline, the drain's tick and the turn all still follow, so no reader may take it for a reply deadline.
+// cm:why 15s is a tuning start and not a measurement: six people talking at once wait at most this long before their window reaches a turn, and the three durations every close records (`collectedMs`, `routingDelayMs`, `replyMs`) are what a later change of this number is judged against.
+export const WINDOW_HOLD_MS = 15_000;
+
+/** The hold in force: the deployment's override, else today's constant. */
+export function resolveHoldMs(
+  override: number | undefined = env.CONVERSATION_WINDOW_HOLD_MS,
+): number {
+  return override ?? WINDOW_HOLD_MS;
+}
+
+/**
  * How long a claim holds before the window is claimable again.
  */
 // cm:guard a claim is a LEASE and never a flag: a core that claims a window and stops would otherwise wedge it forever under a non-null `claimed_at`, which is exactly the restart durability the row exists to provide. What makes the re-claim safe rather than a second answer is `windowDeliveryKey` — the key is derived from the window and not minted per attempt, so a reply already carrying it is found before anything is sent again (ISS-1004 rule 2).
@@ -38,6 +54,11 @@ export const CLAIM_LEASE_MS = 120_000;
 export interface ClaimedWindow extends ConversationWindowRow {
   venueExternalId: string;
   venueShape: ConversationShape;
+  /**
+   * When this window became due under the clocks the claim used.
+   */
+  // cm:guard computed in the claim's own RETURNING and not re-derived at the close: the close does not know which `settleMs` and `holdMs` the claimant passed (the web adapter claims at settle 0), and a `routingDelayMs` computed from the module constants there would be wrong by up to a settle for every web window — a measurement that lies is worse than none (ISS-1086 criterion 26).
+  dueAt: Date;
 }
 
 export interface ConversationWindowRow {
@@ -51,6 +72,8 @@ export interface ConversationWindowRow {
   lastSeq: number;
   claimedAt: Date | null;
   claimedBy: string | null;
+  /** Why it stopped collecting; null until claimed, and null on a row claimed before ISS-1086. */
+  cutReason: ConversationWindowCutReason | null;
   deliveryReservedAt: Date | null;
   closedAt: Date | null;
   decision: ConversationWindowDecision | null;
@@ -99,6 +122,7 @@ const selection = {
   lastSeq: conversationWindows.lastSeq,
   claimedAt: conversationWindows.claimedAt,
   claimedBy: conversationWindows.claimedBy,
+  cutReason: conversationWindows.cutReason,
   deliveryReservedAt: conversationWindows.deliveryReservedAt,
   closedAt: conversationWindows.closedAt,
   decision: conversationWindows.decision,
@@ -170,6 +194,8 @@ export interface ClaimArgs {
   venuePrefixes?: readonly string[];
   now?: Date;
   settleMs?: number;
+  /** How long a window may collect before it is due regardless of quiet; `resolveHoldMs()` absent. */
+  holdMs?: number;
   leaseMs?: number;
 }
 
@@ -183,7 +209,10 @@ export async function claimDueWindows(
   tx: Executor = defaultDb,
 ): Promise<ClaimedWindow[]> {
   const now = args.now ?? new Date();
-  const settleBefore = new Date(now.getTime() - (args.settleMs ?? WINDOW_SETTLE_MS));
+  const settleMs = args.settleMs ?? WINDOW_SETTLE_MS;
+  const holdMs = args.holdMs ?? resolveHoldMs();
+  const settleBefore = new Date(now.getTime() - settleMs);
+  const holdBefore = new Date(now.getTime() - holdMs);
   const leaseBefore = new Date(now.getTime() - (args.leaseMs ?? CLAIM_LEASE_MS));
 
   const prefixes = args.venuePrefixes;
@@ -202,11 +231,17 @@ export async function claimDueWindows(
         or(
           and(
             isNull(conversationWindows.claimedAt),
-            lte(conversationWindows.extendedAt, settleBefore),
+            // cm:guard due on EITHER clock: quiet for `settleMs`, or open for `holdMs` however recently it was extended. The second disjunct is the whole of ISS-1086 — without it a window extended every few seconds is never in this set.
+            or(
+              lte(conversationWindows.extendedAt, settleBefore),
+              lte(conversationWindows.openedAt, holdBefore),
+            ),
           ),
           lte(conversationWindows.claimedAt, leaseBefore),
         ),
         venueFilter,
+        // cm:guard one conversation's windows are claimed in the order they were OPENED, and a later one waits while an earlier one is unclosed — held, or released with its lease lapsed. Without this the overflow split can bridge a claimed range: A holds 0–59, its successor B (60–69) is claimed elsewhere, C collects 70–71, and A's split lowers C to 50–71, so B's messages are answered twice under two delivery keys. The wait costs at most one turn, or one lease where the holder died. The order is TOTAL: `opened_at`, then `first_seq`, then the id, so two windows opened in the same millisecond still have exactly one earlier one and the fence has no gap to slip through (ISS-1086, whole-set review F1 and its recheck).
+        sql`not exists (select 1 from conversation_windows earlier where earlier.conversation_id = ${conversationWindows.conversationId} and earlier.closed_at is null and (earlier.opened_at, earlier.first_seq, earlier.id) < (${conversationWindows.openedAt}, ${conversationWindows.firstSeq}, ${conversationWindows.id}))`,
       ),
     )
     .orderBy(asc(conversationWindows.extendedAt))
@@ -215,9 +250,20 @@ export async function claimDueWindows(
 
   const rows = (await tx
     .update(conversationWindows)
-    .set({ claimedAt: now, claimedBy: args.claimant })
+    .set({
+      claimedAt: now,
+      claimedBy: args.claimant,
+      // cm:guard COALESCE so the FIRST claim's reason stands: a re-claim after a lapsed lease finds a window that has been quiet for the whole lease and would otherwise stamp `quiet` over a `deadline`, telling the turn the room had finished when it was cut mid-sentence (ISS-1086 criterion 5).
+      cutReason: sql`coalesce(${conversationWindows.cutReason}, case when ${conversationWindows.extendedAt} <= ${settleBefore.toISOString()}::timestamptz then 'quiet' else 'deadline' end)`,
+    })
     .where(sql`${conversationWindows.id} in ${due}`)
-    .returning(selection)) as ConversationWindowRow[];
+    .returning({
+      ...selection,
+      dueAt:
+        sql`least(${conversationWindows.extendedAt} + ${settleMs} * interval '1 millisecond', ${conversationWindows.openedAt} + ${holdMs} * interval '1 millisecond')`.mapWith(
+          conversationWindows.openedAt,
+        ),
+    })) as (ConversationWindowRow & { dueAt: Date })[];
   if (rows.length === 0) return [];
 
   // cm:guard the venue travels WITH the claim so the adapter never reads the store to find out which room it just took: an adapter importing a store module is the coupling `transport-free.test.ts` fails CI on, and the claimant needs exactly two of its fields (ISS-1002, ISS-1004).
@@ -266,6 +312,67 @@ export async function closeWindow(
     )
     .returning(selection);
   return (row as ConversationWindowRow | undefined) ?? null;
+}
+
+export interface SplitTailArgs {
+  windowId: string;
+  conversationId: string;
+  projectId: string;
+  adapter: ConversationAdapter;
+  claim: WindowClaim;
+  /** The last seq this window keeps; everything after it goes to the successor. */
+  prefixLastSeq: number;
+  /** The messages past the cap, when the first of them arrived, and when the last did. */
+  tail: { firstSeq: number; lastSeq: number; firstAt: Date; lastAt: Date };
+}
+
+/**
+ * Keep the head of a window that collected more than a turn may carry, and hand
+ * the tail to the collecting successor. False when the claim has moved on.
+ */
+// cm:guard ONE transaction and the shrink FIRST, under the claim: a successor opened before the shrink committed would cover seqs this window still claims, and two windows answering one message is the double reply the claim exists to prevent. A shrink that touches no row means the lease moved on, and the caller must then take no turn (ISS-1086 criteria 23, 24).
+// cm:guard its own upsert and not `openOrExtendWindow`, because this is the ONE writer allowed to lower `first_seq` and `opened_at`: the heartbeat opens ranges over messages already routed, and an inbound collector that lowered `first_seq` on conflict would swallow that range into a window that answers it twice. Here the tail has been waiting since its first message arrived, so the successor's hold starts there and counts the wait the head already cost it; its quiet clock starts at the tail's LAST arrival, because a successor stamped with the first would read as quiet on the spot while the room was still typing (whole-set review F2).
+export async function splitWindowTail(
+  args: SplitTailArgs,
+  dbi: typeof defaultDb = defaultDb,
+): Promise<boolean> {
+  return dbi.transaction(async (tx) => {
+    const shrunk = await tx
+      .update(conversationWindows)
+      .set({ lastSeq: args.prefixLastSeq, cutReason: 'overflow' })
+      .where(
+        and(
+          eq(conversationWindows.id, args.windowId),
+          isNull(conversationWindows.closedAt),
+          heldBy(args.claim),
+        ),
+      )
+      .returning({ id: conversationWindows.id });
+    if (shrunk.length === 0) return false;
+    await tx
+      .insert(conversationWindows)
+      .values({
+        conversationId: args.conversationId,
+        projectId: args.projectId,
+        adapter: args.adapter,
+        openedAt: args.tail.firstAt,
+        extendedAt: args.tail.lastAt,
+        firstSeq: args.tail.firstSeq,
+        lastSeq: args.tail.lastSeq,
+        origin: 'inbound',
+      })
+      .onConflictDoUpdate({
+        target: conversationWindows.conversationId,
+        targetWhere: sql`claimed_at IS NULL AND closed_at IS NULL`,
+        set: {
+          firstSeq: sql`least(${conversationWindows.firstSeq}, excluded.first_seq)`,
+          lastSeq: sql`greatest(${conversationWindows.lastSeq}, excluded.last_seq)`,
+          openedAt: sql`least(${conversationWindows.openedAt}, excluded.opened_at)`,
+          extendedAt: sql`greatest(${conversationWindows.extendedAt}, excluded.extended_at)`,
+        },
+      });
+    return true;
+  });
 }
 
 /**

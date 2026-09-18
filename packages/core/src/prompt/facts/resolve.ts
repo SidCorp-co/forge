@@ -35,12 +35,14 @@ import {
   type KnowledgeObligation,
   missingProjectKnowledge,
 } from '../../projects/autonomous-contract.js';
+import { type NormalizedEnvironments, normalizeEnvironments } from '../../projects/environments.js';
 import {
   ALWAYS_INJECT_MAX_CHARS,
   type RESERVED_PROJECT_FACT_KEYS,
   unreservedProjectKeyRefusal,
 } from '../../projects/project-facts.js';
 import { effectivePipelineStates } from './effective-ladder.js';
+import { renderTestUrls, TEST_CREDS_POINTER } from './environment-keys.js';
 import {
   type FactRenderContext,
   FORGE_FACTS,
@@ -96,11 +98,6 @@ export interface ProjectFactInputs {
   /** The project's `kind='module'` labels (ISS-595). Empty for a project with
    *  no taxonomy, which is what keeps `module-attribution` out of its prompt. */
   modules: ProjectModuleFact[];
-}
-
-interface TestingUrl {
-  label?: string;
-  url: string;
 }
 
 interface IntegrationRow {
@@ -202,7 +199,7 @@ export function renderIntegrations(rows: IntegrationRow[]): string {
 
 /**
  * `{{project:<key>}}` resolver. Every key it answers derives from a first-class
- * project column or from `previewDeploy`; there is no author-owned map behind it
+ * project column or from `environments`; there is no author-owned map behind it
  * any more. A key outside the reserved set resolves to a refusal naming the
  * knowledge store, NOT to `undefined` — an unresolved reference renders as the
  * empty string, so returning nothing would silently delete a sentence from the
@@ -215,8 +212,7 @@ export function makeProjectResolver(src: {
   liveBranch: string | null;
   releaseModel: ReleaseModel;
   repoPath: string | null;
-  testingUrls: TestingUrl[];
-  testNotes: string | null;
+  environments: NormalizedEnvironments;
   integrations: IntegrationRow[];
 }): ProjectVarResolver {
   const reserved: Record<(typeof RESERVED_PROJECT_FACT_KEYS)[number], () => string | undefined> = {
@@ -234,13 +230,11 @@ export function makeProjectResolver(src: {
     'production-branch': () =>
       '⚠️ `{{project:production-branch}}` was retired when a project gained a declared release model (ISS-1046). Use `{{project:live-branch}}`, which resolves only where the project declares `releaseModel: promote`. Update this skill body.',
     'repo-path': () => src.repoPath ?? undefined,
-    'test-urls': () =>
-      src.testingUrls.length > 0
-        ? src.testingUrls.map((u) => `- ${u.label ? `${u.label}: ` : ''}${u.url}`).join('\n')
-        : undefined,
-    'test-creds': () =>
-      'Fetch test credentials at runtime via `forge_projects.get` → `previewDeploy.testCredentials` (never hardcode secrets).',
-    'test-notes': () => src.testNotes ?? undefined,
+    'test-urls': () => renderTestUrls(src.environments),
+    'test-creds': () => TEST_CREDS_POINTER,
+    // cm:guard the KEY stays `test-notes` though the FIELD is now `limits` — the reason is stated
+    // once, on `prompt/facts/environment-keys.ts`, which owns all three of these keys.
+    'test-notes': () => src.environments.limits ?? undefined,
     integrations: () => renderIntegrations(src.integrations),
   };
   return (key) =>
@@ -267,7 +261,7 @@ export async function loadProjectModules(projectId: string): Promise<ProjectModu
 }
 
 /** Load the per-project inputs for fact resolution: the status ladder, the
- *  `{{project:}}` resolver (project columns + previewDeploy + connected
+ *  `{{project:}}` resolver (project columns + environments + connected
  *  integrations) and this project's knowledge entries. */
 export async function loadProjectFactInputs(projectId: string): Promise<ProjectFactInputs> {
   let states: Record<string, { enabled?: boolean } | undefined> = {};
@@ -275,8 +269,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
   let liveBranch: string | null = null;
   let releaseModel: ReleaseModel = 'none';
   let repoPath: string | null = null;
-  let testingUrls: TestingUrl[] = [];
-  let testNotes: string | null = null;
+  let environments: NormalizedEnvironments = normalizeEnvironments(null);
   let integrations: IntegrationRow[] = [];
   let noProgressRounds = DEFAULT_NO_PROGRESS_ROUNDS;
   let modules: ProjectModuleFact[] = [];
@@ -289,7 +282,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
     const [row] = await db
       .select({
         agentConfig: projects.agentConfig,
-        previewDeploy: projects.previewDeploy,
+        environments: projects.environments,
         repoPath: projects.repoPath,
         repoUrl: projects.repoUrl,
         baseBranch: projects.baseBranch,
@@ -306,10 +299,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       } | null) ?? null;
     states = ac?.pipelineConfig?.states ?? {};
     noProgressRounds = resolveNoProgressRounds(row?.agentConfig);
-    const pd =
-      (row?.previewDeploy as { testingUrls?: TestingUrl[]; notes?: string | null } | null) ?? null;
-    testingUrls = Array.isArray(pd?.testingUrls) ? pd.testingUrls : [];
-    testNotes = typeof pd?.notes === 'string' && pd.notes.length > 0 ? pd.notes : null;
+    environments = normalizeEnvironments(row?.environments);
     baseBranch = row?.baseBranch ?? null;
     liveBranch = row?.liveBranch ?? null;
     releaseModel = row?.releaseModel ?? 'none';
@@ -356,8 +346,7 @@ export async function loadProjectFactInputs(projectId: string): Promise<ProjectF
       liveBranch,
       releaseModel,
       repoPath,
-      testingUrls,
-      testNotes,
+      environments,
       integrations,
     }),
     projectFactKeys,

@@ -143,6 +143,60 @@ describe('declarationFaults — capabilities', () => {
   });
 });
 
+describe('declarationFaults — ISS-1085 slice 4, the two webhook headers', () => {
+  const webhook = (over) => {
+    const caps = { ...sound().capabilities, canReceiveWebhook: true, ...over };
+    return sound({ capabilities: caps });
+  };
+
+  it('reports nothing where a receiver declares both headers', () => {
+    expect(
+      reasons(
+        webhook({
+          webhookHeader: 'x-github-event',
+          webhookSignatureHeader: 'x-hub-signature-256',
+        }),
+      ),
+    ).toEqual([]);
+  });
+
+  // A receiver with no route header is never matched by `providerHeaderMap`, so its deliveries fall
+  // to the generic handler and answer 200 with `actions: 0` — declared to receive, routed nowhere.
+  it('faults a receiver that names no webhookHeader', () => {
+    expect(reasons(webhook({ webhookSignatureHeader: 'x-hub-signature-256' })).join(' ')).toContain(
+      'routed nowhere',
+    );
+  });
+
+  it('faults a receiver that names no webhookSignatureHeader', () => {
+    expect(reasons(webhook({ webhookHeader: 'x-github-event' })).join(' ')).toContain(
+      'PROVIDER_DECLARES_NO_SIGNATURE_HEADER',
+    );
+  });
+
+  it('faults a receiver whose header is an empty string rather than absent', () => {
+    expect(
+      reasons(webhook({ webhookHeader: '', webhookSignatureHeader: 'x-hub-signature-256' })).join(
+        ' ',
+      ),
+    ).toContain('routed nowhere');
+  });
+
+  it('faults a header declared where canReceiveWebhook is false', () => {
+    const caps = {
+      ...sound().capabilities,
+      canReceiveWebhook: false,
+      webhookHeader: 'x-github-event',
+    };
+    expect(reasons(sound({ capabilities: caps })).join(' ')).toContain('builds no route');
+  });
+
+  it('says nothing about headers for a provider that receives none', () => {
+    const caps = { ...sound().capabilities, canReceiveWebhook: false };
+    expect(reasons(sound({ capabilities: caps }))).toEqual([]);
+  });
+});
+
 describe('declarationFaults — ISS-1071 rule 2, the direct-mcp justification', () => {
   // A direct-mcp arm renders the project's credential into a runner box's MCP config and puts
   // Forge outside the call path. `justification` is the only place that decision is written

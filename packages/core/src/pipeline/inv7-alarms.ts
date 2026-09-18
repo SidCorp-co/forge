@@ -18,11 +18,12 @@ import { sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { HOLD_PAYLOAD_KEY, holdResumesItself } from '../jobs/hold.js';
 import { RESULT_QUIET_MINUTES } from '../jobs/loop-monitor.js';
-import { gateReasonsForQueuedJobs } from '../jobs/queued-gates.js';
+import { gateReasonsForQueuedJobsIn } from '../jobs/queued-gates.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import { logger } from '../logger.js';
 import { DEFAULT_NO_PROGRESS_ROUNDS } from './reopen-policy.js';
 import { pauseResumesItself } from './run-pause.js';
+import { advanceSweep, type SweepPosition, sweepWindow } from './sweep-cursor.js';
 import {
   emitPipelineWedge,
   pausedRunWedgeEntityId,
@@ -33,6 +34,9 @@ import {
 export interface Inv7AlarmResult {
   alerted: number;
 }
+
+/** How many aged holds one pass surfaces. Paired with the wrapping cursor, never used alone. */
+export const HELD_SCAN_LIMIT = 200;
 
 /** How long a hold may sit before it is worth a human's attention. */
 export const HOLD_AGE_ALARM_MS = (() => {
@@ -58,6 +62,13 @@ interface AgedHoldRow extends Record<string, unknown> {
 export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmResult> {
   const cutoffIso = new Date(now.getTime() - HOLD_AGE_ALARM_MS).toISOString();
   // cm:guard write `payload` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides with `issues` in the join and fails at parse time
+  // cm:guard this pass releases nothing and writes nothing (see the alarm-ONLY guard above), so an
+  // alarmed hold is still a candidate next tick. A bare `LIMIT` would therefore re-read the same
+  // oldest page forever and never reach hold 201 — the cursor in `sweep-cursor.ts` is the half of
+  // the bound that makes the traversal fair, and neither half works without the other.
+  // The hold-age cutoff is this traversal's frozen far edge: see `sweep-cursor.ts` for why a
+  // wrap-on-a-short-page rule alone cannot reach the end of a set that is still growing.
+  const window = sweepWindow('aged-holds', cutoffIso);
   const rows = await db.execute<AgedHoldRow>(sql`
     SELECT j.id AS job_id,
            j.project_id,
@@ -71,8 +82,25 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
     LEFT JOIN issues i ON i.id = j.issue_id
     JOIN projects p ON p.id = j.project_id
     WHERE j.status = 'held'
-      AND (j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt') < ${cutoffIso}
+      AND (j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt') < ${window.until}
+      ${
+        window.after
+          ? sql`AND ((j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt'), j.id::text) > (${window.after.ts}, ${window.after.id})`
+          : sql``
+      }
+    ORDER BY (j.payload -> ${HOLD_PAYLOAD_KEY} ->> 'heldAt') ASC, j.id::text ASC
+    LIMIT ${sql.raw(String(HELD_SCAN_LIMIT))}
   `);
+
+  const filled = rows.length === HELD_SCAN_LIMIT;
+  const lastHold = rows.at(-1);
+  // cm:guard `heldAt` is a jsonb STRING, so the cursor compares it as text and the ORDER BY must
+  // too — the values are ISO-8601 with a fixed shape, for which lexical order is chronological
+  // order. A numeric or timestamptz cast here would order differently from the comparison and the
+  // traversal would skip rows.
+  const lastHeld: SweepPosition | null =
+    lastHold?.held_at != null ? { ts: lastHold.held_at, id: lastHold.job_id } : null;
+  advanceSweep('aged-holds', window, lastHeld, filled);
 
   for (const row of rows) {
     const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A step';
@@ -100,6 +128,12 @@ export async function alarmAgedHolds(now: Date = new Date()): Promise<Inv7AlarmR
 
   if (rows.length > 0) {
     logger.info({ alerted: rows.length }, 'inv7: aged holds surfaced');
+  }
+  if (filled) {
+    logger.warn(
+      { limit: HELD_SCAN_LIMIT, examined: rows.length, resumesAfter: lastHeld?.ts ?? null },
+      'inv7: the aged-hold scan filled its page — the rest is read on later passes',
+    );
   }
   return { alerted: rows.length };
 }
@@ -146,35 +180,33 @@ export async function alarmStalledQueuedJobs(now: Date = new Date()): Promise<In
   `);
   if (rows.length === 0) return { alerted: 0 };
 
-  const byProject = new Map<string, StalledQueuedRow[]>();
-  for (const row of rows) {
-    const bucket = byProject.get(row.project_id) ?? [];
-    bucket.push(row);
-    byProject.set(row.project_id, bucket);
-  }
+  // cm:guard ISS-1021 — ONE gate read for every project on this page. This was a call per project
+  // inside the loop, and each call rebuilt and re-ran the six-clause `fresh_capable_runners`
+  // definition; the answer is identical because the CTE now carries `project_id` and every runner
+  // arm correlates on `j.project_id`, so a job is still judged only against its own project's
+  // boxes. A gated job must still stay silent — the test below is unchanged.
+  const gated = await gateReasonsForQueuedJobsIn(rows.map((r) => r.project_id));
 
   const minutes = Math.round(QUEUED_STALL_ALARM_MS / 60_000);
   let alerted = 0;
-  for (const [projectId, candidates] of byProject) {
-    const gated = await gateReasonsForQueuedJobs(projectId);
-    for (const row of candidates) {
-      if (gated.has(row.job_id)) continue;
-      const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A step';
-      await emitPipelineWedge({
-        projectId,
-        issueId: row.issue_id,
-        hop: 'dispatch',
-        entity: 'job',
-        entityId: row.job_id,
-        reason: `queued_over_${minutes}m:no_gate`,
-        title: `${label} has been ready to run for over ${minutes}m and has not started`,
-        summary: `The \`${row.job_type}\` step has been queued since ${row.created_at} and every dispatch gate passes — no dependency, no busy issue, no project cap, and a runner is online with a free slot. The picker is offering this job to a selector that keeps declining it, so nothing in the pipeline will move this issue on its own.`,
-        nextStep:
-          "Compare the gate and the candidate query: a runner counted as available by the gate but filtered out by `onlineCapableDeviceIds` produces exactly this. Check the runner's labels, capabilities and required device against what the job asks for.",
-        action: 'Nothing is blocking it and nothing will start it — it needs you.',
-      });
-      alerted++;
-    }
+  for (const row of rows) {
+    const projectId = row.project_id;
+    if (gated.has(row.job_id)) continue;
+    const label = row.iss_seq ? formatIssueRef(row.issue_prefix, row.iss_seq) : 'A step';
+    await emitPipelineWedge({
+      projectId,
+      issueId: row.issue_id,
+      hop: 'dispatch',
+      entity: 'job',
+      entityId: row.job_id,
+      reason: `queued_over_${minutes}m:no_gate`,
+      title: `${label} has been ready to run for over ${minutes}m and has not started`,
+      summary: `The \`${row.job_type}\` step has been queued since ${row.created_at} and every dispatch gate passes — no dependency, no busy issue, no project cap, and a runner is online with a free slot. The picker is offering this job to a selector that keeps declining it, so nothing in the pipeline will move this issue on its own.`,
+      nextStep:
+        "Compare the gate and the candidate query: a runner counted as available by the gate but filtered out by `onlineCapableDeviceIds` produces exactly this. Check the runner's labels, capabilities and required device against what the job asks for.",
+      action: 'Nothing is blocking it and nothing will start it — it needs you.',
+    });
+    alerted++;
   }
 
   if (alerted > 0) {
@@ -310,9 +342,20 @@ export async function alarmRejectionStreaks(): Promise<Inv7AlarmResult> {
   // cm:guard write `artifact` LITERALLY, never as a Drizzle column reference — inside a raw `sql` template Drizzle renders the reference unqualified, which collides across the joined tables and fails at parse time
   const rows = await db.execute<RejectionStreakRow>(sql`
     WITH verdicts AS (
+      -- cm:guard ISS-1021 — the running-run restriction belongs HERE, not only in the outer WHERE.
+      -- This CTE used to materialise every verdict phase_journal has ever held before anything
+      -- narrowed it, so an alarm about loops happening RIGHT NOW cost the whole history of every
+      -- run that ever finished. The outer pr.status = 'running' is kept as well: it is what the
+      -- guard above is written about, and a reader deleting it there because "the CTE does it now"
+      -- would be deleting the documented one.
       SELECT pj.run_id, pj.issue_id, pj.started_at, pj.artifact ->> 'decision' AS decision
       FROM phase_journal pj
-      WHERE pj.source = 'runner' AND pj.artifact ->> 'kind' = 'verdict'
+      WHERE pj.source = 'runner'
+        AND pj.artifact ->> 'kind' = 'verdict'
+        AND EXISTS (
+          SELECT 1 FROM pipeline_runs prr
+          WHERE prr.id = pj.run_id AND prr.status = 'running'
+        )
     ),
     last_approve AS (
       SELECT run_id, max(started_at) AS at FROM verdicts WHERE decision = 'approve' GROUP BY run_id

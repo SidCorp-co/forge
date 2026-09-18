@@ -6,29 +6,74 @@ import { organizationMembers, projectMembers, projects } from '../db/schema.js';
 
 // cm:guard mirrors effectiveProjectRole's admin rule (lib/authz.ts) — explicit project_members admin UNION org owner/admin — so a gate notification reaches exactly the people authorised to act on it. Widening this without widening authz sends someone a decision they cannot make.
 // cm:edge lockstep -> packages/core/src/lib/authz.ts — same admin definition
-export async function projectAdminUserIds(projectId: string): Promise<string[]> {
-  const [project] = await db
-    .select({ orgId: projects.orgId })
+/**
+ * The admin set for many projects in three queries rather than three per project.
+ *
+ * ISS-1021 — the sweep passes that call this ran it once per ROW: 14 strands across 6 projects
+ * and 60 owed closes across 15 asked the database 222 times a minute for 21 distinct answers.
+ * The rule is unchanged and lives here once; only the number of round trips moved.
+ *
+ * Every id asked for is a key in the result, mapping to the empty array where the project has no
+ * admin or does not exist — a caller distinguishing "no admins" from "not asked" can do so, and
+ * one that cannot is not silently handed the wrong set.
+ */
+export async function projectAdminUserIdsFor(
+  projectIds: readonly string[],
+): Promise<Map<string, string[]>> {
+  const out = new Map<string, string[]>();
+  const ids = [...new Set(projectIds)];
+  if (ids.length === 0) return out;
+  for (const id of ids) out.set(id, []);
+
+  const projectRows = await db
+    .select({ id: projects.id, orgId: projects.orgId })
     .from(projects)
-    .where(eq(projects.id, projectId))
-    .limit(1);
-  if (!project) return [];
+    .where(inArray(projects.id, ids));
+  if (projectRows.length === 0) return out;
+
+  const orgIds = [...new Set(projectRows.map((r) => r.orgId))];
 
   const [explicitAdmins, orgAdmins] = await Promise.all([
     db
-      .select({ userId: projectMembers.userId })
+      .select({ projectId: projectMembers.projectId, userId: projectMembers.userId })
       .from(projectMembers)
-      .where(and(eq(projectMembers.projectId, projectId), eq(projectMembers.role, 'admin'))),
+      .where(and(inArray(projectMembers.projectId, ids), eq(projectMembers.role, 'admin'))),
     db
-      .select({ userId: organizationMembers.userId })
+      .select({ orgId: organizationMembers.orgId, userId: organizationMembers.userId })
       .from(organizationMembers)
       .where(
         and(
-          eq(organizationMembers.orgId, project.orgId),
+          inArray(organizationMembers.orgId, orgIds),
           inArray(organizationMembers.role, ['owner', 'admin']),
         ),
       ),
   ]);
 
-  return [...new Set([...explicitAdmins.map((r) => r.userId), ...orgAdmins.map((r) => r.userId)])];
+  const explicitByProject = new Map<string, string[]>();
+  for (const row of explicitAdmins) {
+    const bucket = explicitByProject.get(row.projectId) ?? [];
+    bucket.push(row.userId);
+    explicitByProject.set(row.projectId, bucket);
+  }
+  const orgAdminsByOrg = new Map<string, string[]>();
+  for (const row of orgAdmins) {
+    const bucket = orgAdminsByOrg.get(row.orgId) ?? [];
+    bucket.push(row.userId);
+    orgAdminsByOrg.set(row.orgId, bucket);
+  }
+
+  for (const project of projectRows) {
+    out.set(project.id, [
+      ...new Set([
+        ...(explicitByProject.get(project.id) ?? []),
+        ...(orgAdminsByOrg.get(project.orgId) ?? []),
+      ]),
+    ]);
+  }
+  return out;
+}
+
+export async function projectAdminUserIds(projectId: string): Promise<string[]> {
+  const byProject = await projectAdminUserIdsFor([projectId]);
+  return byProject.get(projectId) ?? [];
 }

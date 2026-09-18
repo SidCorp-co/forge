@@ -78,6 +78,7 @@ export type AskAsInput = {
   assumed?: Record<string, unknown> | undefined;
   maxRounds?: number | undefined;
   parkDeadlineAt?: Date | undefined;
+  sensitive?: boolean | undefined;
 };
 
 export async function askAs(args: AskAsInput) {
@@ -109,6 +110,7 @@ export async function askAs(args: AskAsInput) {
     ...(args.assumed ? { assumed: args.assumed } : {}),
     ...(args.maxRounds === undefined ? {} : { maxRounds: args.maxRounds }),
     ...(args.parkDeadlineAt ? { parkDeadlineAt: args.parkDeadlineAt } : {}),
+    ...(args.sensitive ? { sensitive: true } : {}),
   });
 }
 

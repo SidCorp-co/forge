@@ -13,6 +13,7 @@ import { useAgentSelf, useUpdateAgentSelf } from "../hooks";
 const ANSWER_IN_GROUP: SelectOption[] = [
   { value: "window", label: "Every settled window — answer whatever is said" },
   { value: "mention", label: "Only when named — @handle in the window" },
+  { value: "tool", label: "Only when it chooses — nothing posts unless it calls room_send" },
 ];
 const ON_OFF: SelectOption[] = [
   { value: "off", label: "Off" },

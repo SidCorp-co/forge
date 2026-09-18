@@ -27,14 +27,22 @@ import { codeAuthored, type ScreenedMessage, screened } from './ports.js';
 // cm:guard a SENTINEL and not an empty string, because the two mean different things: an empty reply is a turn that failed to produce one, and this is a turn that produced the judgement "nothing here needs me". A room the bot was never summoned to is owed the second and must never be posted the first's apology (ISS-1004).
 export const NOTHING_TO_ADD = '(nothing to add)';
 
-/** Did the model decline this turn? Punctuation and case are the model's, the judgement is not. */
+/**
+ * Did the model decline this turn? Case, punctuation and whatever it added after
+ * the sentinel are the model's; the judgement is not.
+ */
+// cm:guard BEGINS WITH and not equality: `(nothing to add) — though you may want to check the build` is a decline with a hedge on it, and under equality the whole string, sentinel included, went to the room. What follows the sentinel is logged by the caller and never posted (ISS-1087 criteria 22, 23, 38).
 export function declinedTurn(text: string): boolean {
-  return (
-    text
-      .trim()
-      .toLowerCase()
-      .replace(/[.!]+$/, '') === NOTHING_TO_ADD
-  );
+  return text.trim().toLowerCase().startsWith(NOTHING_TO_ADD);
+}
+
+/** What the model wrote after the sentinel, for the log; empty when it wrote nothing more. */
+export function declinedTail(text: string): string {
+  const trimmed = text.trim();
+  return trimmed
+    .slice(NOTHING_TO_ADD.length)
+    .replace(/^[\s.!—–-]+/, '')
+    .trim();
 }
 
 const correctiveMessage = (problems: string[]): string =>
@@ -59,6 +67,8 @@ export interface ScreenedTurnArgs {
   /** Ask the model again with a corrective instruction, and hand back what it wrote. */
   retry: (instruction: string) => Promise<ExternalChatTurnResult>;
   setPhase: (phase: string) => void;
+  /** What stands when the screen is exhausted or the model wrote nothing: a code-authored line, or nothing at all. */
+  fallback?: 'code-authored' | 'none';
   log?: Record<string, unknown>;
 }
 
@@ -78,7 +88,8 @@ export function assertAnswerableDoor(door: DoorId): void {
  */
 // cm:guard this always returns something SENDABLE, and that is the DOOR's decision rather than this function's: only a door whose ending is `fallback` reaches here, and substituting a fallback at one that refuses would post words its writer never wrote (ISS-997).
 // cm:guard the budget is DECLARED on the door and spent by `withRepairs`, never counted here — changing it means changing the door's row, where the number sits next to its reason.
-export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<ScreenedMessage> {
+// cm:guard `fallback: 'none'` hands back null where a code-authored line would have gone, and the caller owns what that silence is called: a `tool`-mode room hears only what `room_send` carried, and a fallback the code wrote is text the tool never carried (ISS-1087 criteria 19, 20; whole-set review F1).
+export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<ScreenedMessage | null> {
   assertAnswerableDoor(args.door);
   let result = args.first;
   let attempt = 0;
@@ -113,11 +124,13 @@ export async function screenedTurnReply(args: ScreenedTurnArgs): Promise<Screene
       { ...args.log, problems: problemsOf(outcome.verdict) },
       'conversations: reply still failing its door screen; sending honest fallback',
     );
+    if (args.fallback === 'none') return null;
     return codeAuthored(unverifiedFallbackReply(args.handleName));
   }
 
   const trimmed = result.reply.trim();
   if (!trimmed) {
+    if (args.fallback === 'none') return null;
     return codeAuthored(
       result.terminal === 'error'
         ? errorFallbackReply(args.handleName)

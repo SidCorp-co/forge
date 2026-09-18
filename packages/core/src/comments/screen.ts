@@ -12,11 +12,20 @@ import { HTTPException } from 'hono/http-exception';
 import type { Tx } from '../db/client.js';
 import { ROLE_HOLDER } from '../messaging/audiences.js';
 import { MessageRefusedError } from '../messaging/contract.js';
+import { parseForgeRecord } from '../messaging/forge-record.js';
 import { gatherFacts } from '../messaging/gather.js';
+import { recordRefusals } from '../messaging/record-screen.js';
 import { screenMessage } from '../messaging/screen.js';
 
 // cm:guard agents ONLY, and the test is `authorAgency`, which `require-pat.ts` resolves from the token owner's `users.kind` rather than from anything the caller sends. A person writing on the web UI has a full markdown editor and is not the audience of any of these rules (ISS-997 out of scope); binding them here would be a gate on the wrong reader.
 // cm:guard the screen runs BEFORE the insert and through the CALLER's handle. Before, because a refused comment must leave no row; through the caller's handle, because a caller inside a transaction that read the pool here would hold one connection and wait for a second (ISS-981).
+// cm:guard the whole-body `role:report` screen below is UNCHANGED by ISS-1089 — same cell, same
+// four rules, same order — and the record screen is a second pass beside it rather than a widening
+// of it. A comment carrying no fence reaches exactly the verdict it reached before: `recordRefusals`
+// is handed a null parse and returns nothing without a query.
+// cm:guard both passes are gathered into ONE refusal. `comment-write` declares `ending: 'refusal'`
+// and no repairs, so a writer gets one answer and no second attempt: throwing on the body screen
+// before the record has been measured would show it half of what is wrong and spend its only turn.
 export async function screenAgentComment(projectId: string, body: string, tx: Tx): Promise<void> {
   const segments = [body];
   const facts = await gatherFacts({
@@ -27,7 +36,10 @@ export async function screenAgentComment(projectId: string, body: string, tx: Tx
     executor: tx,
   });
   const verdict = screenMessage({ audience: ROLE_HOLDER, intent: 'report', segments, facts });
-  if (!verdict.ok) throw new MessageRefusedError('comment-write', verdict.refusals);
+  const onBody = verdict.ok ? [] : verdict.refusals;
+  const onRecord = await recordRefusals(projectId, parseForgeRecord(body), tx);
+  const refusals = [...onBody, ...onRecord];
+  if (refusals.length > 0) throw new MessageRefusedError('comment-write', refusals);
 }
 
 /**

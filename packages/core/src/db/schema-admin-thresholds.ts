@@ -10,7 +10,11 @@
 
 import { sql } from 'drizzle-orm';
 import { check, integer, jsonb, pgTable, real, text, timestamp, uuid } from 'drizzle-orm/pg-core';
-import { ADMIN_THRESHOLD_DEFAULTS } from '../admin/types.js';
+import {
+  ADMIN_THRESHOLD_DEFAULTS,
+  SENTRY_THRESHOLD_MAX,
+  SENTRY_THRESHOLD_MIN,
+} from '../admin/types.js';
 import { users } from './schema.js';
 
 // cm:why one GLOBAL row rather than an `app_config` row — that table is keyed `project_id UNIQUE` and the Ops Console is cross-tenant, so per-project policy cannot express a fleet-wide threshold
@@ -47,11 +51,34 @@ export const adminThresholds = pgTable(
     ghostRunnerOfflineDays: integer('ghost_runner_offline_days')
       .notNull()
       .default(ADMIN_THRESHOLD_DEFAULTS.ghostRunnerOfflineDays),
+    /** ISS-1085 slice 3 — the Sentry admission gate's two counts. */
+    sentryMinEventCount: integer('sentry_min_event_count')
+      .notNull()
+      .default(ADMIN_THRESHOLD_DEFAULTS.sentryMinEventCount),
+    sentryMinUserCount: integer('sentry_min_user_count')
+      .notNull()
+      .default(ADMIN_THRESHOLD_DEFAULTS.sentryMinUserCount),
     updatedBy: uuid('updated_by').references(() => users.id, { onDelete: 'set null' }),
     updatedAt: timestamp('updated_at', { withTimezone: true }).notNull().defaultNow(),
   },
   (t) => ({
     // cm:guard the literal is written INTO the template, never interpolated — drizzle turns `${ADMIN_THRESHOLDS_ID}` into a bind placeholder and drizzle-kit emits `CHECK (id = $1)`, which the migrator applies verbatim and postgres rejects.
     singletonCk: check('admin_thresholds_singleton_ck', sql`${t.id} = 'singleton'`),
+    // cm:guard the Sentry thresholds are bounded in the DATABASE as well as in the PUT schema,
+    // because the PUT is not the only writer this table will ever have and a gate that exists only
+    // at one door is a gate at none. A 0 here would not be a lenient policy, it would be the
+    // admission gate turned off with nothing saying so.
+    // cm:guard the bounds go through `sql.raw`, for the reason the singleton check above states:
+    // a bare `${SENTRY_THRESHOLD_MIN}` is a drizzle bind placeholder, so drizzle-kit would emit
+    // `CHECK (... >= $1)` and postgres would reject the migration. `sql.raw` inlines the number, so
+    // the constant stays the single source AND the emitted SQL is a literal.
+    sentryEventCountCk: check(
+      'admin_thresholds_sentry_min_event_count_ck',
+      sql`${t.sentryMinEventCount} >= ${sql.raw(String(SENTRY_THRESHOLD_MIN))} AND ${t.sentryMinEventCount} <= ${sql.raw(String(SENTRY_THRESHOLD_MAX))}`,
+    ),
+    sentryUserCountCk: check(
+      'admin_thresholds_sentry_min_user_count_ck',
+      sql`${t.sentryMinUserCount} >= ${sql.raw(String(SENTRY_THRESHOLD_MIN))} AND ${t.sentryMinUserCount} <= ${sql.raw(String(SENTRY_THRESHOLD_MAX))}`,
+    ),
   }),
 );

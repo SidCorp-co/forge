@@ -3,7 +3,7 @@ import { and, desc, eq } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { issues, pipelineRuns, projects } from '../db/schema.js';
 import { findDeliveryByRequestId } from '../integrations/deliveries.js';
-import { enqueueCoolifyDispatch } from '../integrations/queue.js';
+import { enqueueOutboundDispatch } from '../integrations/queue.js';
 import { listActiveDeployBindingsForProvider } from '../integrations/store.js';
 import { logger } from '../logger.js';
 import { isSentryEnabled, Sentry } from '../observability/sentry.js';
@@ -171,7 +171,7 @@ export async function tryDispatchCoolifyRelease(args: {
       targetLabel: `${(binding.stages ?? []).join('+') || binding.role} deploy`,
     });
     if (!held) reportUnwitnessedDeploy(runId, issueId, binding.id);
-    await enqueueCoolifyDispatch({
+    await enqueueOutboundDispatch({
       jobKind: 'coolify.dispatch',
       bindingId: binding.id,
       runId,
@@ -254,7 +254,7 @@ export async function dispatchCoolifyDeployDirect(args: {
   }
 
   const requestId = `direct:${binding.id}:${Date.now()}-${randomUUID().slice(0, 8)}`;
-  await enqueueCoolifyDispatch({
+  await enqueueOutboundDispatch({
     jobKind: 'coolify.dispatch',
     bindingId: binding.id,
     runId: null,
@@ -397,7 +397,7 @@ export async function confirmPendingProdDeploy(
       targetLabel: 'prod deploy',
     });
     if (!held) reportUnwitnessedDeploy(run.id, gate.issueId, bindingId);
-    await enqueueCoolifyDispatch({
+    await enqueueOutboundDispatch({
       jobKind: 'coolify.dispatch',
       bindingId,
       runId: run.id,

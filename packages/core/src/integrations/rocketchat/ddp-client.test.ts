@@ -4,6 +4,7 @@ import {
   parseStreamMessage,
   RocketChatDdpClient,
   type RocketChatIncomingMessage,
+  replyTargetOf,
   type WsLike,
 } from './ddp-client.js';
 
@@ -221,5 +222,104 @@ describe('RocketChatDdpClient watchdog', () => {
     // Total silence past the dead threshold → the client closes itself.
     vi.advanceTimersByTime(150_000);
     expect(client.getState()).toBe('closed');
+  });
+});
+
+describe('replyTargetOf (ISS-1087)', () => {
+  it('reads the quoted message id from an attachment’s message_link (criterion 9)', () => {
+    expect(
+      replyTargetOf({
+        msg: 'still wrong',
+        attachments: [{ message_link: 'https://chat.example.co/channel/dev?msg=Q1abc' }],
+      }),
+    ).toBe('Q1abc');
+  });
+
+  it('reads it from the text when only the text carries the link (criterion 9)', () => {
+    expect(replyTargetOf({ msg: '[ ](https://chat.example.co/channel/dev?msg=Q2def) hm' })).toBe(
+      'Q2def',
+    );
+  });
+
+  // cm:guard the quote WINS over the thread parent: a message inside a thread that quotes one specific message is answering that one.
+  it('prefers the quote over the thread parent, and falls back to the thread parent (criterion 10)', () => {
+    expect(replyTargetOf({ msg: 'x?msg=Q3', tmid: 'T1' })).toBe('Q3');
+    expect(replyTargetOf({ msg: 'plain reply in a thread', tmid: 'T1' })).toBe('T1');
+  });
+
+  it('is undefined for a message that replies to nothing (criterion 11)', () => {
+    expect(replyTargetOf({ msg: 'hello' })).toBeUndefined();
+    expect(
+      parseStreamMessage({ _id: 'm', rid: 'r', msg: 'hello', u: { _id: 'u' } })?.replyToId,
+    ).toBeUndefined();
+  });
+
+  it('rides on the parsed stream message', () => {
+    const m = parseStreamMessage({
+      _id: 'm9',
+      rid: 'r1',
+      msg: '',
+      u: { _id: 'u1' },
+      attachments: [{ message_link: 'https://chat.example.co/channel/dev?msg=Q9', text: 'quoted' }],
+    });
+    expect(m?.replyToId).toBe('Q9');
+  });
+});
+
+describe('notifyUserActivity (ISS-1088 criterion 24)', () => {
+  async function liveClient() {
+    const fake = new FakeWs();
+    const client = new RocketChatDdpClient({
+      serverUrl: 'https://rc.test',
+      authToken: 'tok',
+      userId: 'bot',
+      onMessage: () => undefined,
+      wsFactory: () => fake,
+    });
+    const connected = client.connect();
+    fake.emitOpen();
+    fake.emit({ msg: 'connected', session: 's' });
+    const loginFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.method === 'login');
+    fake.emit({ msg: 'result', id: loginFrame.id });
+    const subFrame = fake.sent.map((s) => JSON.parse(s)).find((f) => f.msg === 'sub');
+    fake.emit({ msg: 'ready', subs: [subFrame.id] });
+    await connected;
+    return { fake, client };
+  }
+  const activityFrame = (fake: FakeWs) =>
+    fake.sent.map((s) => JSON.parse(s)).find((f) => f.method === 'stream-notify-room');
+
+  it('writes <rid>/user-activity with the shown name and user-typing to start, resolving on the ack', async () => {
+    const { fake, client } = await liveClient();
+    const done = client.notifyUserActivity('ROOM1', 'babo', true);
+    const frame = activityFrame(fake);
+    expect(frame.msg).toBe('method');
+    expect(frame.params).toEqual(['ROOM1/user-activity', 'babo', ['user-typing'], {}]);
+    fake.emit({ msg: 'result', id: frame.id });
+    await expect(done).resolves.toBeUndefined();
+    client.close();
+  });
+
+  it('writes an empty activity list to stop', async () => {
+    const { fake, client } = await liveClient();
+    const done = client.notifyUserActivity('ROOM1', 'babo', false);
+    const frame = activityFrame(fake);
+    expect(frame.params).toEqual(['ROOM1/user-activity', 'babo', [], {}]);
+    fake.emit({ msg: 'result', id: frame.id });
+    await done;
+    client.close();
+  });
+
+  it('rejects on the server’s error frame, naming it', async () => {
+    const { fake, client } = await liveClient();
+    const done = client.notifyUserActivity('ROOM1', 'Babo Bot', true);
+    const frame = activityFrame(fake);
+    fake.emit({
+      msg: 'result',
+      id: frame.id,
+      error: { error: 'error-invalid-user', reason: 'Invalid user' },
+    });
+    await expect(done).rejects.toThrow(/error-invalid-user/);
+    client.close();
   });
 });

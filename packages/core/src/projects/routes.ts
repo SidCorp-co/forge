@@ -40,6 +40,7 @@ import {
 import { updatePipelineConfig } from '../pipeline/pipeline-config-service.js';
 import { pluginDesignationsPatchSchema } from '../plugins/designation.js';
 import { RETIRED_STATE_CONTEXT_MESSAGE, readAgentConfig } from './agent-config.js';
+import { environmentsPatchSchema, RETIRED_PREVIEW_DEPLOY_MESSAGE } from './environments.js';
 import { applyIssuePrefixPatch } from './issue-prefix-patch.js';
 import { projectOnboardRoutes } from './onboard-routes.js';
 import { pipelineConfigHttpError } from './pipeline-config-http.js';
@@ -70,31 +71,6 @@ export const createProjectSchema = z.object({
 
 export type CreateProjectInput = z.infer<typeof createProjectSchema>;
 
-const testingUrlSchema = z.object({
-  label: z.string().trim().min(1).max(80),
-  url: z.string().trim().url().max(500),
-});
-
-const testCredentialSchema = z.object({
-  label: z.string().trim().min(1).max(80),
-  username: z.string().trim().max(200),
-  password: z.string().max(500),
-});
-
-// cm:why free-form jsonb, and unknown keys pass THROUGH rather than being stripped: a deploy knob added later must reach the column without a migration, and a client one version ahead must not have its field silently deleted by this one
-export const previewDeployPatchSchema = z
-  .object({
-    stagingUrl: z.string().trim().url().max(500).nullable().optional(),
-    stagingApiUrl: z.string().trim().url().max(500).nullable().optional(),
-    testingUrls: z.array(testingUrlSchema).max(50).optional(),
-    testCredentials: z.array(testCredentialSchema).max(50).optional(),
-    // cm:why ISS-767 — free-text how-to-use + caveats for the resources above. The URLs and credentials say WHAT exists; they cannot say "this account is not a member of project X" or "no issue ever rests at the `tested` gate here", which is exactly what made three live-verify runs park after the work was already done.
-    notes: z.string().trim().max(8000).nullable().optional(),
-  })
-  .catchall(z.unknown());
-
-export type PreviewDeployConfig = z.infer<typeof previewDeployPatchSchema>;
-
 export const updateProjectSchema = z
   .object({
     name: z.string().trim().min(1).max(200).optional(),
@@ -117,7 +93,7 @@ export const updateProjectSchema = z
     personaStyle: z.string().trim().max(4100).nullable().optional(),
     // cm:why ISS-727 — the two values name two different ANSWERERS rather than two speeds: `fast` is the provider-chat turn this process runs, `agent` diverts the whole turn to a Claude session on a paired box. null clears it back to `fast`.
     rocketChatAnswerMode: z.enum(['fast', 'agent']).nullable().optional(),
-    previewDeploy: previewDeployPatchSchema.nullable().optional(),
+    environments: environmentsPatchSchema.nullable().optional(),
     webhookSecret: z.string().min(16).max(128).nullable().optional(),
     // Move the project to another org. Requires org owner/admin on BOTH the
     // current org (route gate) and the target org (checked in the handler).
@@ -144,6 +120,10 @@ function refuseRetiredProjectKeys(raw: unknown, ctx: z.RefinementCtx): void {
     ctx.addIssue({ code: 'custom', path, message });
   const body = raw as { stateContext?: unknown; agentConfig?: unknown };
   if ('stateContext' in body) retired(['stateContext'], RETIRED_STATE_CONTEXT_MESSAGE);
+  // ISS-1069 — `previewDeploy` became `environments`. Refused here by name for the reason
+  // `stateContext` is: the object below strips an undeclared key silently, which answers an
+  // operator's save with a 200 and no write.
+  if ('previewDeploy' in body) retired(['previewDeploy'], RETIRED_PREVIEW_DEPLOY_MESSAGE);
   const ac = body.agentConfig as { pipelineConfig?: unknown } | null | undefined;
   if (!ac || typeof ac !== 'object') return;
   if ('stateContext' in ac) retired(['agentConfig', 'stateContext'], RETIRED_STATE_CONTEXT_MESSAGE);
@@ -171,6 +151,41 @@ const idParamSchema = z.object({
   id: z.uuid(),
 });
 
+/**
+ * `z.flattenError`, with the path a nested field is actually at.
+ *
+ * ISS-1069 — `flattenError` buckets every issue under its TOP-LEVEL key and throws the rest of the
+ * path away, which was survivable while this route's nested values were one level deep and stopped
+ * being so with `environments`: a bad `live.commitPath`, a missing `testCredentials[0].username`
+ * and a whitespace-only `preview.urls[2].label` all answered the operator with the same sentence,
+ * `environments: Invalid input`. A refusal that cannot say WHERE is a refusal the caller has to
+ * bisect by hand.
+ *
+ * The SHAPE is unchanged — `{ formErrors, fieldErrors }`, keyed on the top-level field — because
+ * web-v2 renders it and every other route on this file answers with it. Only the message grows the
+ * path it was always about.
+ */
+function flatten(error: { issues: readonly { path: readonly PropertyKey[]; message: string }[] }): {
+  formErrors: string[];
+  fieldErrors: Record<string, string[]>;
+} {
+  const formErrors: string[] = [];
+  const fieldErrors: Record<string, string[]> = {};
+  for (const issue of error.issues) {
+    const [head, ...rest] = issue.path;
+    if (head === undefined) {
+      formErrors.push(issue.message);
+      continue;
+    }
+    const key = String(head);
+    const where = rest.length > 0 ? `${key}.${rest.join('.')}: ` : '';
+    const bucket = fieldErrors[key] ?? [];
+    bucket.push(`${where}${issue.message}`);
+    fieldErrors[key] = bucket;
+  }
+  return { formErrors, fieldErrors };
+}
+
 const badRequest = (details: unknown) =>
   new HTTPException(400, {
     message: 'Invalid input',
@@ -194,7 +209,7 @@ projectRoutes.post(
   '/',
   zValidator('json', createProjectSchema, (result) => {
     if (!result.success) {
-      throw badRequest(z.flattenError(result.error));
+      throw badRequest(flatten(result.error));
     }
   }),
   async (c) => {
@@ -304,7 +319,7 @@ projectRoutes.get('/', async (c) => {
 projectRoutes.get(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -367,7 +382,7 @@ projectRoutes.get(
 projectRoutes.post(
   '/:id/api-key/rotate',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -416,10 +431,10 @@ projectRoutes.post(
 projectRoutes.patch(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   zValidator('json', updateProjectPatchSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -479,7 +494,13 @@ projectRoutes.patch(
       }
       updates.agentConfig = baseAc;
     }
-    if (patch.previewDeploy !== undefined) updates.previewDeploy = patch.previewDeploy;
+    // cm:guard WHOLESALE replacement and not a merge, at any depth — the semantics `previewDeploy`
+    // already had and every client is written against: web-v2's Testing tab spreads the stored blob
+    // before it sends, and a merge would leave no caller able to clear a field. It is the
+    // `wholesale-config-clobber` affordance, kept deliberately (ISS-1069); the ONE narrow write,
+    // `environmentsLimits` over MCP, stays a read-modify-write so a limits edit cannot delete the
+    // credentials beside it.
+    if (patch.environments !== undefined) updates.environments = patch.environments;
     if (patch.webhookSecret !== undefined) updates.webhookSecret = patch.webhookSecret;
 
     // cm:guard the prefix moves in the SAME transaction as the rest of the patch — it is written through a second table and its own savepoint, so applying it outside this block would leave a project renamed by a request that then failed on a sibling field and answered the caller with an error (codex review of ISS-992)
@@ -510,7 +531,7 @@ projectRoutes.route('/', projectRunnerRoutes);
 projectRoutes.delete(
   '/:id',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -548,7 +569,7 @@ const ARCHIVE_PROJECTION = {
 projectRoutes.post(
   '/:id/archive',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -571,7 +592,7 @@ projectRoutes.post(
 projectRoutes.post(
   '/:id/unarchive',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -609,7 +630,7 @@ const pipelineFlagOff = () =>
 projectRoutes.get(
   '/:id/pipeline-config',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
@@ -643,10 +664,10 @@ projectRoutes.get(
 projectRoutes.patch(
   '/:id/pipeline-config',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   zValidator('json', pipelineConfigPatchSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     if (!isEnabled('pipelineControl')) throw pipelineFlagOff();
@@ -674,10 +695,10 @@ projectRoutes.patch(
 projectRoutes.patch(
   '/:id/plugins',
   zValidator('param', idParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   zValidator('json', z.object({ plugins: pluginDesignationsPatchSchema }), (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id } = c.req.valid('param');
@@ -722,7 +743,7 @@ const branchConfigParamSchema = z.object({
 projectRoutes.get(
   '/:id/issues/:issueId/branch-config',
   zValidator('param', branchConfigParamSchema, (result) => {
-    if (!result.success) throw badRequest(z.flattenError(result.error));
+    if (!result.success) throw badRequest(flatten(result.error));
   }),
   async (c) => {
     const { id, issueId } = c.req.valid('param');

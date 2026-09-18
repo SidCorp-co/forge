@@ -112,6 +112,49 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **The database can now say which queries cost it the most, and its sizing settings live with
+  the deployment.** Per-statement timing starts at the next database restart. Sizing keeps
+  today's values until someone reads the machine.
+
+- **A clarifying question reaches you in the room you asked in.** It is posted as a reply on the
+  message it is about, and names whose question it came from. A question raised outside a
+  conversation is unchanged.
+
+- **A question with nowhere to go says so instead of going somewhere else.** Nothing is posted, and
+  whoever runs the project is told once what could not be reached.
+
+- **A question can be marked private, and is then asked in a direct message.** If that message
+  cannot be opened, the question is not asked at all rather than asked in the open.
+
+- **A chat now records the work, not just the answer.** Transcripts keep every tool call and
+  result, failures, timings, to-do lists, pauses and totals — the record a pipeline run already
+  kept. Old conversations are unchanged.
+
+- **A chat turn that stops recording now says so.** If output cannot be stored, the conversation
+  says where it stopped instead of ending mid-sentence and looking finished. A turn cannot report
+  complete while anything it said is undelivered.
+
+
+- **An agent's report on an issue is now drawn as a card.** A headline, then one labelled row per
+  field, with an over-long field folded rather than shortened and a note saying how far over it ran.
+
+- **Sentry errors can become Forge issues on a schedule.** Forge files the ones clearing an
+  admission bar you set on the Ops Console, as drafts. Everything it turns away is named in the
+  run's record, and a repeat sighting comments.
+
+- **Sentry can tell Forge about an error as it happens, not just on the schedule.** Point your
+  Sentry webhook at the project. Same admission bar, same drafts, same named refusals — you hear
+  sooner, not differently.
+
+- **An error that comes back reopens the issue you closed instead of filing a new one.** An issue
+  you deliberately dropped is left alone, and the recurrence is still recorded.
+
+- **Every Sentry delivery is logged, including ones nothing was done with.** The reason is in plain
+  words. Forge refuses to guess which declared target a delivery belongs to when several fit.
+
+- **A release-batch schedule's run history is readable again.** Its outcomes were stored and then
+  shown as an empty list. Both kinds of schedule that run inside Forge now answer with what they did.
+
 - **Six tables that only ever grew now have a retention rule and a nightly sweep.** The operator
   sets each window, and the sweep reports what it removed and kept. The runner Activity
   panel says how long that history lasts.
@@ -119,6 +162,10 @@
 - **A job's events are no longer deleted before the transcript they rebuild is written.** Events are
   kept until the session records its transcript as final. Where that never happened, the sweep
   writes the transcript instead of letting them expire.
+
+- **Forge can now close a Sentry issue from this side.** It reads an issue and sets its status on
+  a Sentry project you named. One you did not name is refused, and every call shows in the
+  delivery log.
 
 - **A request that never reached the API is now reported.** The browser collapses CORS, DNS and
   TLS failures into one opaque error, and until now they reached nobody. A response the API
@@ -134,6 +181,10 @@
 
 - **You can see the assistant think.** A turn now shows how long the model paused before answering,
   and opens onto the reasoning it sent. A pause it kept to itself says so and opens onto nothing.
+
+- **Project settings now record where a project is deployed, not just previewed.** Testing gains a
+  Live section, so a release can be verified without looking the address up by hand. Notes become
+  **Limits** — what this environment does not have.
 
 - **The assistant's replies now stream.** Your question is confirmed as soon as it is filed, the
   answer appears as it is written, and each tool call shows as its own card — kept when the room is
@@ -2312,6 +2363,10 @@
   shrink and `forge_metrics.*` is in its "free to go" group. (ISS-944)
 
 ### Removed
+- **The second, unused chat endpoint is gone.** The product had two ways to hold a conversation
+  with the assistant, and nothing ever called the older one. It has been removed with the switch
+  that turned it on; nothing else changed.
+
 
 - **GitHub issues are no longer copied into your project, and no GitHub event changes or closes a
   Forge issue.** A project that wants outside reports admits them once, through a setting that
@@ -2912,6 +2967,21 @@
   set is now 59.
 
 ### Fixed
+
+- **A master that comes back after a crash can now say what became of the work it was holding, and
+  must.** There was no command for it, and ending the work counted as an answer.
+
+- **A master that cannot start work is told why.** The refusal promised the box would sort itself
+  out within thirty seconds — nothing enforced that, and one project waited fourteen hours. It now
+  names the condition that failed.
+
+- **A project with nothing to do keeps its master.** A quiet project stopped being registered,
+  leaving its pane holding credentials for a session that no longer existed. It is registered now;
+  still nothing is started for an empty queue.
+
+- **A finished release no longer holds a job slot.** Two ended release batches held a runner's
+  whole pane budget for four hours, stopping every project on that box. The box now learns when a
+  job is over.
 
 - **An assistant reply fits the panel it is in.** Two nested 85% caps left a blank column beside
   every answer, growing as the panel shrank. One place now sets the measure: full width, up to a
@@ -5434,6 +5504,22 @@
   deploy. Shipped 2026-09-02; this line was owed then and is written now. (ISS-870)
 
 ### Changed
+
+- **Background checks for stuck work handle a fixed amount per pass, and say when there was more.**
+  Nothing is skipped: each pass resumes where the last stopped, so a busy minute costs a short
+  delay rather than a missed alert.
+
+- **Status-change announcements are picked up in batches, and the check waits longer while there
+  is nothing to pick up.** It backs off to eight seconds when idle and returns to one second the
+  moment anything appears.
+
+- **Session lists no longer read every transcript just to count it.** The length comes from the
+  turn record instead. Sessions older than July show no length rather than zero, because zero
+  would call them empty when they are not.
+
+- **A migration may now clear a sibling branch's timestamp.** The journal gate demanded exactly
+  one day above the last, so every open branch derived the same number and whichever merged first
+  silently skipped the rest. Whole days now pass.
 
 - **The issues list and the search send far less down the wire.** Both included the whole of
   every issue on the page — bodies, plans, criteria — which neither screen showed. Searching for

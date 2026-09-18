@@ -41,6 +41,7 @@ vi.mock('./store.js', () => ({
   readMessagesInRange: async (_id: string, r: { firstSeq: number; lastSeq: number }) =>
     messageRows.filter((m) => m.seq >= r.firstSeq && m.seq <= r.lastSeq),
   deliveredDecisionUnderKey: async () => (delivered ? 'answered' : null),
+  assistantSentExternalIds: async () => new Set<string>(),
   // cm:guard the REAL reading and not a stub: what a null mode means is the claim this module now
   // forks on, so a mock returning a fixed answer would make every case below say nothing about it.
   effectiveConversationMode: (row: { mode: 'assistant' | 'agent' | null }) =>
@@ -55,6 +56,8 @@ vi.mock('./windows.js', () => ({
     row.claimedAt && row.claimedBy ? { claimedAt: row.claimedAt, claimedBy: row.claimedBy } : null,
   closeWindow: (...a: unknown[]) => closeWindow(...(a as [])),
   reserveDelivery: (...a: unknown[]) => reserveDelivery(...(a as [])),
+  // cm:guard present on the mock because `route-window.ts` imports it; the overflow path that calls it is `route-window-cut.test.ts`'s and never runs here (ISS-1086).
+  splitWindowTail: async () => true,
 }));
 
 const deliver = vi.fn(async () => ({ messageId: 'rc-9' }));
@@ -81,6 +84,7 @@ const handles = [{ userId: 'handle-1', handle: 'babo' }];
 vi.mock('./participants.js', () => ({
   roomHandles: async () => handles,
   handleForProject: async () => 'handle-1',
+  personCount: async () => 1,
 }));
 let selves = new Map<string, { presence: Record<string, unknown> }>();
 vi.mock('../orgs/agent-selves.js', () => ({ readSelvesFor: async () => selves }));
@@ -104,6 +108,7 @@ const WINDOW = {
   lastSeq: 4,
   claimedAt: new Date(),
   claimedBy: 'core-1',
+  cutReason: null as 'quiet' | 'deadline' | 'overflow' | null,
   deliveryReservedAt: null as Date | null,
   closedAt: null,
   decision: null,
