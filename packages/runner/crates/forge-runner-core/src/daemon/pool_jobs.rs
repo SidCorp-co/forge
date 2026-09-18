@@ -17,7 +17,9 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 
-use crate::daemon::terminal;
+use crate::daemon::agent_activity::{now_ms, Activities};
+use crate::daemon::turn_evidence::{self, Evidence, Watch};
+use crate::daemon::{hook_install, session_tokens, terminal};
 use crate::error::{Error, Result};
 use crate::transport::events::{self, JobEventInput};
 use crate::transport::pool::{self, PoolEntry, Prepared, Started};
@@ -38,7 +40,10 @@ pub trait Pool: Send + Sync {
 pub trait Report: Send + Sync {
     async fn ack(&self, job_id: &str) -> Result<()>;
     /// `Ok(false)` means core has answered that the job is no longer this box's.
-    async fn progress(&self, job_id: &str) -> Result<bool>;
+    ///
+    /// `runtime_state` is what the box knows the agent to be doing, or `None`
+    /// where it knows nothing about it at all.
+    async fn progress(&self, job_id: &str, runtime_state: Option<&str>) -> Result<bool>;
     /// `Ok(false)` means core has answered that the job is no longer this box's.
     async fn fail(&self, job_id: &str, error: &str) -> Result<bool>;
 }
@@ -55,7 +60,8 @@ pub trait Records: Send + Sync {
 /// The pane a job runs in.
 #[async_trait::async_trait]
 pub trait Panes: Send + Sync {
-    async fn open(&self, name: &str, cwd: &Path, prompt: &str) -> Result<()>;
+    async fn open(&self, name: &str, cwd: &Path, prompt: &str, env: &[(String, String)])
+        -> Result<()>;
     async fn alive(&self, name: &str) -> bool;
     async fn kill(&self, name: &str) -> Result<()>;
     /// Every job pane on this box right now, by name.
@@ -67,17 +73,22 @@ pub trait Panes: Send + Sync {
 // cm:guard a 400 here is THIS box speaking a shape core refuses, and `is_disowned` deliberately answers false for it — so the way this regression comes back is silent by construction, and the test below is the only thing that names it.
 const HEARTBEAT_KIND: &str = "progress";
 
-/// One job this box is running, and the pane it is running in.
+/// One job this box is running, the pane it is running in, and what this box
+/// may conclude from that pane's silence.
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct Live {
     pub job_id: String,
     pub pane: String,
+    /// Set by `take_one` alone. Everything rebuilt from disk or from tmux is
+    /// `Unhooked`.
+    // cm:guard a restart leaves this `Unhooked` and that is not a gap to close later: `Activities` is in memory ON PURPOSE, so a daemon that came back knows nothing about turns reported to the process that died. Recovering a session id from disk would let a restart read that emptiness as "this agent was never asked anything" and fail every release the box was in the middle of.
+    pub watch: Watch,
 }
 
 /// What this box is running, keyed by job.
 // cm:guard the map is a CACHE and tmux is the authority, the same split `recovery_ports.rs:PaneMasters` makes and for the same reason: a daemon restart empties this while every pane is still running, so a supervisor that trusted it would report every live job dead on the first tick after any restart. `adopt` is what turns that miss into a cache fill.
 pub struct JobPanes {
-    inner: Mutex<HashMap<String, String>>,
+    inner: Mutex<HashMap<String, (String, Watch)>>,
     session_id: String,
 }
 
@@ -102,9 +113,9 @@ impl JobPanes {
         &self.session_id
     }
 
-    pub fn note(&self, job_id: &str, pane: &str) {
+    pub fn note(&self, job_id: &str, pane: &str, watch: Watch) {
         if let Ok(mut map) = self.inner.lock() {
-            map.insert(job_id.to_string(), pane.to_string());
+            map.insert(job_id.to_string(), (pane.to_string(), watch));
         }
     }
 
@@ -120,9 +131,10 @@ impl JobPanes {
         };
         let mut out: Vec<Live> = map
             .iter()
-            .map(|(job_id, pane)| Live {
+            .map(|(job_id, (pane, watch))| Live {
                 job_id: job_id.clone(),
                 pane: pane.clone(),
+                watch: watch.clone(),
             })
             .collect();
         out.sort_by(|a, b| a.job_id.cmp(&b.job_id));
@@ -190,7 +202,7 @@ pub async fn adopt(
             }
             // cm:guard the obligation is handed to the SUPERVISOR, not left for the next boot. Adoption runs once, so a core that was unreachable for those few seconds would otherwise bury the report until someone restarted the daemon again. `supervise` finds a registry entry whose pane is not alive and sends exactly this failure, every tick, until core takes it — which is the retry that already exists rather than a second one here.
             Err(e) => {
-                registry.note(&rec.job_id, &rec.pane);
+                registry.note(&rec.job_id, &rec.pane, Watch::Unhooked);
                 tracing::warn!(
                     "[pool] job {} did not survive the restart and core could not be told: {e} — the supervisor will keep sending it",
                     rec.job_id
@@ -201,7 +213,7 @@ pub async fn adopt(
 
     for name in live {
         if let Some(job_id) = job_id_of(&name) {
-            registry.note(&job_id, &name);
+            registry.note(&job_id, &name, Watch::Unhooked);
             records.note(&job_id, &name).await;
             out.alive += 1;
         }
@@ -244,6 +256,7 @@ pub async fn take_one(
     session_id: &str,
     fallback_cwd: Option<&Path>,
     bound: usize,
+    tokens: Option<&session_tokens::SessionTokens>,
 ) -> Took {
     if registry.count() >= bound {
         return Took::AtBound;
@@ -312,11 +325,26 @@ pub async fn take_one(
         return Took::GaveBack(prepared.job_id);
     };
 
-    if let Err(e) = panes.open(&pane, &cwd, &prompt).await {
+    // cm:guard established BEFORE the pane is opened, and it has to be: Claude Code reads
+    // `.claude/settings.local.json` and its environment at STARTUP and never again, so a channel
+    // opened afterwards is a channel this pane will never have.
+    let (env, channel) = open_channel(&cwd, &prepared.agent_session_id, project_id, &pane, tokens);
+
+    if let Err(e) = panes.open(&pane, &cwd, &prompt, &env).await {
         give_back(pool_ports, &prepared.job_id, session_id).await;
         tracing::error!("[pool] {project_id}: could not open {pane}: {e} — hold given back");
         return Took::GaveBack(prepared.job_id);
     }
+    // cm:guard stamped where the paste RETURNED and not where the pane was created, because the
+    // window this box is measuring starts at delivery: `brief_new_pane` sleeps `PANE_BRIEF_DELAY`
+    // before it pastes, and charging that wait to the agent would shorten every job's window by it.
+    let watch = match channel {
+        Some(session) => Watch::Hooked {
+            session_id: session,
+            delivered_at: now_ms(),
+        },
+        None => Watch::Unhooked,
+    };
 
     // cm:guard written BEFORE the stamp is asked for, never after. The window this closes is the one between core committing `startJobForMaster` and this box learning it did: a daemon that died in it would come back with a pane it did not know was its own, and a record written afterwards would never exist for the job it most matters for. A record for a job that never started costs nothing — `adopt` finds the pane, `supervise` asks core, and core's 403 clears it.
     records.note(&prepared.job_id, &pane).await;
@@ -336,7 +364,7 @@ pub async fn take_one(
         }
         // cm:guard a transport error is NOT a refusal, and the pane is KEPT — the opposite of the arm above. `startJobForMaster` stamps in one statement, so a lost response may mean the job is fully this box's with an agent already working it; killing the pane there abandons a running release and leaves core to infer the death. The registry entry resolves it instead: the next tick posts a progress event, and core answers 200 if the stamp landed or 403 if it did not, because `jobs/events-routes.ts` compares `job.deviceId` to the caller and a still-`queued` job has none.
         Err(e) => {
-            registry.note(&prepared.job_id, &pane);
+            registry.note(&prepared.job_id, &pane, watch);
             tracing::error!(
                 "[pool] {project_id}: start for job {} did not answer ({e}) — pane {pane} kept, and the next tick asks core whose job it is",
                 prepared.job_id
@@ -345,7 +373,7 @@ pub async fn take_one(
         }
     }
 
-    registry.note(&prepared.job_id, &pane);
+    registry.note(&prepared.job_id, &pane, watch);
     // cm:guard the ack is owed within `PIPELINE_NEVER_CLAIMED_MS` (3 minutes): `reapAckMisses` fails a `dispatched` job with `acked_at IS NULL` and zero job events, which is every job this arm starts until it says something. It is best-effort only because the first progress event stamps the ack too (`jobs/events-routes.ts`), so a lost ack costs one tick and not the job.
     if let Err(e) = report.ack(&prepared.job_id).await {
         tracing::warn!("[pool] ack for job {} failed: {e}", prepared.job_id);
@@ -356,6 +384,66 @@ pub async fn take_one(
         prepared.job_type
     );
     Took::Started(prepared.job_id)
+}
+
+/// Make one job pane's own turns reportable, and say what was lost when they
+/// cannot be.
+///
+/// Answers the pane environment to spawn with, and the session its hooks will
+/// report under — `None` where this box could not open the channel, which is
+/// the reading `turn_evidence` refuses to conclude anything from.
+// cm:guard a failure here does NOT refuse the claim, and the asymmetry is `master.rs`'s own: a master with no skill improvises the whole process and is refused, while a master with no hooks is exactly what every box ran before this channel existed — blind, and working. Trading a release for the telemetry would be the wrong way round. What it costs is said by name on every arm, because the silent version of this is a box that quietly stops being able to tell a dead job from a live one.
+// cm:guard every arm answers `None` rather than a session id it is not sure of. A `Hooked` watch is a licence to FAIL a job on silence, so an id minted into a token map this box could not write, or a pane whose settings file was not updated, must not carry one — the honest answer to "did I open the channel" is the only thing standing between this and killing healthy releases.
+fn open_channel(
+    cwd: &Path,
+    agent_session_id: &str,
+    project_id: &str,
+    pane: &str,
+    tokens: Option<&session_tokens::SessionTokens>,
+) -> (Vec<(String, String)>, Option<String>) {
+    let env = terminal::pane_env();
+    // cm:guard `agent_session_id` is `#[serde(default)]` on `PreparedJob`, so an older core answers the empty string rather than failing to parse. Minting a capability for "" would put an entry in the token map that every pane on the box could claim.
+    if agent_session_id.is_empty() {
+        tracing::error!(
+            "[pool] {project_id}: {pane} was prepared with no agent session id — this box cannot tell whether its agent ever starts, and will never fail it for silence"
+        );
+        return (env, None);
+    }
+    let exe = match std::env::current_exe() {
+        Ok(exe) => exe,
+        Err(e) => {
+            tracing::error!(
+                "[pool] {project_id}: cannot name this binary ({e}) — {pane} starts with no hooks, blind to its own turn boundaries"
+            );
+            return (env, None);
+        }
+    };
+    if let Err(e) = hook_install::install(cwd, &exe) {
+        tracing::error!(
+            "[pool] {project_id}: could not register hooks in {} ({e}) — {pane} starts blind to its own turn boundaries",
+            cwd.display()
+        );
+        return (env, None);
+    }
+    let Some(store) = tokens else {
+        tracing::error!(
+            "[pool] {project_id}: cannot resolve the control token map — {pane} starts with no capability and its hooks will be refused"
+        );
+        return (env, None);
+    };
+    match store.mint(agent_session_id) {
+        Ok(token) => {
+            let mut env = env;
+            env.push((session_tokens::TOKEN_ENV.to_string(), token));
+            (env, Some(agent_session_id.to_string()))
+        }
+        Err(e) => {
+            tracing::error!(
+                "[pool] {project_id}: cannot mint a control capability for {pane} ({e}) — it starts with no way to report a turn"
+            );
+            (env, None)
+        }
+    }
 }
 
 async fn give_back(pool_ports: &dyn Pool, job_id: &str, session_id: &str) {
@@ -372,7 +460,9 @@ pub async fn supervise(
     report: &dyn Report,
     records: &dyn Records,
     registry: &JobPanes,
+    activity: &Activities,
 ) {
+    let now = now_ms();
     for live in registry.live() {
         if !panes.alive(&live.pane).await {
             // cm:guard fail it BY NAME rather than leaving it to the 60-minute result hop. The pane ending is positive evidence this box has: the agent is gone. Waiting for core to infer it from silence costs an hour of a roster sitting at `releasing` — the very wait ISS-1080 exists to remove.
@@ -393,7 +483,23 @@ pub async fn supervise(
             tracing::warn!("[pool] job {} lost its pane {}", live.job_id, live.pane);
             continue;
         }
-        match report.progress(&live.job_id).await {
+        // cm:guard the evidence is read BEFORE the beat and the beat carries what it found, which is
+        // the whole of ISS-1096: this call said `state: running` unconditionally, core flipped the
+        // linked `agent_sessions` row to `running` and refreshed `last_heartbeat_at` on every one of
+        // them, and a release whose prompt was never submitted was therefore indistinguishable from
+        // one that was deploying for thirty-one minutes.
+        let reported = live
+            .watch
+            .session_id()
+            .and_then(|s| activity.get(s))
+            .map(|a| turn_evidence::Reported { prompts: a.prompts });
+        let evidence = turn_evidence::read(&live.watch, reported, now);
+        if let Evidence::NeverStarted { silent_for } = evidence {
+            if never_started(panes, report, records, registry, &live, silent_for).await {
+                continue;
+            }
+        }
+        match report.progress(&live.job_id, evidence.runtime_state()).await {
             Ok(true) => {}
             Ok(false) => {
                 // cm:guard kill the pane once core says the job is terminal, and the transcript is not what is lost: core holds the job's events and its `agent_sessions` row, which is where a person reads it. An idle TUI pane left standing counts against the bound for ever and accumulates one per release — the same reasoning `master.rs:retire_if_idle` applies to a master with nothing to do.
@@ -409,6 +515,44 @@ pub async fn supervise(
             Err(e) => tracing::warn!("[pool] progress for job {}: {e}", live.job_id),
         }
     }
+}
+
+/// Break loudly on a job whose agent was never asked anything.
+///
+/// Answers `true` once this box has nothing left to do for the job — the
+/// failure is with core and the pane is gone — and `false` while either
+/// obligation is still outstanding, so the next tick sends it again.
+// cm:guard the OBLIGATION is retained on every failure path and the entry is dropped only when BOTH halves are done, which is the same rule the lost-pane arm above states: a box that forgot on a failed call would drop the one piece of evidence nobody else has, the moment core happened to be unreachable, and the release owner would wait out the hour for a death this box watched happen. `Ok(false)` is core answering that the job is already terminal or no longer ours, which is the other way this ends.
+// cm:guard the pane is killed only AFTER core has taken the failure, never before. A pane killed first by a box that then cannot reach core leaves the job reading healthy with nothing behind it and nothing left on this machine to say so — the same state this whole issue is about, arrived at from the other side.
+// cm:guard nothing here re-sends the prompt, and that is a rule rather than an omission: this box cannot tell a prompt that never arrived from one that arrived and was never submitted, so a re-send would put a second release prompt into a pane that may already be releasing. The reading being honest is the deliverable; recovery is core's, from a job it can see has failed.
+async fn never_started(
+    panes: &dyn Panes,
+    report: &dyn Report,
+    records: &dyn Records,
+    registry: &JobPanes,
+    live: &Live,
+    silent_for: i64,
+) -> bool {
+    let reason = turn_evidence::never_started_reason(&live.pane, silent_for);
+    if let Err(e) = report.fail(&live.job_id, &reason).await {
+        tracing::warn!(
+            "[pool] could not tell core job {} never started: {e} — sending it again next tick",
+            live.job_id
+        );
+        return false;
+    }
+    if let Err(e) = panes.kill(&live.pane).await {
+        tracing::warn!(
+            "[pool] job {} was reported as never started but {} would not close: {e} — keeping it under supervision",
+            live.job_id,
+            live.pane
+        );
+        return false;
+    }
+    registry.forget(&live.job_id);
+    records.forget(&live.job_id).await;
+    tracing::error!("[pool] job {}: {reason}", live.job_id);
+    true
 }
 
 /// The production halves, over a real core and a real tmux.
@@ -446,11 +590,13 @@ impl Report for CoreReport<'_> {
         lifecycle::ack(self.client, job_id, None).await
     }
 
-    async fn progress(&self, job_id: &str) -> Result<bool> {
-        let beat = JobEventInput::new(
-            HEARTBEAT_KIND,
-            serde_json::json!({ "source": "pool_jobs", "state": "running" }),
-        );
+    async fn progress(&self, job_id: &str, runtime_state: Option<&str>) -> Result<bool> {
+        let mut data = serde_json::json!({ "source": "pool_jobs" });
+        // cm:edge contract -> packages/core/src/jobs/events-routes.ts — `runtimeStateOf` reads this key by name out of an untyped jsonb payload and DROPS a word `sessionRuntimeStates` does not know. A rename on either side fails nothing: it silently restores the unconditional heartbeat this change exists to remove.
+        if let Some(state) = runtime_state {
+            data["runtimeState"] = serde_json::Value::String(state.to_string());
+        }
+        let beat = JobEventInput::new(HEARTBEAT_KIND, data);
         match events::post_job_events(self.client, job_id, &[beat]).await {
             Ok(_) => Ok(true),
             Err(e) if events::is_disowned(&e) => Ok(false),
@@ -538,6 +684,8 @@ impl Records for FileRecords {
             out.push(Live {
                 job_id: job_id.to_string(),
                 pane,
+                // cm:guard a record read back off disk is `Unhooked` by construction, because the map of turns it would be read against died with the process that wrote it.
+                watch: Watch::Unhooked,
             });
         }
         out.sort_by(|a, b| a.job_id.cmp(&b.job_id));
@@ -563,14 +711,21 @@ pub struct TmuxPanes;
 #[async_trait::async_trait]
 impl Panes for TmuxPanes {
     // cm:guard briefed through `brief_new_pane` and never `send_line`, which is the rule `terminal.rs` states on that function: a freshly spawned pane is not ready to receive a paste, and the run path that pasted immediately lost the race under load.
-    async fn open(&self, name: &str, cwd: &Path, prompt: &str) -> Result<()> {
+    async fn open(
+        &self,
+        name: &str,
+        cwd: &Path,
+        prompt: &str,
+        env: &[(String, String)],
+    ) -> Result<()> {
         if !terminal::available() {
             return Err(Error::Other(
                 "tmux is not installed on this box, and a job pane needs it".into(),
             ));
         }
         let argv = terminal::pane_argv(None, None);
-        terminal::ensure(name, cwd, &argv, &terminal::pane_env(), None).await?;
+        // cm:guard the env is the CALLER's and no longer `pane_env()` read here, because the pane's control capability is in it: a second read would spawn the job with the daemon's own environment and silently drop the token the caller minted, leaving a pane whose hooks are registered and refused.
+        terminal::ensure(name, cwd, &argv, env, None).await?;
         terminal::brief_new_pane(name, prompt).await
     }
 
@@ -602,8 +757,11 @@ mod tests {
         acked: Mutex<Vec<String>>,
         failed: Mutex<Vec<(String, String)>>,
         beats: Mutex<Vec<String>>,
+        /// Every beat as `job|runtimeState`, with `-` for a beat that carried none.
+        beat_states: Mutex<Vec<String>>,
         recorded: Mutex<Vec<String>>,
         cwds: Mutex<Vec<PathBuf>>,
+        envs: Mutex<Vec<Vec<(String, String)>>>,
     }
 
     struct FakePool {
@@ -698,14 +856,22 @@ mod tests {
         open_fails: bool,
         alive: Mutex<Vec<String>>,
         names: Vec<String>,
+        kill_errs: Mutex<usize>,
     }
 
     #[async_trait::async_trait]
     impl Panes for FakePanes {
-        async fn open(&self, name: &str, cwd: &Path, prompt: &str) -> Result<()> {
+        async fn open(
+            &self,
+            name: &str,
+            cwd: &Path,
+            prompt: &str,
+            env: &[(String, String)],
+        ) -> Result<()> {
             if self.open_fails {
                 return Err(Error::Other("no tmux".into()));
             }
+            self.rec.envs.lock().unwrap().push(env.to_vec());
             self.rec.cwds.lock().unwrap().push(cwd.to_path_buf());
             self.rec
                 .opened
@@ -719,6 +885,11 @@ mod tests {
             self.alive.lock().unwrap().iter().any(|n| n == name)
         }
         async fn kill(&self, name: &str) -> Result<()> {
+            let mut left = self.kill_errs.lock().unwrap();
+            if *left > 0 {
+                *left -= 1;
+                return Err(Error::Other("tmux would not close it".into()));
+            }
             self.rec.killed.lock().unwrap().push(name.into());
             self.alive.lock().unwrap().retain(|n| n != name);
             Ok(())
@@ -754,6 +925,7 @@ mod tests {
                 .map(|(job_id, pane)| Live {
                     job_id: job_id.clone(),
                     pane: pane.clone(),
+                    watch: Watch::Unhooked,
                 })
                 .collect();
             out.sort_by(|a, b| a.job_id.cmp(&b.job_id));
@@ -773,8 +945,13 @@ mod tests {
             self.rec.acked.lock().unwrap().push(job_id.into());
             Ok(())
         }
-        async fn progress(&self, job_id: &str) -> Result<bool> {
+        async fn progress(&self, job_id: &str, runtime_state: Option<&str>) -> Result<bool> {
             self.rec.beats.lock().unwrap().push(job_id.into());
+            self.rec
+                .beat_states
+                .lock()
+                .unwrap()
+                .push(format!("{job_id}|{}", runtime_state.unwrap_or("-")));
             Ok(!self.disowned)
         }
         async fn fail(&self, job_id: &str, error: &str) -> Result<bool> {
@@ -799,11 +976,42 @@ mod tests {
         report: FakeReport,
         records: FakeRecords,
         registry: JobPanes,
+        /// A token map of this test's own, so nothing here writes the box's.
+        tokens: session_tokens::SessionTokens,
+        /// Removed however the test ends, so a panic leaves no directory behind.
+        _home: TempHome,
+    }
+
+    /// A directory this test owns and takes with it.
+    // cm:guard RAII rather than a line at the end of the body, the same rule `terminal.rs::ConfigHome` states: a `remove_dir_all` at the end is skipped by a panic, and skipping it is how 90 `/tmp/forge-cred-*` directories came to sit on forge-vm.
+    struct TempHome(PathBuf);
+
+    impl TempHome {
+        fn new(label: &str) -> Self {
+            let dir = std::env::temp_dir().join(format!(
+                "forge-pool-{label}-{}-{}",
+                std::process::id(),
+                uuid::Uuid::new_v4().simple()
+            ));
+            std::fs::create_dir_all(&dir).expect("temp home");
+            Self(dir)
+        }
+
+        fn path(&self) -> &Path {
+            &self.0
+        }
+    }
+
+    impl Drop for TempHome {
+        fn drop(&mut self) {
+            let _ = std::fs::remove_dir_all(&self.0);
+        }
     }
 
     fn world(entries: Vec<PoolEntry>, prep: Option<Prepared>, start: Option<Started>) -> World {
         let rec = Arc::new(Recorder::default());
         let rec2 = rec.clone();
+        let home = TempHome::new("world");
         World {
             rec: rec.clone(),
             pool: FakePool {
@@ -818,6 +1026,7 @@ mod tests {
                 open_fails: false,
                 alive: Mutex::new(Vec::new()),
                 names: Vec::new(),
+                kill_errs: Mutex::new(0),
             },
             report: FakeReport {
                 rec,
@@ -829,6 +1038,8 @@ mod tests {
                 rec: rec2,
             },
             registry: JobPanes::new(),
+            tokens: session_tokens::SessionTokens::at(home.path().join("control-tokens.json")),
+            _home: home,
         }
     }
 
@@ -843,9 +1054,33 @@ mod tests {
             "master-session",
             Some(&box_repo()),
             bound,
+            Some(&w.tokens),
         )
         .await
     }
+
+    /// A supervision tick with no turn reports at all, which is what every
+    /// caller below wants unless it says otherwise.
+    async fn sup(w: &World) {
+        supervise(
+            &w.panes,
+            &w.report,
+            &w.records,
+            &w.registry,
+            &Activities::new(),
+        )
+        .await;
+    }
+
+    /// A job this box hooked, whose prompt was delivered `ago` ms before now.
+    fn hooked(session: &str, ago: i64) -> Watch {
+        Watch::Hooked {
+            session_id: session.into(),
+            delivered_at: now_ms() - ago,
+        }
+    }
+
+    const PAST_THE_WINDOW: i64 = turn_evidence::FIRST_TURN_WINDOW.as_millis() as i64 + 1;
 
     #[tokio::test]
     async fn a_claimable_job_gets_a_pane_briefed_with_the_prompt_core_built() {
@@ -962,7 +1197,7 @@ mod tests {
             Some(prepared("j1", Some("go"))),
             None,
         );
-        w.registry.note("already", "forge-job-already");
+        w.registry.note("already", "forge-job-already", Watch::Unhooked);
 
         assert_eq!(take(&w, 1).await, Took::AtBound);
 
@@ -973,9 +1208,9 @@ mod tests {
     async fn a_live_pane_is_kept_alive_with_a_progress_event() {
         let w = world(vec![], None, None);
         w.panes.alive.lock().unwrap().push("forge-job-j1".into());
-        w.registry.note("j1", "forge-job-j1");
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
 
-        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+        sup(&w).await;
 
         assert_eq!(w.rec.beats.lock().unwrap().clone(), vec!["j1".to_string()]);
         assert_eq!(w.registry.count(), 1);
@@ -986,9 +1221,9 @@ mod tests {
     #[tokio::test]
     async fn a_pane_that_ended_fails_its_job_by_name() {
         let w = world(vec![], None, None);
-        w.registry.note("j1", "forge-job-j1");
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
 
-        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+        sup(&w).await;
 
         let failed = w.rec.failed.lock().unwrap().clone();
         assert_eq!(failed.len(), 1);
@@ -1005,9 +1240,9 @@ mod tests {
         let mut w = world(vec![], None, None);
         w.report.disowned = true;
         w.panes.alive.lock().unwrap().push("forge-job-j1".into());
-        w.registry.note("j1", "forge-job-j1");
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
 
-        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+        sup(&w).await;
 
         assert_eq!(
             w.rec.killed.lock().unwrap().clone(),
@@ -1015,6 +1250,259 @@ mod tests {
         );
         assert_eq!(w.registry.count(), 0);
         assert!(w.rec.failed.lock().unwrap().is_empty());
+    }
+
+    // cm:guard THE case ISS-1096 measured, planted: a pane that is alive, a prompt tmux accepted,
+    // and an agent that has reported nothing. Before this change that read `state: running` for
+    // thirty-one minutes. The assertion is on the FAILURE and on the absence of a beat, because a
+    // box that named it and went on asserting activity in the same breath has fixed nothing.
+    #[tokio::test]
+    async fn a_prompt_delivered_and_never_submitted_is_failed_by_name() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        // The agent's hooks have reported NOTHING: the prompt is in the composer.
+        let acts = Activities::new();
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        let failed = w.rec.failed.lock().unwrap().clone();
+        assert_eq!(failed.len(), 1, "the job must be failed by name");
+        assert_eq!(failed[0].0, "j1");
+        assert!(
+            failed[0].1.contains("never reported submitting"),
+            "the reason must name the unsubmitted prompt, not a timeout: {}",
+            failed[0].1
+        );
+        assert!(
+            w.rec.beats.lock().unwrap().is_empty(),
+            "a job this box has just called dead must not also be beaten as progress"
+        );
+        assert_eq!(
+            w.rec.killed.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()]
+        );
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    // cm:guard the counter-plant, and the assertion that proves the one above can fail: the SAME
+    // pane, the SAME clock, one `UserPromptSubmit` reported. It must be beaten as working and never
+    // failed — a check that fired on both is a check that has not been written.
+    #[tokio::test]
+    async fn the_same_pane_with_one_submitted_prompt_is_working_and_never_failed() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        acts.record(
+            "sess-1",
+            crate::daemon::agent_activity::Report {
+                event: crate::daemon::agent_activity::Event::PromptSubmitted,
+                at: now_ms(),
+                subject: None,
+                conversation: None,
+            },
+        );
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "a release whose agent answered must never be failed for silence"
+        );
+        assert_eq!(
+            w.rec.beat_states.lock().unwrap().clone(),
+            vec!["j1|working".to_string()]
+        );
+        assert!(w.rec.killed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    // cm:guard a turn that ENDED is still a turn that ran. `turn_started_at` is cleared by `Stop`
+    // and `doing()` answers `Idle`, so a reader that asked either would fail a release between its
+    // turns — which is every long release, most of the time.
+    #[tokio::test]
+    async fn a_job_whose_turn_has_ended_is_still_not_failed() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+        for event in [
+            crate::daemon::agent_activity::Event::PromptSubmitted,
+            crate::daemon::agent_activity::Event::Stopped,
+        ] {
+            acts.record(
+                "sess-1",
+                crate::daemon::agent_activity::Report {
+                    event,
+                    at: now_ms(),
+                    subject: None,
+                    conversation: None,
+                },
+            );
+        }
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert_eq!(
+            w.rec.beat_states.lock().unwrap().clone(),
+            vec!["j1|working".to_string()]
+        );
+    }
+
+    // cm:guard inside the window the box says what it KNOWS and nothing more: the prompt is
+    // delivered and no turn has been reported. `starting` is the word core already has for that,
+    // and it is what stops `last_heartbeat_at` being refreshed for work nobody is doing.
+    #[tokio::test]
+    async fn inside_the_window_the_beat_says_starting_and_not_working() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry.note("j1", "forge-job-j1", hooked("sess-1", 1_000));
+
+        supervise(
+            &w.panes,
+            &w.report,
+            &w.records,
+            &w.registry,
+            &Activities::new(),
+        )
+        .await;
+
+        assert_eq!(
+            w.rec.beat_states.lock().unwrap().clone(),
+            vec!["j1|starting".to_string()]
+        );
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    // cm:guard the direction that would have taken the fleet down, and it is the reason this change
+    // is not one call to `Activities`: every pool job on every box was unhooked before it, and a
+    // supervisor that reached the clock without asking whether it had a channel would fail every
+    // healthy release on the box at the two-minute mark.
+    #[tokio::test]
+    async fn a_pane_this_box_could_not_hook_is_never_failed_for_silence() {
+        let w = world(vec![], None, None);
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
+
+        supervise(
+            &w.panes,
+            &w.report,
+            &w.records,
+            &w.registry,
+            &Activities::new(),
+        )
+        .await;
+
+        assert!(
+            w.rec.failed.lock().unwrap().is_empty(),
+            "silence from a pane this box has no channel to is not evidence of anything"
+        );
+        assert_eq!(
+            w.rec.beat_states.lock().unwrap().clone(),
+            vec!["j1|-".to_string()],
+            "a box that knows nothing about the process reports no runtime state at all"
+        );
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    // cm:guard the same exemption reached the way a restart reaches it. `adopt` fills the registry
+    // from tmux, `Activities` died with the last process, and reading that emptiness as "never
+    // asked anything" would fail every release the box was in the middle of, on every restart.
+    #[tokio::test]
+    async fn a_pane_adopted_after_a_restart_is_never_failed_for_silence() {
+        let mut w = world(vec![], None, None);
+        w.panes.names = vec!["forge-job-j1".into()];
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+
+        adopt(&w.panes, &w.report, &w.records, &w.registry).await;
+        supervise(
+            &w.panes,
+            &w.report,
+            &w.records,
+            &w.registry,
+            &Activities::new(),
+        )
+        .await;
+
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert!(w.rec.killed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1);
+    }
+
+    // cm:guard the obligation survives a core that would not take it. Forgetting here would drop the
+    // one piece of evidence nobody else has, the moment core happened to be unreachable.
+    #[tokio::test]
+    async fn a_never_started_job_core_would_not_take_is_sent_again_next_tick() {
+        let w = world(vec![], None, None);
+        *w.report.fail_errs.lock().unwrap() = 1;
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+        assert!(w.rec.failed.lock().unwrap().is_empty());
+        assert_eq!(w.registry.count(), 1, "the obligation is kept");
+        assert!(
+            w.rec.killed.lock().unwrap().is_empty(),
+            "the pane is not killed until core has taken the failure"
+        );
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+        assert_eq!(w.rec.failed.lock().unwrap().len(), 1);
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    // cm:guard the other half of the same obligation: a pane tmux would not close keeps the job
+    // under supervision, rather than leaving an unmanaged agent on the box with nothing watching it.
+    #[tokio::test]
+    async fn a_never_started_job_whose_pane_will_not_close_stays_supervised() {
+        let w = world(vec![], None, None);
+        *w.panes.kill_errs.lock().unwrap() = 1;
+        w.panes.alive.lock().unwrap().push("forge-job-j1".into());
+        w.registry
+            .note("j1", "forge-job-j1", hooked("sess-1", PAST_THE_WINDOW));
+        let acts = Activities::new();
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+        assert_eq!(w.registry.count(), 1, "cleanup is still owed");
+
+        supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+        assert_eq!(
+            w.rec.killed.lock().unwrap().clone(),
+            vec!["forge-job-j1".to_string()]
+        );
+        assert_eq!(w.registry.count(), 0);
+    }
+
+    // cm:guard the prompt is delivered ONCE, whatever the reading. A box that re-sent a prompt it
+    // could not prove had been submitted would put a second release prompt into a pane that may
+    // already be releasing — and this box cannot tell those two apart, which is the whole issue.
+    #[tokio::test]
+    async fn nothing_in_supervision_ever_sends_a_second_prompt() {
+        let w = world(
+            vec![entry("j1", None)],
+            Some(prepared("j1", Some("## Batch Release"))),
+            None,
+        );
+        assert_eq!(take(&w, 4).await, Took::Started("j1".into()));
+        let acts = Activities::new();
+
+        for _ in 0..3 {
+            supervise(&w.panes, &w.report, &w.records, &w.registry, &acts).await;
+        }
+
+        assert_eq!(
+            w.rec.opened.lock().unwrap().len(),
+            1,
+            "supervision delivers no prompt of its own, on any reading"
+        );
     }
 
     // cm:guard adoption fills the map and touches nothing else. A restart with a live pane must not
@@ -1037,11 +1525,13 @@ mod tests {
             vec![
                 Live {
                     job_id: "j1".into(),
-                    pane: "forge-job-j1".into()
+                    pane: "forge-job-j1".into(),
+                    watch: Watch::Unhooked
                 },
                 Live {
                     job_id: "j2".into(),
-                    pane: "forge-job-j2".into()
+                    pane: "forge-job-j2".into(),
+                    watch: Watch::Unhooked
                 },
             ]
         );
@@ -1105,6 +1595,7 @@ mod tests {
             "master-session",
             Some(Path::new("/also/nowhere")),
             2,
+            Some(&w.tokens),
         )
         .await;
 
@@ -1178,10 +1669,10 @@ mod tests {
         let mut w = world(vec![], None, None);
         w.report.disowned = true;
         w.panes.alive.lock().unwrap().push("forge-job-j1".into());
-        w.registry.note("j1", "forge-job-j1");
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
         w.records.note("j1", "forge-job-j1").await;
 
-        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+        sup(&w).await;
 
         assert_eq!(
             w.rec.killed.lock().unwrap().clone(),
@@ -1273,7 +1764,8 @@ mod tests {
             w.records.all().await,
             vec![Live {
                 job_id: "j9".into(),
-                pane: "forge-job-j9".into()
+                pane: "forge-job-j9".into(),
+                watch: Watch::Unhooked
             }]
         );
     }
@@ -1312,7 +1804,7 @@ mod tests {
         assert!(w.rec.failed.lock().unwrap().is_empty());
         assert_eq!(w.registry.count(), 1);
 
-        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+        sup(&w).await;
 
         let failed = w.rec.failed.lock().unwrap().clone();
         assert_eq!(failed.len(), 1);
@@ -1349,14 +1841,14 @@ mod tests {
     async fn a_failure_core_did_not_take_is_sent_again_next_tick() {
         let w = world(vec![], None, None);
         *w.report.fail_errs.lock().unwrap() = 1;
-        w.registry.note("j1", "forge-job-j1");
+        w.registry.note("j1", "forge-job-j1", Watch::Unhooked);
         w.records.note("j1", "forge-job-j1").await;
 
-        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+        sup(&w).await;
         assert!(w.rec.failed.lock().unwrap().is_empty());
         assert_eq!(w.registry.count(), 1);
 
-        supervise(&w.panes, &w.report, &w.records, &w.registry).await;
+        sup(&w).await;
         assert_eq!(w.rec.failed.lock().unwrap().len(), 1);
         assert_eq!(w.registry.count(), 0);
         assert!(w.records.all().await.is_empty());
@@ -1434,7 +1926,7 @@ mod tests {
         let (url, rx) = capture_one().await;
         let client = CoreClient::new(url, String::from("tok"));
         let report = CoreReport { client: &client };
-        let _ = report.progress("job-1").await;
+        let _ = report.progress("job-1", Some("working")).await;
         let req = rx.await.expect("the server must have seen the beat");
         let kind = CORE_JOB_EVENT_KINDS
             .iter()

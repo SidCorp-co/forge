@@ -34,6 +34,7 @@ pub mod session_tokens;
 pub mod setup_agent;
 pub mod skill_pull;
 pub mod terminal;
+pub mod turn_evidence;
 
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
@@ -54,7 +55,8 @@ use dispatch::resolve_repo;
 
 /// How often this box checks on the pool jobs it is running.
 // cm:guard comfortably inside core's `RESULT_QUIET_MINUTES` (60), because this tick is what keeps `jobs/loop-monitor.ts:reapResultMisses` off a healthy release: that hop fails a `dispatched` job whose newest evidence is older than the hour, and a release runs longer than that. It is deliberately not tighter — each tick is one `POST /api/jobs/:id/events` per live job, and the value it carries is liveness, not detail.
-const POOL_SUPERVISE_INTERVAL: std::time::Duration = std::time::Duration::from_secs(60);
+pub(crate) const POOL_SUPERVISE_INTERVAL: std::time::Duration =
+    std::time::Duration::from_secs(60);
 
 /// RAII counter for in-flight work (pipeline jobs + interactive chat turns).
 /// Incremented when a unit of work is spawned, decremented on drop — so the
@@ -654,6 +656,8 @@ pub async fn run(
         let client = (*client).clone();
         let job_panes = job_panes.clone();
         let job_records = job_records.clone();
+        // cm:guard the SHARED map, never a copy — the same rule `master.rs` states for the run lane. A second `Activities` here would answer `None` for every job session forever, which `turn_evidence` reads as "never reported", and every healthy release on the box would be failed at the window. Inert in the dangerous direction, and green.
+        let activity = activity.clone();
         let mut cancel_rx = cancel_rx.clone();
         tokio::spawn(async move {
             // cm:guard adoption runs BEFORE the first tick and before any claim. A pane that outlived the last daemon is a job still working, and a supervisor that had not adopted it would find the registry empty, report nothing, and let core reap a healthy release at the 60-minute result hop while the agent kept going. It is also where a job whose pane did NOT survive is reported dead, which nothing else on this box can do.
@@ -676,6 +680,7 @@ pub async fn run(
                             &report,
                             job_records.as_ref(),
                             &job_panes,
+                            activity.as_ref(),
                         ).await;
                     }
                     _ = cancel_rx.changed() => { if *cancel_rx.borrow() { break; } }
