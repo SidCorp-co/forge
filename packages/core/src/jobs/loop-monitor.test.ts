@@ -237,23 +237,25 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
 
     await reapZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
 
-    expect(sweepWhereArgs.length).toBe(3);
-    const [pass1, pass2, pass3] = sweepWhereArgs.map(sqlText);
+    // cm:guard ISS-1101 split the queue hop in two, so the COUNT is four and the ORDER below is part of the assertion — a pass added without its own predicate asserted here reaps rows nobody proved were reapable. WHICH rows each queue arm takes, and the reason each writes, are asserted where they can fail (`tests/integration/session-queue-hop-e2e.test.ts`): `sqlText` renders a column reference as nothing at all, so an arm reading the wrong column passes this lane unchanged.
+    expect(sweepWhereArgs.length).toBe(4);
+    const [pass1, pass2, pass3, pass4] = sweepWhereArgs.map(sqlText);
 
     expect(pass1).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
     expect(pass2).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
-    expect(pass3).toMatch(/COALESCE/i);
+    expect(pass3).toMatch(/->>\s*'type'\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*\)/);
+    expect(pass4).toMatch(/COALESCE/i);
     expect(
-      pass3,
+      pass4,
       "the no-client hop must exclude every session type that never reports a `claude_session_id`. A master is a tmux pane and matches this hop's every predicate; it survives only on the daemon re-registering it, and a rate-limited box stretches that to 5 minutes against a 3-minute heartbeat — core then fails a healthy master, mints it a second session row, and the pane goes on claiming under an id core calls dead (ISS-933 criterion 21)",
     ).toMatch(/NOT\s+IN\s*\(\s*'pipeline'\s*,\s*'pm'\s*,\s*'master'\s*,\s*'run_session'\s*\)/);
-    expect(pass3).toMatch(/IS\s+NULL/i);
+    expect(pass4).toMatch(/IS\s+NULL/i);
     expect(pass1).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
-    expect(pass2).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
-    expect(pass2).toMatch(/->\s*'escalation'\s+IS\s+NOT\s+NULL/);
-    expect(pass2).toMatch(/->\s*'agentChat'\s+IS\s+NOT\s+NULL/);
-    expect(pass3).toMatch(/->>\s*'acked'\s*=\s*'true'/);
-    expect(pass3).toMatch(/COALESCE[\s\S]*<\s*['"]?\d{4}-\d{2}-\d{2}T/i);
+    expect(pass3).not.toMatch(/NOT\s+IN\s*\(\s*'pipeline'/);
+    expect(pass3).toMatch(/->\s*'escalation'\s+IS\s+NOT\s+NULL/);
+    expect(pass3).toMatch(/->\s*'agentChat'\s+IS\s+NOT\s+NULL/);
+    expect(pass4).toMatch(/->>\s*'acked'\s*=\s*'true'/);
+    expect(pass4).toMatch(/COALESCE[\s\S]*<\s*['"]?\d{4}-\d{2}-\d{2}T/i);
   });
 
   it('broadcasts + emits a wedge per reaped session, resolving the issue via the run', async () => {
@@ -266,7 +268,12 @@ describe('reapZombieSessions — claim/heartbeat hops (ISS-321 scoping preserved
 
     const result = await reapZombieSessions(new Date('2026-06-05T00:00:00Z'), {});
 
-    expect(result).toEqual({ queueTimedOut: 1, heartbeatTimedOut: 0, noClientAcked: 0 });
+    expect(result).toEqual({
+      queueTimedOut: 1,
+      turnNeverReported: 0,
+      heartbeatTimedOut: 0,
+      noClientAcked: 0,
+    });
     expect(broadcastSessionEventMock).toHaveBeenCalledWith(
       'sess-q',
       'p1',
@@ -510,7 +517,12 @@ describe('runLoopMonitor — one tick, hops in dependency order', () => {
     const result = await runLoopMonitor(new Date('2026-06-12T00:00:00Z'));
     expect(result).toEqual({
       ackMisses: { reaped: 0, killRequested: 0, awaitingKill: 0 },
-      sessions: { queueTimedOut: 0, heartbeatTimedOut: 0, noClientAcked: 0 },
+      sessions: {
+        queueTimedOut: 0,
+        turnNeverReported: 0,
+        heartbeatTimedOut: 0,
+        noClientAcked: 0,
+      },
       expiredParks: 0,
       unansweredParks: 0,
       sessionLostJobs: { reaped: 0, killRequested: 0, awaitingKill: 0 },

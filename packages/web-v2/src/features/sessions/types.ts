@@ -239,6 +239,7 @@ export const FAILURE_REASON_LABEL: Record<SessionFailureReason, string> = {
   unclassified: "Unclassified",
   queue_timeout: "Queue timeout",
   heartbeat_timeout: "No heartbeat",
+  turn_never_reported: "No turn ever reported",
   no_worker_online: "No runner online",
   no_client_ack: "No acknowledgement",
   skill_not_synced: "Skill not ready yet",
@@ -283,6 +284,8 @@ export const FAILURE_REASON_ACTION: Record<SessionFailureReason, string> = {
   unclassified: "The cause wasn't recorded — open the run timeline to see why.",
   queue_timeout: "No runner picked it up — check the fleet strip for an online runner.",
   heartbeat_timeout: "The runner died mid-run — Retry to re-dispatch.",
+  turn_never_reported:
+    "A runner picked this up but nothing ever reported the agent starting a turn — check whether its prompt was actually submitted, then Rerun.",
   no_worker_online: "Bring a runner online or check device pairing, then Retry.",
   no_client_ack: "The runner never acknowledged the dispatch — Retry to re-send.",
   user_cancelled: "Cancelled by a user — Rerun to start a fresh session.",

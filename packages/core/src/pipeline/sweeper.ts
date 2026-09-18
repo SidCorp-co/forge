@@ -82,6 +82,7 @@ export function getZombieThresholds(): { queueMs: number; heartbeatMs: number } 
 export interface ZombieSweepResult {
   // cm:guard these count ALARMED rows, never reaped ones. Read as reaps they say the sweep fixed something it only reported, which is the difference between a wedge that cleared and one nobody has touched.
   queueTimedOut: number;
+  turnNeverReported: number;
   heartbeatTimedOut: number;
   noClientAcked: number;
 }
@@ -370,12 +371,25 @@ export async function alarmZombieSessions(
   const heartbeatCutoffIso = new Date(now.getTime() - heartbeatMs).toISOString();
   const projectClause = scope.projectId ? sql`AND s.project_id = ${scope.projectId}` : sql``;
 
+  // cm:guard ISS-1101 — the `last_heartbeat_at IS NULL` term mirrors the loop's queue arm and is what keeps this a MIRROR. Without it every claimed-and-beating queued session matches here every minute, and the alarm that exists to say "the loop missed a row" says it about rows the loop deliberately left alone — which is how a coverage proof becomes noise nobody reads.
   const queued = await db.execute<SessionAlarmRow>(sql`
     SELECT s.id, s.project_id, s.pipeline_run_id
     FROM agent_sessions s
     WHERE s.status = 'queued'
+      AND s.last_heartbeat_at IS NULL
       AND ((s.dispatched_at IS NOT NULL AND s.dispatched_at < ${queueCutoffIso})
         OR (s.dispatched_at IS NULL AND s.created_at < ${queueCutoffIso}))
+      AND s.metadata->>'type' IN ${PIPELINE_METADATA_TYPES}
+      ${projectClause}
+  `);
+
+  // cm:guard the loop's OTHER queue arm, on the heartbeat cutoff rather than the queue one — the two thresholds differ here because they differ there, and reading both off `getZombieThresholds` is what keeps them the same two numbers.
+  const neverReported = await db.execute<SessionAlarmRow>(sql`
+    SELECT s.id, s.project_id, s.pipeline_run_id
+    FROM agent_sessions s
+    WHERE s.status = 'queued'
+      AND s.last_heartbeat_at IS NOT NULL
+      AND s.last_heartbeat_at < ${heartbeatCutoffIso}
       AND s.metadata->>'type' IN ${PIPELINE_METADATA_TYPES}
       ${projectClause}
   `);
@@ -405,10 +419,12 @@ export async function alarmZombieSessions(
   `);
 
   await alarmLoopMiss('claim', 'session', [...queued, ...noClient]);
-  await alarmLoopMiss('heartbeat', 'session', [...heartbeat]);
+  // cm:guard `neverReported` alarms on the HEARTBEAT hop, the hop the loop emits its wedge on, because the row went quiet rather than went unclaimed. Filing it under `claim` would put a loop-miss about a session a worker plainly holds beside the ones nobody picked up.
+  await alarmLoopMiss('heartbeat', 'session', [...heartbeat, ...neverReported]);
 
   return {
     queueTimedOut: queued.length,
+    turnNeverReported: neverReported.length,
     heartbeatTimedOut: heartbeat.length,
     noClientAcked: noClient.length,
   };

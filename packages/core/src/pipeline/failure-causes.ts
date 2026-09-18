@@ -68,6 +68,15 @@ export const FAILURE_CAUSES = [
   'heartbeat_timeout',
   /** nobody picked it up. 20 sessions all-time. */
   'queue_timeout',
+  /** a worker reported on the session and then stopped, and no report that a
+   *  turn had begun ever arrived. NAMED FOR WHAT WAS OBSERVED and not for what
+   *  it usually means: core sees reports, never the pane, so silence past the
+   *  quiet threshold establishes that no turn was REPORTED and never that none
+   *  ran. Writers: jobs/loop-monitor.ts (the quiet arm of the queue hop), and
+   *  the runner's `turn_evidence::never_started_reason` through `CAUSE_RULES`,
+   *  which is the reading that CAN say more because it watches the pane
+   *  (ISS-1101, pairing with ISS-1096). New; no live rows by construction. */
+  'turn_never_reported',
   /** the ack hop reaped it. 7 sessions all-time. */
   'no_client_ack',
   /** the websocket publish that carries a chat turn failed. Writers:
@@ -140,6 +149,8 @@ export const FAILURE_CAUSE_ORIGIN: Record<FailureCause, FailureOrigin> = {
   session_lost: 'transport',
   heartbeat_timeout: 'transport',
   queue_timeout: 'transport',
+  // cm:why `transport` beside its three siblings — `queue_timeout`, `heartbeat_timeout` and `session_lost` all mean core stopped hearing, which is the one thing this cause asserts. `agent` would name the likeliest fault (a prompt that never left the composer) and would be the same over-assertion the member's own name refuses.
+  turn_never_reported: 'transport',
   no_client_ack: 'transport',
   ws_publish_failed: 'transport',
   forge_budget_exhausted: 'forge',

@@ -3014,6 +3014,13 @@
 - **`pnpm verify` no longer exits 0 over a gate it did not run.** The Rust gates skipped when no
   toolchain was present, which only happened where there were Rust changes to measure.
 
+- **A job whose agent was never asked anything no longer shows as working.** A runner's keep-alive
+  beat was enough, even with the prompt sitting unsent. Working now means something reported a turn
+  began.
+
+- **A job a runner did pick up is no longer failed with "no runner picked it up".** That timeout now
+  asks whether anything was heard from the runner, and says so when nothing reported a turn.
+
 - **Three checks on the dispatch gate could not fail, so they said nothing.** Two fail-open paths
   went unexercised and one test rebuilt the code it judged instead of calling it. Each is now
   proven by watching it go red.

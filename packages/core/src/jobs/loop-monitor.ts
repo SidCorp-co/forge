@@ -16,13 +16,12 @@
 import type { SQL } from 'drizzle-orm';
 import { and, eq, inArray, isNotNull, lt, or, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
-import { agentSessions, jobs, pipelineRuns } from '../db/schema.js';
+import { agentSessions, jobs } from '../db/schema.js';
 import { applyKernelTransition, SWEEP_SESSION_COLUMNS } from '../lifecycle/transition.js';
 import { logger } from '../logger.js';
 import { resumeLapsedAnswers } from '../pipeline/answer-resume.js';
 import { CLASSIFIER_VERSION } from '../pipeline/failure-classifier.js';
 import { emitPipelineWedge, type WedgeHop } from '../pipeline/wedge.js';
-import { broadcastSessionEvent } from './agent-session-link.js';
 import { finalizeFailedJob } from './finalize-failure.js';
 import { JOB_AXIS_SCAN_LIMIT, reportHopPage } from './hop-bounds.js';
 import {
@@ -34,6 +33,7 @@ import {
 } from './kill-gate.js';
 import { reapExpiredParks, reapUnansweredParks } from './park-deadline.js';
 import { quietJobCandidateQuery } from './progress-signal.js';
+import { broadcastZombieTransition, lookupIssueForRun, reapQueueHop } from './queue-hop.js';
 import { RESULT_EVENT_LATERAL, RESULT_GUARD } from './resident-session.js';
 import { NON_CLIENT_METADATA_TYPES, PIPELINE_METADATA_TYPES } from './session-kinds.js';
 import { type SessionLostCause, sessionLostCause } from './session-lost-cause.js';
@@ -99,6 +99,8 @@ export interface LoopScope {
 
 export interface ZombieSessionReapResult {
   queueTimedOut: number;
+  /** ISS-1101 — claimed, reported, then silent with no turn ever reported. */
+  turnNeverReported: number;
   heartbeatTimedOut: number;
   noClientAcked: number;
 }
@@ -128,22 +130,6 @@ export interface LoopMonitorResult {
   resultMisses: JobAxisReapResult;
   /** answers whose session turned out to be gone, returned to the driver as a dispatch. */
   lapsedAnswers: number;
-}
-
-/** Resolve the linked issue for a session's wedge event via its pipeline_run
- *  (sessions carry no issue_id of their own). Best-effort. */
-async function lookupIssueForRun(pipelineRunId: string | null): Promise<string | null> {
-  if (!pipelineRunId) return null;
-  try {
-    const [row] = await db
-      .select({ issueId: pipelineRuns.issueId })
-      .from(pipelineRuns)
-      .where(eq(pipelineRuns.id, pipelineRunId))
-      .limit(1);
-    return row?.issueId ?? null;
-  } catch {
-    return null;
-  }
 }
 
 /** Raw-execute candidate row shared by every job-axis hop — the columns the
@@ -398,40 +384,12 @@ export async function reapZombieSessions(
   const ackFastCutoffIso = new Date(now.getTime() - ackFastMs).toISOString();
   const projectFilter = scope.projectId ? eq(agentSessions.projectId, scope.projectId) : undefined;
 
-  // cm:guard the CAS on `status='queued'` is what keeps a worker claiming concurrently from being stomped, and `dispatchedAt` falls back to `createdAt` because rows predating that column have none — without the fallback every one of them reads as queued since the epoch and is failed on the first tick.
-  const queuedFailed = await applyKernelTransition(db, {
-    entity: 'session',
-    returning: SWEEP_SESSION_COLUMNS,
-    to: 'failed',
-    set: { failureReason: 'queue_timeout', updatedAt: now },
-    where: and(
-      eq(agentSessions.status, 'queued'),
-      or(
-        and(isNotNull(agentSessions.dispatchedAt), lt(agentSessions.dispatchedAt, queueCutoff)),
-        and(sql`${agentSessions.dispatchedAt} IS NULL`, lt(agentSessions.createdAt, queueCutoff)),
-      ),
-      sql`${agentSessions.metadata}->>'type' IN ${PIPELINE_METADATA_TYPES}`,
-      ...(projectFilter ? [projectFilter] : []),
-    ),
-    fromStatus: 'queued',
-    reason: 'queue_timeout',
-    actor: { type: 'sweeper' },
-    source: 'loop-monitor',
+  const { queueTimedOut, turnNeverReported } = await reapQueueHop({
+    now,
+    queueCutoff,
+    quietCutoff: heartbeatCutoff,
+    projectFilter,
   });
-
-  for (const z of queuedFailed) {
-    broadcastZombieTransition(z.id, z.projectId, z.deviceId, 'queue_timeout');
-    await emitPipelineWedge({
-      projectId: z.projectId,
-      issueId: await lookupIssueForRun(z.pipelineRunId),
-      hop: 'claim',
-      entity: 'session',
-      entityId: z.id,
-      reason: 'no worker claimed the session within the queue timeout',
-      action:
-        'Check that an online runner is bound to this project. The session was failed; the job axis recovers via the heartbeat hop + retry.',
-    });
-  }
 
   // cm:guard keep the startedAt → updatedAt → createdAt fallback chain — a rolling deploy leaves workers on older code that stamp fewer of these columns, and reading only the first one over-sweeps every session they own.
   // cm:guard escalation and agent-chat sessions (ISS-675, ISS-727) MUST match here even though they carry no `metadata.type`: they ride the same runner heartbeat, and an attached-then-hung runner has `claudeSessionId` set, so the no-client hop below can never claim it — dropping them from this hop leaves the session `running` forever, no completion bridge, silence in the room, and the per-rid dedup never clears.
@@ -566,12 +524,13 @@ export async function reapZombieSessions(
   }
 
   const result: ZombieSessionReapResult = {
-    queueTimedOut: queuedFailed.length,
+    queueTimedOut,
+    turnNeverReported,
     heartbeatTimedOut: heartbeatFailed.length,
     noClientAcked: noClientFailed.length,
   };
 
-  if (result.queueTimedOut > 0 || result.heartbeatTimedOut > 0 || result.noClientAcked > 0) {
+  if (Object.values(result).some((n) => n > 0)) {
     logger.info({ ...result, queueMs, heartbeatMs }, 'loop-monitor: zombie sessions failed');
   }
 
@@ -723,16 +682,4 @@ export async function runLoopMonitor(
   // cm:guard AFTER the park reap, and that order is the hop's only path out of `unknown`: a park closed this tick is a terminal session, which is what makes `resolveSessionSend` say `gone` rather than keep waiting. Running it first would defer every fallback by a full tick for no reason.
   const lapsedAnswers = await resumeLapsedAnswers(now, scope);
   return { ackMisses, sessions, ...parkClocks, sessionLostJobs, resultMisses, lapsedAnswers };
-}
-
-function broadcastZombieTransition(
-  sessionId: string,
-  projectId: string,
-  deviceId: string | null,
-  reason: 'queue_timeout' | 'heartbeat_timeout' | 'no_client_ack',
-): void {
-  broadcastSessionEvent(sessionId, projectId, deviceId, 'agent-session.status', {
-    status: 'failed',
-    failureReason: reason,
-  });
 }

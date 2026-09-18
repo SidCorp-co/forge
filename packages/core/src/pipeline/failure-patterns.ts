@@ -165,6 +165,13 @@ export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
     cause: 'session_lost',
     test: re(/session_lost|agent session terminated without job completion/i),
   },
+  // cm:guard AHEAD of `runner_unreachable`, whose `/dispatch not delivered/` is one word away from this sentence's "its prompt delivered" and would take it on a reword. Ahead of nothing else matters: the sentence carries no marker, no status code and no `timeout`.
+  // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/turn_evidence.rs — `never_started_reason` writes this sentence and `pool_jobs::never_started` sends it to `POST /jobs/:id/fail`; a reword there and not here drops the box's own named failure back to `unclassified` in silence, which is the state ISS-1101 found it in (the module arrives with ISS-1096).
+  // cm:guard the two clauses are matched TOGETHER, not either alone: "never reported submitting" on its own would also read as a claim about a turn that ended, and the pane clause is what ties it to a prompt that was delivered and not taken up.
+  {
+    cause: 'turn_never_reported',
+    test: (t) => /prompt delivered/i.test(t) && /never reported submitting/i.test(t),
+  },
   {
     cause: 'runner_unreachable',
     test: re(
