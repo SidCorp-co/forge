@@ -591,6 +591,60 @@ mod tests {
         assert_eq!(Event::from_wire(""), None);
     }
 
+    // cm:guard the count is of PROMPTS ACCEPTED and of nothing else. `sequence` moves on every frame, so a child of an earlier pass finishing bumps it while a nudge still sits unsubmitted in the composer — `master.rs` reads this instead precisely because that difference is the wedged pane it has to rescue.
+    #[test]
+    fn a_prompt_is_counted_and_nothing_else_is() {
+        let acts = Activities::new();
+        let say = |event, subject| {
+            acts.record(
+                "s1",
+                Report {
+                    event,
+                    at: 0,
+                    subject,
+                    conversation: Some("c1"),
+                },
+            )
+        };
+        assert_eq!(say(Event::Stopped, None).prompts, 0);
+        assert_eq!(say(Event::SubagentStarted, Some("k1")).prompts, 0);
+        assert_eq!(say(Event::SubagentStopped, Some("k1")).prompts, 0);
+        assert_eq!(say(Event::PromptSubmitted, None).prompts, 1);
+        assert_eq!(say(Event::PermissionRequested, None).prompts, 1);
+        assert_eq!(say(Event::Stopped, None).prompts, 1);
+        assert_eq!(say(Event::PromptSubmitted, None).prompts, 2);
+    }
+
+    // cm:guard the void above clears the CLAIMS a new conversation invalidates and must NOT take this tally with them. A `/clear`, a relaunch and a resume all leave the pane alive under a new `session_id`; reset here, a turn taken after one of those reads as no turn at all, and the caller that judges a nudge by this count re-nudges a master that answered it.
+    #[test]
+    fn a_new_conversation_voids_the_claims_and_leaves_the_count_where_it_stands() {
+        let acts = Activities::new();
+        let say = |event, conversation| {
+            acts.record(
+                "s1",
+                Report {
+                    event,
+                    at: 0,
+                    subject: None,
+                    conversation: Some(conversation),
+                },
+            )
+        };
+        assert_eq!(say(Event::PromptSubmitted, "c1").prompts, 1);
+
+        let after = say(Event::Stopped, "c2");
+        assert_eq!(
+            after.prompts, 1,
+            "the tally survives the conversation it was counted in"
+        );
+        assert_eq!(
+            after.doing(),
+            Doing::Idle,
+            "the claims the old conversation held are still voided"
+        );
+        assert_eq!(say(Event::PromptSubmitted, "c2").prompts, 2);
+    }
+
     // cm:guard `PreCompact` must NOT be registered or accepted: it fires before the compact is validated and an aborted compact emits it alone, so mapping it to a boundary strands the pane in exactly the state this module exists to prevent.
     #[test]
     fn precompact_is_refused_by_name_in_the_source_and_not_merely_absent() {
