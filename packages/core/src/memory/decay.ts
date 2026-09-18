@@ -1,4 +1,4 @@
-import { and, inArray, isNull, lt, sql } from 'drizzle-orm';
+import { type SQL, and, inArray, isNull, lt, sql } from 'drizzle-orm';
 import { db } from '../db/client.js';
 import { type MemorySource, memories } from '../db/schema.js';
 import { logger } from '../logger.js';
@@ -44,6 +44,21 @@ function daysAgo(days: number): Date {
   return new Date(Date.now() - days * 24 * 60 * 60 * 1000);
 }
 
+// cm:why ISS-1021 — a raw `sql` fragment carries no column type, so a bare `${date}` reaches
+// postgres-js as an untyped parameter it refuses to serialise, throwing `The "string" argument must
+// be of type string or an instance of Buffer or ArrayBuffer. Received an instance of Date`. The
+// archive UPDATE below has thrown on exactly that since ISS-708 introduced the fragment: the daily
+// 03:30 sweep logged `memory.decay: sweep failed` and archived nothing, and the purge that runs
+// after it never ran at all. `decay.test.ts` could not see it because it mocks `../db/client.js`,
+// so no assertion in the tree ever reached a real driver. Same defect and same fix as
+// `issues/merge-marker.ts:stampIssueMergedAt` (ISS-959, a live 500 on beta for every
+// mergedAt-supplied call), which is where this repo settled on ISO-string-plus-cast.
+// The typed `lt()` on the purge statement does NOT need this and must not be changed to it:
+// drizzle knows the column there and maps the Date itself.
+function daysAgoParam(days: number): SQL {
+  return sql`${daysAgo(days).toISOString()}::timestamptz`;
+}
+
 export interface DecayResult {
   archived: number;
   purged: number;
@@ -69,13 +84,13 @@ export async function runMemoryDecay(): Promise<DecayResult> {
         // activity: an agent just proved the row correct, so it must not be
         // archived as "unused" even with a low retrieval count.
         sql`(
-          (${memories.retrievalCount} = 0 AND GREATEST(${memories.createdAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.createdAt})) < ${daysAgo(PRUNE_ZERO_RETRIEVAL_DAYS)})
+          (${memories.retrievalCount} = 0 AND GREATEST(${memories.createdAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.createdAt})) < ${daysAgoParam(PRUNE_ZERO_RETRIEVAL_DAYS)})
           OR
-          (${memories.retrievalCount} < ${PRUNE_LOW_RETRIEVAL_THRESHOLD} AND GREATEST(${memories.updatedAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.updatedAt})) < ${daysAgo(PRUNE_LOW_RETRIEVAL_DAYS)})
+          (${memories.retrievalCount} < ${PRUNE_LOW_RETRIEVAL_THRESHOLD} AND GREATEST(${memories.updatedAt}, COALESCE(${memories.lastVerifiedAt}, ${memories.updatedAt})) < ${daysAgoParam(PRUNE_LOW_RETRIEVAL_DAYS)})
           OR
           (
             ${memories.metadata}->>'staleSince' IS NOT NULL
-            AND (${memories.metadata}->>'staleSince')::timestamptz < ${daysAgo(STALE_UNCONFIRMED_DAYS)}
+            AND (${memories.metadata}->>'staleSince')::timestamptz < ${daysAgoParam(STALE_UNCONFIRMED_DAYS)}
             AND (
               ${memories.lastVerifiedAt} IS NULL
               OR ${memories.lastVerifiedAt} < (${memories.metadata}->>'staleSince')::timestamptz
