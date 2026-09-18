@@ -23,12 +23,14 @@ vi.mock('../../knowledge/unified-search.js', () => ({
 }));
 
 const upsertKnowledgeEntryMock = vi.fn(async (_input: unknown) => ({ id: 'k', slug: 's' }));
-vi.mock('../../knowledge/service.js', async () => ({
+// cm:guard the functions are stubbed and `upsertKnowledgeInputSchema` is NOT — the handler parses
+// the tool's arguments through it, so a stand-in decides what this tool accepts (ISS-1095).
+vi.mock('../../knowledge/service.js', async (importOriginal) => ({
+  ...(await importOriginal<typeof import('../../knowledge/service.js')>()),
   deleteKnowledgeEntry: vi.fn(),
   getKnowledgeEntry: vi.fn(),
   listKnowledgeEntries: vi.fn(),
   upsertKnowledgeEntry: (input: unknown) => upsertKnowledgeEntryMock(input),
-  upsertKnowledgeInputSchema: (await import('zod')).z.object({}).passthrough(),
 }));
 
 const { forgeKnowledgeTool } = await import('./forge-knowledge.js');
@@ -69,6 +71,57 @@ describe('forge_knowledge maps an embeddings outage to UNAVAILABLE', () => {
       scope: 'knowledge',
       topK: 10,
       strategy: 'semantic',
+    });
+  });
+});
+
+// cm:why the tool's own `inputSchema` is not the only gate on an upsert — it takes any 1..512 string
+// for `slug`, and `upsertKnowledgeInputSchema` in the handler is what holds kebab-case.
+describe('forge_knowledge upsert is validated by the knowledge service schema', () => {
+  it('refuses a slug that is not kebab-case', async () => {
+    await expect(
+      tool().handler({
+        action: 'upsert',
+        projectId: PROJECT_ID,
+        slug: 'Not Kebab',
+        title: 't',
+        body: 'b',
+      }),
+    ).rejects.toThrow(/kebab-case/);
+    expect(upsertKnowledgeEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('refuses a whitespace-only body', async () => {
+    await expect(
+      tool().handler({
+        action: 'upsert',
+        projectId: PROJECT_ID,
+        slug: 'a-convention',
+        title: 't',
+        body: '   ',
+      }),
+    ).rejects.toThrow(/whitespace/);
+    expect(upsertKnowledgeEntryMock).not.toHaveBeenCalled();
+  });
+
+  it('hands the store the schema defaults the caller did not send', async () => {
+    await tool().handler({
+      action: 'upsert',
+      projectId: PROJECT_ID,
+      slug: 'a-convention',
+      title: 't',
+      body: 'b',
+    });
+    expect(upsertKnowledgeEntryMock).toHaveBeenCalledWith({
+      projectId: PROJECT_ID,
+      slug: 'a-convention',
+      title: 't',
+      body: 'b',
+      kind: 'guide',
+      injection: 'on_demand',
+      confidence: 'inferred',
+      authoredBy: 'agent',
+      orderIndex: 0,
     });
   });
 });
