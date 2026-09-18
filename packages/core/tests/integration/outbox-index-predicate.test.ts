@@ -114,9 +114,16 @@ describe('idx_outbox_unprocessed agrees with the outbox claim', () => {
       sql`SELECT count(*)::int AS n FROM pipeline_outbox WHERE processed_at IS NULL`,
     );
 
-    // An index-only scan reads the visibility map, which only VACUUM sets; without this the plan
-    // is still index-only but every row is a heap fetch, and `Heap Fetches: 0` would be asserting
-    // the vacuum rather than the predicate.
+    // ANALYZE so the planner costs against real statistics rather than the defaults for an
+    // empty table.
+    //
+    // `Heap Fetches` is deliberately NOT asserted. It counts the rows an index-only scan could
+    // not answer from the visibility map, which only VACUUM sets and only up to the oldest
+    // snapshot still open in the cluster. Run alone this file gets 0; run inside the full
+    // integration suite, where sibling workers hold concurrent transactions in the same cluster,
+    // VACUUM's horizon cannot advance and the same correct plan reports 1. That number is a fact
+    // about the vacuum horizon, not about this index, and asserting it made the suite fail on a
+    // green subject (measured 2026-09-18, full suite, 1 failed of 2537).
     await harness.db.execute(sql`VACUUM (ANALYZE) pipeline_outbox`);
     await harness.db.execute(sql`SET enable_seqscan = off`);
     const [plan] = await harness.db.execute<{ 'QUERY PLAN': PlanRoot[] }>(
@@ -132,13 +139,16 @@ describe('idx_outbox_unprocessed agrees with the outbox claim', () => {
       node: node?.['Node Type'],
       index: node?.['Index Name'],
       rowsTheIndexHolds: node?.['Actual Rows'],
-      heapFetches: node?.['Heap Fetches'],
     }).toEqual({
+      // Two rows are unprocessed and only ONE is in the index: the dead-lettered row, at
+      // `attempts = MAX_REDELIVERIES`, is absent from it. That gap between 2 and 1 IS the
+      // criterion, and it is what the old `attempts`-less predicate cannot produce — planted,
+      // that index holds both rows and this reads 2, on an `Index Scan` rather than an
+      // index-only one.
       unprocessedRowsInTable: 2,
       node: 'Index Only Scan',
       index: 'idx_outbox_unprocessed',
       rowsTheIndexHolds: 1,
-      heapFetches: 0,
     });
   });
 });
