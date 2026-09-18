@@ -56,12 +56,22 @@ function speakerPhrase(ref: SpeakerRef): string {
  * The way out, carried in the refusal itself rather than left for the reader to
  * find: what was wrong, who was not found, and the step that fixes it.
  */
+// cm:guard this string is read by A PERSON IN A CHAT ROOM and by nobody else — `question-inbound.ts`
+// and `comment-inbound.ts` are its only callers, and both hand it straight to `say(transport, …)`.
+// So it leads with the cause in words and names the condition that actually decides the link, which
+// is that the two addresses MATCH: measured 2026-09-18, the one person who hit this was refused
+// because the channel reports `<name>@sidcorp.co` for them while they sign in to Forge as someone
+// else, and the refusal they got never used the word "email" once. It opened with two REST paths and
+// a JSON body instead, to a reader whose whole surface is a message box. The route is still named,
+// last and in one line, because it is the only one that exists until a screen does.
 export function unlinkedMessage(ref: SpeakerRef): string {
   return [
-    `${speakerPhrase(ref)} is not linked to a Forge user, so nothing can be answered or authored as them.`,
-    'The person who owns that chat account signs in to Forge themselves and confirms the link:',
-    'POST /api/projects/<projectId>/speaker-links/proposals with {"source","externalId"} lists the Forge users whose address the channel reports for that speaker,',
-    'then POST /api/projects/<projectId>/speaker-links with the same body stores the link — as the person being mapped, never as an administrator on their behalf.',
+    `I can see your message, but ${speakerPhrase(ref)} is not linked to a Forge account yet, so I cannot record an answer as you.`,
+    'Answering exercises a permission — an option can say "admins only" — so Forge has to know whose permission to check, and a chat handle carries none.',
+    'The link is confirmed by matching addresses: sign in to Forge with the SAME email address this chat account uses, then confirm the link yourself.',
+    'It has to be you, not an administrator on your behalf, because the permission checked afterwards is yours.',
+    'If your two addresses differ, make them the same on either side first — that mismatch is the usual reason this refusal appears.',
+    'There is no screen for the confirming step yet: it is POST /api/projects/<projectId>/speaker-links/proposals to see the match, then POST /api/projects/<projectId>/speaker-links to store it, both with {"source","externalId"}.',
   ].join(' ');
 }
 
