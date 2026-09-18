@@ -23,6 +23,7 @@ Element.prototype.scrollIntoView = vi.fn();
 const mutate = vi.fn();
 let agents: unknown[] = [];
 let orgRole = "admin";
+let orgId: string | null = "org-1";
 let queryState: { isLoading: boolean; isError: boolean } = { isLoading: false, isError: false };
 const refetch = vi.fn();
 
@@ -40,7 +41,9 @@ vi.mock("@/features/agent-accounts/hooks", () => ({
   }),
 }));
 vi.mock("@/features/orgs/active-org", () => ({
-  useActiveOrg: () => ({ activeOrg: { id: "org-1", name: "Acme", role: orgRole } }),
+  useActiveOrg: () => ({
+    activeOrg: orgId === null ? null : { id: orgId, name: "Acme", role: orgRole },
+  }),
 }));
 vi.mock("@/providers/auth-provider", () => ({
   useAuth: () => ({ user: { email: "admin@acme.test" } }),
@@ -51,6 +54,7 @@ beforeEach(() => {
   refetch.mockClear();
   orgRole = "admin";
   queryState = { isLoading: false, isError: false };
+  orgId = "org-1";
   agents = [
     {
       userId: "agent-1",
@@ -162,7 +166,7 @@ describe("choosing the identity a box will carry (ISS-1093)", () => {
     queryState = { isLoading: true, isError: false };
     renderScreen();
     expect(screen.queryByText(/no agents yet/i)).not.toBeInTheDocument();
-    expect(screen.getByText(/Looking for agents/i)).toBeInTheDocument();
+    expect(screen.getByText(/Looking for the agents/i)).toBeInTheDocument();
   });
 
   it("will not approve while the agent list is still loading", () => {
@@ -178,5 +182,43 @@ describe("choosing the identity a box will carry (ISS-1093)", () => {
     renderScreen();
     fireEvent.click(screen.getByRole("button", { name: /Approve device/ }));
     expect(mutate).toHaveBeenCalledWith({ pairingCode: "ABC-1234", agentUserId: null });
+  });
+});
+
+describe("the identity submitted is the identity shown", () => {
+  // cm:guard the SUBMITTED id, after the organization has changed under a made choice. The
+  // provider switches org without remounting, so the selected id outlives the list it was chosen
+  // from: the confirmation line then reads "acts as you" while the raw id would still be sent.
+  // A box given an identity nobody confirmed is the whole failure class this issue exists in
+  // (ISS-1093, second review round).
+  it("never sends an agent the current organization does not have", () => {
+    orgId = "org-1";
+    const view = renderScreen();
+    chooseTheAgent();
+    expect(screen.getByText(/will act as The box/)).toBeInTheDocument();
+
+    // The admin switches organization. Its agents are different; the chosen one is not among them.
+    orgId = "org-2";
+    agents = [];
+    view.rerender(
+      <QueryClientProvider client={new QueryClient()}>
+        <PairScreen />
+      </QueryClientProvider>,
+    );
+
+    expect(screen.getByText(/will act as you/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: /Approve device/ }));
+    expect(mutate).toHaveBeenCalledWith({ pairingCode: "ABC-1234", agentUserId: null });
+  });
+
+  // cm:guard approving is refused while the ACTIVE ORG itself is still resolving. Until it does,
+  // every admin reads as a non-admin here and the screen would let the fastest click pair the box
+  // as the person before the picker could exist.
+  it("will not approve before the active organization has resolved", () => {
+    orgId = null;
+    renderScreen();
+    fireEvent.click(screen.getByRole("button", { name: /Approve device/ }));
+    expect(mutate).not.toHaveBeenCalled();
+    expect(screen.getByText(/Looking for the agents/i)).toBeInTheDocument();
   });
 });

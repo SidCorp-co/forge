@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import {
   Banner,
@@ -56,6 +56,26 @@ export function PairScreen() {
 
   const approved = approve.data?.approved === true;
   const chosen = agents.find((a) => a.userId === asAgent);
+  // cm:guard the identity SUBMITTED is read off `chosen`, the very object the sentence below is
+  // written from — not off `asAgent`. The two are the same value only while the agent list is the
+  // one the choice was made against: switching organization leaves the id selected and the lookup
+  // empty, and a screen that submitted the raw id would then promise "acts as you" and hand the
+  // box the other organization's agent. One value, one answer, by construction rather than by two
+  // call sites agreeing (ISS-1093, second review round).
+  const identity = chosen?.userId ?? null;
+
+  // cm:guard and the stale selection is cleared as well, so the picker does not go on displaying
+  // an agent this organization does not have. `ActiveOrgProvider` switches org without remounting.
+  const activeOrgId = activeOrg?.id ?? null;
+  useEffect(() => setAsAgent(AS_MYSELF), [activeOrgId]);
+
+  // cm:guard approval waits for the active org to resolve. Until it does, `activeOrg` is null,
+  // `isOrgAdmin` is false and every guard below reads this admin as somebody with no choice to
+  // make — so the fastest path through the screen pairs the box as the person before the picker
+  // has had a chance to exist. Registration creates a personal org atomically with the user, so a
+  // signed-in caller always resolves to one and this cannot wedge; a null here is "not yet".
+  const orgResolved = activeOrg != null;
+  const waiting = !orgResolved || (isOrgAdmin && agentsQ.isLoading);
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4 px-6 py-8">
@@ -163,10 +183,10 @@ export function PairScreen() {
                   the data is read as `?? []` — the control disappears, approving stays available,
                   and an admin pairs the box as themselves believing their organization has no
                   agent to choose (ISS-1093, review finding F5). */}
-              {isOrgAdmin && agentsQ.isLoading && (
+              {waiting && (
                 <Banner tone="info">
-                  Looking for agents in this organization — approving waits until the choice is on
-                  screen.
+                  Looking for the agents you could pair this box as — approving waits until the
+                  choice is on screen.
                 </Banner>
               )}
               {isOrgAdmin && agentsQ.isError && (
@@ -218,10 +238,10 @@ export function PairScreen() {
                 <Button
                   variant="primary"
                   icon="check"
-                  disabled={isOrgAdmin && agentsQ.isLoading}
+                  disabled={waiting}
                   loading={approve.isPending}
                   onClick={() =>
-                    approve.mutate({ pairingCode: code, agentUserId: asAgent || null })
+                    approve.mutate({ pairingCode: code, agentUserId: identity })
                   }
                 >
                   Approve device
