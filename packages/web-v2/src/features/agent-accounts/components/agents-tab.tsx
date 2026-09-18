@@ -29,6 +29,7 @@ import {
   TR,
 } from "@/design";
 import { useActiveOrg } from "@/features/orgs/active-org";
+import { useOrgScopedProjects } from "@/features/projects/hooks";
 import { formatApiError } from "@/lib/api/error";
 import { useToast } from "@/providers/toast-provider";
 import {
@@ -37,9 +38,10 @@ import {
   useRevokeAgentCredentials,
   useSetAgentDisplayName,
 } from "../hooks";
-import { agentAddress, agentLabel, reachOf } from "../label";
+import { agentAddress, agentLabel, agentProjectNames, reachOf } from "../label";
 import type { AgentAccountRow } from "../types";
 import { AgentSelfEditor } from "./agent-self-editor";
+import { CreateAgentForm } from "./create-agent-form";
 
 export function AgentsTab() {
   const [selfOpen, setSelfOpen] = useState<string | null>(null);
@@ -49,6 +51,7 @@ export function AgentsTab() {
   const mint = useMintAgentCredential(orgId);
   const revoke = useRevokeAgentCredentials(orgId);
   const rename = useSetAgentDisplayName(orgId);
+  const { projects } = useOrgScopedProjects();
   // cm:guard ONE flag across both credential actions, not one each: mint and revoke are independent mutations against the same agent's token set, so left separately disabled an admin can start a revoke while a mint is in flight and the two land in either order — the screen announces the credentials are gone and a live one exists, or it shows plaintext the revoke has already killed. Renaming is deliberately outside it: a display name decides nothing, so it races with nothing (ISS-1003 criteria 3, 5).
   const busy = mint.isPending || revoke.isPending;
   const { toast } = useToast();
@@ -109,6 +112,7 @@ export function AgentsTab() {
     }
   }
 
+  const nameOf = (projectId: string) => projects.find((p) => p.id === projectId)?.name;
   const openAgent = selfOpen ? agents.find((a) => a.userId === selfOpen) : undefined;
   return (
     <div className="space-y-6">
@@ -155,10 +159,12 @@ export function AgentsTab() {
         </Card>
       )}
 
+      <CreateAgentForm orgId={orgId} />
+
       {agents.length === 0 ? (
         <EmptyState
           title="No agents yet"
-          message="An agent appears here when a project is first spoken to in a room, or when one is created for an organization."
+          message="Create one above, or let one appear when a project is first spoken to in a room."
         />
       ) : (
         <Card>
@@ -168,6 +174,7 @@ export function AgentsTab() {
                 <TR>
                   <TH>Name</TH>
                   <TH>Address</TH>
+                  <TH>Projects</TH>
                   <TH>Can act</TH>
                   <TH aria-label="Actions" />
                 </TR>
@@ -211,6 +218,7 @@ export function AgentsTab() {
                       <TD>
                         <MonoTag>{agentAddress(agent)}</MonoTag>
                       </TD>
+                      <TD>{agentProjectNames(agent, nameOf)}</TD>
                       <TD>
                         {reach.canAct ? (
                           <Badge tone="green">Yes</Badge>

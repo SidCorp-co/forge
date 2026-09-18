@@ -24,6 +24,7 @@ import {
   revokeAgentAccount,
   revokeAgentCredentials,
   setAgentDisplayName,
+  setAgentProjects,
 } from './agent-accounts.js';
 import { agentSelfPatchSchema, readAgentSelf, writeAgentSelf } from './agent-selves.js';
 
@@ -45,13 +46,22 @@ const displayNameSchema = z
   .object({ displayName: z.string().trim().min(1).max(200).nullable() })
   .strict();
 
+// cm:guard `.strict()` is what refuses the old `projectId` BY NAME rather than absorbing it:
+// a body carrying the singular key now fails validation naming the field, instead of being
+// read as "no projects named" and creating an agent that reaches nothing. Accepting both
+// spellings was the alternative and it is a second live path — one of them would have had to
+// win silently whenever a caller sent both (ISS-1093).
+const agentProjectsSchema = z.array(z.uuid()).min(1).max(50);
+
 const createAgentSchema = z
   .object({
     handle: z.string().trim().toLowerCase(),
-    projectId: z.uuid(),
+    projectIds: agentProjectsSchema,
     projectRole: z.enum(projectMemberRoles).optional(),
   })
   .strict();
+
+const setAgentProjectsSchema = z.object({ projectIds: agentProjectsSchema }).strict();
 
 agentAccountRoutes.get(
   '/:orgId/agents',
@@ -80,11 +90,33 @@ agentAccountRoutes.post(
 
     const { agent, plaintext } = await createAgentAccount({
       orgId,
-      projectId: body.projectId,
+      projectIds: body.projectIds,
       handle: body.handle,
       ...(body.projectRole ? { projectRole: body.projectRole } : {}),
     });
     return c.json({ ...agent, plaintext }, 201);
+  },
+);
+
+// cm:guard the whole set, sent whole (PUT), and never an add/remove pair. Two verbs over a set
+// this small buy a lost update the moment two admins act at once, and a fence is exactly the
+// thing that must not end up holding a project neither of them asked for. The response carries
+// the fence every live credential now has, because "I added the project" and "the box can reach
+// it" are one question for whoever is doing it (ISS-1093).
+agentAccountRoutes.put(
+  '/:orgId/agents/:agentUserId/projects',
+  zValidator('param', agentParamSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  zValidator('json', setAgentProjectsSchema, (result) => {
+    if (!result.success) throw badRequest(z.flattenError(result.error));
+  }),
+  async (c) => {
+    const { orgId, agentUserId } = c.req.valid('param');
+    await assertOrgAccess(orgId, c.get('userId'), 'admin');
+    const out = await setAgentProjects(orgId, agentUserId, c.req.valid('json').projectIds);
+    if (!out) throw notFound('agent not found');
+    return c.json(out);
   },
 );
 

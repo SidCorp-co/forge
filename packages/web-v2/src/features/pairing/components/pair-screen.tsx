@@ -10,26 +10,76 @@ import {
   CardHeader,
   CardTitle,
   EmptyState,
+  Field,
   HelpButton,
   Icon,
   MonoTag,
+  Select,
 } from "@/design";
+import { useAgentAccounts } from "@/features/agent-accounts/hooks";
+import { agentAddress, agentLabel } from "@/features/agent-accounts/label";
+import { useActiveOrg } from "@/features/orgs/active-org";
 import { formatApiError } from "@/lib/api/error";
+import { useAuth } from "@/providers/auth-provider";
 import { useApproveDevice } from "../hooks";
+
+/** The value the picker carries for "this box is mine", which is not an agent id. */
+const AS_MYSELF = "";
 
 /**
  * `/pair` — the browser approval step of the runner device-login flow. The CLI
  * (`forge-runner login`) opens this page with `?code=XXX`; the signed-in user
  * confirms, binding the pending device-login code to their account. After
  * approval the CLI's poll loop receives the device token.
+ *
+ * An org admin may instead pair the box as one of their organization's AGENTS
+ * (ISS-1093): the credential then belongs to the agent account, is fenced to
+ * that agent's projects, and everything the box files is filed as the agent.
  */
 export function PairScreen() {
   const params = useSearchParams();
   const code = params.get("code")?.trim() ?? "";
   const approve = useApproveDevice();
   const [denied, setDenied] = useState(false);
+  // cm:guard the choice is stored WITH the organization it was made in, and read as unselected
+  // the moment those differ. `ActiveOrgProvider` switches organization without remounting, so a
+  // bare id outlives the list it was chosen from. Derived rather than cleared by an effect,
+  // because an effect runs after the render that already used the stale value (ISS-1093).
+  const [picked, setPicked] = useState<{ orgId: string | null; agentUserId: string }>({
+    orgId: null,
+    agentUserId: AS_MYSELF,
+  });
+
+  const { user } = useAuth();
+  const { activeOrg } = useActiveOrg();
+  // cm:guard the agent list is fetched only for an org ADMIN, because `GET /api/orgs/:orgId/agents`
+  // answers 403 to anybody else and a failed query here would render the picker as an empty
+  // dropdown — a screen telling an admin their organization has no agents when it has several.
+  // The server checks admin on the AGENT's org again at approval (`resolveApprovableAgent`); this
+  // is only so an ordinary member is not shown a control every option of which is refused.
+  const isOrgAdmin = activeOrg?.role === "owner" || activeOrg?.role === "admin";
+  const agentsQ = useAgentAccounts(isOrgAdmin ? (activeOrg?.id ?? null) : null);
+  const agents = agentsQ.data ?? [];
 
   const approved = approve.data?.approved === true;
+  const activeOrgId = activeOrg?.id ?? null;
+  const asAgent = picked.orgId === activeOrgId ? picked.agentUserId : AS_MYSELF;
+  const chosen = agents.find((a) => a.userId === asAgent);
+  // cm:guard the identity SUBMITTED is read off `chosen`, the very object the sentence below is
+  // written from — not off `asAgent`. The two are the same value only while the agent list is the
+  // one the choice was made against: switching organization leaves the id selected and the lookup
+  // empty, and a screen that submitted the raw id would then promise "acts as you" and hand the
+  // box the other organization's agent. One value, one answer, by construction rather than by two
+  // call sites agreeing (ISS-1093, second review round).
+  const identity = chosen?.userId ?? null;
+
+  // cm:guard approval waits for the active org to resolve. Until it does, `activeOrg` is null,
+  // `isOrgAdmin` is false and every guard below reads this admin as somebody with no choice to
+  // make — so the fastest path through the screen pairs the box as the person before the picker
+  // has had a chance to exist. Registration creates a personal org atomically with the user, so a
+  // signed-in caller always resolves to one and this cannot wedge; a null here is "not yet".
+  const orgResolved = activeOrg != null;
+  const waiting = !orgResolved || (isOrgAdmin && agentsQ.isLoading);
 
   return (
     <div className="mx-auto flex w-full max-w-[560px] flex-col gap-4 px-6 py-8">
@@ -63,6 +113,12 @@ export function PairScreen() {
               <Banner tone="success">
                 Return to your terminal — the runner will finish pairing automatically.
               </Banner>
+              {chosen && (
+                <Banner tone="attention">
+                  Paired as {agentLabel(chosen)} ({agentAddress(chosen)}). Everything this box files
+                  is filed as that agent.
+                </Banner>
+              )}
               {approve.data?.device && (
                 <dl className="grid grid-cols-[120px_1fr] gap-x-4 gap-y-1.5 text-[13px]">
                   <dt className="text-muted">Label</dt>
@@ -106,17 +162,91 @@ export function PairScreen() {
                 </span>
               </div>
 
+              {isOrgAdmin && (
+                <Field
+                  label="Pair this device as"
+                  hint="Paired as an agent, the box reaches that agent's projects. Paired as you, it reaches none — it can run the daemon and nothing project-scoped."
+                >
+                  <Select
+                    value={asAgent}
+                    onChange={(v) => setPicked({ orgId: activeOrgId, agentUserId: v })}
+                    disabled={agentsQ.isLoading}
+                    options={[
+                      { value: AS_MYSELF, label: `Me — ${user?.email ?? "this account"}` },
+                      ...agents.map((a) => ({
+                        value: a.userId,
+                        label: `${agentLabel(a)} (${agentAddress(a)})`,
+                      })),
+                    ]}
+                  />
+                </Field>
+              )}
+
+              {/* cm:guard a query that is LOADING or FAILED is said so, and never rendered as the
+                  picker simply having no agents to offer. Those three states look identical once
+                  the data is read as `?? []` — the control disappears, approving stays available,
+                  and an admin pairs the box as themselves believing their organization has no
+                  agent to choose (ISS-1093, review finding F5). */}
+              {waiting && (
+                <Banner tone="info">
+                  Looking for the agents you could pair this box as — approving waits until the
+                  choice is on screen.
+                </Banner>
+              )}
+              {isOrgAdmin && agentsQ.isError && (
+                <Banner
+                  tone="danger"
+                  action={
+                    <Button variant="secondary" onClick={() => agentsQ.refetch()}>
+                      Try again
+                    </Button>
+                  }
+                >
+                  The agents of this organization could not be loaded, so there is nothing to pick
+                  from yet. Approving now pairs the box as you.
+                </Banner>
+              )}
+              {isOrgAdmin && !agentsQ.isLoading && !agentsQ.isError && agents.length === 0 && (
+                <Banner tone="info">
+                  This organization has no agents yet. Make one in Settings → Agents to give a box
+                  an identity of its own.
+                </Banner>
+              )}
+
+              {/* cm:guard the identity is stated in WORDS before the button, not left to be read off
+                  a dropdown's selected row. Approving is what hands a machine an identity for as
+                  long as it holds the token, and the whole reason `resolveApprovableAgent` demands
+                  org admin is that this is not a preference — it is a grant (ISS-1093 criterion 31). */}
+              {/* cm:guard what a PERSON's box reaches is "no project", and that is the literal fence
+                  `devices/credential.ts:issueDeviceCredential` mints for it (`projectIds: []`).
+                  This line used to promise the approver's own reach, which is the opposite of what
+                  the token carries, and it is the sentence somebody chooses an identity from
+                  (ISS-1093, review finding F4). */}
+              <Banner tone={chosen ? "attention" : "info"}>
+                {chosen
+                  ? `This box will act as ${agentLabel(chosen)} (${agentAddress(chosen)}) — not as you — and reach that agent's ${chosen.projects.length} project(s).`
+                  : "This box will act as you. Its credential reaches no project: it can run the daemon, not read or write a project's work."}
+              </Banner>
+
               {approve.isError && <Banner tone="danger">{formatApiError(approve.error)}</Banner>}
 
               <div className="flex items-center justify-end gap-2">
                 <Button variant="ghost" icon="x" onClick={() => setDenied(true)}>
                   Deny
                 </Button>
+                {/* cm:guard approving is DISABLED while the agent list is still loading, for an
+                    org admin. Left enabled, the fastest path through this screen — land, click —
+                    pairs the box as the person before the choice this change exists to offer has
+                    even rendered, and nothing afterwards says a choice was missed
+                    (ISS-1093, review finding F5). */}
                 <Button
                   variant="primary"
                   icon="check"
+                  disabled={waiting}
                   loading={approve.isPending}
-                  onClick={() => approve.mutate(code)}
+                  onClick={() =>
+                    approve.mutate({ pairingCode: code, agentUserId: identity })
+                  }
                 >
                   Approve device
                 </Button>

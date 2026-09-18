@@ -381,9 +381,15 @@ deviceLoginRoutes.get('/login/poll', async (c) => {
       platform: row.devicePlatform as LoginPlatform,
       machineId: row.machineId,
     });
+    // cm:guard the agent flag is `row.agentUserId != null` — the approval's own record of what
+    // was chosen — and never a re-read of `users.kind` here. The approve step already proved the
+    // id is an agent of an org the approver administers (`resolveApprovableAgent`); asking again
+    // at poll time is a second authorization decision in a handler that has no approver to check
+    // it against, and the two could answer differently for a row written minutes earlier.
     const plaintext = await issueDeviceCredential({
       deviceId: device.id,
       holderUserId: holderId,
+      holderIsAgent: row.agentUserId != null,
     });
 
     // Optional, flag-gated, best-effort git push-credential provisioning.

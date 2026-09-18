@@ -15,10 +15,18 @@ export interface ApprovedDevice {
 }
 
 export const pairingApi = {
-  /** Approve a pending device-login code, binding it to the signed-in user. */
-  approve: (pairingCode: string) =>
+  /**
+   * Approve a pending device-login code. With `agentUserId`, the box is paired as
+   * that AGENT and the credential it receives belongs to the agent, not to the
+   * approver; without it, the box is the approver's as before.
+   */
+  // cm:guard `agent_id` is OMITTED and never sent as null when nobody picked an agent. The route reads `undefined | null` alike today, but an absent key is the one shape that cannot be read as "pair as agent null"; sending the key always is how a picker that failed to load would start deciding an identity (ISS-1093 criterion 32).
+  approve: (pairingCode: string, agentUserId?: string | null) =>
     apiClient<{ approved: boolean; device: ApprovedDevice }>(`/devices/login/approve`, {
       method: "POST",
-      body: JSON.stringify({ pairing_code: pairingCode }),
+      body: JSON.stringify({
+        pairing_code: pairingCode,
+        ...(agentUserId ? { agent_id: agentUserId } : {}),
+      }),
     }),
 };

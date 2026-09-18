@@ -15,7 +15,7 @@
 import argon2 from 'argon2';
 import { and, eq, type InferSelectModel, isNull, sql } from 'drizzle-orm';
 import { env } from '../config/env.js';
-import { db } from '../db/client.js';
+import { db, type Tx } from '../db/client.js';
 import { personalAccessTokens, type UserKind, users } from '../db/schema.js';
 import {
   generatePatPlaintext,
@@ -81,12 +81,17 @@ function getDummyHash(): Promise<string> {
   return dummyHashPromise;
 }
 
-export async function mintPat(input: MintPatInput): Promise<MintedPat> {
+/**
+ * Mint a token. `tx` exists so a caller that must decide the token's FENCE and
+ * insert it atomically can do both on one connection (ISS-1093); it defaults to
+ * the ambient handle, so every other caller is unchanged.
+ */
+export async function mintPat(input: MintPatInput, tx: Tx = db): Promise<MintedPat> {
   const plaintext = generatePatPlaintext(patEnvForNodeEnv(env.NODE_ENV));
   const tokenPrefix = plaintext.slice(0, PAT_PREFIX_LEN);
   const tokenHash = await hashPatPlaintext(plaintext);
 
-  const [row] = await db
+  const [row] = await tx
     .insert(personalAccessTokens)
     .values({
       userId: input.userId,

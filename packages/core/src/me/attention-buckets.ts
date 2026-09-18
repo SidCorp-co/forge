@@ -26,7 +26,7 @@ import {
   projects,
   reconcileRuns,
 } from '../db/schema.js';
-import { agentChannelCondition } from '../issues/creator.js';
+import { creatorIsAgentCondition } from '../issues/creator.js';
 import { visibleProjectsWhere } from '../lib/authz.js';
 
 /**
@@ -306,7 +306,7 @@ function unseenDraftOwner(userId: string): SQL {
 function unseenDraftCondition(userId: string): SQL {
   return and(
     eq(issues.status, 'draft'),
-    agentChannelCondition(),
+    creatorIsAgentCondition(),
     unseenDraftOwner(userId),
     notExists(
       db
