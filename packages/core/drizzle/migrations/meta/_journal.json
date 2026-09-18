@@ -1828,6 +1828,13 @@
       "when": 1797724800000,
       "tag": "0268_sentry_admission_thresholds",
       "breakpoints": true
+    },
+    {
+      "idx": 272,
+      "version": "7",
+      "when": 1799712000000,
+      "tag": "0272_room_presence_and_reply_to",
+      "breakpoints": true
     }
   ]
 }

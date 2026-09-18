@@ -47,8 +47,10 @@ vi.mock('./store.js', () => ({
 }));
 
 const recordDeliveredReply = vi.fn(async (..._a: unknown[]) => undefined);
+const recordSilence = vi.fn(async (..._a: unknown[]) => undefined);
 vi.mock('./transcript.js', () => ({
   recordDeliveredReply: (...a: unknown[]) => recordDeliveredReply(...(a as [never])),
+  recordSilence: (...a: unknown[]) => recordSilence(...(a as [never])),
 }));
 
 const screenReplyAtDoor = vi.fn();
