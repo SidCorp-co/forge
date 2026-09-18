@@ -27,6 +27,31 @@ export const PREREQUISITES = {
     remedy: 'pnpm install --frozen-lockfile',
     paths: ['node_modules', 'packages/core/node_modules', 'packages/web-v2/node_modules'],
   },
+  // A resolver that is installed is not a resolver archmap can spawn. `deps` above resolves three
+  // `node_modules` DIRECTORIES, and all three existed on 2026-09-18 in a tree where archmap died
+  // instantly: dependency-cruiser 18.3.0 renamed its CLI entry point from `bin/dependency-cruise.mjs`
+  // to `bin/dependency-cruiser.mjs`, and archmap 0.1.4 walks `node_modules` for the old name alone.
+  // The TypeScript provider then returns `ok: false`, the Go provider returns an empty-but-ok graph
+  // because this repo has no `go.mod`, and `buildScope` prints `scope matched no files (.)` while
+  // discarding the reason — so the one sentence a reader gets is about the SCOPE. `^18` in
+  // packages/core/package.json admits 18.3.x, which is why every npm dependency-group PR met it.
+  //
+  // What this covers is the CLASS "archmap has no resolver to spawn" — absent, renamed or pruned —
+  // and NOT the class "the resolver ran and failed". An unparseable report, a crash, a timeout and a
+  // missing tsconfig all reach the reader through that same discarded `failures` list, and no path on
+  // disk can tell them apart. Fixing that is archmap's (ISS-1098 names the filing); do not read a
+  // green here as the graph being resolvable.
+  // cm:edge lockstep -> .forge/archmap/src/providers/ts.mjs — `BIN_REL` there is this exact path, and archmap spawns that file rather than resolving the package. A rename on either side has to move both, and the vendored copy is the authority.
+  'archmap-resolver': {
+    what:
+      'archmap has no TypeScript resolver to spawn: dependency-cruiser is installed but carries no ' +
+      'bin/dependency-cruise.mjs, the entry point archmap 0.1.4 walks node_modules for ' +
+      '(dependency-cruiser 18.3.0 renamed it to bin/dependency-cruiser.mjs)',
+    remedy:
+      'locally only, and do not commit it: pnpm --filter @forge/core add -D dependency-cruiser@18.2.0 ' +
+      "— the real fix is archmap's, tracked on ISS-1098",
+    paths: ['node_modules/dependency-cruiser/bin/dependency-cruise.mjs'],
+  },
   // cm:edge naming -> packages/observability/package.json — the `main`/`exports` target that packages importing @forge/observability resolve to; a build-output rename here reports the workspace as unbuilt forever
   'observability-build': {
     what: '@forge/observability has not been built, so everything importing it fails to resolve',
