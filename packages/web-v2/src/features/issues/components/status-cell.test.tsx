@@ -14,6 +14,8 @@
 // assert the SHAPE of the fix — n statuses, n distinct words, and the lane
 // word absent — which no hardcoded entry satisfies by accident.
 
+import { readFileSync } from "node:fs";
+import { join } from "node:path";
 import * as matchers from "@testing-library/jest-dom/matchers";
 import { cleanup, render } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
@@ -126,9 +128,31 @@ describe("the column headed STATUS prints the kernel status", () => {
 });
 
 describe("the word the detail header prints", () => {
-  // cm:guard the header calls `statusLabel`, the same export this column does, so the two cannot
-  // drift. Asserting the header's own render would need the whole detail screen and its queries;
-  // what makes the two agree is that one function answers for both, and that is what this asserts.
+  // The header is one line inside a screen that needs a router, a query client and a dozen hooks to
+  // render, and mocking all of that would put the assertion further from the call site rather than
+  // closer. So this reads the SHIPPED call site out of the source: the mutation it has to catch is a
+  // one-expression edit to that line, and a source read catches exactly that. It is named for what
+  // it does — it does not claim to be a render.
+  const header = readFileSync(
+    join(import.meta.dirname, "issue-detail-screen.tsx"),
+    "utf8",
+  );
+  const chip = header
+    .split("\n")
+    .find((l) => l.includes("<StatusChip") && l.includes("statusToChip(issue.status)"));
+
+  it("reads a call site that is actually there", () => {
+    expect(chip, "the detail header's StatusChip line was not found").toBeDefined();
+  });
+
+  // cm:guard this is the line whose own cm:guard demanded "the TRUE lifecycle status, never the
+  // bucket's own word" while passing the lane word for four statuses (ISS-1097).
+  it("labels the header chip with the kernel status and not the lane word", () => {
+    expect(chip).toMatch(/label=\{statusLabel\(issue\.status\)\}/u);
+    expect(chip).not.toMatch(/laneLabel/u);
+  });
+
+  // And the two surfaces then agree because one function answers for both.
   it("is the same function's answer as the column's, for every status", () => {
     for (const s of ISSUE_STATUSES) {
       expect(statusLabel(s), s).toBe(EXPECTED[s]);
