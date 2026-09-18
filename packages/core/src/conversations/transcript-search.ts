@@ -99,10 +99,10 @@ export async function searchConversationTranscript(
   const dbi = args.db ?? defaultDb;
   await readableConversation(args.conversationId, args.userId);
 
-  return dbi.transaction(
-    (tx) => searchInSnapshot(args, tx as unknown as typeof defaultDb),
-    { isolationLevel: 'repeatable read', accessMode: 'read only' },
-  );
+  return dbi.transaction((tx) => searchInSnapshot(args, tx as unknown as typeof defaultDb), {
+    isolationLevel: 'repeatable read',
+    accessMode: 'read only',
+  });
 }
 
 /** The whole read, against one snapshot of the index. */
