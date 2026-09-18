@@ -112,6 +112,20 @@
   reporting were enabled on the repository in the same change.
 
 ### Added
+- **The database can now say which queries cost it the most, and its sizing settings live with
+  the deployment.** Per-statement timing starts at the next database restart. Sizing keeps
+  today's values until someone reads the machine.
+
+- **A clarifying question reaches you in the room you asked in.** It is posted as a reply on the
+  message it is about, and names whose question it came from. A question raised outside a
+  conversation is unchanged.
+
+- **A question with nowhere to go says so instead of going somewhere else.** Nothing is posted, and
+  whoever runs the project is told once what could not be reached.
+
+- **A question can be marked private, and is then asked in a direct message.** If that message
+  cannot be opened, the question is not asked at all rather than asked in the open.
+
 - **A chat now records the work, not just the answer.** Transcripts keep every tool call and
   result, failures, timings, to-do lists, pauses and totals — the record a pipeline run already
   kept. Old conversations are unchanged.

@@ -65,7 +65,11 @@ const { unverifiedFallbackReply, errorFallbackReply, emptyFallbackReply } = awai
 );
 
 /** The neutral half of a transport: what the registry holds, and all a turn can reach. */
-const deliver = vi.fn(async (..._a: unknown[]) => ({ messageId: 'server-id-9' }));
+const deliver = vi.fn(
+  async (..._a: unknown[]): Promise<{ messageId: string; deliveredText?: string }> => ({
+    messageId: 'server-id-9',
+  }),
+);
 const fetchHistory = vi.fn(async (..._a: unknown[]) => []);
 
 const VENUE = {
@@ -123,7 +127,9 @@ describe('a turn for a transport that is four functions', () => {
   it('runs, screens, delivers and records with no adapter callback at all', async () => {
     const outcome = await runConversationTurn(request());
 
-    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: 'an answer' }));
+    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ text: 'an answer' }), {
+      addressee: null,
+    });
     expect(recordDeliveredReply).toHaveBeenCalledWith({
       conversationId: 'conv-1',
       projectId: 'proj-1',
@@ -405,7 +411,9 @@ describe('what a watcher of the turn is told (ISS-1078)', () => {
       // fact that what they saw is not what went out.
       screenReplaced: true,
     });
-    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ problems: [] }));
+    expect(deliver).toHaveBeenCalledWith(VENUE, expect.objectContaining({ problems: [] }), {
+      addressee: null,
+    });
   });
 
   // cm:guard after the delivery guard and never before it: a turn whose right to answer moved to

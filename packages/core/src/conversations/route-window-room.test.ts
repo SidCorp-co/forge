@@ -68,6 +68,7 @@ vi.mock('../db/client.js', () => ({ db: {} }));
 vi.mock('./participants.js', () => ({
   roomHandles: async () => [{ userId: 'handle-1', handle: 'babo' }],
   handleForProject: async () => 'handle-1',
+  personCount: async () => 1,
 }));
 let selves = new Map<string, { presence: Record<string, unknown> }>();
 vi.mock('../orgs/agent-selves.js', () => ({ readSelvesFor: async () => selves }));

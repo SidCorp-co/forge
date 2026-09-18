@@ -4,7 +4,13 @@
  */
 
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { fetchMessagesBeside, fetchThreadMessages, fetchUserProfile } from './rest-client.js';
+import {
+  fetchMessagesBeside,
+  fetchOwnIdentity,
+  fetchThreadMessages,
+  fetchUserProfile,
+  reactToMessage,
+} from './rest-client.js';
 
 const auth = { serverUrl: 'https://chat.example.com', authToken: 'tok', userId: 'bot' };
 
@@ -132,5 +138,58 @@ describe('fetchThreadMessages (ISS-1087)', () => {
     expect(await fetchThreadMessages(auth, 'T1', 50)).toBeNull();
     vi.stubGlobal('fetch', answer({ messages: [] }));
     expect(await fetchThreadMessages(auth, 'T1', 50)).toEqual([]);
+  });
+});
+
+describe('reactToMessage (ISS-1088 criterion 23)', () => {
+  it('posts chat.react with the message, the emoji and shouldReact as a setter', async () => {
+    const fetchMock = answer({ success: true });
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await reactToMessage(auth, 'm1', 'eyes', true)).toBe(true);
+    const [url, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(url).toBe('https://chat.example.com/api/v1/chat.react');
+    expect(init.method).toBe('POST');
+    expect(JSON.parse(String(init.body))).toEqual({
+      messageId: 'm1',
+      emoji: 'eyes',
+      shouldReact: true,
+    });
+    expect((init.headers as Record<string, string>)['X-User-Id']).toBe('bot');
+  });
+
+  it('sends shouldReact false to take the reaction off', async () => {
+    const fetchMock = answer({ success: true });
+    vi.stubGlobal('fetch', fetchMock);
+    await reactToMessage(auth, 'm1', 'eyes', false);
+    const [, init] = fetchMock.mock.calls[0] as unknown as [string, RequestInit];
+    expect(JSON.parse(String(init.body)).shouldReact).toBe(false);
+  });
+
+  it('answers false on a refused status and on success:false rather than throwing', async () => {
+    vi.stubGlobal('fetch', answer({ success: false, error: 'not-allowed' }, false));
+    expect(await reactToMessage(auth, 'm1', 'eyes', true)).toBe(false);
+    vi.stubGlobal('fetch', answer({ success: false, error: 'invalid-emoji' }));
+    expect(await reactToMessage(auth, 'm1', 'eyes', true)).toBe(false);
+    vi.stubGlobal(
+      'fetch',
+      vi.fn(async () => {
+        throw new Error('ECONNRESET');
+      }),
+    );
+    expect(await reactToMessage(auth, 'm1', 'eyes', true)).toBe(false);
+  });
+});
+
+describe('fetchOwnIdentity (ISS-1088 criterion 24)', () => {
+  it('reads both the username and the display name off /me', async () => {
+    vi.stubGlobal('fetch', answer({ username: 'babo', name: 'Babo the Bot' }));
+    expect(await fetchOwnIdentity(auth)).toEqual({ username: 'babo', displayName: 'Babo the Bot' });
+  });
+
+  it('reads null for a name the server did not give, and for a refused read', async () => {
+    vi.stubGlobal('fetch', answer({ username: 'babo' }));
+    expect(await fetchOwnIdentity(auth)).toEqual({ username: 'babo', displayName: null });
+    vi.stubGlobal('fetch', answer({ success: false }, false));
+    expect(await fetchOwnIdentity(auth)).toEqual({ username: null, displayName: null });
   });
 });
