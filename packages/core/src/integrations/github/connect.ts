@@ -79,12 +79,13 @@ export function buildAppManifest(args: {
     setup_url: `${api}/api/integrations/github/installed`,
     setup_on_update: true,
     public: false,
+    // cm:guard `checks: write` is what ISS-1072 needs to publish `forge/issue-contract`, and a manifest only decides the permissions of Apps created AFTER it. An App that already exists is unchanged by this line and keeps `checks: read`; its publishes fail 403, and `check-refusal.ts` names that 403 rather than guessing. The operator's way out is on the App itself: Settings -> Permissions & events -> Repository permissions -> Checks -> "Read and write", then approve the request GitHub raises on each installation. Reconnecting does NOT do it — the credential is not what is wrong — and neither does editing this file.
     default_permissions: {
       contents: 'write',
       issues: 'write',
       metadata: 'read',
       pull_requests: 'write',
-      checks: 'read',
+      checks: 'write',
     },
     default_events: ['issues', 'pull_request', 'pull_request_review', 'check_run', 'push'],
   };

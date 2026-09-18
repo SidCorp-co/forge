@@ -90,6 +90,7 @@ vi.mock('../lib/authz.js', async (importOriginal) => ({
   loadPersonalOrgId: (...args: unknown[]) => personalOrg(...args),
 }));
 
+const { hooks } = await import('../pipeline/hooks.js');
 const { projectRoutes } = await import('./routes.js');
 const { environmentsPatchSchema } = await import('./environments.js');
 const { signUserToken } = await import('../auth/jwt.js');
@@ -1494,5 +1495,74 @@ describe('the REST doors read `liveBranch` through the release model', () => {
     const body = (await res.json()) as { baseBranch: string; liveBranch: string | null };
     expect(body.baseBranch).toBe('develop');
     expect(body.liveBranch).toBeNull();
+  });
+});
+
+/**
+ * ISS-1072 — this route is the OTHER door onto the contract's inputs.
+ *
+ * `pipeline-config-service.ts` announces a declaration change made through the
+ * dedicated pipeline-config route. This one takes a wide-open `agentConfig`
+ * jsonb, so `statusEntryCriteria` can be replaced without that service running
+ * at all — and `baseBranch`, `liveBranch` and `releaseModel` are read by
+ * `work-evidence.ts:collectWorkEvidence`, so moving any of them moves the
+ * `work_evidence` criterion for every issue on the project.
+ */
+describe('PATCH /api/projects/:id — contractInputChanged', () => {
+  const heard: { projectId: string; issueId?: string; reason: string }[] = [];
+  hooks.on(
+    'contractInputChanged',
+    async (payload) => {
+      heard.push(payload);
+    },
+    { name: 'projects-routes-test-listener' },
+  );
+
+  async function patchAs(body: Record<string, unknown>, row: Record<string, unknown> = {}) {
+    heard.length = 0;
+    const token = await signUserToken('uuid-owner');
+    selectLimit.mockResolvedValueOnce([{ emailVerifiedAt: new Date() }]);
+    projectAccess.mockResolvedValueOnce(access('admin', 'owner'));
+    selectLimit.mockResolvedValue([
+      { releaseModel: 'none', liveBranch: null, releaseStrategy: null },
+    ]);
+    updateReturning.mockResolvedValueOnce([
+      patchedRow({ agentConfig: null, webhookSecret: null, ...row }),
+    ]);
+    return req('/11111111-1111-4111-8111-111111111111', {
+      method: 'PATCH',
+      body: JSON.stringify(body),
+      token,
+    });
+  }
+
+  // cm:guard `agentConfig` is written WHOLESALE here, so a patch carrying it may have added the declaration or removed it, and the only honest reading is that it may have. Announced on the patch naming the field rather than on the value moving, which is the rule `updatePipelineConfig` already keeps.
+  it('announces an `agentConfig` write, which is how the declaration moves through this door', async () => {
+    const res = await patchAs({
+      agentConfig: { pipelineConfig: { statusEntryCriteria: { developed: ['plan'] } } },
+    });
+    expect(res.status).toBe(200);
+    expect(heard).toHaveLength(1);
+    expect(heard[0]?.projectId).toBe('11111111-1111-4111-8111-111111111111');
+    expect(heard[0]?.issueId).toBeUndefined();
+    expect(heard[0]?.reason).toContain('statusEntryCriteria');
+  });
+
+  it.each(['baseBranch', 'liveBranch', 'releaseModel'])(
+    'announces a write of `%s`, which work evidence reads',
+    async (field) => {
+      const value = field === 'releaseModel' ? 'none' : 'release/next';
+      const res = await patchAs({ [field]: value });
+      expect(res.status).toBe(200);
+      expect(heard).toHaveLength(1);
+      expect(heard[0]?.reason).toContain(field);
+    },
+  );
+
+  // cm:guard a patch about something else must NOT republish: every announcement costs one GitHub request per open pull request on the project, and a renamed project moves nothing the contract's answer reads.
+  it('stays silent for a patch that names none of them', async () => {
+    const res = await patchAs({ name: 'New name' });
+    expect(res.status).toBe(200);
+    expect(heard).toEqual([]);
   });
 });

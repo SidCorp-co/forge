@@ -19,3 +19,24 @@ export const ENTRY_CRITERION_KEYS = [
 ] as const;
 
 export type EntryCriterionKey = (typeof ENTRY_CRITERION_KEYS)[number];
+
+/**
+ * The `issues` columns a declared criterion reads. ISS-1072.
+ *
+ * Here rather than in `entry-criteria.ts` because the writer that must announce
+ * a move — `issues/update-service.ts` — cannot import that module: it reads the
+ * database and the config schema behind it, and the loop the header above
+ * describes is exactly what a shared constant in this file avoids.
+ *
+ * `sessionContext` is on the list and is not a criterion of its own: it is what
+ * `work_evidence` reads a branch out of, so writing it moves the contract's
+ * answer without any key here being named.
+ */
+// cm:edge lockstep -> packages/core/src/issues/entry-criteria.ts — every criterion's reader must have its column here, or a write of that column leaves a published check run stale with nothing to say so.
+export const CONTRACT_INPUT_FIELDS = [
+  'plan',
+  'acceptanceCriteria',
+  'releaseNotes',
+  'mergedAt',
+  'sessionContext',
+] as const;

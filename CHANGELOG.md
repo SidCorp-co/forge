@@ -196,6 +196,10 @@
   it is, whether it conflicts, which checks passed, which reviews are open. Work on a green build
   reads differently from work that conflicts.
 
+- **Forge now posts its own check on a pull request** — `forge/issue-contract` — saying whether the
+  issue behind it carries the records its status requires, and naming what is missing. It gates
+  nothing, and a project can turn it off.
+
 - **Reads Forge makes to GitHub are the app acting for the project, never a person's account.**
   A project with no repository bound, or whose app was never installed, is told which.
 

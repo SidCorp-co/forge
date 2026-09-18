@@ -45,6 +45,7 @@ vi.mock('../pipeline/activity.js', () => ({
   recordActivityTx: (tx: unknown, entry: ActivityEntry) => recordActivityTx(tx, entry),
 }));
 
+const { hooks } = await import('../pipeline/hooks.js');
 const { IssueUpdateNotFound, updateIssueFields } = await import('./update-service.js');
 
 const ISSUE_ID = '11111111-1111-4111-8111-111111111111';
@@ -55,7 +56,8 @@ const ACTOR = {
   id: '22222222-2222-4222-8222-222222222222',
   agency: 'agent' as const,
 };
-const ROW = { id: ISSUE_ID, title: 'x' };
+const PROJECT_ID = '33333333-3333-4333-8333-333333333333';
+const ROW = { id: ISSUE_ID, projectId: PROJECT_ID, title: 'x' };
 
 function activityActions(): string[] {
   return recordActivityTx.mock.calls.map(([, entry]) => entry.action);
@@ -149,5 +151,67 @@ describe('updateIssueFields', () => {
         'never reported as removed — the drift this service was extracted to end.',
     ).not.toHaveBeenCalled();
     expect(activityActions()).toEqual([]);
+  });
+});
+
+/** Every `contractInputChanged` this suite heard, on the one bus the writer emits to. */
+const heard: { projectId: string; issueId?: string; reason: string }[] = [];
+hooks.on(
+  'contractInputChanged',
+  async (payload) => {
+    heard.push(payload);
+  },
+  { name: 'update-service-test-listener' },
+);
+
+/**
+ * ISS-1072 — the announcement a published contract check is re-read on.
+ *
+ * It is emitted HERE rather than off `issueUpdated` because this is where both
+ * field surfaces converge: `issues/patch-fields.ts` records that REST emits
+ * `issueUpdated` and MCP's update deliberately does not, and MCP's update is the
+ * door `forge record plan` and `forge record criteria` come through. A
+ * subscriber on `issueUpdated` would miss exactly the writes a contract check is
+ * most about.
+ */
+describe('contractInputChanged', () => {
+  beforeEach(() => {
+    heard.length = 0;
+  });
+
+  it.each([
+    ['plan', { plan: 'the plan' }],
+    ['acceptanceCriteria', { acceptanceCriteria: '1. it works' }],
+    ['releaseNotes', { releaseNotes: { section: 'Skip', userFacing: '-' } }],
+    ['sessionContext', { sessionContext: { lease: {} } }],
+  ])('announces a write of `%s`, naming the issue and its project', async (field, updates) => {
+    await updateIssueFields({ issueId: ISSUE_ID, updates: updates as never, actor: ACTOR });
+    expect(heard).toHaveLength(1);
+    expect(heard[0]).toMatchObject({ projectId: PROJECT_ID, issueId: ISSUE_ID });
+    expect(heard[0]?.reason).toContain(field);
+  });
+
+  it('announces `mergedAt` written through this door as well', async () => {
+    await updateIssueFields({
+      issueId: ISSUE_ID,
+      updates: { mergedAt: new Date() } as never,
+      actor: ACTOR,
+    });
+    expect(heard).toHaveLength(1);
+  });
+
+  // cm:guard a write of a field no criterion reads announces NOTHING. Every announcement fans out to a network call per open pull request, so announcing a title edit would spend a GitHub rate limit on a change the contract's answer cannot see.
+  it('stays silent for a field no declared criterion reads', async () => {
+    await updateIssueFields({ issueId: ISSUE_ID, updates: { title: 't' }, actor: ACTOR });
+    expect(heard).toEqual([]);
+  });
+
+  // cm:guard the emit is AFTER the transaction. A failed write must not announce a move that did not happen, or the check republishes an answer nothing changed.
+  it('announces nothing when the write itself failed', async () => {
+    txUpdateReturning.mockResolvedValue([]);
+    await expect(
+      updateIssueFields({ issueId: ISSUE_ID, updates: { plan: 'p' }, actor: ACTOR }),
+    ).rejects.toBeInstanceOf(IssueUpdateNotFound);
+    expect(heard).toEqual([]);
   });
 });

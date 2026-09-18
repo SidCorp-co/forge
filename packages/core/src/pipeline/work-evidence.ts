@@ -149,16 +149,34 @@ export const NO_WORK_EVIDENCE_DETAIL =
   '`promote`: both name where work lands, not that any happened. On a `none` or `publish` ' +
   'project the live branch is not read at all, so a branch of that name counts like any other';
 
+/**
+ * The same check, letting its own failure out.
+ *
+ * ISS-1072: a reader that PUBLISHES this answer cannot use the fail-open one
+ * below. "The query raised" and "the evidence is there" are the same value to
+ * that caller, and a check run saying a criterion is met because a SELECT threw
+ * is the silent substitution this repo forbids — worse here than in the gate,
+ * because the gate's answer is seen by the one agent it refused and this one is
+ * published on a pull request. Enforcement keeps the fail-open wrapper; nothing
+ * that gates a transition may reach this.
+ */
+export async function missingWorkEvidenceStrict(
+  issueId: string,
+  executor: EvidenceExecutor = db,
+): Promise<string | null> {
+  if (await hasChildIssues(issueId, executor)) return null;
+  const evidence = await collectWorkEvidence(issueId, executor);
+  return hasCodeEvidence(evidence) ? null : NO_WORK_EVIDENCE_DETAIL;
+}
+
 // cm:guard fails OPEN on any internal error — a broken evidence check must never freeze a legitimate advance
+// cm:edge lockstep -> packages/core/src/issues/entry-criteria.ts — this pair is what `entry-criteria.ts:criteriaWith` binds each of its two maps to, and the two must keep answering identically on every input that does NOT raise; a rule added to one body only would make the gate and the published check disagree about an issue neither of them failed to read.
 export async function findMissingWorkEvidence(
   issueId: string,
   executor: EvidenceExecutor = db,
 ): Promise<string | null> {
   try {
-    if (await hasChildIssues(issueId, executor)) return null;
-    const evidence = await collectWorkEvidence(issueId, executor);
-    if (hasCodeEvidence(evidence)) return null;
-    return NO_WORK_EVIDENCE_DETAIL;
+    return await missingWorkEvidenceStrict(issueId, executor);
   } catch (err) {
     logger.warn({ err, issueId }, 'work-evidence: check failed, allowing (fail open)');
     return null;
