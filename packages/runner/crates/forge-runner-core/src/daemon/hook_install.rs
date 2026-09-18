@@ -167,7 +167,7 @@ mod tests {
 
     #[test]
     fn every_event_the_daemon_understands_is_registered() {
-        let out = merged(None, "/bin/fr").unwrap();
+        let out = merged_for(None, "/bin/fr", true).unwrap();
         let hooks = hooks_of(&out);
         for e in Event::ALL {
             assert!(
@@ -188,7 +188,7 @@ mod tests {
     // cm:guard this is the DOOR, not the arm. Deleting `gate` from `merged` leaves every test of `dispatch_gate::decide` green while no dispatch on the fleet ever reaches it — which is the shape of a criterion that stayed green after the event it was about was removed from the list entirely (ISS-1075).
     #[test]
     fn the_declaration_gate_is_registered_on_every_pane_this_daemon_opens() {
-        let hooks = hooks_of(&merged(None, "/bin/fr").unwrap());
+        let hooks = hooks_of(&merged_for(None, "/bin/fr", true).unwrap());
         let entries = hooks
             .get(GATE_EVENT)
             .and_then(Value::as_array)
@@ -260,22 +260,26 @@ mod tests {
 
     /// Quoting must not cost this daemon the ability to recognise its own entries.
     // cm:guard a STRING contract nothing type-checks, and quoting moved the character before the
-    // verb. Asserted, not reasoned: lose the match and every pane spawn adds another copy.
+    // verb. Asserted for BOTH shells and every event: lose the match and each spawn adds a copy.
     #[test]
     fn a_quoted_command_is_still_recognised_as_this_daemons_own() {
         let exe = "/opt/Forge Runner/forge-runner";
-        let once = merged(None, exe).unwrap();
-        let twice = merged(Some(&once), exe).unwrap();
-        let hooks = hooks_of(&twice);
+        for posix in [true, false] {
+            let once = merged_for(None, exe, posix).unwrap();
+            let twice = merged_for(Some(&once), exe, posix).unwrap();
+            let hooks = hooks_of(&twice);
 
-        for event in Event::ALL {
-            let entries = hooks[event.wire()].as_array().unwrap();
-            assert_eq!(
-                entries.len(),
-                1,
-                "{} gained a second copy, so a quoted command is no longer recognised as ours: {entries:?}",
-                event.wire()
-            );
+            for event in Event::ALL {
+                let entries = hooks[event.wire()].as_array().unwrap();
+                assert_eq!(
+                    entries.len(),
+                    1,
+                    "posix={posix}, {}: a second copy, so the quoted command is no longer recognised as ours: {entries:?}",
+                    event.wire()
+                );
+            }
+            let gate = hooks[GATE_EVENT].as_array().unwrap();
+            assert_eq!(gate.len(), 1, "posix={posix}: the gate doubled: {gate:?}");
         }
     }
 
@@ -288,7 +292,7 @@ mod tests {
             }
         })
         .to_string();
-        let out = merged(Some(&theirs), "/opt/Forge Runner/forge-runner").unwrap();
+        let out = merged_for(Some(&theirs), "/opt/Forge Runner/forge-runner", true).unwrap();
         let entries = hooks_of(&out)[GATE_EVENT].as_array().unwrap().clone();
 
         assert!(
@@ -350,22 +354,17 @@ mod tests {
         );
     }
 
-    /// Recognition is a string contract and it must hold under BOTH quoting styles.
-    // cm:guard asserted for the windows arm too, because a marker that stopped matching there would
-    // multiply a master's hooks on every pane spawn on that platform and nothing here would say so.
+    /// The wrapper every caller uses must hand `merged_for` this platform's shell.
+    // cm:guard the ONE test here that reads the ambient value; every other test NAMES its shell. They used to read it, which made four assert the POSIX string under `cfg!(unix) == false`: green on linux, red on the windows leg, and the green said nothing about the arm it seemed to cover (ISS-1096 F1, caught by #524's windows leg).
+    // cm:guard what this can and cannot catch, said plainly because it derives its expectation from the same constant the code reads: it catches `merged` delegating with a literal instead of `POSIX_SHELL`, and it is NOT evidence about either arm's content. That belongs to the tests that name an arm and assert a hand-written literal, which is the only shape here that can disagree with its subject.
     #[test]
-    fn a_command_quoted_either_way_is_still_recognised_as_this_daemons_own() {
-        for posix in [true, false] {
-            let exe = "/opt/Forge Runner/forge-runner";
-            let once = merged_for(None, exe, posix).unwrap();
-            let twice = merged_for(Some(&once), exe, posix).unwrap();
-            let entries = hooks_of(&twice)[GATE_EVENT].as_array().unwrap().clone();
-            assert_eq!(
-                entries.len(),
-                1,
-                "posix={posix}: a second copy, so the quoted command is not recognised as ours: {entries:?}"
-            );
-        }
+    fn the_ambient_wrapper_hands_on_this_platforms_shell() {
+        let exe = "/opt/Forge Runner/forge-runner";
+        assert_eq!(
+            merged(None, exe).unwrap(),
+            merged_for(None, exe, POSIX_SHELL).unwrap(),
+            "`merged` must delegate with POSIX_SHELL and nothing else"
+        );
     }
 
     fn scratch_dir(label: &str) -> PathBuf {
@@ -393,7 +392,7 @@ mod tests {
 
     /// The command this daemon would install for a reporting event.
     fn reporting_command(exe: &Path) -> String {
-        let out = merged(None, exe.to_str().unwrap()).unwrap();
+        let out = merged_for(None, exe.to_str().unwrap(), true).unwrap();
         hooks_of(&out)[Event::PromptSubmitted.wire()]
             .as_array()
             .unwrap()[0]["hooks"][0]["command"]
@@ -405,8 +404,8 @@ mod tests {
     /// Both of this daemon's verbs are recognised as its own on a later pass.
     #[test]
     fn the_gate_is_not_duplicated_by_a_second_install() {
-        let once = merged(None, "/bin/fr").unwrap();
-        let twice = merged(Some(&once), "/bin/fr").unwrap();
+        let once = merged_for(None, "/bin/fr", true).unwrap();
+        let twice = merged_for(Some(&once), "/bin/fr", true).unwrap();
         let entries = hooks_of(&twice)[GATE_EVENT].as_array().unwrap().clone();
         let ours = entries
             .iter()
@@ -422,8 +421,8 @@ mod tests {
     // cm:guard the failure this prevents is silent and cumulative: a marker keyed on the exe path would not match after an update, so every daemon restart would append one more copy of every hook and each boundary would be reported many times over.
     #[test]
     fn installing_twice_does_not_leave_two_copies() {
-        let once = merged(None, "/bin/fr").unwrap();
-        let twice = merged(Some(&once), "/bin/fr").unwrap();
+        let once = merged_for(None, "/bin/fr", true).unwrap();
+        let twice = merged_for(Some(&once), "/bin/fr", true).unwrap();
         let hooks = hooks_of(&twice);
         assert_eq!(hooks["Stop"].as_array().unwrap().len(), 1);
     }
@@ -431,8 +430,8 @@ mod tests {
     // cm:guard the same, across the case the marker exists FOR: an update moves the exe, and an entry from the old path must be replaced rather than joined.
     #[test]
     fn an_entry_from_a_previous_exe_path_is_replaced_not_joined() {
-        let old = merged(None, "/old/path/forge-runner").unwrap();
-        let new = merged(Some(&old), "/new/path/forge-runner").unwrap();
+        let old = merged_for(None, "/old/path/forge-runner", true).unwrap();
+        let new = merged_for(Some(&old), "/new/path/forge-runner", true).unwrap();
         let entries = hooks_of(&new)["Stop"].as_array().unwrap().clone();
         assert_eq!(entries.len(), 1);
         let cmd = entries[0]["hooks"][0]["command"].as_str().unwrap();
@@ -453,7 +452,7 @@ mod tests {
             }
         }))
         .unwrap();
-        let hooks = hooks_of(&merged(Some(&theirs), "/bin/fr").unwrap());
+        let hooks = hooks_of(&merged_for(Some(&theirs), "/bin/fr", true).unwrap());
         let pre = hooks["PreToolUse"].as_array().unwrap();
         assert!(
             pre.iter()
@@ -483,7 +482,7 @@ mod tests {
             "permissions": { "allow": ["Bash"] }
         }))
         .unwrap();
-        let out = merged(Some(&mine), "/bin/fr").unwrap();
+        let out = merged_for(Some(&mine), "/bin/fr", true).unwrap();
         let hooks = hooks_of(&out);
         let stop = hooks["Stop"].as_array().unwrap();
         assert_eq!(stop.len(), 2, "the user's Stop hook and ours");
@@ -507,7 +506,7 @@ mod tests {
     // cm:guard refusing beats truncating: the file may be somebody's work in a state this code cannot read, and a pane that starts unhooked is recoverable where a deleted config is not.
     #[test]
     fn a_file_this_cannot_parse_is_refused_by_name_rather_than_overwritten() {
-        let e = merged(Some("{ not json"), "/bin/fr").unwrap_err();
+        let e = merged_for(Some("{ not json"), "/bin/fr", true).unwrap_err();
         let msg = format!("{e}");
         assert!(msg.contains("settings.local.json"), "{msg}");
         assert!(msg.contains("not readable JSON"), "{msg}");
@@ -515,17 +514,17 @@ mod tests {
 
     #[test]
     fn a_json_array_is_refused_too() {
-        assert!(merged(Some("[]"), "/bin/fr").is_err());
+        assert!(merged_for(Some("[]"), "/bin/fr", true).is_err());
     }
 
     #[test]
     fn an_empty_file_reads_as_no_settings_rather_than_a_parse_error() {
-        assert!(merged(Some("   "), "/bin/fr").is_ok());
+        assert!(merged_for(Some("   "), "/bin/fr", true).is_ok());
     }
 
     #[test]
     fn the_command_names_the_event_it_reports() {
-        let out = merged(None, "/bin/fr").unwrap();
+        let out = merged_for(None, "/bin/fr", true).unwrap();
         let hooks = hooks_of(&out);
         let cmd = hooks["UserPromptSubmit"][0]["hooks"][0]["command"]
             .as_str()
