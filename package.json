@@ -16,11 +16,10 @@
     "check:memory": "node scripts/check-memory-anchors.mjs",
     "clean": "turbo run clean && rm -rf node_modules",
     "postinstall": "git config core.hooksPath .githooks 2>/dev/null || true",
-    "lint:code-quality": "code-quality-gate"
+    "lint:code-quality": "node .forge/code-quality/bin/code-quality-gate.mjs"
   },
   "devDependencies": {
     "eslint": "^10.11.0",
-    "eslint-plugin-code-quality": "file:.forge/code-quality",
     "turbo": "^2.10.11",
     "typescript-eslint": "^8.70.0"
   },

@@ -1,4 +1,4 @@
-import { configure, DEFAULT_SIZE_FAMILIES } from "eslint-plugin-code-quality";
+import { configure, DEFAULT_SIZE_FAMILIES } from "./.forge/code-quality/src/index.js";
 import tseslint from "typescript-eslint";
 
 const TEST_FILES = [
