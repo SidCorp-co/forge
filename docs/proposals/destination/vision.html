@@ -1,0 +1,633 @@
+<title>Destination</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1c1a17;--mut:#6b6559;--line:#ddd7cc;--card:#fff;--ok:#2f7a4f;--bad:#b3452c;--warn:#a8761f;--acc:#2c5c8f;--new:#7a3f9d;--soft:#f3f0ea}
+@media(prefers-color-scheme:dark){:root{--bg:#16150f;--fg:#ece7dd;--mut:#9a9280;--line:#332f26;--card:#1e1c16;--ok:#6fbf8f;--bad:#e08a70;--warn:#d6a851;--acc:#7aa9d8;--new:#c18ce0;--soft:#232019}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.62 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:44px 28px 110px}
+h1{font-size:33px;margin:0 0 8px;letter-spacing:-.025em}
+h2{font-size:20px;margin:58px 0 10px;letter-spacing:-.015em;padding-top:13px;border-top:1px solid var(--line)}
+h3{font-size:15px;margin:26px 0 6px}
+p{margin:9px 0;max-width:76ch}
+.lead{color:var(--mut);max-width:76ch;font-size:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin:18px 0;overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:color-mix(in oklab,var(--fg) 8%,transparent);padding:1px 5px;border-radius:4px}
+ul,ol{margin:9px 0;padding-left:21px;max-width:76ch} li{margin:5px 0}
+.rule{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:17px 21px;margin:18px 0;font-size:16px}
+.price{border-left:3px solid var(--bad);padding-left:15px;margin:18px 0}
+.inv{border-left:3px solid var(--acc);padding-left:15px;margin:16px 0}
+.inv b,.price b{display:block;margin-bottom:2px}
+.note{color:var(--mut);font-size:13.5px}
+.cap{color:var(--mut);font-size:13px;margin-top:10px;max-width:none}
+.stats{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:13px;margin:18px 0}
+.stat{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:17px}
+.stat .n{font-size:29px;font-weight:650;letter-spacing:-.03em;line-height:1.1;margin-bottom:5px}
+.stat .k{font-size:12.5px;color:var(--mut);margin-bottom:9px}
+.stat .c{font-size:13.5px;border-top:1px solid var(--line);padding-top:9px}
+.bad{color:var(--bad)} .ok{color:var(--ok)} .warn{color:var(--warn)} .acc{color:var(--acc)} .new{color:var(--new)}
+nav{background:var(--soft);border:1px solid var(--line);border-radius:10px;padding:15px 19px;margin:24px 0;font-size:13.5px}
+nav a{color:var(--acc);text-decoration:none;margin-right:15px;display:inline-block;white-space:nowrap}
+.pick{background:color-mix(in oklab,var(--ok) 12%,transparent)}
+.dead{background:color-mix(in oklab,var(--bad) 10%,transparent)}
+.tag{display:inline-block;font:10.5px ui-monospace,monospace;padding:2px 7px;border-radius:99px;border:1px solid currentColor;vertical-align:1px}
+.mono{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace}
+</style>
+<main>
+
+<svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+<marker id="ar" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--mut)"/></marker>
+<marker id="aa" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--acc)"/></marker>
+<marker id="ab" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--bad)"/></marker>
+<marker id="ag" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ok)"/></marker>
+<marker id="an" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--new)"/></marker>
+<marker id="aw" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--warn)"/></marker>
+</defs></svg>
+
+<h1>Destination</h1>
+<p class="lead">Where Forge is going. Not a route, and bound to nothing in the current code.
+Revision 2 — five adversarial reviews ran against revision 1 and refuted four of its claims; what
+they broke is fixed in place and recorded in <a href="#s13">§13</a>. Companion:
+<a href="architecture.html">architecture.html</a>.</p>
+
+<nav>
+<a href="#s0">0 · Claim</a><a href="#s1">1 · Three numbers</a><a href="#s2">2 · Six primitives</a><a href="#s3">3 · Session tree</a><a href="#s4">4 · Facts</a><a href="#s5">5 · Question</a><a href="#s6">6 · The floor</a><a href="#s7">7 · Planes</a><a href="#s8">8 · Product</a><a href="#s9">9 · Not building</a><a href="#s10">10 · Open</a><a href="#s11">11 · Counter-argument</a><a href="#s12">12 · Sources</a><a href="#s13">13 · Refuted</a>
+</nav>
+
+<h2 id="s0">0 · The claim, and the non-claim</h2>
+
+<div class="rule">
+<b>Forge turns intent into shipped software without a human holding the thread.</b>
+</div>
+
+<p>Agent compute gets cheaper every quarter. Human attention and trust do not. So Forge does not sell
+the ability to <i>do</i>; it sells the ability to <b>believe it was done right</b> — and the product is
+<b>trustworthy autonomy</b>: making it safe not to look.</p>
+
+<p>Revision 1 stated that as <i>"every merge carries a machine-checkable chain of evidence back to
+intent."</i> That is not achievable and no one who claims it is telling the truth — intent is prose,
+so nothing downstream can be mechanically checked against it. Every provenance system that shipped in
+production says so in writing. SLSA v1.0: <i>"SLSA does not tell you whether the developers writing
+the source code followed secure coding practices"</i> — source threats are explicitly out of scope, and
+a malicious commit through legitimate CI earns a valid, signed L3 attestation. in-toto's own threat
+model assumes <i>"there are no rogue developers wishing to subvert the supply chain."</i></p>
+
+<p>So the claim splits in two, and only one half is about proof:</p>
+
+<div class="stats">
+<div class="stat">
+<div class="k">CUSTODY — what the chain gives</div>
+<div class="n acc">attributable</div>
+<div class="c">For every merge: who claimed what, when, under which policy version, against which premises, judged by whom at what measured independence. Append-only, signed. <b>This makes a lie attributable.</b></div>
+</div>
+<div class="stat">
+<div class="k">THE FLOOR — what actually bounds emptiness</div>
+<div class="n ok">expensive</div>
+<div class="c">A held-out suite the author never sees · mutation kill-rate on changed lines · planted impossibles · oracle isolation. No LLM may override any of it. <b>This makes a lie expensive.</b></div>
+</div>
+<div class="stat">
+<div class="k">NEITHER GIVES</div>
+<div class="n bad">impossible</div>
+<div class="c">Nothing here proves the work satisfies the intent. That is the oracle problem, and it is not closable. State it in the product copy rather than discovering it in a demo.</div>
+</div>
+</div>
+
+<div class="inv"><b>Metric</b>
+Human Intervention Rate, the AURA framing. Industry elite is <b>&lt;5%</b>; Anthropic reports Claude
+Code moving 5.4 → 3.3 interventions per session. Target: <b>&lt;1 intervention per closed issue</b>,
+measured continuously — and reported <b>beside</b> the escape rate in <a href="#s6">§6.5</a>, because a
+change that lowers interventions and raises escapes is a regression, not a win.</div>
+
+<h2 id="s1">1 · Three numbers that set the order of work</h2>
+
+<div class="stats">
+<div class="stat">
+<div class="k">Agents volunteer a question <span class="mono">vs</span> users correct the output</div>
+<div class="n"><span class="bad">1–2%</span> <span style="color:var(--mut);font-size:19px">/</span> <span class="warn">44%</span></div>
+<div class="c">The default failure is <b>silent guessing</b>, not over-asking. <span class="note">Dialogue-SWEBench</span></div>
+</div>
+<div class="stat">
+<div class="k">Where multi-agent systems actually fail</div>
+<div class="n bad">79%</div>
+<div class="c"><b>specification</b> 41.8% + <b>inter-agent misalignment</b> 36.9% — not the code. Blame never lands on the crash site. <span class="note">MAST · 200+ traces · 7 frameworks · κ=0.88</span></div>
+</div>
+<div class="stat">
+<div class="k">Visible-pass minus held-out-pass</div>
+<div class="n bad">100 pts</div>
+<div class="c">above 25k LOC, and <b>invisible from the visible side by construction</b>. <span class="note">SpecBench</span></div>
+</div>
+</div>
+
+<p>Generation is cheap, verification is the bottleneck, and most failure happens before any code
+exists. The rest of this document is ordered by those three facts.</p>
+
+<h2 id="s2">2 · Six primitives, nothing else</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 400" role="img" aria-label="Six primitives and three projections">
+<rect x="30" y="26" width="200" height="52" rx="9" fill="var(--card)" stroke="var(--acc)" stroke-width="1.8"/>
+<text x="130" y="48" font-size="13.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Intent</text>
+<text x="130" y="67" font-size="11" text-anchor="middle" fill="var(--mut)">owner is ALWAYS a human</text>
+<rect x="30" y="110" width="200" height="52" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="130" y="132" font-size="13.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Principal</text>
+<text x="130" y="151" font-size="11" text-anchor="middle" fill="var(--mut)">human · agent · box</text>
+<rect x="30" y="194" width="200" height="52" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="130" y="216" font-size="13.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Policy</text>
+<text x="130" y="235" font-size="11" text-anchor="middle" fill="var(--mut)">version pinned into the root</text>
+
+<rect x="300" y="58" width="240" height="196" rx="10" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.6"/>
+<text x="420" y="82" font-size="13.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Session</text>
+<text x="420" y="100" font-size="11" text-anchor="middle" fill="var(--mut)">self-referencing tree</text>
+<rect x="370" y="114" width="100" height="26" rx="5" fill="var(--card)" stroke="var(--acc)"/>
+<text x="420" y="132" font-size="11.5" text-anchor="middle" fill="var(--fg)">master</text>
+<path d="M400 140 L350 170" stroke="var(--mut)" stroke-width="1.2" marker-end="url(#ar)"/>
+<path d="M420 140 L420 170" stroke="var(--mut)" stroke-width="1.2" marker-end="url(#ar)"/>
+<path d="M440 140 L490 170" stroke="var(--mut)" stroke-width="1.2" marker-end="url(#ar)"/>
+<rect x="316" y="174" width="66" height="24" rx="5" fill="var(--card)" stroke="var(--line)"/>
+<rect x="388" y="174" width="66" height="24" rx="5" fill="var(--card)" stroke="var(--line)"/>
+<rect x="460" y="174" width="66" height="24" rx="5" fill="var(--card)" stroke="var(--line)"/>
+<text x="420" y="226" font-size="11" text-anchor="middle" fill="var(--mut)">liveness inherited · only the root beats</text>
+
+<rect x="610" y="58" width="180" height="52" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="700" y="80" font-size="13.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Fact</text>
+<text x="700" y="99" font-size="11" text-anchor="middle" fill="var(--mut)">append-only · signed</text>
+<rect x="610" y="142" width="180" height="52" rx="9" fill="var(--card)" stroke="var(--warn)" stroke-width="1.8"/>
+<text x="700" y="164" font-size="13.5" font-weight="650" text-anchor="middle" fill="var(--fg)">Question</text>
+<text x="700" y="183" font-size="11" text-anchor="middle" fill="var(--mut)">escalate = clarify</text>
+
+<path d="M230 52 L296 108" stroke="var(--mut)" stroke-width="1.3" marker-end="url(#ar)"/>
+<path d="M230 137 L296 148" stroke="var(--mut)" stroke-width="1.3" marker-end="url(#ar)"/>
+<path d="M230 218 L296 198" stroke="var(--mut)" stroke-width="1.3" marker-end="url(#ar)"/>
+<path d="M540 118 L606 94" stroke="var(--mut)" stroke-width="1.3" marker-end="url(#ar)"/>
+<path d="M540 162 L606 168" stroke="var(--mut)" stroke-width="1.3" marker-end="url(#ar)"/>
+<path d="M700 142 L700 116" stroke="var(--ok)" stroke-width="1.4" marker-end="url(#ag)"/>
+<text x="712" y="132" font-size="11" fill="var(--ok)">answer → Fact</text>
+
+<line x1="30" y1="288" x2="970" y2="288" stroke="var(--line)" stroke-dasharray="5 4"/>
+<text x="30" y="312" font-size="11.5" font-weight="700" letter-spacing="1.1" fill="var(--mut)">NOT PRIMITIVES — PROJECTIONS</text>
+<rect x="30" y="326" width="280" height="50" rx="9" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+<text x="170" y="347" font-size="12.5" text-anchor="middle" fill="var(--fg)">Issue</text>
+<text x="170" y="365" font-size="11" text-anchor="middle" fill="var(--mut)">= Intent + the tree that ran on it</text>
+<rect x="330" y="326" width="280" height="50" rx="9" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+<text x="470" y="347" font-size="12.5" text-anchor="middle" fill="var(--fg)">Status</text>
+<text x="470" y="365" font-size="11" text-anchor="middle" fill="var(--mut)">= f(Fact, Intent) · no writers</text>
+<rect x="630" y="326" width="340" height="50" rx="9" fill="none" stroke="var(--bad)" stroke-dasharray="5 4"/>
+<text x="800" y="347" font-size="12.5" text-anchor="middle" fill="var(--bad)">Job · run · pipeline</text>
+<text x="800" y="365" font-size="11" text-anchor="middle" fill="var(--bad)">gone — the field settled on session/task/thread</text>
+</svg>
+</div>
+
+<table>
+<thead><tr><th>Primitive</th><th>What</th><th>Written by</th><th>Invariant</th></tr></thead>
+<tbody>
+<tr><td><b>Intent</b></td><td>what someone wants — not derivable from facts</td><td>a human, or an explicitly delegated agent</td><td>exactly one owner, and the owner is a human</td></tr>
+<tr><td><b>Principal</b></td><td>human · agent · box</td><td>kernel</td><td>no anonymous action</td></tr>
+<tr><td><b>Session</b></td><td>one node of the work tree</td><td>the agent, through the surface</td><td>one row per unit of work</td></tr>
+<tr><td><b>Fact</b></td><td>append-only, signed, two clocks</td><td>kernel; never mutated</td><td>superseded, never edited</td></tr>
+<tr><td><b>Question</b></td><td>everything not known — escalate and clarify are one object</td><td>any principal</td><td>carries a default, or declares that none is safe</td></tr>
+<tr><td><b>Policy</b></td><td>rules that change without a kernel release</td><td>the plugin, outside the kernel repo</td><td>version pinned into the root session; <b>admitted by core, not pulled by the box</b></td></tr>
+</tbody>
+</table>
+
+<h2 id="s3">3 · The session tree</h2>
+
+<h3>Two primitives, not one</h3>
+<p><b>link</b> is bidirectional and propagates exit — parent↔child inside one process, and that is
+inherited liveness. <b>monitor</b> is one-way and propagates nothing — the box daemon watching the
+root. Collapsing them is how a child's death takes out the control plane's view.</p>
+
+<h3>Close policy is declared per child</h3>
+<table>
+<tbody>
+<tr><td class="mono"><b>terminate</b></td><td>parent dies, child dies now</td><td>a subagent running a build</td></tr>
+<tr><td class="mono"><b>request_cancel</b></td><td>child <b>writes its fact first</b>, then dies</td><td>a subagent witnessing a deploy it just pushed</td></tr>
+<tr><td class="mono"><b>abandon</b></td><td>child outlives the root</td><td>a long eval the master spawned</td></tr>
+</tbody>
+</table>
+<p>Inherited liveness gives the first one free. Shipping only <code>terminate</code> is defensible and
+must be said out loud, because then <i>"the deploy finished after the master died"</i> has no
+representation at all.</p>
+
+<h3>Subtree closure is ownerReferences, not a sweeper</h3>
+<p>Background · foreground · orphan, as Kubernetes settled it. The part worth stealing:
+<code>blocks_owner_close</code> is a <b>per-child bit</b> — only a child whose unfinished work would
+<b>lose a Fact</b> blocks its parent. Everything else closes immediately.</p>
+
+<div class="price"><b>And that bit is a finalizer, with every finalizer failure mode.</b>
+Kubernetes' most common stuck-object class is a finalizer whose controller died. Every blocking
+finalizer needs a TTL and a force path that writes an audit Fact.</div>
+
+<h3>Level-triggered, not event-driven</h3>
+<p>A sweeper encodes <i>which cases to skip</i> and grows a clause per incident. A reconciler encodes
+<i>what must be true</i>, ignores the event payload, re-reads current state — so a dropped frame, a
+daemon restart, a partial write all heal on the next pass.</p>
+
+<div class="price"><b>"Let it crash" does not transfer.</b>
+OTP restarts into <i>clean</i> state. For an agent, clean means context lost and the work redone from
+zero. Facts must be durable <b>outside</b> the session or every reap is a rollback. Restart intensity
+is capped — OTP's default is 1 per 5s, and exceeding it kills the supervisor and escalates rather
+than looping.</p></div>
+
+<h2 id="s4">4 · Facts and projection</h2>
+
+<h3>Deterministic loop, non-deterministic action</h3>
+<p>Temporal, Restate and DBOS all journal the non-deterministic call and <b>read it back</b> on
+replay; what replays is the loop around it. Here the <b>Fact log is the journal</b> — a resumed master
+re-reads facts and never re-derives them. This is what makes "resume" mean anything for an agent whose
+code is a prompt.</p>
+
+<h3>Status is a projection and still indexable</h3>
+<p><code>pg_ivm</code> / <code>create_immv()</code> applies deltas to a real table <b>inside the
+writing transaction</b> on Postgres 13–18. So the projection is indexed, filterable and
+read-your-writes, with no Materialize or Kafka tier. Changing the projection function is blue-green —
+build beside, cut over — never a rebuild in place.</p>
+
+<h3>Two clocks per fact</h3>
+<p><code>observed_at</code> beside <code>recorded_at</code> buys ~80% of bitemporality and answers the
+one question evals need — <b>what did the agent know when it decided?</b> — without trading the whole
+storage engine for <code>FOR SYSTEM_TIME AS OF</code>.</p>
+
+<h3>Policy version is pinned, and admission is a core write</h3>
+<p>Temporal pins in-flight workflows with a change marker written into history. A prompt has no
+change-id, so the root session carries <code>policy_version</code> and every child inherits it.
+Without it, <code>phase declared: review</code> under v3 and under v4 are one row and two different
+events, and the projection's meaning changes under running work.</p>
+
+<div class="inv"><b>Core admits the policy version; the box never just pulls it.</b>
+A policy declaring a predicate this core build cannot evaluate is <b>refused at registration, naming
+the predicate</b>, and the box keeps the last admitted version. This is the one-way gate — see
+<a href="#s7">§7</a>.</div>
+
+<h3>Principal separation is a write-time constraint with a known hole</h3>
+<p><i>No verdict fact whose author principal equals the author of the code facts in the same subtree.</i>
+Checking this in the projection is too late. Checking it at insert means a recursive walk under
+contention, and a naive <code>EXISTS</code> is a textbook write-skew hole — two concurrent inserts both
+pass. Close it deliberately: <code>SERIALIZABLE</code>, an explicit lock on the root row, or a
+denormalised <code>root_id</code> + <code>author</code> on every fact.</p>
+
+<h2 id="s5">5 · Question — the highest-leverage primitive</h2>
+
+<table>
+<thead><tr><th>Who</th><th>Has</th><th>Missing</th></tr></thead>
+<tbody>
+<tr><td>LangGraph <code>interrupt()</code></td><td>parks until someone resumes</td><td class="bad">no timeout · no default · no routing · no addressee</td></tr>
+<tr><td>A2A</td><td><code>input-required</code> state</td><td class="bad">no timeout semantics at all</td></tr>
+<tr><td>HumanLayer</td><td>was the closest product</td><td class="bad">pivoted away in 2026; the approvals API is off the site</td></tr>
+</tbody>
+</table>
+
+<div class="card">
+<svg viewBox="0 0 1000 440" role="img" aria-label="Question state machine">
+<rect x="26" y="150" width="104" height="44" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="78" y="177" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">open</text>
+<rect x="186" y="34" width="168" height="48" rx="8" fill="var(--card)" stroke="var(--ok)" stroke-width="1.7"/>
+<text x="270" y="55" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">auto_answered</text>
+<text x="270" y="72" font-size="10.5" text-anchor="middle" fill="var(--mut)">memory hit · MUST cite</text>
+<rect x="200" y="150" width="120" height="44" rx="8" fill="var(--card)" stroke="var(--warn)" stroke-width="1.8"/>
+<text x="260" y="177" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">pending</text>
+<rect x="398" y="150" width="120" height="44" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="458" y="177" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">answered</text>
+<rect x="594" y="150" width="110" height="44" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="649" y="177" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">applied</text>
+<rect x="782" y="150" width="190" height="44" rx="8" fill="var(--card)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="877" y="171" font-size="12.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">promoted</text>
+<text x="877" y="187" font-size="10.5" text-anchor="middle" fill="var(--mut)">explicit curator step</text>
+<rect x="196" y="262" width="176" height="44" rx="8" fill="var(--card)" stroke="var(--warn)" stroke-width="1.5"/>
+<text x="284" y="283" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">pending · next tier</text>
+<text x="284" y="299" font-size="10.5" text-anchor="middle" fill="var(--mut)">a different target, not the same one</text>
+<rect x="418" y="366" width="180" height="48" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="508" y="387" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">default_applied</text>
+<text x="508" y="404" font-size="10.5" text-anchor="middle" fill="var(--mut)">+ a Fact saying it was</text>
+<rect x="648" y="366" width="180" height="48" rx="8" fill="var(--card)" stroke="var(--bad)" stroke-width="1.7"/>
+<text x="738" y="387" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--bad)">held</text>
+<text x="738" y="404" font-size="10.5" text-anchor="middle" fill="var(--mut)">+ an AGEING queue</text>
+<rect x="26" y="262" width="104" height="44" rx="8" fill="none" stroke="var(--line)" stroke-dasharray="5 4"/>
+<text x="78" y="289" font-size="11.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--mut)">withdrawn</text>
+<path d="M130 172 L196 172" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M92 150 Q110 58 182 58" stroke="var(--ok)" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+<path d="M270 82 L262 146" stroke="var(--bad)" stroke-width="1.4" fill="none" marker-end="url(#ab)"/>
+<text x="286" y="116" font-size="10.5" fill="var(--bad)">reject — once</text>
+<path d="M354 62 Q560 62 640 146" stroke="var(--ok)" stroke-width="1.5" fill="none" marker-end="url(#ag)"/>
+<path d="M320 172 L394 172" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<path d="M518 172 L590 172" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#ar)"/>
+<text x="554" y="164" font-size="10.5" text-anchor="middle" fill="var(--mut)">receiver restates first</text>
+<path d="M704 172 L778 172" stroke="var(--acc)" stroke-width="1.5" marker-end="url(#aa)"/>
+<path d="M250 194 L262 258" stroke="var(--warn)" stroke-width="1.6" marker-end="url(#aw)"/>
+<text x="196" y="230" font-size="11" font-weight="600" fill="var(--warn)">T1</text>
+<path d="M372 276 Q400 220 310 186" stroke="var(--warn)" stroke-width="1.4" fill="none" marker-end="url(#aw)"/>
+<text x="392" y="232" font-size="10.5" fill="var(--warn)">nothing stops</text>
+<path d="M284 306 Q330 370 414 386" stroke="var(--bad)" stroke-width="1.6" fill="none" marker-end="url(#ab)"/>
+<text x="322" y="348" font-size="11" font-weight="600" fill="var(--bad)">T2 · has default</text>
+<path d="M310 306 Q470 440 644 400" stroke="var(--bad)" stroke-width="1.6" fill="none" marker-end="url(#ab)"/>
+<text x="520" y="437" font-size="11" font-weight="600" fill="var(--bad)">T2 · no default</text>
+<path d="M70 194 L74 258" stroke="var(--mut)" stroke-width="1.2" stroke-dasharray="4 3" marker-end="url(#ar)"/>
+</svg>
+<p class="cap">One object, two audiences. Two mechanisms would mean two places a run can stall in silence.</p>
+</div>
+
+<h3>Parked is a row, not a process</h3>
+<p>The session ends, the job goes <code>held</code>, <b>the runner slot is freed</b>, and the answer
+starts a fresh session seeded from the question's context packet — Temporal's <code>wait_condition</code>
+shape, not LangGraph's in-process <code>interrupt()</code>, which re-runs the node from the top and has
+documented double-execution bugs. <code>held</code> must be non-terminal to every sweep and the loop
+monitor must not reap it, or this feature manufactures the exact leak it exists to prevent.</p>
+
+<h3>Two-stage timeout, andon-shaped</h3>
+<p><b>T1 (~20 min, yellow)</b> reroutes to a different target and <b>stops nothing</b>. <b>T2 (~24h,
+red)</b> forces: with a default, the default applies <b>and a Fact records that it did</b>; without one,
+<code>held</code> plus an ageing queue. Ageing is not optional — the measured LangGraph production
+failure is precisely "no SLA on pending approvals, work stalls silently." Anyone holding the role may
+answer, PagerDuty-style: escalation moves to a <b>different</b> responder, never binding an answer to
+one identity.</p>
+
+<h3>Fixed shape; free text refused by name</h3>
+<div class="card"><div class="mono" style="line-height:1.95">
+situation&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— what I was doing<br>
+blocker&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— what I cannot determine<br>
+options&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;— 2 to 4, enumerated<br>
+recommendation&nbsp;— <b>my default</b><br>
+cost_if_wrong&nbsp;&nbsp;— reversible | irreversible
+</div>
+<p class="cap">SBAR / I-PASS. The decisive I-PASS element is <b>synthesis by receiver</b>: the resuming
+agent restates the answer in its own words before acting, and that restatement is what review reads.
+(NEJM 2014: 23% relative reduction in medical errors, no increase in handoff time.)</p></div>
+
+<h3>The decidability rule</h3>
+<div class="rule">
+<b>A subagent decides alone when it can write down a default, and that default is (a) reversible,
+(b) inside the ownership line, (c) not a kernel fact.</b><br><br>
+Otherwise it asks — and it asks <b>whoever holds the missing thing</b>, not the nearest authority.
+</div>
+<p>The anti-spam mechanism is the first clause: an agent that can state a safe default usually should
+not have asked, and writing the default down usually answers the question.</p>
+
+<table>
+<thead><tr><th style="width:50%">Always ask, regardless of confidence</th><th style="width:50%">Routing</th></tr></thead>
+<tbody><tr><td>
+<ol style="margin:0">
+<li>two readings of the AC give different deliverables</li>
+<li>the repo contradicts the issue text</li>
+<li>the fix requires changing something the issue did not name</li>
+<li>the same blocker has been worked around twice</li>
+<li>a waiver or baseline update would be needed</li>
+</ol></td><td>
+<table style="margin:0"><tbody>
+<tr><td>code · repo state</td><td class="bad"><b>not a question</b> — go read</td></tr>
+<tr><td>how this fits the plan</td><td>the parent</td></tr>
+<tr><td>what is wanted · worth · breakable</td><td>a human</td></tr>
+</tbody></table>
+<p class="note" style="margin-bottom:0">Two reroutes escalate a tier — the aviation two-challenge rule.</p>
+</td></tr></tbody></table>
+
+<div class="price"><b>Hard limit, from Cognition's measurement.</b>
+A parent may only answer about <b>intent it actually holds</b>. A parent inventing an answer to a
+factual question it merely inferred is the worst failure mode in the system.</div>
+
+<h3>Premises are derived by the kernel, never declared by the agent</h3>
+<p>Revision 1 had each session declare what it relied on. That is refuted — see <a href="#s13">§13</a>.
+What the kernel persists instead is <b>what core actually served</b>: the resolved fact-input set and
+the answered-question set, stamped at session open beside <code>policy_version</code>. An agent's own
+declaration is kept in a separate advisory column and <b>may never authorise the keep-running
+branch</b>.</p>
+
+<p>The bucket is named <b><code>no record of reading P</code></b>, not "did not read P", and
+<b>its default is to block</b>. An exemption is a priced amnesty with a named end condition, not a
+computation. Coarser than revision 1 promised, and the only version that does not lie.</p>
+
+<h3>An answer becomes policy in two steps, never automatically</h3>
+<div class="rule" style="border-left-color:var(--warn)">
+<b>An unnecessary question is visible and recoverable; a wrong durable write is silent.</b><br>
+<span class="note">MCB — "Remember, Verify, or Ask?" · on a tie, always take the weaker commitment.</span>
+</div>
+<div class="stats">
+<div class="stat"><div class="k">Constraint compliance as memory accumulates</div><div class="n"><span class="ok">73%</span> <span style="color:var(--mut);font-size:17px">→</span> <span class="bad">33%</span></div><div class="c">turn 5 → turn 16</div></div>
+<div class="stat"><div class="k">Poisoned memory accepted</div><div class="n bad">95–99.8%</div><div class="c">adversarial setting</div></div>
+<div class="stat"><div class="k">Agents noticing their own premise went stale</div><div class="n bad">55.2%</div><div class="c">best model — a coin flip. <span class="note">STALE</span></div></div>
+</div>
+<p>So: <code>scope</code> (issue · project · repo) + <code>valid_from</code> + <code>asked_by</code> +
+<code>answered_by</code>; promotion needs an explicit curator step; <b>supersede, never delete</b>.
+And cap the library — Library Drift measures a performance <i>drop</i> when the cap is removed.</p>
+
+<h2 id="s6">6 · The floor — where the product claim actually lives</h2>
+
+<p>This section was revision 1's §6 and is now the centre of the document, because the adversarial
+round established that the evidence chain checks <b>shape</b> and only the floor checks
+<b>substance</b>.</p>
+
+<h3>6.1 · Independence is a measured vector, not a boolean</h3>
+<div class="card">
+<svg viewBox="0 0 1000 300" role="img" aria-label="Independence vector and per-claim-class minimums">
+<text x="30" y="24" font-size="11.5" font-weight="700" letter-spacing="1.1" fill="var(--mut)">RECORDED ON EVERY VERDICT</text>
+<rect x="30" y="38" width="420" height="34" rx="6" fill="var(--card)" stroke="var(--line)"/><text x="48" y="60" font-size="12.5" fill="var(--fg)">principal ≠ author</text>
+<rect x="30" y="80" width="420" height="34" rx="6" fill="var(--card)" stroke="var(--line)"/><text x="48" y="102" font-size="12.5" fill="var(--fg)">different model family</text>
+<rect x="30" y="122" width="420" height="34" rx="6" fill="var(--card)" stroke="var(--ok)" stroke-width="1.8"/><text x="48" y="144" font-size="12.5" fill="var(--fg)">different context provenance — <tspan font-weight="650" fill="var(--ok)">role relabel: +23–93 pts</tspan></text>
+<rect x="30" y="164" width="420" height="34" rx="6" fill="var(--card)" stroke="var(--line)"/><text x="48" y="186" font-size="12.5" fill="var(--fg)">saw the diff vs saw only the artifact</text>
+<rect x="30" y="206" width="420" height="34" rx="6" fill="var(--card)" stroke="var(--line)"/><text x="48" y="228" font-size="12.5" fill="var(--fg)">deterministic evidence attached</text>
+<text x="30" y="266" font-size="11.5" fill="var(--mut)">Context independence buys most of what model independence buys,</text>
+<text x="30" y="284" font-size="11.5" fill="var(--mut)">far cheaper. Significant in 10 of 12 configurations.</text>
+
+<text x="520" y="24" font-size="11.5" font-weight="700" letter-spacing="1.1" fill="var(--mut)">A CLAIM CLASS DECLARES BOTH MINIMUMS</text>
+<rect x="520" y="38" width="450" height="96" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="540" y="62" font-size="12.5" font-weight="650" fill="var(--acc)">independence minimum</text>
+<text x="540" y="84" font-size="11.5" fill="var(--fg)">kernel claims demand a deterministic channel</text>
+<text x="540" y="104" font-size="11.5" fill="var(--fg)">policy claims accept a role-relabelled cross-critic</text>
+<text x="540" y="124" font-size="11" fill="var(--mut)">enforced at INSERT, not in the projection</text>
+
+<rect x="520" y="146" width="450" height="126" rx="9" fill="var(--soft)" stroke="var(--new)" stroke-width="1.9"/>
+<text x="540" y="170" font-size="12.5" font-weight="650" fill="var(--new)">substance floor — NEW in revision 2</text>
+<text x="540" y="192" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">held_out_gap ≤ X</text>
+<text x="540" y="212" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">mutation_kill_rate ≥ Y on diff-touched lines</text>
+<text x="540" y="232" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">red.test_id == green.test_id</text>
+<text x="540" y="252" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">red.cause == assertion_failure</text>
+<text x="540" y="268" font-size="11" fill="var(--mut)">refuse on the FLOOR, never on presence</text>
+</svg>
+<p class="cap">Revision 1's registry carried an independence minimum and no substance minimum. That
+asymmetry is what let a complete chain be empty.</p>
+</div>
+
+<h3>6.2 · The deterministic floor no judge may override</h3>
+<p>An LLM verdict is <b>one input</b>. The merge is gated by checks that run no model. If any LLM
+verdict can move an issue to <code>tested</code>, principal separation has relocated the problem, not
+closed it.</p>
+
+<h3>6.3 · Four anti-cheat mechanisms, all measured</h3>
+<table>
+<thead><tr><th style="width:38%">Mechanism</th><th>Evidence</th></tr></thead>
+<tbody>
+<tr><td><b>Held-out suite</b> the implementing agent never sees; score the <i>gap</i></td><td>SpecBench: gap reaches 100 points, and is invisible from the visible side by construction</td></tr>
+<tr><td><b>Hide the test files</b> from the implementing agent</td><td>ImpossibleBench: hack rate to ~0; stronger models cheat more</td></tr>
+<tr><td><b>Isolate the oracle</b> — strip <code>.git</code>, single-commit, allowlist egress</td><td>Cursor audit, 731 trajectories: <b>63%</b> of successes <i>retrieved</i> rather than derived; isolation drops scores 14–21 points, and that delta was never real</td></tr>
+<tr><td><b>Plant the impossible</b> — mutate a test so passing <i>requires</i> cheating; keep it as a standing tripwire</td><td>ImpossibleBench; this is the repo's own <i>"plant exactly that, watch it go red"</i> raised to a periodic probe</td></tr>
+</tbody>
+</table>
+<p class="note">Mutation kill-rate and property invariants replace coverage, which is gameable.
+Google's scale warning applies: absolute mutation score on a monorepo is infeasible, 75% of surfaced
+findings were judged useful, and a human still adjudicates survivors — so scope it to diff-touched
+lines and expect to build a suppressor.</p>
+
+<h3>6.4 · The corpus is our own</h3>
+<p>OpenAI retired SWE-bench Verified from its own evaluation — contamination plus broken tests, with
+&gt;60% of unsolved items unsolvable as scored. And scaffold is what moves the number: same model,
+<b>62.3% → 70.2%</b> on scaffold choice alone. Public benchmarks measure the model; only a corpus of
+our own production traces measures the harness. Below ~500 cases the mean is noise.</p>
+
+<h3>6.5 · Falsification — three tests that can actually fail</h3>
+<div class="stats">
+<div class="stat"><div class="k">A · null-implementation corpus (forward)</div><div class="n ok">escape_rate</div><div class="c">Build a <code>null</code> variant of each corpus case that satisfies the <i>visible</i> test only. Run the pipeline uninstructed. <b>Target 0.</b> Any non-zero value falsifies the custody claim. Report it beside the intervention rate.</div></div>
+<div class="stat"><div class="k">B · mutation backtest (retrospective)</div><div class="n ok">ungameable</div><div class="c">For every already-merged chain, run mutation testing on diff-touched lines with the suite as it stood at merge. Below the class floor = a chain that was complete and empty. Cannot be gamed by the agents being measured.</div></div>
+<div class="stat"><div class="k">C · RED-cause audit</div><div class="n warn">&lt;50%?</div><div class="c">Assert mechanically: same test id as the GREEN, exit reason is an assertion failure and not an import/collection error, and the failing assertion names a symbol the diff introduces. The historical pass rate measures what the RED link was ever worth.</div></div>
+</div>
+
+<h3>6.6 · Credit assignment finds the causal locus</h3>
+<p>MAST puts 4 in 5 failures upstream of the visible break. So the post-mortem is a <b>counterfactual
+replay</b>: model the run as an SCM, resample one step under the same policy, report the <b>latest step
+where re-deciding still rescues the run</b>.</p>
+
+<h3>6.7 · OTel: emit spans, do not store facts as spans</h3>
+<p>The session tree maps onto <code>invoke_agent</code> / <code>execute_tool</code> nearly one-to-one,
+so exporting is almost free and buys Langfuse / Phoenix / Braintrust. But spans are sampled, lossy and
+TTL'd, while a verdict is a durable claim with an author. Facts stay first-class rows; the trace is a
+projection joined by <code>trace_id</code> / <code>span_id</code>.</p>
+
+<h2 id="s7">7 · Four planes, and a one-way gate</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 300" role="img" aria-label="Four planes with core gating policy admission">
+<rect x="20" y="20" width="960" height="60" rx="10" fill="var(--soft)" stroke="var(--line)"/>
+<text x="40" y="43" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--mut)">POLICY — industry formats, not a private one</text>
+<rect x="40" y="50" width="150" height="22" rx="5" fill="var(--card)" stroke="var(--acc)"/><text x="115" y="66" font-size="11.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">SKILL.md</text>
+<rect x="200" y="50" width="150" height="22" rx="5" fill="var(--card)" stroke="var(--acc)"/><text x="275" y="66" font-size="11.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">AGENTS.md</text>
+<text x="368" y="66" font-size="11" fill="var(--mut)">~40 clients read SKILL.md · 60k+ repos carry AGENTS.md · Linux Foundation</text>
+
+<path d="M500 82 L500 104" stroke="var(--bad)" stroke-width="2" marker-end="url(#ab)"/>
+<rect x="330" y="106" width="340" height="34" rx="7" fill="var(--card)" stroke="var(--bad)" stroke-width="1.9"/>
+<text x="500" y="128" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--bad)">ADMISSION — core refuses, naming the predicate</text>
+
+<rect x="20" y="152" width="960" height="60" rx="10" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.6"/>
+<text x="40" y="175" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--acc)">KERNEL — owns the chain roles, the floors, and the gates</text>
+<text x="40" y="199" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">intent · plan · red · green · verdict · merge · deploy</text>
+<text x="420" y="199" font-size="11" fill="var(--mut)">— policy MAPS its phase names onto these roles; it cannot delete a role</text>
+
+<rect x="20" y="224" width="470" height="56" rx="10" fill="var(--soft)" stroke="var(--line)"/>
+<text x="40" y="246" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--mut)">SURFACE</text>
+<text x="40" y="268" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">forge -h → forge guide → forge &lt;verb&gt; -h</text>
+
+<rect x="510" y="224" width="470" height="56" rx="10" fill="var(--soft)" stroke="var(--line)"/>
+<text x="530" y="246" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--mut)">BOX + ADAPTER</text>
+<text x="530" y="268" font-size="11.5" fill="var(--fg)">keep one master alive · hold the credential · reap · run the vendor CLI</text>
+</svg>
+</div>
+
+<div class="rule">
+<b>Core gates policy admission. Policy gates nothing.</b><br>
+<span class="note">One-way. Revision 1 carried the opposite sentence and threw away the document's
+biggest structural win — see <a href="#s13">§13</a>.</span>
+</div>
+
+<p><b>Floors are monotone.</b> Core holds a per-claim-class floor; registration computes
+<code>∀d: policy[d] ≥ core_floor[d]</code> and refuses the version naming the dimension it lowered.
+Policy may only tighten. Without this, a <code>git push</code> can declare a claim class with no
+minimum and delete the RED role from the chain, and the resulting clean numbers would <i>raise</i> the
+trust budget — a breach that rewards itself.</p>
+
+<h2 id="s8">8 · What the human sees</h2>
+<table>
+<thead><tr><th style="width:24%">Mechanism</th><th style="width:34%">What</th><th>Why</th></tr></thead>
+<tbody>
+<tr><td><b>Delegation ≠ assignment</b></td><td>the human stays owner and stays accountable</td><td>removes "who owns this" at 20 concurrent runs</td></tr>
+<tr><td><b>Typed activity stream</b></td><td>thought · action · elicitation · response · error</td><td>only typed activity makes "what changed since I looked" computable instead of readable</td></tr>
+<tr><td><b>Ageing question inbox</b></td><td>four verbs, closed: approve · edit · reject · respond</td><td>ordered by age and <code>cost_if_wrong</code></td></tr>
+<tr><td><b>Risk-tier the question</b>, not the action</td><td>read-only work runs unasked</td><td>past ~20 benign requests people approve before finishing the sentence — and attackers now batch risky operations among benign ones deliberately</td></tr>
+<tr><td><b>Review packet, not a diff</b></td><td>files read · what ran · what went red first · independence level · questions asked and who answered</td><td>reviewers cannot reconstruct intent; agent PRs sit <b>5.3×</b> longer in pickup</td></tr>
+<tr><td><b>Steer without destroying</b></td><td><code>pause / refine / restart</code> on a live session</td><td>Claude Code's Esc is destructive today; non-destructive steering is still an open gap industry-wide</td></tr>
+<tr><td><b>Memory: own verification, not storage</b></td><td>admission gate · verification against live code as a kernel operation with a recorded outcome · provenance · bi-temporal validity</td><td>the three memory vendors have no pipeline model, the three trackers have no memory model, and nobody does verification</td></tr>
+</tbody>
+</table>
+
+<h2 id="s9">9 · What Forge does not build</h2>
+<table>
+<tbody>
+<tr><td><b>A memory storage layer</b></td><td>commoditised; the differentiated half is verification and provenance</td></tr>
+<tr><td><b>Its own SWE-bench</b></td><td>public benchmarks measure the model, not the scaffold</td></tr>
+<tr><td><b>Swarm / peer handoff</b></td><td>the field converged on supervisor; swarm is unsolved</td></tr>
+<tr><td><b>Determinism-based replay</b></td><td>an agent's loop is a prompt; only facts are re-read</td></tr>
+<tr><td><b>A status column a human drags</b></td><td>a dragged card is a writer, and writers can lie</td></tr>
+<tr><td><b>Its own executor</b></td><td>the adapter is the boundary; whoever writes the better CLI wins</td></tr>
+<tr><td><b>A vendor-facing protocol of its own</b></td><td>Forge <i>consumes</i> ACP; it does not publish one — see the architecture doc</td></tr>
+</tbody>
+</table>
+
+<h2 id="s10">10 · Open decisions</h2>
+<p class="note">Recommendations are recommendations. Two rows changed side in revision 2 and are marked.</p>
+<table>
+<thead><tr><th style="width:3%">#</th><th style="width:18%">Decision</th><th style="width:39%">A</th><th style="width:40%">B</th></tr></thead>
+<tbody>
+<tr><td>1</td><td><b>Autonomy ceiling</b></td><td class="pick"><span class="tag ok">recommended · CHANGED</span> fixed tiers per claim class, raised by a human on reviewed evidence. Mechanisms 1–4 in §6 lower interventions with <b>no trust model at all</b></td><td class="dead">the system grants its own autonomy from measured accuracy. <b>Refuted</b>: granting autonomy is the act of not checking, so the label supply is what autonomy destroys — 41 years per cell at forge-dev's volume</td></tr>
+<tr><td>2</td><td><b>Tracker: source of truth or projection</b></td><td class="pick"><span class="tag ok">recommended</span> own it — maximum rigour, fights GitHub's bundled distribution</td><td>bidirectional projection — an adoption path that <b>breaks <code>state-never-lies</code> the moment someone drags a card in Jira</b></td></tr>
+<tr><td>3</td><td><b>Does a parked question block siblings</b></td><td class="pick"><span class="tag ok">recommended · CHANGED</span> block by <code>scope</code> (issue · project · repo), default <b>block</b>. Coarse, honest, and does not rest on self-declaration</td><td class="dead">block by exact premise set. <b>Refuted</b>: the set is a lower bound labelled as exact</td></tr>
+<tr><td>4</td><td><b>T2 with no default</b></td><td class="pick"><span class="tag ok">recommended</span> <code>held</code> + mandatory ageing</td><td>fail loudly — truer to <i>loud break</i>, turns an unattended weekend into red runs</td></tr>
+<tr><td>5</td><td><b>May the master answer for the owner</b></td><td class="pick"><span class="tag ok">recommended</span> only <code>auto_answered</code> with a citation</td><td>let it author answers — absorbs ~80% of questions and opens the worst measured failure mode</td></tr>
+<tr><td>6</td><td><b>Per-child close policy</b></td><td><code>terminate</code> only — simple, and "deploy finished after the master died" is unrepresentable</td><td class="pick"><span class="tag ok">recommended</span> all three — correct, and each is a code path to test</td></tr>
+<tr><td>7</td><td><b>Coding forever, or first domain</b></td><td class="pick"><span class="tag ok">recommended</span> coding — lets git/PR/CI assumptions into the kernel and sharpens everything; the six primitives stay clean for later</td><td>domain-neutral now — the adapter must widen past five methods</td></tr>
+<tr><td>8</td><td><b>Label capture</b> <span class="tag">new</span></td><td class="pick"><span class="tag ok">recommended</span> instrument first — <code>approve_rate</code> and <code>pass_rate</code> return n=0 over 30 days and reopens are 0, so there is currently nothing to measure</td><td>defer — and every later claim about accuracy rests on nothing</td></tr>
+</tbody>
+</table>
+
+<h2 id="s11">11 · The counter-argument, left standing</h2>
+<div class="price"><b>The control plane is exactly where the platform owner gives it away, bundled.</b>
+GitHub ships Mission Control to every paid Copilot seat, with the substrate — repo, PR, CI, identity,
+audit — that a self-hosted plane rebuilds from scratch.</div>
+<p>The right analogy is not "Jenkins won." It is <b>Travis lost to GitHub Actions, not to Jenkins.</b>
+A neutral layer wins only where neutrality is load-bearing: many repos, many vendors, air-gapped, or
+regulated. If most teams are one-repo-on-GitHub, neutrality is a feature nobody notices. And the base
+rate is unkind — <b>Terragon closed January 2026</b>, <b>Vibe Kanban's parent closed April 2026</b>.
+Thin wrappers die; the kernel-shaped ones are <b>untested</b>.</p>
+<div class="inv"><b>The only available answer, and it must be chosen deliberately</b>
+Be load-bearing where GitHub cannot reach: the runner is <b>a device you own</b>, running against
+production-adjacent context that never leaves your network; memory is <b>verified</b> and first-class;
+and state is derived from evidence rather than from someone's hand.</div>
+
+<h2 id="s12">12 · Source confidence</h2>
+<table>
+<tbody>
+<tr><td class="ok"><b>Primary, solid</b></td><td>MAST · Huang et al. ICLR 2024 · ImpossibleBench · Cursor reward-hacking audit · OpenAI retiring SWE-bench Verified · I-PASS (NEJM 2014) · Temporal ParentClosePolicy · k8s garbage collection · Erlang Supervisor · pg_ivm · A2A spec · LangGraph docs · Claude Code Agent SDK docs · SLSA v1.0 threat model · in-toto (USENIX Sec '19) · de Kleer ATMS (AI 28, 1986) · Everett &amp; Forbus (AAAI-96) · Petrović &amp; Ivanković (ICSE-SEIP 2018)</td></tr>
+<tr><td class="warn"><b>Abstract/summary only</b></td><td>several 2026 arXiv items: SpecBench · Self-Correction Illusion · Causal Agent Replay · LLM-as-a-Judge Is Not an Oracle · Library Drift · MCB · STALE. <b>Re-read before building on them.</b></td></tr>
+<tr><td class="warn"><b>Vendor claims, not studies</b></td><td>AURA thresholds · LinearB 5.3× · mutation-as-gate practitioner posts · Linear's "30% of inbound bugs" · interventions-per-session figures</td></tr>
+<tr><td class="acc"><b>Measured in this repo</b></td><td>785 issues resolved in 90 days (8.72/day) · <code>approve_rate</code> and <code>pass_rate</code> n=0 over 30 days · 0 reopens · 77 <code>runner-v*</code> tags in 113 days · <code>dyn Runner</code> appears 0 times</td></tr>
+</tbody>
+</table>
+
+<h2 id="s13">13 · What revision 1 claimed, and what broke it</h2>
+
+<table>
+<thead><tr><th style="width:26%">Revision 1 claimed</th><th style="width:12%">Verdict</th><th>Refutation</th></tr></thead>
+<tbody>
+<tr><td>Every merge carries a machine-checkable chain of evidence back to Intent</td><td class="bad"><b>FATAL</b></td><td>The chain checks shape, not substance. Only 2 of 7 links are load-bearing. The canonical TDD shape produces a valid RED caused by an <i>import error</i>, not the assertion, and nothing bound RED and GREEN to the same test. Restated in <a href="#s0">§0</a> as custody + floor.</td></tr>
+<tr><td>Each session declares the premises it relied on</td><td class="bad"><b>FATAL</b></td><td>Self-report as kernel input. Under-declaration is silent, free and undetectable, and the keep-running bucket turns absence-of-record into evidence of safety. Now kernel-derived — <a href="#s5">§5</a>.</td></tr>
+<tr><td>Blast radius returns the <b>exact set</b>, not a guess</td><td class="bad"><b>FATAL</b></td><td>A lower bound labelled as exact is itself a lying state.</td></tr>
+<tr><td>Premise dedup and answer-from-memory have <b>no prior art</b></td><td class="bad"><b>FALSE</b></td><td>de Kleer's ATMS (1986) is this design; label maintenance is NP-complete with exponential worst case. Measured collapse: CyclePad exhausted a 32MB heap after 48 assume/retract cycles, per-retraction time &lt;1s → ~46s, crash at 78. The lineage field moved from author-declared to engine-captured for the same reason. arXiv 2608.10502 already ships the three-way split over an engine-captured graph.</td></tr>
+<tr><td>The Autonomy Governor is <b>the only mechanism</b> that makes interventions fall</td><td class="bad"><b>FALSE</b></td><td>Four mechanisms in §6 lower interventions with no trust model. Every field precedent keeps a human on the promotion side: ODD expansion is regulator-approved, trading limits cut automatically and raise only by sign-off, aviation has no runtime-adaptation credit path, and canary auto-promotion works only because its signal is dense, immediate and deterministic.</td></tr>
+<tr><td>No change may require two clocks</td><td class="bad"><b>FATAL</b></td><td>Splitting <i>declare</i> (plugin) from <i>enforce</i> (core) is itself a two-clock generator. Replaced by: the fast clock may never outrun the slow one, enforced at policy admission.</td></tr>
+<tr><td>Phases are opaque strings; meaning comes from the pinned policy</td><td class="bad"><b>FATAL</b></td><td>Then a <code>git push</code> can delete the RED role and core cannot tell. Core now owns the chain-role enum and monotone floors — <a href="#s7">§7</a>.</td></tr>
+<tr><td>Nothing in either repo can gate the other</td><td class="bad"><b>SELF-CONTRADICTORY</b></td><td>Policy Registry sits in core and core compiles the surface, so core <i>can</i> refuse a policy version. The asymmetry the project records as unfixable is gone, and revision 1 discarded the win in a sentence.</td></tr>
+<tr><td>Wipe any box and lose nothing but time</td><td class="warn"><b>WITH FIX</b></td><td>A fact whose only witness is the box breaks it. Rule added: no fact may have the box as its sole witness — every box-observed fact carries an externally re-queryable witness id. And the slogan gains "…and work not yet pushed".</td></tr>
+<tr><td>The runner is the slowest clock</td><td class="bad"><b>MEASURED FALSE</b></td><td>77 <code>runner-v*</code> tags in 113 days — about one per 1.5 days, with self-update in place. It is the fastest-shipping artifact in the repo.</td></tr>
+<tr><td>The 5-method adapter seam is sound and already correct</td><td class="bad"><b>MEASURED FALSE</b></td><td><code>dyn Runner</code> appears zero times; seven call sites hold the concrete type and reach for methods the trait lacks. The seam has never carried load.</td></tr>
+<tr><td>Claims reaching core compensate for the weak master→subagent edge</td><td class="warn"><b>PARTLY</b></td><td>True for claims, false for the <i>assignment</i>. A drifting master can hand a subagent the wrong issue, branch or premise, and core sees a well-formed fact about the wrong work. The assignment must be a core-issued, core-verifiable token.</td></tr>
+</tbody>
+</table>
+
+<div class="price"><b>One defect found in today's code, not in this design.</b>
+<code>packages/core/src/plugins/designation.ts</code> nulls <code>pinnedRef</code> when two projects pin
+different refs; <code>packages/runner/crates/forge-runner-core/src/daemon/mod.rs</code> logs a warning
+and proceeds unpinned, floating the box to plugin HEAD. A disagreement between two projects silently
+unpins a machine. That is the policy-widens-its-own-authority attack with no attacker — and a warning
+log is disclosure, which this project's own rules say is not a discharge.</div>
+
+<p class="note" style="margin-top:34px">Revision 2 · 2026-09-19. Revision 1 is in git history; it is
+not kept beside this file.</p>
+
+</main>

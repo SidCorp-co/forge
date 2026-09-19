@@ -1,0 +1,164 @@
+<title>Destination — Overview</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1c1a17;--mut:#6b6559;--line:#ddd7cc;--card:#fff;--ok:#2f7a4f;--bad:#b3452c;--warn:#a8761f;--acc:#2c5c8f;--new:#7a3f9d;--soft:#f3f0ea}
+@media(prefers-color-scheme:dark){:root{--bg:#16150f;--fg:#ece7dd;--mut:#9a9280;--line:#332f26;--card:#1e1c16;--ok:#6fbf8f;--bad:#e08a70;--warn:#d6a851;--acc:#7aa9d8;--new:#c18ce0;--soft:#232019}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:48px 28px 100px}
+h1{font-size:32px;margin:0 0 8px;letter-spacing:-.025em}
+h2{font-size:18px;margin:48px 0 10px;letter-spacing:-.015em;padding-top:12px;border-top:1px solid var(--line)}
+p{margin:8px 0;max-width:74ch}
+.lead{color:var(--mut);max-width:74ch;font-size:16px}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin:18px 0;overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+.cap{color:var(--mut);font-size:13px;margin-top:10px;max-width:none}
+table{border-collapse:collapse;width:100%;font-size:14px;margin:12px 0}
+th,td{text-align:left;padding:11px 12px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600}
+a{color:var(--acc)}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:color-mix(in oklab,var(--fg) 8%,transparent);padding:1px 5px;border-radius:4px}
+.rule{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:16px 20px;margin:20px 0;font-size:16.5px}
+.note{color:var(--mut);font-size:13.5px}
+.soon{color:var(--mut);font-style:italic}
+</style>
+<main>
+
+<h1>Destination</h1>
+<p class="lead">Where Forge is going, in one picture. Everything below is a drill-down on a piece of it.</p>
+
+<div class="rule">
+<b>Forge turns intent into shipped software without a human holding the thread.</b><br>
+<span class="note">It does not prove the work is right — nothing can. It makes a lie <b>attributable</b>, and it makes a lie <b>expensive</b>.</span>
+</div>
+
+<div class="card">
+<svg viewBox="0 0 1000 620" role="img" aria-label="The whole system on one canvas">
+<defs>
+<marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--mut)"/></marker>
+<marker id="b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ok)"/></marker>
+<marker id="c" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--acc)"/></marker>
+</defs>
+
+<text x="30" y="28" font-size="11" font-weight="700" letter-spacing="1.3" fill="var(--mut)">THE WORLD</text>
+<rect x="30" y="38" width="940" height="66" rx="10" fill="var(--soft)" stroke="var(--ok)" stroke-width="1.6"/>
+<rect x="52" y="56" width="128" height="30" rx="6" fill="var(--card)" stroke="var(--line)"/><text x="116" y="76" font-size="12" text-anchor="middle" fill="var(--fg)">github</text>
+<rect x="192" y="56" width="128" height="30" rx="6" fill="var(--card)" stroke="var(--line)"/><text x="256" y="76" font-size="12" text-anchor="middle" fill="var(--fg)">coolify</text>
+<rect x="332" y="56" width="128" height="30" rx="6" fill="var(--card)" stroke="var(--line)"/><text x="396" y="76" font-size="12" text-anchor="middle" fill="var(--fg)">sentry</text>
+<rect x="472" y="56" width="128" height="30" rx="6" fill="var(--card)" stroke="var(--line)"/><text x="536" y="76" font-size="12" text-anchor="middle" fill="var(--fg)">rocket.chat</text>
+<rect x="612" y="56" width="108" height="30" rx="6" fill="var(--card)" stroke="var(--line)"/><text x="666" y="76" font-size="12" text-anchor="middle" fill="var(--fg)">…</text>
+<text x="742" y="70" font-size="11.5" fill="var(--ok)">witness · actor · channel</text>
+<text x="742" y="88" font-size="11.5" fill="var(--ok)">· evidence no model wrote</text>
+
+<path d="M300 104 L300 140" stroke="var(--ok)" stroke-width="1.7" marker-end="url(#b)"/>
+<text x="312" y="128" font-size="10.5" fill="var(--ok)">facts core did not produce</text>
+<path d="M700 140 L700 104" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+<text x="712" y="128" font-size="10.5" fill="var(--mut)">acts, each returning a witness</text>
+
+<text x="30" y="162" font-size="11" font-weight="700" letter-spacing="1.3" fill="var(--acc)">CORE — the only durable writer</text>
+<rect x="30" y="172" width="940" height="234" rx="10" fill="var(--soft)" stroke="var(--acc)" stroke-width="2"/>
+
+<rect x="56" y="196" width="420" height="132" rx="9" fill="var(--card)" stroke="var(--acc)" stroke-width="1.5"/>
+<text x="266" y="220" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">six primitives</text>
+<rect x="76" y="232" width="122" height="28" rx="5" fill="var(--soft)" stroke="var(--line)"/><text x="137" y="251" font-size="11.5" text-anchor="middle" fill="var(--fg)">Intent</text>
+<rect x="206" y="232" width="122" height="28" rx="5" fill="var(--soft)" stroke="var(--line)"/><text x="267" y="251" font-size="11.5" text-anchor="middle" fill="var(--fg)">Principal</text>
+<rect x="336" y="232" width="122" height="28" rx="5" fill="var(--soft)" stroke="var(--line)"/><text x="397" y="251" font-size="11.5" text-anchor="middle" fill="var(--fg)">Session</text>
+<rect x="76" y="268" width="122" height="28" rx="5" fill="var(--soft)" stroke="var(--line)"/><text x="137" y="287" font-size="11.5" text-anchor="middle" fill="var(--fg)">Fact</text>
+<rect x="206" y="268" width="122" height="28" rx="5" fill="var(--soft)" stroke="var(--line)"/><text x="267" y="287" font-size="11.5" text-anchor="middle" fill="var(--fg)">Question</text>
+<rect x="336" y="268" width="122" height="28" rx="5" fill="var(--soft)" stroke="var(--line)"/><text x="397" y="287" font-size="11.5" text-anchor="middle" fill="var(--fg)">Policy</text>
+<text x="266" y="316" font-size="10.5" text-anchor="middle" fill="var(--mut)">everything else is a projection over these</text>
+
+<rect x="500" y="196" width="220" height="132" rx="9" fill="var(--card)" stroke="var(--bad)" stroke-width="1.6"/>
+<text x="610" y="220" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--bad)">the gates</text>
+<text x="610" y="244" font-size="11" text-anchor="middle" fill="var(--mut)">claim class minimums</text>
+<text x="610" y="264" font-size="11" text-anchor="middle" fill="var(--mut)">independence vector</text>
+<text x="610" y="284" font-size="11" text-anchor="middle" fill="var(--mut)">the substance floor</text>
+<text x="610" y="310" font-size="10.5" text-anchor="middle" fill="var(--bad)">no model may override</text>
+
+<rect x="744" y="196" width="202" height="132" rx="9" fill="var(--card)" stroke="var(--ok)" stroke-width="1.6"/>
+<text x="845" y="220" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">projections</text>
+<text x="845" y="246" font-size="11" text-anchor="middle" fill="var(--mut)">status</text>
+<text x="845" y="266" font-size="11" text-anchor="middle" fill="var(--mut)">the board</text>
+<text x="845" y="286" font-size="11" text-anchor="middle" fill="var(--mut)">attention</text>
+<text x="845" y="312" font-size="10.5" text-anchor="middle" fill="var(--ok)">no writers · cannot lie</text>
+
+<rect x="56" y="344" width="890" height="42" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="76" y="370" font-size="12" fill="var(--fg)">surface — the CLI describes itself at runtime, per box · project · principal</text>
+<text x="640" y="370" font-size="11" fill="var(--mut)">the kernel never carries prose about procedure</text>
+
+<path d="M180 406 L180 444" stroke="var(--acc)" stroke-width="1.7" marker-end="url(#c)"/>
+<text x="192" y="430" font-size="10.5" fill="var(--acc)">prepared work + scoped credential</text>
+<path d="M820 444 L820 406" stroke="var(--ok)" stroke-width="1.7" marker-end="url(#b)"/>
+<text x="600" y="430" font-size="10.5" fill="var(--ok)">facts, straight up — never via the parent</text>
+
+<text x="30" y="466" font-size="11" font-weight="700" letter-spacing="1.3" fill="var(--mut)">YOUR MACHINE</text>
+<rect x="30" y="476" width="940" height="120" rx="10" fill="var(--soft)" stroke="var(--line)"/>
+<rect x="56" y="498" width="190" height="74" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<text x="151" y="522" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">daemon</text>
+<text x="151" y="542" font-size="10.5" text-anchor="middle" fill="var(--mut)">keep one master alive</text>
+<text x="151" y="559" font-size="10.5" text-anchor="middle" fill="var(--mut)">hold credential · reap</text>
+
+<rect x="268" y="498" width="420" height="74" rx="8" fill="var(--card)" stroke="var(--acc)" stroke-width="1.5"/>
+<text x="478" y="520" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">one session tree</text>
+<rect x="300" y="532" width="120" height="26" rx="5" fill="var(--soft)" stroke="var(--acc)"/><text x="360" y="550" font-size="11" text-anchor="middle" fill="var(--fg)">master</text>
+<path d="M424 545 L452 545" stroke="var(--mut)" stroke-width="1.2" marker-end="url(#a)"/>
+<rect x="456" y="532" width="98" height="26" rx="5" fill="var(--soft)" stroke="var(--line)"/><text x="505" y="550" font-size="11" text-anchor="middle" fill="var(--fg)">subagent</text>
+<rect x="562" y="532" width="98" height="26" rx="5" fill="var(--soft)" stroke="var(--line)"/><text x="611" y="550" font-size="11" text-anchor="middle" fill="var(--fg)">subagent</text>
+
+<rect x="710" y="498" width="236" height="74" rx="8" fill="var(--card)" stroke="var(--warn)" stroke-width="1.5"/>
+<text x="828" y="522" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">adapter</text>
+<text x="828" y="542" font-size="10.5" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--mut)">start·send·abort·status·kind</text>
+<text x="828" y="559" font-size="10.5" text-anchor="middle" fill="var(--mut)">Claude Code · Codex · …</text>
+
+<text x="30" y="614" font-size="11" fill="var(--mut)">Policy — SKILL.md, AGENTS.md — ships on its own clock and is ADMITTED by core, never pulled by the box.</text>
+</svg>
+<p class="cap">Three bands. The world witnesses, core decides, your machine works. Nothing durable
+lives on your machine — wipe a box and lose time, not facts.</p>
+</div>
+
+<h2>Read in this order</h2>
+
+<table>
+<thead><tr><th style="width:22%">Document</th><th style="width:30%">Answers</th><th>Start here if</th></tr></thead>
+<tbody>
+<tr><td><a href="vision.html"><b>vision.html</b></a></td><td>what Forge is for, what it will not claim, and the six primitives</td><td>you want the argument before the machinery — §13 lists what an adversarial round already broke</td></tr>
+<tr><td><a href="architecture.html"><b>architecture.html</b></a></td><td>the services, the boundaries, who refuses what, and the three release clocks</td><td>you want to know what actually gets built and where it runs</td></tr>
+<tr><td><a href="integrations.html"><b>integrations.html</b></a></td><td>core ⇄ runner ⇄ github, coolify, sentry, rocket.chat</td><td>you want the part that makes "evidence no model wrote" a real thing</td></tr>
+</tbody>
+</table>
+
+<h2>Four claims, in one line each</h2>
+
+<table>
+<tbody>
+<tr><td style="width:26%"><b>One noun for work</b></td><td>a self-referencing session tree — master and subagent are the same species at two depths, and liveness is inherited</td></tr>
+<tr><td><b>Status is derived</b></td><td>the kernel stores facts; status is a function over them and has no writers</td></tr>
+<tr><td><b>Not knowing is an object</b></td><td>escalation and clarification are one durable row with a default, a timeout and a route</td></tr>
+<tr><td><b>Independence is measured</b></td><td>not a boolean — a vector per verdict, with a minimum declared per claim class and enforced at insert</td></tr>
+</tbody>
+</table>
+
+<h2>Coverage</h2>
+<p><b>36 of 53 core-logic questions answered.</b> The other 17 are listed in
+<a href="coverage.md"><code>coverage.md</code></a>, with the command that re-derives the count.</p>
+<table>
+<tbody>
+<tr><td style="width:30%"><b>Do not audit against this set</b></td><td>tenancy and cross-project access · human roles and permissions · revocation · retry and attempt · exclusivity between boxes · dependency and priority between Intents · cancellation</td></tr>
+<tr><td><b>Why it matters</b></td><td>a reference is silent on what it never modelled, and an audit reads silence as approval</td></tr>
+</tbody>
+</table>
+
+<h2>Going deeper</h2>
+<p class="note">Next levels, one at a time — say which:</p>
+<table>
+<tbody>
+<tr><td style="width:26%"><a href="session-tree.html"><b>Session tree</b></a></td><td>open · close · adopt · the three close policies · what a restart reconstructs</td></tr>
+<tr><td><a href="fact-projection.html"><b>Fact &amp; projection</b></a></td><td>the fact row, the two clocks, the insert-time gates, how a projection is swapped</td></tr>
+<tr><td><a href="question.html"><b>Question</b></a></td><td>the row, the timers, routing, dedup, delivery through a channel, promotion</td></tr>
+<tr><td><a href="core-runner.html"><b>Core ⇄ runner</b></a></td><td>the broker, the control socket, what a pane is, what survives a daemon restart</td></tr>
+<tr><td><a href="floor.html"><b>The floor</b></a></td><td>held-out suite, mutation on the diff, RED-cause, oracle isolation — and who runs each</td></tr>
+</tbody>
+</table>
+
+<p class="note" style="margin-top:34px">2026-09-19.</p>
+
+</main>

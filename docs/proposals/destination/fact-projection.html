@@ -1,0 +1,266 @@
+<title>Fact &amp; Projection</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1c1a17;--mut:#6b6559;--line:#ddd7cc;--card:#fff;--ok:#2f7a4f;--bad:#b3452c;--warn:#a8761f;--acc:#2c5c8f;--new:#7a3f9d;--soft:#f3f0ea}
+@media(prefers-color-scheme:dark){:root{--bg:#16150f;--fg:#ece7dd;--mut:#9a9280;--line:#332f26;--card:#1e1c16;--ok:#6fbf8f;--bad:#e08a70;--warn:#d6a851;--acc:#7aa9d8;--new:#c18ce0;--soft:#232019}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:44px 28px 100px}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.025em}
+h2{font-size:18px;margin:52px 0 10px;letter-spacing:-.015em;padding-top:12px;border-top:1px solid var(--line)}
+p{margin:8px 0;max-width:74ch}
+.lead{color:var(--mut);max-width:74ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin:16px 0;overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+.cap{color:var(--mut);font-size:13px;margin-top:10px;max-width:none}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:color-mix(in oklab,var(--fg) 8%,transparent);padding:1px 5px;border-radius:4px}
+a{color:var(--acc)}
+.rule{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:16px 20px;margin:18px 0;font-size:16px}
+.price{border-left:3px solid var(--bad);padding-left:15px;margin:18px 0}
+.price b{display:block;margin-bottom:2px}
+.note{color:var(--mut);font-size:13.5px}
+.bad{color:var(--bad)} .ok{color:var(--ok)} .warn{color:var(--warn)} .acc{color:var(--acc)} .new{color:var(--new)}
+.crumb{font-size:13px;color:var(--mut);margin-bottom:18px}
+</style>
+<main>
+
+<p class="crumb"><a href="index.html">Destination</a> › Fact &amp; projection</p>
+<h1>Fact &amp; Projection</h1>
+<p class="lead">Facts are written and never touched again. Everything a screen shows is computed from
+them and has no writer at all.</p>
+
+<svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+<marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--mut)"/></marker>
+<marker id="b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ok)"/></marker>
+<marker id="c" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--acc)"/></marker>
+<marker id="d" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--bad)"/></marker>
+</defs></svg>
+
+<h2>1 · One fact</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 250" role="img" aria-label="What one fact row carries">
+<rect x="30" y="24" width="470" height="204" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="2"/>
+<text x="265" y="52" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">fact</text>
+<text x="52" y="82" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">session_id · root_id</text>
+<text x="52" y="104" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">principal_id</text><text x="190" y="104" font-size="10.5" fill="var(--mut)">who asserts this</text>
+<text x="52" y="126" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">kind · body</text><text x="190" y="126" font-size="10.5" fill="var(--mut)">what is asserted</text>
+<text x="52" y="148" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">observed_at · recorded_at</text>
+<text x="52" y="170" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">policy_version</text><text x="190" y="170" font-size="10.5" fill="var(--mut)">what the words meant then</text>
+<text x="52" y="192" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">witness</text><text x="190" y="192" font-size="10.5" fill="var(--mut)">provider + an externally re-queryable id</text>
+<text x="52" y="214" font-size="11.5" font-family="ui-monospace,monospace" fill="var(--fg)">supersedes</text><text x="190" y="214" font-size="10.5" fill="var(--mut)">the fact this one retires, if any</text>
+
+<rect x="530" y="24" width="440" height="96" rx="10" fill="var(--soft)" stroke="var(--bad)" stroke-width="1.7"/>
+<text x="552" y="50" font-size="12.5" font-weight="700" fill="var(--bad)">never</text>
+<text x="552" y="74" font-size="11.5" fill="var(--mut)">UPDATE · DELETE · a mutable status column</text>
+<text x="552" y="94" font-size="11.5" fill="var(--mut)">a correction is a new row, not an edit</text>
+<text x="552" y="112" font-size="10.5" fill="var(--mut)">an edited fact is indistinguishable from one that was always that way</text>
+
+<rect x="530" y="132" width="440" height="96" rx="10" fill="var(--soft)" stroke="var(--ok)" stroke-width="1.7"/>
+<text x="552" y="158" font-size="12.5" font-weight="700" fill="var(--ok)">so the row answers</text>
+<text x="552" y="182" font-size="11.5" fill="var(--fg)">who said it · when it happened · when we learned</text>
+<text x="552" y="202" font-size="11.5" fill="var(--fg)">what the vocabulary meant at the time</text>
+<text x="552" y="222" font-size="11.5" fill="var(--fg)">and how to go ask the world again</text>
+</svg>
+</div>
+
+<h2>2 · Two clocks</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 290" role="img" aria-label="observed_at versus recorded_at in three scenarios">
+<text x="30" y="26" font-size="11.5" font-weight="700" letter-spacing="1.2" fill="var(--mut)">observed_at — WHEN THE WORLD DID IT · recorded_at — WHEN WE LEARNED</text>
+
+<line x1="120" y1="72" x2="930" y2="72" stroke="var(--line)" stroke-width="1.5"/>
+<text x="30" y="76" font-size="11.5" fill="var(--fg)">on time</text>
+<circle cx="300" cy="72" r="7" fill="var(--ok)"/><text x="300" y="58" font-size="10" text-anchor="middle" fill="var(--ok)">obs</text>
+<circle cx="330" cy="72" r="7" fill="var(--acc)"/><text x="336" y="58" font-size="10" fill="var(--acc)">rec</text>
+<text x="420" y="76" font-size="11" fill="var(--mut)">the ordinary case — the two nearly coincide</text>
+
+<line x1="120" y1="148" x2="930" y2="148" stroke="var(--line)" stroke-width="1.5"/>
+<text x="30" y="152" font-size="11.5" fill="var(--fg)">late</text>
+<circle cx="260" cy="148" r="7" fill="var(--ok)"/><text x="260" y="134" font-size="10" text-anchor="middle" fill="var(--ok)">obs</text>
+<circle cx="640" cy="148" r="7" fill="var(--acc)"/><text x="640" y="134" font-size="10" text-anchor="middle" fill="var(--acc)">rec</text>
+<path d="M270 148 L630 148" stroke="var(--warn)" stroke-width="2" stroke-dasharray="4 4"/>
+<text x="690" y="152" font-size="11" fill="var(--warn)">a webhook that took an hour — order by obs, not by arrival</text>
+
+<line x1="120" y1="224" x2="930" y2="224" stroke="var(--line)" stroke-width="1.5"/>
+<text x="30" y="228" font-size="11.5" fill="var(--fg)">out of order</text>
+<circle cx="420" cy="224" r="7" fill="var(--ok)"/><text x="420" y="210" font-size="10" text-anchor="middle" fill="var(--ok)">obs B</text>
+<circle cx="300" cy="224" r="7" fill="var(--ok)"/><text x="300" y="210" font-size="10" text-anchor="middle" fill="var(--ok)">obs A</text>
+<circle cx="600" cy="224" r="7" fill="var(--acc)"/><text x="600" y="246" font-size="10" text-anchor="middle" fill="var(--acc)">rec B</text>
+<circle cx="700" cy="224" r="7" fill="var(--acc)"/><text x="700" y="246" font-size="10" text-anchor="middle" fill="var(--acc)">rec A</text>
+<text x="750" y="228" font-size="11" fill="var(--bad)">B arrived first and happened second</text>
+
+<text x="30" y="278" font-size="11.5" fill="var(--fg)">The pair answers the one question an eval always needs: <tspan font-weight="650">what did the agent know at the moment it decided?</tspan></text>
+</svg>
+<p class="cap">Two timestamp columns buy most of bitemporality. Full
+<code>FOR SYSTEM_TIME AS OF</code> semantics cost a different storage engine and answer a question
+nobody here has asked yet.</p>
+</div>
+
+<h2>3 · Correction is a new row</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 190" role="img" aria-label="Supersede chain rather than edit">
+<rect x="40" y="56" width="220" height="70" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="150" y="84" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">deploy live @ abc123</text>
+<text x="150" y="104" font-size="10.5" text-anchor="middle" fill="var(--mut)">by coolify · 14:02</text>
+
+<path d="M264 91 L336 91" stroke="var(--warn)" stroke-width="1.8" marker-end="url(#a)"/>
+<text x="300" y="82" font-size="10" text-anchor="middle" fill="var(--warn)">supersedes</text>
+
+<rect x="340" y="56" width="220" height="70" rx="9" fill="var(--card)" stroke="var(--warn)" stroke-width="1.8"/>
+<text x="450" y="84" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">rolled back @ 14:31</text>
+<text x="450" y="104" font-size="10.5" text-anchor="middle" fill="var(--mut)">by coolify · re-queried</text>
+
+<rect x="620" y="36" width="340" height="110" rx="9" fill="var(--soft)" stroke="var(--ok)" stroke-width="1.7"/>
+<text x="642" y="62" font-size="12.5" font-weight="700" fill="var(--ok)">what this buys</text>
+<text x="642" y="86" font-size="11.5" fill="var(--fg)">the projection reads the head of the chain</text>
+<text x="642" y="106" font-size="11.5" fill="var(--fg)">the audit reads the whole chain</text>
+<text x="642" y="126" font-size="11.5" fill="var(--fg)">and a wrong correction is itself visible</text>
+</svg>
+</div>
+
+<h2>4 · Three doors, all at INSERT</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 300" role="img" aria-label="The three insert-time gates">
+<rect x="30" y="110" width="130" height="70" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="95" y="150" font-size="12" text-anchor="middle" fill="var(--fg)">a claim</text>
+
+<path d="M164 145 L206 145" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="210" y="96" width="200" height="98" rx="9" fill="var(--card)" stroke="var(--bad)" stroke-width="1.8"/>
+<text x="310" y="122" font-size="12" font-weight="700" text-anchor="middle" fill="var(--bad)">1 · claim class</text>
+<text x="310" y="144" font-size="10.5" text-anchor="middle" fill="var(--mut)">independence vector</text>
+<text x="310" y="162" font-size="10.5" text-anchor="middle" fill="var(--mut)">AND substance floor</text>
+<text x="310" y="182" font-size="10" text-anchor="middle" fill="var(--bad)">≥ the declared minimum</text>
+
+<path d="M414 145 L456 145" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="460" y="96" width="200" height="98" rx="9" fill="var(--card)" stroke="var(--warn)" stroke-width="1.8"/>
+<text x="560" y="122" font-size="12" font-weight="700" text-anchor="middle" fill="var(--warn)">2 · witness</text>
+<text x="560" y="144" font-size="10.5" text-anchor="middle" fill="var(--mut)">if the box observed it,</text>
+<text x="560" y="162" font-size="10.5" text-anchor="middle" fill="var(--mut)">it carries an external id</text>
+<text x="560" y="182" font-size="10" text-anchor="middle" fill="var(--warn)">no sole witnesses</text>
+
+<path d="M664 145 L706 145" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="710" y="96" width="200" height="98" rx="9" fill="var(--card)" stroke="var(--acc)" stroke-width="1.8"/>
+<text x="810" y="122" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">3 · stamp</text>
+<text x="810" y="144" font-size="10.5" text-anchor="middle" fill="var(--mut)">policy_version from the root</text>
+<text x="810" y="162" font-size="10.5" text-anchor="middle" fill="var(--mut)">both clocks</text>
+<text x="810" y="182" font-size="10" text-anchor="middle" fill="var(--acc)">then the projection updates</text>
+
+<path d="M310 194 L310 236" stroke="var(--bad)" stroke-width="1.6" marker-end="url(#d)"/>
+<rect x="30" y="240" width="560" height="44" rx="8" fill="var(--card)" stroke="var(--bad)" stroke-width="1.5"/>
+<text x="50" y="258" font-size="11.5" font-weight="650" fill="var(--bad)">refused by name</text>
+<text x="50" y="276" font-size="11" fill="var(--mut)">"this class wants a deterministic channel; the only fact offered was signed by the code's author"</text>
+
+<rect x="620" y="240" width="350" height="44" rx="8" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+<text x="640" y="258" font-size="11.5" font-weight="650" fill="var(--bad)">checking in the projection is too late</text>
+<text x="640" y="276" font-size="11" fill="var(--mut)">by then the bad fact is already in the log, forever</text>
+</svg>
+</div>
+
+<div class="price"><b>Gate 1 has a write-skew hole. Close it on purpose.</b>
+"No verdict whose author is the author of the code in this subtree" is a recursive read under
+contention, and a naive <code>EXISTS</code> lets two concurrent inserts both pass. Pick one:
+<code>SERIALIZABLE</code>, an explicit lock on the root row, or a denormalised
+<code>root_id</code> + <code>author</code> on every fact. Not choosing is choosing the broken one.</div>
+
+<h2>5 · The projection has no writer</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 220" role="img" aria-label="Projection maintained inside the writing transaction">
+<rect x="60" y="40" width="440" height="130" rx="10" fill="none" stroke="var(--acc)" stroke-width="2" stroke-dasharray="7 4"/>
+<text x="280" y="66" font-size="11.5" font-weight="700" text-anchor="middle" letter-spacing="1.1" fill="var(--acc)">ONE TRANSACTION</text>
+<rect x="86" y="80" width="388" height="34" rx="6" fill="var(--card)" stroke="var(--line)"/>
+<text x="280" y="102" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">INSERT fact</text>
+<path d="M280 116 L280 130" stroke="var(--acc)" stroke-width="1.5" marker-end="url(#c)"/>
+<rect x="86" y="132" width="388" height="30" rx="6" fill="var(--card)" stroke="var(--acc)" stroke-width="1.6"/>
+<text x="280" y="152" font-size="12" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">incremental view maintenance applies the delta</text>
+
+<path d="M504 105 L566 105" stroke="var(--ok)" stroke-width="1.8" marker-end="url(#b)"/>
+
+<rect x="570" y="52" width="370" height="106" rx="10" fill="var(--card)" stroke="var(--ok)" stroke-width="1.8"/>
+<text x="755" y="78" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">status · board · attention</text>
+<text x="755" y="102" font-size="11" text-anchor="middle" fill="var(--ok)">indexed · filterable · read-your-writes</text>
+<text x="755" y="124" font-size="11" text-anchor="middle" fill="var(--mut)">a real table, not a view over a view</text>
+<text x="755" y="146" font-size="11" text-anchor="middle" fill="var(--ok)">no writer exists, so it cannot disagree with the facts</text>
+</svg>
+<p class="cap">This is what answers the standard objection to facts-plus-projections — that a
+projection lags, while a dispatcher needs current status to decide what to claim.</p>
+</div>
+
+<h2>6 · Changing <code>f()</code> over history</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 200" role="img" aria-label="Blue-green projection swap">
+<rect x="40" y="40" width="260" height="60" rx="9" fill="var(--card)" stroke="var(--line)"/>
+<text x="170" y="66" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">projection v1</text>
+<text x="170" y="86" font-size="10.5" text-anchor="middle" fill="var(--ok)">serving every read</text>
+
+<rect x="40" y="118" width="260" height="60" rx="9" fill="var(--card)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="170" y="144" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">projection v2</text>
+<text x="170" y="164" font-size="10.5" text-anchor="middle" fill="var(--mut)">built beside it, from the same facts</text>
+
+<path d="M304 70 L370 70" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+<path d="M304 148 L370 148" stroke="var(--mut)" stroke-width="1.5" marker-end="url(#a)"/>
+
+<rect x="374" y="70" width="200" height="78" rx="9" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.7"/>
+<text x="474" y="100" font-size="12" font-weight="700" text-anchor="middle" fill="var(--acc)">compare</text>
+<text x="474" y="122" font-size="10.5" text-anchor="middle" fill="var(--mut)">every row that differs</text>
+<text x="474" y="138" font-size="10.5" text-anchor="middle" fill="var(--mut)">is a decision, not a bug</text>
+
+<path d="M578 109 L644 109" stroke="var(--ok)" stroke-width="1.8" marker-end="url(#b)"/>
+<rect x="648" y="80" width="300" height="58" rx="9" fill="var(--card)" stroke="var(--ok)" stroke-width="1.7"/>
+<text x="798" y="106" font-size="12" font-weight="650" text-anchor="middle" fill="var(--fg)">cut over</text>
+<text x="798" y="126" font-size="10.5" text-anchor="middle" fill="var(--mut)">v1 stays until nothing reads it</text>
+
+<text x="40" y="196" font-size="11.5" fill="var(--bad)">Rebuilding in place serves garbage for the length of the rebuild — and the length is unknown until it is over.</text>
+</svg>
+</div>
+
+<div class="rule">
+<b>The facts are the truth; a projection is one opinion about them, and it is replaceable.</b><br>
+<span class="note">Which is why <code>policy_version</code> is stamped on the fact: it tells
+<code>f()</code> what the words meant when they were written, so a vocabulary change does not
+silently rewrite history.</span>
+</div>
+
+<h2>7 · What the kinds are for</h2>
+
+<p>A fact's <code>kind</code> is what a claim class points at, so the taxonomy is not decoration —
+it decides what evidence is demanded.</p>
+
+<table>
+<thead><tr><th style="width:22%">Kind</th><th style="width:26%">Typically signed by</th><th>What a claim class can demand of it</th></tr></thead>
+<tbody>
+<tr><td>session opened / closed</td><td>kernel</td><td>nothing — kernel's own bookkeeping</td></tr>
+<tr><td>phase declared</td><td>an agent</td><td>weakest; can never alone satisfy a kernel claim</td></tr>
+<tr><td>test observed red / green</td><td>the box</td><td>an external id, plus the RED-cause conditions</td></tr>
+<tr><td>merge recorded</td><td>github</td><td>deterministic — a foreign principal, re-queryable</td></tr>
+<tr><td>deploy witnessed</td><td>coolify</td><td>deterministic, and the witness must survive the box</td></tr>
+<tr><td>verdict signed</td><td>a principal ≠ the author</td><td>the full independence vector, at the class minimum</td></tr>
+<tr><td>question answered</td><td>a human, or memory with a citation</td><td>scope and validity, so a later answer can supersede it</td></tr>
+</tbody>
+</table>
+
+<h2>8 · Four things that stop being possible</h2>
+
+<table>
+<tbody>
+<tr><td style="width:36%">a status that disagrees with the work</td><td>there is no column to disagree with — it is computed</td></tr>
+<tr><td>a quietly edited history</td><td>append-only; a correction is a visible supersede</td></tr>
+<tr><td>a vocabulary change rewriting old rows' meaning</td><td><code>policy_version</code> is on the fact, not on the reader</td></tr>
+<tr><td>a bad fact caught after the fact</td><td>the gates are at insert, so it never lands</td></tr>
+</tbody>
+</table>
+
+<p class="note" style="margin-top:30px">Next from <a href="index.html">the overview</a>: question · the
+floor.</p>
+
+</main>

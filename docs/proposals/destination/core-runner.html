@@ -1,0 +1,217 @@
+<title>Core ⇄ Runner</title>
+<style>
+:root{--bg:#fbfaf8;--fg:#1c1a17;--mut:#6b6559;--line:#ddd7cc;--card:#fff;--ok:#2f7a4f;--bad:#b3452c;--warn:#a8761f;--acc:#2c5c8f;--new:#7a3f9d;--soft:#f3f0ea}
+@media(prefers-color-scheme:dark){:root{--bg:#16150f;--fg:#ece7dd;--mut:#9a9280;--line:#332f26;--card:#1e1c16;--ok:#6fbf8f;--bad:#e08a70;--warn:#d6a851;--acc:#7aa9d8;--new:#c18ce0;--soft:#232019}}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--fg);font:15px/1.6 ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif}
+main{max-width:1080px;margin:0 auto;padding:44px 28px 100px}
+h1{font-size:30px;margin:0 0 6px;letter-spacing:-.025em}
+h2{font-size:18px;margin:52px 0 10px;letter-spacing:-.015em;padding-top:12px;border-top:1px solid var(--line)}
+p{margin:8px 0;max-width:74ch}
+.lead{color:var(--mut);max-width:74ch}
+.card{background:var(--card);border:1px solid var(--line);border-radius:10px;padding:18px;margin:16px 0;overflow-x:auto}
+svg{display:block;max-width:100%;height:auto}
+.cap{color:var(--mut);font-size:13px;margin-top:10px;max-width:none}
+table{border-collapse:collapse;width:100%;font-size:13.5px;margin:12px 0}
+th,td{text-align:left;padding:9px 11px;border-bottom:1px solid var(--line);vertical-align:top}
+th{font-size:11px;text-transform:uppercase;letter-spacing:.07em;color:var(--mut);font-weight:600}
+code{font:12.5px ui-monospace,SFMono-Regular,Menlo,monospace;background:color-mix(in oklab,var(--fg) 8%,transparent);padding:1px 5px;border-radius:4px}
+a{color:var(--acc)}
+.rule{background:var(--soft);border:1px solid var(--line);border-left:4px solid var(--acc);border-radius:8px;padding:16px 20px;margin:18px 0;font-size:16px}
+.price{border-left:3px solid var(--bad);padding-left:15px;margin:18px 0}
+.price b{display:block;margin-bottom:2px}
+.note{color:var(--mut);font-size:13.5px}
+.bad{color:var(--bad)} .ok{color:var(--ok)} .warn{color:var(--warn)} .acc{color:var(--acc)} .new{color:var(--new)}
+.crumb{font-size:13px;color:var(--mut);margin-bottom:18px}
+</style>
+<main>
+
+<p class="crumb"><a href="index.html">Destination</a> › Core ⇄ Runner</p>
+<h1>Core ⇄ Runner</h1>
+<p class="lead">Three wires, and only one of them is allowed to carry a durable claim.</p>
+
+<svg width="0" height="0" aria-hidden="true" style="position:absolute"><defs>
+<marker id="a" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--mut)"/></marker>
+<marker id="b" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--ok)"/></marker>
+<marker id="c" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--acc)"/></marker>
+<marker id="d" markerWidth="9" markerHeight="9" refX="8" refY="4.5" orient="auto"><path d="M0,0 L9,4.5 L0,9 z" fill="var(--bad)"/></marker>
+</defs></svg>
+
+<h2>1 · The three wires</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 320" role="img" aria-label="The three wires between core, daemon, master and subagent">
+<rect x="30" y="118" width="170" height="80" rx="10" fill="var(--soft)" stroke="var(--acc)" stroke-width="2"/>
+<text x="115" y="150" font-size="13.5" font-weight="700" text-anchor="middle" fill="var(--fg)">core</text>
+<text x="115" y="172" font-size="10.5" text-anchor="middle" fill="var(--mut)">the only durable writer</text>
+
+<rect x="350" y="118" width="170" height="80" rx="10" fill="var(--card)" stroke="var(--line)"/>
+<text x="435" y="150" font-size="13.5" font-weight="700" text-anchor="middle" fill="var(--fg)">daemon</text>
+<text x="435" y="172" font-size="10.5" text-anchor="middle" fill="var(--mut)">holds the box credential</text>
+
+<rect x="670" y="40" width="170" height="70" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="1.6"/>
+<text x="755" y="70" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">master pane</text>
+<text x="755" y="90" font-size="10.5" text-anchor="middle" fill="var(--mut)">one per project</text>
+
+<rect x="670" y="208" width="170" height="70" rx="10" fill="var(--card)" stroke="var(--line)"/>
+<text x="755" y="238" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">subagent</text>
+<text x="755" y="258" font-size="10.5" text-anchor="middle" fill="var(--mut)">inside the master's process</text>
+
+<path d="M204 158 L346 158" stroke="var(--acc)" stroke-width="2" marker-end="url(#c)"/>
+<path d="M346 176 L204 176" stroke="var(--acc)" stroke-width="2" marker-end="url(#c)"/>
+<text x="275" y="146" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--acc)">device transport</text>
+<text x="275" y="200" font-size="10.5" text-anchor="middle" fill="var(--mut)">HTTPS · credential carries device_id</text>
+<text x="275" y="216" font-size="10.5" text-anchor="middle" font-weight="650" fill="var(--acc)">20 endpoints</text>
+
+<path d="M524 140 L666 88" stroke="var(--warn)" stroke-width="2" marker-end="url(#a)"/>
+<path d="M666 72 L524 124" stroke="var(--warn)" stroke-width="2" marker-end="url(#a)"/>
+<text x="600" y="66" font-size="11.5" font-weight="650" text-anchor="middle" fill="var(--warn)">control socket</text>
+<text x="600" y="120" font-size="10.5" text-anchor="middle" fill="var(--mut)">unix · typed frames</text>
+<text x="600" y="136" font-size="10.5" text-anchor="middle" font-weight="650" fill="var(--warn)">4 verbs</text>
+
+<path d="M755 110 L755 204" stroke="var(--bad)" stroke-width="2" stroke-dasharray="6 4" marker-end="url(#d)"/>
+<text x="768" y="152" font-size="11.5" font-weight="650" fill="var(--bad)">assignment</text>
+<text x="768" y="170" font-size="10.5" fill="var(--bad)">in-process — no decoder</text>
+
+<path d="M670 243 Q400 300 118 202" stroke="var(--ok)" stroke-width="2" fill="none" marker-end="url(#b)"/>
+<text x="400" y="296" font-size="11.5" font-weight="650" fill="var(--ok)">facts — straight to core, never through the parent</text>
+</svg>
+<p class="cap">The weak wire is the dashed one. It carries <b>work</b>. It must never carry
+<b>evidence</b> — that is what makes it survivable.</p>
+</div>
+
+<table>
+<thead><tr><th style="width:20%">Wire</th><th style="width:22%">Vocabulary today</th><th style="width:20%">Refused by</th><th>Carries</th></tr></thead>
+<tbody>
+<tr><td><b>device transport</b></td><td>20 endpoints under <code>/api/devices/me/…</code></td><td class="ok">core</td><td>work, credentials, plugins, questions, leases</td></tr>
+<tr><td><b>control socket</b></td><td class="warn">exactly 4: <code>AgentEvent</code> · <code>RunDeclare</code> · <code>RunChoice</code> · <code>RunClose</code></td><td class="ok">the frame decoder</td><td>what the master tells the box it is doing</td></tr>
+<tr><td><b>assignment</b></td><td>a function call</td><td class="bad">nobody — only the master validating a report</td><td>work, and nothing else may ride on it</td></tr>
+<tr><td><b>facts</b></td><td>the agent's own scoped token</td><td class="ok">core's insert-time gates</td><td>every durable claim</td></tr>
+</tbody>
+</table>
+
+<h2>2 · The broker — why the credential stops at the daemon</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 250" role="img" aria-label="The broker holds the credential and hands over prepared work">
+<rect x="30" y="80" width="180" height="90" rx="10" fill="var(--soft)" stroke="var(--acc)" stroke-width="1.8"/>
+<text x="120" y="112" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">core pool</text>
+<text x="120" y="134" font-size="10.5" text-anchor="middle" fill="var(--mut)">issues + release + smoke</text>
+<text x="120" y="152" font-size="10.5" text-anchor="middle" fill="var(--mut)">in one ranked list</text>
+
+<rect x="330" y="60" width="200" height="130" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="2"/>
+<text x="430" y="90" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">daemon</text>
+<rect x="352" y="104" width="156" height="34" rx="6" fill="var(--soft)" stroke="var(--ok)" stroke-width="1.5"/>
+<text x="430" y="126" font-size="11" text-anchor="middle" fill="var(--ok)">credential · device_id</text>
+<text x="430" y="158" font-size="10.5" text-anchor="middle" fill="var(--mut)">claims · prepares · hands over</text>
+<text x="430" y="176" font-size="10.5" text-anchor="middle" fill="var(--bad)">never forwards the credential</text>
+
+<rect x="650" y="80" width="200" height="90" rx="10" fill="var(--card)" stroke="var(--line)"/>
+<text x="750" y="112" font-size="13" font-weight="700" text-anchor="middle" fill="var(--fg)">master</text>
+<text x="750" y="134" font-size="10.5" text-anchor="middle" fill="var(--mut)">one question:</text>
+<text x="750" y="152" font-size="11" text-anchor="middle" font-family="ui-monospace,monospace" fill="var(--fg)">forge next</text>
+
+<path d="M214 125 L326 125" stroke="var(--acc)" stroke-width="1.8" marker-end="url(#c)"/>
+<path d="M534 125 L646 125" stroke="var(--acc)" stroke-width="1.8" marker-end="url(#c)"/>
+<text x="590" y="116" font-size="10" text-anchor="middle" fill="var(--mut)">prepared work + a scoped token</text>
+
+<rect x="30" y="200" width="940" height="38" rx="8" fill="none" stroke="var(--bad)" stroke-width="1.5"/>
+<text x="50" y="224" font-size="11.5" fill="var(--bad)">A credential carrying <tspan font-family="ui-monospace,monospace">device_id</tspan> is authority over the whole box. An agent session's token does not carry that field — and must not gain it.</text>
+</svg>
+</div>
+
+<div class="rule">
+<b>The daemon brokers; it does not execute.</b><br>
+<span class="note">Three jobs and no fourth: keep one master alive per project, hold the credential,
+clean up when the master dies.</span>
+</div>
+
+<h2>3 · A pane is a door, not a unit of work</h2>
+
+<div class="card">
+<svg viewBox="0 0 1000 220" role="img" aria-label="Pane versus unit of work">
+<rect x="30" y="40" width="440" height="150" rx="10" fill="var(--card)" stroke="var(--line)"/>
+<text x="250" y="68" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">the pane</text>
+<text x="52" y="96" font-size="11.5" fill="var(--mut)">· a tmux session the daemon can find again</text>
+<text x="52" y="118" font-size="11.5" fill="var(--mut)">· where a human can look and type</text>
+<text x="52" y="140" font-size="11.5" fill="var(--mut)">· rebuilt on restart, resuming its conversation</text>
+<text x="52" y="168" font-size="11.5" font-weight="650" fill="var(--bad)">has NO kernel row of its own</text>
+
+<rect x="530" y="40" width="440" height="150" rx="10" fill="var(--card)" stroke="var(--acc)" stroke-width="1.8"/>
+<text x="750" y="68" font-size="12.5" font-weight="700" text-anchor="middle" fill="var(--fg)">the unit of work</text>
+<text x="552" y="96" font-size="11.5" fill="var(--mut)">· a node in the session tree</text>
+<text x="552" y="118" font-size="11.5" fill="var(--mut)">· exactly one kernel row</text>
+<text x="552" y="140" font-size="11.5" fill="var(--mut)">· liveness inherited from its parent</text>
+<text x="552" y="168" font-size="11.5" font-weight="650" fill="var(--ok)">the sweeper can see it, count it, close it</text>
+</svg>
+<p class="cap">Confusing the two is how a box ends up with work the kernel cannot see. The pane is
+plumbing; the row is the accounting.</p>
+</div>
+
+<h2>4 · A master comes back with no memory</h2>
+
+<p>This is the test of the whole boundary: a freshly started master remembers nothing, so it must
+rebuild the picture from kernel rows. Four steps, and the order is load-bearing.</p>
+
+<div class="card">
+<svg viewBox="0 0 1000 300" role="img" aria-label="Cold start of a master, four steps in order">
+<rect x="30" y="30" width="940" height="52" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<circle cx="60" cy="56" r="14" fill="none" stroke="var(--mut)"/><text x="60" y="61" font-size="12" text-anchor="middle" fill="var(--mut)">1</text>
+<text x="88" y="52" font-size="12.5" font-weight="650" fill="var(--fg)">What is this box still holding?</text>
+<text x="88" y="70" font-size="11" fill="var(--mut)">open sessions for this project on this runner · which issues · last heartbeat</text>
+
+<rect x="30" y="90" width="940" height="52" rx="8" fill="var(--card)" stroke="var(--line)"/>
+<circle cx="60" cy="116" r="14" fill="none" stroke="var(--mut)"/><text x="60" y="121" font-size="12" text-anchor="middle" fill="var(--mut)">2</text>
+<text x="88" y="112" font-size="12.5" font-weight="650" fill="var(--fg)">Is anyone else alive for this project here?</text>
+<text x="88" y="130" font-size="11" fill="var(--mut)">if yes, stand down — two masters on one project is two claimants and no owner</text>
+
+<rect x="30" y="150" width="940" height="52" rx="8" fill="var(--card)" stroke="var(--bad)" stroke-width="1.6"/>
+<circle cx="60" cy="176" r="14" fill="none" stroke="var(--bad)"/><text x="60" y="181" font-size="12" text-anchor="middle" fill="var(--bad)">3</text>
+<text x="88" y="172" font-size="12.5" font-weight="650" fill="var(--bad)">Declare dead — do not adopt</text>
+<text x="88" y="190" font-size="11" fill="var(--mut)">the old master died, so its subagents died with it; every session still open under it is a corpse. Close them, return the issues.</text>
+
+<rect x="30" y="210" width="940" height="52" rx="8" fill="var(--card)" stroke="var(--ok)" stroke-width="1.6"/>
+<circle cx="60" cy="236" r="14" fill="none" stroke="var(--ok)"/><text x="60" y="241" font-size="12" text-anchor="middle" fill="var(--ok)">4</text>
+<text x="88" y="232" font-size="12.5" font-weight="650" fill="var(--ok)">Only now take new work</text>
+<text x="88" y="250" font-size="11" fill="var(--mut)">a claim landing between two reads looks exactly like a job that just died</text>
+
+<text x="30" y="288" font-size="11.5" fill="var(--bad)">Invert 3 and 4 and the new master adopts corpses as live work. Skip 2 and two masters claim the same issue.</text>
+</svg>
+</div>
+
+<h2>5 · What survives a restart</h2>
+
+<table>
+<thead><tr><th style="width:34%">On the box</th><th style="width:16%">Survives?</th><th>Because</th></tr></thead>
+<tbody>
+<tr><td>the pane and its conversation</td><td class="ok">rebuilt</td><td>the pane is found by name and resumes its predecessor's conversation</td></tr>
+<tr><td>checkout · worktree · tool output</td><td class="ok">re-derivable</td><td>time, not facts</td></tr>
+<tr><td>which issues this box held</td><td class="ok">yes</td><td>it is a kernel row, not a box memory</td></tr>
+<tr><td>uncommitted work in a worktree</td><td class="bad">lost</td><td>that is a diff, not time — push on every red/green transition so the window is minutes</td></tr>
+<tr><td>a fact observed but not yet written</td><td class="bad">lost, silently</td><td class="bad">core's ledger disagrees with the world and nothing can tell — see the rule below</td></tr>
+</tbody>
+</table>
+
+<div class="price"><b>No fact may have the box as its sole witness.</b>
+Every box-observed fact carries an externally re-queryable witness id — a commit SHA, a PR number, a
+deployment id. Then the reconciler can rebuild the fact from the world with the box absent, and
+write-before-return becomes an optimisation rather than the guarantee.</div>
+
+<h2>6 · What changes here</h2>
+
+<table>
+<thead><tr><th style="width:32%">Today</th><th>Destination</th></tr></thead>
+<tbody>
+<tr><td>the daemon opens panes to execute non-issue work, invisible to the kernel</td><td>one lane — every unit of work is a subagent with a kernel row; the daemon only brokers</td></tr>
+<tr><td>the daemon reacts to dispatch messages</td><td><b>reconciles</b>: desired = one live master per project, observed = the panes on this box. A dropped frame heals on the next pass</td></tr>
+<tr><td>the master's procedure is embedded in the runner binary</td><td>the binary names no verbs; the master reads <code>forge -h</code>, computed per box · project · principal</td></tr>
+<tr><td>the assignment is a bare in-process call</td><td>a <b>core-issued, core-verifiable token</b> — otherwise a drifting master hands a subagent the wrong issue and core sees a well-formed fact about the wrong work</td></tr>
+<tr><td>three separate answers to "what next": admissible, <code>forge next</code>, pool</td><td>one door — the pool pours into <code>forge next</code>, and the master keeps one question</td></tr>
+</tbody>
+</table>
+
+<p class="note" style="margin-top:30px">Measured at HEAD, 2026-09-19: 20 device endpoints, 4 control-socket
+verbs. Next drill-downs from <a href="index.html">the overview</a>: session tree · fact &amp; projection ·
+question · the floor.</p>
+
+</main>
