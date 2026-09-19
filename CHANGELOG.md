@@ -3000,6 +3000,39 @@
   set is now 59.
 
 ### Fixed
+- **A decision put to your chat room can no longer be asked twice, or stop being retried in
+  silence.** Attempts are counted by the record itself, so retries end where they should and
+  somebody is told when delivery fails.
+
+- **Nothing can claim a message was checked when it was not.** The check now issues its own
+  receipt, naming the exact wording it passed, and the door to your chat room refuses a message
+  carrying any other.
+
+- **A runner installed under a path with a space now actually reports.** The hook command
+  interpolated the executable unquoted, so a shell split it; the install still succeeded, and the
+  job was failed for silence two minutes later.
+
+- **A release job no longer reads as running when nobody asked its agent anything.** The box beat
+  `running` on a schedule, so a pane holding an unsubmitted prompt looked like one working. It now
+  reports only what it can prove.
+
+- **A box that cannot hear its agents reports nothing about them.** After a restart, or where the
+  daemon hosts no control socket, it sends no run state and never fails such a job for silence.
+
+- **`pnpm verify` no longer exits 0 over a gate it did not run.** The Rust gates skipped when no
+  toolchain was present, which only happened where there were Rust changes to measure.
+
+- **A job whose agent was never asked anything no longer shows as working.** A runner's keep-alive
+  beat was enough, even with the prompt sitting unsent. Working now means something reported a turn
+  began.
+
+- **A job a runner did pick up is no longer failed with "no runner picked it up".** That timeout now
+  asks whether anything was heard from the runner, and says so when nothing reported a turn.
+
+- **Three checks on the dispatch gate could not fail, so they said nothing.** Two fail-open paths
+  went unexercised and one test rebuilt the code it judged instead of calling it. Each is now
+  proven by watching it go red.
+
 - **The instructions a master is given no longer contradict themselves.** The text typed into its
   pane disagreed with the guide it works from about what decides whether work gets declared. It now
   carries only what the guide cannot know.
@@ -3016,6 +3049,18 @@
   so an agent writing on a person's token showed as that person.
 
 - **An agent account is recognised as an agent wherever its name appears.**
+
+- **A project whose work is all waiting no longer wakes its assistant every five minutes.** An
+  issue held behind an unfinished dependency is not available work, so a project where everything
+  is held now costs nothing.
+
+- **Repeating a reminder about unchanged work now needs a reason.** It fires only where the
+  assistant's own record shows the first attempt produced nothing. One that answered, or is still
+  working, is left alone.
+
+- **What the docs say a dependency does now matches what happens.** Four places said a blocked
+  issue is released when its blocker is marked merged. What releases it is the blocker reaching
+  built work.
 
 - **The column headed Status now shows the status.** It showed one of nine lane words, and seven
   statuses share "Running": a release deploying to production read the same as an issue nobody had

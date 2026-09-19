@@ -10,6 +10,7 @@
 import { randomUUID } from 'node:crypto';
 import { sql } from 'drizzle-orm';
 import { afterAll, beforeAll, beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../src/messaging/screen-passes.fixture.js';
 import {
   createTestProject,
   createTestUser,
@@ -23,7 +24,7 @@ vi.mock('../../src/assistant/external-chat.js', () => ({
   runExternalChatTurn: (...a: unknown[]) => runExternalChatTurn(...a),
 }));
 vi.mock('../../src/messaging/reply-screen.js', () => ({
-  screenReplyAtDoor: async () => ({ ok: true }),
+  screenReplyAtDoor: screenPasses,
 }));
 
 let harness: TestDatabase;

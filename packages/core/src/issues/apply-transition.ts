@@ -434,8 +434,8 @@ export async function transitionIssueStatus(
         .then(hasCodeEvidence)
         .catch(() => true);
       const evidenceNote = evidenceFound
-        ? 'If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to re-block dependents.'
-        : 'No branch, commit or code handoff is recorded for this issue — if its code never landed, run `forge_issues` `unmark` to re-block dependents.';
+        ? "If this issue was abandoned (its code never landed on the base branch), run `forge_issues` `unmark` to withdraw the shipped-work claim. That alone does NOT re-block the dependents: they are held by this issue's STATUS, and `closed` releases them whatever `merged_at` says (ISS-1100). Move this issue back off `closed` to hold them again."
+        : "No branch, commit or code handoff is recorded for this issue — if its code never landed, run `forge_issues` `unmark` to withdraw the shipped-work claim. That alone does NOT re-block the dependents: they are held by this issue's STATUS, and `closed` releases them whatever `merged_at` says (ISS-1100). Move this issue back off `closed` to hold them again.";
       await db.insert(comments).values({
         issueId: issue.id,
         authorId: actor.type === 'user' ? actor.id : actor.ownerId,

@@ -109,9 +109,10 @@ const re =
  * provider or Forge served it, and guessing is the same error in the other
  * direction.
  *
- * A generic `timeout` deliberately has no rule. The named timeout hops
- * (`queue_timeout`, `heartbeat_timeout`, `no_client_ack`) are written as
- * literals by `jobs/loop-monitor.ts` and never reach this table, so a bare
+ * A generic `timeout` deliberately has no rule. The named session-hop causes
+ * (`queue_timeout` and `turn_never_reported` from `jobs/queue-hop.ts`,
+ * `heartbeat_timeout` and `no_client_ack` from `jobs/loop-monitor.ts`) are
+ * written as literals and never reach this table, so a bare
  * "timed out" here is a cause nobody has diagnosed yet — recording it as
  * `unclassified` is the honest answer and puts it on the counted surface,
  * which is the whole point of the invariant.
@@ -164,6 +165,13 @@ export const CAUSE_RULES: ReadonlyArray<CauseRule> = [
   {
     cause: 'session_lost',
     test: re(/session_lost|agent session terminated without job completion/i),
+  },
+  // cm:guard AHEAD of `runner_unreachable`, whose `/dispatch not delivered/` is one word away from this sentence's "its prompt delivered" and would take it on a reword. Ahead of nothing else matters: the sentence carries no marker, no status code and no `timeout`.
+  // cm:edge lockstep -> packages/runner/crates/forge-runner-core/src/daemon/turn_evidence.rs — `never_started_reason` writes this sentence and `pool_jobs::never_started` sends it to `POST /jobs/:id/fail`; a reword there and not here drops the box's own named failure back to `unclassified` in silence, which is the state ISS-1101 found it in (the module arrives with ISS-1096).
+  // cm:guard the two clauses are matched TOGETHER, not either alone: "never reported submitting" on its own would also read as a claim about a turn that ended, and the pane clause is what ties it to a prompt that was delivered and not taken up.
+  {
+    cause: 'turn_never_reported',
+    test: (t) => /prompt delivered/i.test(t) && /never reported submitting/i.test(t),
   },
   {
     cause: 'runner_unreachable',

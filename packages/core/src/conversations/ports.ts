@@ -8,6 +8,9 @@
 
 import type { SpeakerResolution } from '../assistant/identity/speaker-link.js';
 import type { ConversationAdapter, ConversationShape } from '../db/schema-conversations.js';
+import type { DoorId, MessageVerdict } from '../messaging/contract.js';
+import { problemsOf } from '../messaging/contract.js';
+import { type ProvenMessage, proven, wholeAgentText } from '../messaging/proven.js';
 
 /** Where a conversation happens, in the terms its transport uses for it. */
 // cm:guard the venue lives HERE and not in the store, so an adapter importing the contract it implements imports no store module at all — which is what `transport-free.test.ts` measures at zero (ISS-1002).
@@ -54,26 +57,38 @@ export interface ConversationHistoryMessage {
 }
 
 /**
- * Text that has passed a screen, carrying the screen's verdict and the exact
+ * Text that has passed a screen, carrying the screen's proof and the exact
  * string it was passed.
  */
 // cm:guard the value owns its own text and there is no way to build one around a DIFFERENT string, which is the whole point: a screen run over the option labels while the rendered message went out unscreened is the hole ISS-978's review found, and a verdict that travels beside the text rather than inside it cannot close it.
+// cm:guard `proof` is what a transport posts under, and `null` on it means CODE-AUTHORED rather than
+// unscreened: until ISS-978 the Rocket.Chat port inferred that from `problems.length === 0`, so a clean
+// model reply was posted as a fixed constant — a claim about who wrote it, read off a field about what
+// was wrong with it. A transport now reads the answer instead of guessing at it.
 export interface ScreenedMessage {
   readonly text: string;
   readonly problems: readonly string[];
+  /** The door's proof for `text`, or null where this codebase wrote it. */
+  readonly proof: ProvenMessage | null;
 }
 
 /** Text this codebase wrote — an ack, a fallback, a refusal. It screens nothing because there is nothing to screen. */
 export function codeAuthored(text: string): ScreenedMessage {
-  return { text, problems: [] };
+  return { text, problems: [], proof: null };
 }
 
 /** Model-written text, admitted only on an `ok` verdict over that exact string. */
+// cm:guard it takes the DOOR and a real `MessageVerdict`, not a `{ ok: boolean }` a caller assembled:
+// since ISS-978 the `ok` arm is nominal, so a caller reaching here with a passing verdict has run a
+// screen. The old signature accepted a literal, which meant this function admitted anything anybody
+// asserted about it and the guard above was a claim about nothing.
 export function screened(
   text: string,
-  verdict: { ok: boolean; problems: string[] },
+  door: DoorId,
+  verdict: MessageVerdict,
 ): ScreenedMessage | null {
-  return verdict.ok ? { text, problems: verdict.problems } : null;
+  const admitted = proven(door, wholeAgentText(text), verdict);
+  return admitted ? { text, problems: problemsOf(verdict), proof: admitted } : null;
 }
 
 /** The neutral half: reachable with a venue alone, which is what the registry holds. */

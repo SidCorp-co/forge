@@ -264,7 +264,7 @@ transitionRoutes.post(
       throw err;
     }
 
-    // cm:why every distinct CHILD project is ticked as well as this one — a `blocks` edge may cross projects, and a dependent whose project is never ticked waits out the reconciler backstop instead of dispatching
+    // cm:why every distinct CHILD project is ticked as well as this one. The reason given here used to be that a `blocks` edge may cross projects, which it may not: `dependency-service.ts:writeIssueDependency` is the only insert path and throws CROSS_PROJECT unless both endpoints sit in the named project, so the child project is this project for every edge this query can return. What the fan-out still buys is a legacy row written before that check and a dependent whose project is never ticked waiting out the reconciler backstop instead of dispatching — which is why it stays rather than being narrowed to one id (ISS-1100).
     if (result.terminal) {
       await triggerTerminalDispatch([
         {

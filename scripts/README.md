@@ -221,7 +221,21 @@ Five marks, each asserting exactly one thing:
 | `red` | ran, found violations | 1 | the repo |
 | `FAIL` | ran, but its output could not be audited — no file count, or a count of zero | 2 | the repo |
 | `n/a` | did not run: a declared prerequisite is absent. Names it and the command that installs it | 2 | this checkout |
-| `skip` | did not run: absent locally by design, and CI provably runs it | 0 | this checkout |
+| `skip` | did not run: not reproducible here, and the row names the ci.yml step that runs the same assertion | 0 | this checkout |
+
+`skip` is the one mark that exits `0`, so it is the one an unrun gate can hide behind, and it is
+fenced accordingly. A check may declare `skipIf` only alongside `coveredBy`, naming the ci.yml step
+that runs the same assertion word for word; `assertEverySkipIsCovered` reads the workflow off disk
+before any check spawns and exits `2` if the step is not there. The row then prints that step rather
+than a generic sentence, so the reader is told what is standing in for the run.
+
+That fence exists because the warrant was once only a comment. The runner's cargo gates carried a
+`skipIf` matching a line the checker printed **exactly when there was a crate change and no cargo to
+measure it** — so the one case worth catching was the one that went green. Measured 2026-09-18:
+`pnpm verify` printed `skip` and exited `0` over six changed crate files, on the axis where every
+platform defect of that week lived. `check-runner-gates.mjs` now exits `2` there, which is `n/a`;
+a change touching no crate file still scopes to zero and exits `0` several lines earlier, so a
+contributor with no Rust toolchain pays nothing for TypeScript work (ISS-1096).
 
 `n/a` is not an amnesty. It exits `2` exactly as `FAIL` does, because an unrun gate is no evidence
 and this script does not forward no-evidence as a pass — what changes is only the sentence a reader
@@ -686,7 +700,8 @@ node scripts/check-flow-coverage.mjs --all
 
 `--require-sources` (CI) turns a missing report from a skip into a failure. `pnpm verify` skips this
 check locally when no report is on disk; that skip is honest only because `core-integration` runs it
-with `--require-sources`, and `--ci-parity` proves that step exists.
+with `--require-sources`. It is the repo's only remaining `skipIf`, and it declares that step as its
+`coveredBy`, so the claim is read off `ci.yml` at startup rather than trusted.
 
 Uncovered steps freeze into `.forge/flow-coverage-baseline.json` via `--update-baseline`, so
 declaring a flow is never punished — the debt just shows up in the diff. Today the baseline is empty.

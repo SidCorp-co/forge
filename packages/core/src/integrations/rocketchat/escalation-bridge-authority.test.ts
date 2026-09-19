@@ -5,6 +5,7 @@
  */
 
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { screenPasses } from '../../messaging/screen-passes.fixture.js';
 
 // cm:guard this stub must stay, and must stay above the subject's import — `config/env.js` validates EAGERLY and throws at import time without DATABASE_URL / JWT_SECRET / DEVICE_TOKEN_PEPPER, which `escalation-bridge.js` pulls in transitively through escalation.js's chat-turn/lifecycle graph, so removing it turns the whole file into a collection error rather than a failing test (same pattern as agent-sessions/chat-turn.test.ts)
 vi.mock('../../config/env.js', () => ({
@@ -129,7 +130,7 @@ describe('deliverEscalationReplyOnce turn authority', () => {
       reply: 'Logged it as a draft issue.',
       toolCalls: [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
     });
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({
@@ -226,7 +227,7 @@ describe('deliverEscalationReplyOnce turn authority', () => {
       reply: 'Logged it.',
       toolCalls: [{ name: 'forge_issues', arguments: '{"action":"create"}' }],
     });
-    screenRoomReply.mockResolvedValue({ ok: true });
+    screenRoomReply.mockImplementation(screenPasses);
 
     await deliverEscalationReplyOnce(
       makeSession({

@@ -12,8 +12,7 @@ import { db } from '../../db/client.js';
 import { agentQuestions, isChoiceStep } from '../../db/schema-questions.js';
 import { rocketchatQuestionDeliveries } from '../../db/schema-rocketchat.js';
 import { logger } from '../../logger.js';
-import { problemsOf } from '../../messaging/contract.js';
-import { screenAtDoor } from '../../messaging/screen.js';
+import { screenForDoor } from '../../messaging/proven.js';
 import { answerAs } from '../../questions/read.js';
 import { QuestionRefused } from '../../questions/write.js';
 import type { RocketChatDdpClient, RocketChatIncomingMessage } from './ddp-client.js';
@@ -22,7 +21,6 @@ import {
   AMBIGUOUS_ROUND_REPLY,
   ANSWER_FAILED,
   ANSWER_RECORDED,
-  agentAuthoredSegments,
   optionToken,
   parseChoice,
   renderOptionsAgain,
@@ -118,12 +116,9 @@ export async function handleQuestionThreadReply(args: {
         return;
       }
       // cm:guard the options are re-posted rather than inferred from, and never defaulted to the recommended one — a reply nobody can read is a person who has not chosen yet, and choosing for them is the failure a locked option exists to prevent (ISS-978 criterion 18).
-      const verdict = screenAtDoor('question-delivery', agentAuthoredSegments(current));
-      await (verdict.ok
-        ? sendFixedReply(transport, renderOptionsAgain(current, rounds), {
-            ok: true,
-            problems: problemsOf(verdict),
-          }).catch((err) =>
+      const screening = screenForDoor('question-delivery', renderOptionsAgain(current, rounds));
+      await (screening.ok
+        ? sendFixedReply(transport, screening.proven.text, screening.proven).catch((err) =>
             logger.error(
               { err, rid: transport.rid },
               'rocketchat.question-inbound: re-post failed',

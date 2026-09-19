@@ -236,6 +236,7 @@ async function waitFor(predicate: () => Promise<boolean>): Promise<void> {
 const stdout = { kind: 'stdout', data: { line: { type: 'assistant' } } };
 const park = { kind: 'progress', data: { runtimeState: 'awaiting_input' } };
 const working = { kind: 'progress', data: { runtimeState: 'working' } };
+const starting = { kind: 'progress', data: { runtimeState: 'starting' } };
 
 describe('ISS-1014 · the gate reads only the columns it uses', () => {
   it('answers with the wide columns renamed away, where readJob goes red on the same rename', async () => {
@@ -422,6 +423,36 @@ describe('ISS-1014 · one batch, one heartbeat statement', () => {
     const after = await session(sessionId);
     expect(after.runtime_state).toBe('working');
     expect(after.last_heartbeat_at).not.toBeNull();
+  });
+});
+
+// cm:guard `starting` must survive the trip from `daemon/pool_jobs.rs#progress`: drop it from
+// `sessionRuntimeStates` and `runtimeStateOf` answers undefined, so an opening pane reads NULL.
+// cm:guard an omitted `runtimeState` must leave the column as it was — that lane sends the key
+// only where this box can prove the state, and a NULL over a known one is worse than no report.
+describe('ISS-1096 · the pool lane reports a state it can prove, or none', () => {
+  it('leaves runtime_state reading starting for a batch that carries it', async () => {
+    const { jobId, sessionId } = await seed('running');
+    await clearStatements();
+
+    expect((await post(jobId, [starting])).status).toBe(200);
+
+    const after = await session(sessionId);
+    expect(after.runtime_state).toBe('starting');
+  });
+
+  // cm:guard the statement COUNT discriminates, not the value: writing the same word back passes
+  // the value check and is still the unconditional heartbeat this change exists to remove.
+  it('leaves runtime_state exactly as it found it for a batch that carries none', async () => {
+    const { jobId, sessionId } = await seed('running');
+    expect((await post(jobId, [starting])).status).toBe(200);
+    await clearStatements();
+
+    expect((await post(jobId, [stdout])).status).toBe(200);
+
+    const after = await session(sessionId);
+    expect(after.runtime_state).toBe('starting');
+    expect(await statements('agent_sessions')).toBe(1);
   });
 });
 

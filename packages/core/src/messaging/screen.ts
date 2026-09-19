@@ -27,7 +27,39 @@ export interface ScreenInput {
   readonly facts?: MessageFacts;
 }
 
-const OK: MessageVerdict = { ok: true };
+/**
+ * What each passing verdict was passed OVER, kept where only this module can write it.
+ */
+// cm:guard a nominal `ok` flag says a screen ran; it does not say WHAT it read, so a genuine verdict
+// for one string could still mint a proof for another — `proven(door, wholeAgentText(B), verdictForA)`
+// compiled and posted B. This map is what makes a verdict a statement about its own input: it is
+// module-private and written once, at the moment the verdict is created, so nothing can re-point an
+// existing verdict at different text (ISS-978 F5, whole-set review F2).
+// cm:guard it lives HERE and not on the verdict, because `contract.ts` forbids a text field on either
+// arm — a layer that could read the message back off a verdict could hand an edited one on. Nothing
+// outside this module can read this map either; `judgedSegments` answers the one question `proven`
+// asks, which is whether a given list is the list that was judged.
+const JUDGED = new WeakMap<object, readonly string[]>();
+
+/**
+ * Admit these exact segments. The one mint, and it registers what it admitted.
+ */
+// cm:guard exported for the files that ARE screens but do not run a cell — `comment-carry.ts` reads a
+// carried comment against one rule and refuses on what it finds. `verdict-mint.test.ts` holds the
+// whole list of files allowed to call it, which is what stops the sixth reply path declaring its own
+// text passed the way five of them used to (ISS-978 F5).
+// cm:guard a FRESH object every call, never a shared constant: the map is keyed on the verdict, so two
+// screens sharing one `ok` value would each overwrite the other's record of what it read.
+export function admitted(segments: readonly string[]): MessageVerdict {
+  const verdict = { ok: true } as MessageVerdict;
+  JUDGED.set(verdict as object, [...segments]);
+  return verdict;
+}
+
+/** What this verdict was passed over, or null where nothing registered it. */
+export function judgedSegments(verdict: MessageVerdict): readonly string[] | null {
+  return verdict.ok ? (JUDGED.get(verdict as object) ?? null) : null;
+}
 
 function refusalsFor(rule: MessageRule, text: string, facts: MessageFacts): MessageRefusal[] {
   return rule.check(text, facts).map((b) => ({
@@ -78,7 +110,7 @@ export function screenMessage(input: ScreenInput): MessageVerdict {
       if (rule.halts) break;
     }
   }
-  return refusals.length === 0 ? OK : { ok: false, refusals };
+  return refusals.length === 0 ? admitted(input.segments) : { ok: false, refusals };
 }
 
 /** The same screen, named by the door that is running it. */

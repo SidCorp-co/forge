@@ -19,6 +19,7 @@ import {
   type IssuePullRequest,
   readPullRequestsForIssues,
 } from '../integrations/repo-projection.js';
+import { BLOCKER_SETTLED_STATUSES, DISPATCH_GATING_KIND } from '../issues/dependency-effects.js';
 import { formatIssueRef } from '../lib/issue-ref.js';
 import {
   AUTONOMOUS_ENTRY_STATUS,
@@ -109,7 +110,7 @@ export async function readAdmissions(args: {
     .filter((a): a is Admission => a !== null);
 }
 
-// cm:guard the same blocker facts `readPool` returns, keyed off the issue rather than a job — raw status and merge stamp, NEVER a computed `satisfied`: deciding whether a blocker is settled is the master's judgement, and a list that pre-answers it is the kernel routing again through a second door.
+// cm:guard the same blocker facts `readPool` returns, keyed off the issue rather than a job — raw status and merge stamp, NEVER a computed `satisfied`. Since ISS-1100 the WHERE clause below does gate on a blocks edge, and the two are not in tension: the query decides whether a row is offered at all, and the payload still hands over what the master needs to decide what to DO about the blockers on a row it was offered. Folding these three into a boolean would destroy that — `merged_at` set with status `reopen` means landed-then-bounced, `dropped` means abandoned, and both collapse to the same `false`.
 const RELATIONS = sql`
   COALESCE((
     SELECT json_agg(json_build_object(
@@ -134,7 +135,10 @@ const RELATIONS = sql`
  * of projects, and a per-project cap expressed in SQL windows is unreadable for
  * no gain.
  */
-// cm:guard the exclusions are "work is OPEN on this issue right now" and NOTHING else — no dependency filter, no priority ordering, no cap beyond the project's own declared `limit`. Same rule `readPool` carries and for the same reason: those are the master's judgements, and a list that pre-decides them is the kernel routing again through a second door. Read as "has ever been opened" it excludes on history, which is the ISS-933 measurement below.
+// cm:guard the exclusions are "work is OPEN on this issue right now" PLUS the one dependency filter below, and NOTHING else — no priority ordering, no merge state, no pull-request state, no cap beyond the project's own declared `limit`. Those remain the master's judgements. Read as "has ever been opened" the liveness clauses would exclude on history, which is the ISS-933 measurement below.
+// cm:guard the dependency filter was forbidden here until ISS-1100, by this guard, on the ground that blocked-or-not is "the master's judgement". What that reasoning left out is the price: every row offered here that the master then refuses costs a full agent pass. Measured over the 24h to 2026-09-19 on forge-vm — 1,630 nudges, 258 of them to codemap, whose entire candidate set of five sat behind unanswered blockers and produced not one run. The judgement was never in doubt, only re-derived 258 times at ~$0.18 each.
+// cm:guard the filter is a MIRROR of `holdsBack` in forge-plugin's `src/flow/earned.mjs`, and core's hidden set must stay a STRICT SUBSET of what the master refuses. Core may be more permissive and pay a nudge; it may never be less, because a row core hides is work nobody ever sees. That is why `valid_until` is honoured here although `holdsBack` does not consult it: a retracted edge, and the expired edges `drop-cascade.ts` writes when a blocker is dropped, are offered by core and refused by the master. The disagreement is deliberate, is in the safe direction, and its other half is a defect reported on the `forge-plugin` project.
+// cm:guard the filter reads the blocker's STATUS and never `merged_at`, because the master's does. `dependency-effects.ts:GATES_DISPATCH_NOTE` used to publish the merge rule while nothing enforced it; both now say this.
 // cm:guard `pullRequests` is subject to this same rule and to the one above it: a row whose pull request conflicts, is red or is behind is STILL OFFERED. What the projection buys the master is the ability to tell "green and waiting" from "conflicts" before it spends a session; what it must never buy the kernel is a second place to decide. No WHERE clause here reads `repo_pull_requests` (ISS-1062).
 // cm:guard a row carrying `mergedAt` is NOT excluded here, and adding such a filter is the wrong repair. `merged_at` is caller-asserted — any hop out of the base merge state stamps it, merge or not — so it is a fact to show the master, never grounds for the kernel to hide the row. Measured 2026-09-06: ISS-931 sat at `open` with its code on `origin/main` and was still offered as work (ISS-940).
 export async function readAdmissibleIssues(args: {
@@ -148,6 +152,10 @@ export async function readAdmissibleIssues(args: {
   for (const a of admissions) {
     const statusList = sql.join(
       a.statuses.map((s) => sql`${s}`),
+      sql`, `,
+    );
+    const settledList = sql.join(
+      BLOCKER_SETTLED_STATUSES.map((s) => sql`${s}`),
       sql`, `,
     );
     const rows = (await db.execute(sql`
@@ -168,6 +176,23 @@ export async function readAdmissibleIssues(args: {
         AND NOT EXISTS (
           SELECT 1 FROM jobs j
           WHERE j.issue_id = i.id AND j.status NOT IN ('done', 'failed', 'cancelled')
+        )
+        -- cm:guard ISS-1100 — the ONE dependency clause, mirroring holdsBack in forge-plugin:
+        -- a live blocks edge whose blocker has not reached one of BLOCKER_SETTLED_STATUSES holds
+        -- this row out of the set. It is correlated on the ADMITTING project and not on
+        -- d.to_issue_id alone, because issue_dependencies carries only the composite indexes
+        -- (project_id, from_issue_id) and (project_id, to_issue_id): an endpoint-only filter
+        -- constrains the non-leading column of both and Postgres degrades to a sequential scan of
+        -- every edge in the table. setIssueDependency refuses an edge whose endpoints are not both
+        -- in that project, so the correlation narrows nothing a master could take.
+        AND NOT EXISTS (
+          SELECT 1 FROM issue_dependencies d
+          JOIN issues b ON b.id = d.from_issue_id
+          WHERE d.project_id = ${a.projectId}
+            AND d.to_issue_id = i.id
+            AND d.kind = ${DISPATCH_GATING_KIND}
+            AND (d.valid_until IS NULL OR d.valid_until > now())
+            AND b.status NOT IN (${settledList})
         )
         AND NOT EXISTS (
           SELECT 1 FROM pipeline_runs pr

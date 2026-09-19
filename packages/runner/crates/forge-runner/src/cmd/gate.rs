@@ -122,15 +122,23 @@ fn config_dir() -> Option<PathBuf> {
 /// failure-path tests need: the socket is derived from it too, so a test
 /// pointing at a temporary directory cannot reach the daemon actually running
 /// on the machine and report its answer as the code's.
+///
+/// The token is a parameter for the same reason, and it was AMBIENT until
+/// ISS-1094's re-judge. `FORGE_CONTROL_TOKEN` is set in any pane the daemon
+/// spawned and unset on CI, so every test here asserted one thing on a
+/// developer's box — where the token is present and the socket is reached — and
+/// a different thing on CI, where this function returned at the token check
+/// before the socket existed. Both were green. A test whose meaning depends on
+/// an environment variable nobody passed it is not asserting what it says.
 // cm:guard the socket is `dir/control.sock` rather than `control::socket_path()`, which is the same path by the same derivation — that function's own guard says the config dir is what separates two daemons on one box. Calling it here would resolve the REAL one under a test that was handed a temporary directory.
-async fn answer(dir: Option<&Path>, d: &Dispatch) -> String {
+async fn answer(dir: Option<&Path>, token: Option<&str>, d: &Dispatch) -> String {
     let open_because = |why: &str| -> String {
         if let Some(dir) = dir {
             mark(dir, Kind::Degraded, why);
         }
         ALLOW.to_string()
     };
-    let Ok(token) = session_tokens::token_from_env() else {
+    let Some(token) = token else {
         return open_because("this pane carries no control capability, so nothing could be asked");
     };
     let Some(sock) = dir.map(|d| d.join("control.sock")) else {
@@ -189,7 +197,11 @@ pub async fn run(args: Args) {
             return;
         }
     };
-    println!("{}", answer(config_dir().as_deref(), &d).await);
+    let token = session_tokens::token_from_env().ok();
+    println!(
+        "{}",
+        answer(config_dir().as_deref(), token.as_deref(), &d).await
+    );
 }
 
 #[cfg(test)]
@@ -394,13 +406,18 @@ mod tests {
             .contains("forge-runner run declare"));
     }
 
+    /// The capability a pane the daemon spawned carries. Passed explicitly by
+    /// every test that means to reach the socket, because taking it from the
+    /// environment made these tests assert one thing locally and another on CI.
+    const TOKEN: &str = "a-token-the-daemon-minted";
+
     /// Criteria 13, 17, 18. No socket on the box: the dispatch goes through and
     /// the mark that says so lands anyway.
     #[tokio::test]
     async fn no_control_socket_opens_the_gate_and_leaves_a_mark() {
         let dir = Scratch::new("gateverb-1");
         let d = as_dispatch(DISPATCH);
-        assert_eq!(answer(Some(dir.path()), &d).await, ALLOW);
+        assert_eq!(answer(Some(dir.path()), Some(TOKEN), &d).await, ALLOW);
         let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
         assert_eq!(
             degraded.count, 1,
@@ -431,7 +448,7 @@ mod tests {
         });
         let d = as_dispatch(DISPATCH);
         let began = std::time::Instant::now();
-        assert_eq!(answer(Some(dir.path()), &d).await, ALLOW);
+        assert_eq!(answer(Some(dir.path()), Some(TOKEN), &d).await, ALLOW);
         assert!(
             began.elapsed() < ANSWER_WITHIN * 3,
             "a silent daemon must not hold the master longer than the bound: {:?}",
@@ -445,10 +462,105 @@ mod tests {
         );
     }
 
-    /// Criterion 12, where nothing at all is resolvable.
+    /// Criterion 13, where nothing at all is resolvable. (This carried the label
+    /// `Criterion 12` until ISS-1094's re-judge: it exercises an absent config
+    /// directory, never an absent token, and C12 is the test directly below.)
     #[tokio::test]
     async fn a_pane_with_no_config_directory_still_opens_the_gate() {
         let d = as_dispatch(DISPATCH);
-        assert_eq!(answer(None, &d).await, ALLOW);
+        assert_eq!(answer(None, Some(TOKEN), &d).await, ALLOW);
+    }
+    /// Criterion 12, at last exercised. `FORGE_CONTROL_TOKEN` is set in every
+    /// pane the daemon spawned and unset on CI, so before this test the no-token
+    /// arm was reached by accident on one and by nothing on the other.
+    // cm:guard the token is passed as `None` rather than removed from the environment. A test that
+    // mutates a process-global variable to make its point is a test the next parallel test reads,
+    // and the failure that produces is a different test going red for no reason anyone can see.
+    #[tokio::test]
+    async fn a_pane_with_no_control_token_opens_the_gate_and_leaves_a_mark() {
+        let dir = Scratch::new("gateverb-3");
+        let d = as_dispatch(DISPATCH);
+        assert_eq!(
+            answer(Some(dir.path()), None, &d).await,
+            ALLOW,
+            "a pane that cannot authenticate to its own daemon still hands out work"
+        );
+        // cm:guard the REASON is asserted and not merely the count. This scratch has no
+        // `control.sock`, so deleting the token arm drops through to the socket-missing arm, which
+        // returns the same `ALLOW` and writes the same single mark: a count-only assertion holds
+        // "some arm above here allowed" rather than this criterion, and stays green with the arm
+        // it names deleted. Measured: `let token = token.unwrap_or("")` kept all 41 tests green
+        // (ISS-1094, retrospective review of #518).
+        let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
+        assert_eq!(degraded.count, 1, "the box says the gate was not operating");
+        assert!(
+            degraded
+                .last
+                .as_deref()
+                .unwrap_or_default()
+                .contains("no control capability"),
+            "the mark must name the CAPABILITY as what was missing, or it cannot be told from \
+             the socket simply not being there: {:?}",
+            degraded.last
+        );
+    }
+
+    /// Criterion 14. The daemon answered, and its answer was a refusal of the
+    /// QUESTION rather than of the dispatch.
+    // cm:guard the reason here is deliberately NOT `REFUSAL`. An unknown token, an op the daemon
+    // cannot decode, a session it cannot name: each answers `ok:false`, each is an uncertain state,
+    // and denying on any of them turns a daemon this pane could not authenticate to into a master
+    // that cannot dispatch anything. Only the declaration's own refusal denies (ISS-1094).
+    #[cfg(unix)]
+    #[tokio::test]
+    async fn a_daemon_that_refuses_the_question_itself_opens_the_gate_and_leaves_a_mark() {
+        let dir = Scratch::new("gateverb-4");
+        let sock = dir.path().join("control.sock");
+        let listener = tokio::net::UnixListener::bind(&sock).expect("listener");
+        tokio::spawn(async move {
+            use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
+            while let Ok((stream, _)) = listener.accept().await {
+                let mut reader = BufReader::new(stream);
+                let mut line = String::new();
+                let _ = reader.read_line(&mut line).await;
+                let reply = serde_json::json!({
+                    "ok": false,
+                    "reason": "unknown session token"
+                })
+                .to_string();
+                let _ = reader
+                    .get_mut()
+                    .write_all(format!("{reply}\n").as_bytes())
+                    .await;
+            }
+        });
+        let d = as_dispatch(DISPATCH);
+        assert_eq!(
+            answer(Some(dir.path()), Some(TOKEN), &d).await,
+            ALLOW,
+            "only the declaration's own refusal denies; every other ok:false is uncertainty"
+        );
+        // cm:guard the reason is asserted, because the count cannot tell this arm from the one
+        // above it. A stub that writes an empty line instead of its body takes the
+        // `Ok(Err(..))` parse-failure arm, allows, marks once, and this test passed in 0.00s
+        // against it: the gate frame and the daemon's `Request` enum could drift until every
+        // dispatch failed to parse and nothing here would go red (ISS-1094, retrospective review
+        // of #518).
+        let (degraded, _) = forge_runner_core::daemon::degraded::tally(dir.path());
+        assert_eq!(
+            degraded.count, 1,
+            "an allowance the gate did not decide leaves a mark"
+        );
+        let why = degraded.last.clone().unwrap_or_default();
+        assert!(
+            why.contains("refused the question itself"),
+            "the daemon ANSWERED and its answer was a refusal of the question; a mark that does \
+             not say so cannot be told from one the daemon never received: {why:?}"
+        );
+        assert!(
+            why.contains("unknown session token"),
+            "and the daemon's own words are carried through, so an operator learns WHY it \
+             refused rather than only that it did: {why:?}"
+        );
     }
 }

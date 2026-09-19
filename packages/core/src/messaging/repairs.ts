@@ -16,8 +16,17 @@ export interface RepairRound {
   readonly rewrite: (verdict: MessageVerdict) => Promise<readonly string[]>;
 }
 
+// cm:guard the PASSING verdict travels out with the segments, and it is not decoration: since ISS-978
+// an `ok` verdict is the only thing that can mint a `ProvenMessage`, so a caller that repaired its way
+// to a pass needs the verdict that passed to post what passed. Dropping it here would send every
+// repairing door back to hand-building a proof, which is the defect F5 names.
 export type RepairOutcome =
-  | { readonly kind: 'passed'; readonly segments: readonly string[]; readonly attempts: number }
+  | {
+      readonly kind: 'passed';
+      readonly segments: readonly string[];
+      readonly attempts: number;
+      readonly verdict: MessageVerdict;
+    }
   | { readonly kind: 'exhausted'; readonly verdict: MessageVerdict; readonly attempts: number };
 
 /**
@@ -41,6 +50,6 @@ export async function withRepairs(
     attempts += 1;
   }
   return verdict.ok
-    ? { kind: 'passed', segments, attempts }
+    ? { kind: 'passed', segments, attempts, verdict }
     : { kind: 'exhausted', verdict, attempts };
 }

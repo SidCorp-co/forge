@@ -42,7 +42,7 @@ const textStep = (over: Partial<FreeTextStep> = {}): FreeTextStep => ({
 
 describe('renderRound', () => {
   it('names the issue, the prompt, every option, the recommended one and the deadline', () => {
-    const text = renderRound({
+    const { text } = renderRound({
       issueKey: 'ISS-978',
       step: step(),
       rounds: 1,
@@ -58,7 +58,7 @@ describe('renderRound', () => {
   });
 
   it('says what happens when nobody answers and no deadline was set', () => {
-    const text = renderRound({ issueKey: null, step: step(), rounds: 1, parkDeadlineAt: null });
+    const { text } = renderRound({ issueKey: null, step: step(), rounds: 1, parkDeadlineAt: null });
     expect(text).toContain('the run stays parked');
   });
 
@@ -71,7 +71,7 @@ describe('renderRound', () => {
       executedBy: 'core',
       fingerprint: 'deploy forge-beta @ 48968fda',
     });
-    const text = renderRound({
+    const { text } = renderRound({
       issueKey: 'ISS-978',
       step: step({ options: [option(), admin] }),
       rounds: 1,
@@ -84,7 +84,7 @@ describe('renderRound', () => {
   });
 
   it('qualifies every option with its round once the question has more than one', () => {
-    const text = renderRound({
+    const { text } = renderRound({
       issueKey: 'ISS-978',
       step: step({ round: 2 }),
       rounds: 2,
@@ -122,7 +122,7 @@ describe('parseChoice', () => {
 
 describe('the fixed bodies', () => {
   it('re-posts the options rather than naming one, when a reply matched nothing', () => {
-    const again = renderOptionsAgain(step(), 1);
+    const { text: again } = renderOptionsAgain(step(), 1);
     expect(again).toContain('1. Take the safe path');
     expect(again).toContain('2. Drop it');
     expect(again).not.toContain('recommended');
@@ -157,7 +157,7 @@ describe('optionToken', () => {
 
 describe('a free-text round in a room', () => {
   const rendered = () =>
-    renderRound({ issueKey: 'ISS-996', step: textStep(), rounds: 1, parkDeadlineAt: null });
+    renderRound({ issueKey: 'ISS-996', step: textStep(), rounds: 1, parkDeadlineAt: null }).text;
 
   // cm:guard the round must NOT read like a choice one: a free-text round carrying an option-style instruction invites a bare number, and a bare number is the one reply that round has nothing to resolve against.
   it('states what would settle it and that the whole reply is the answer', () => {
@@ -176,7 +176,7 @@ describe('a free-text round in a room', () => {
 
   // cm:guard the re-post of an option list has nothing to say about a text round, and must not print a bare heading claiming options are about to follow.
   it('names no options when asked to show them again', () => {
-    expect(renderOptionsAgain(textStep(), 1)).not.toMatch(/\n\d[.)]/);
+    expect(renderOptionsAgain(textStep(), 1).text).not.toMatch(/\n\d[.)]/);
   });
 
   it('confirms a text answer as an answer rather than as an empty option', () => {
