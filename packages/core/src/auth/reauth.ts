@@ -49,7 +49,7 @@ reauthRoutes.post(
 
     // OAuth-only users have no local password (passwordHash is NULL since
     // 0037). Equalize timing with the wrong-password path before refusing.
-    if (!user || !user.passwordHash) {
+    if (!user?.passwordHash) {
       await verifyPassword(password, await getDummyPasswordHash());
       throw invalid();
     }

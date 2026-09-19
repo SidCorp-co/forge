@@ -21,7 +21,7 @@ export function requireFreshAuth(minutes = 5): MiddlewareHandler<{ Variables: Au
       .where(eq(users.id, userId))
       .limit(1);
 
-    if (!row || !row.lastFreshAuthAt) throw stale();
+    if (!row?.lastFreshAuthAt) throw stale();
 
     const ageMs = Date.now() - row.lastFreshAuthAt.getTime();
     if (ageMs > minutes * 60_000) throw stale();

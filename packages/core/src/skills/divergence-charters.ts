@@ -109,7 +109,10 @@ export async function upsertCharter(
     ...(input.reason !== undefined ? { reason: input.reason } : {}),
   });
 
-  const saved = row!;
+  if (!row) {
+    throw new Error(`divergence charter upsert returned no row for project ${input.projectId}`);
+  }
+  const saved = row;
   return {
     id: saved.id,
     projectId: saved.projectId,

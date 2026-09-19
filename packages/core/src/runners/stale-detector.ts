@@ -57,8 +57,12 @@ let registered = false;
 
 export async function registerRunnerStaleDetector(): Promise<void> {
   if (registered) return;
-  await (boss as any).createQueue(RUNNER_STALE_DETECTOR_QUEUE);
-  await (boss as any).work(RUNNER_STALE_DETECTOR_QUEUE, async () => {
+  const queues = boss as unknown as {
+    createQueue(name: string): Promise<void>;
+    work(name: string, handler: () => Promise<void>): Promise<string>;
+  };
+  await queues.createQueue(RUNNER_STALE_DETECTOR_QUEUE);
+  await queues.work(RUNNER_STALE_DETECTOR_QUEUE, async () => {
     try {
       const result = await runRunnerStaleSweep();
       logger.info(result, 'runner-status-detector: sweep complete');
